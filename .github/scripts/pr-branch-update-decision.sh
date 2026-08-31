@@ -96,10 +96,11 @@
 # update and nothing else. The conflict half still runs on them, because knowing
 # a parked branch has gone dirty is information and costs no push.
 #
-# The cost is bounded by the queue's own width -- two active pull requests
-# (.github/scripts/wip-limit.sh) -- so an ordinary merge re-settles about one
-# other branch. If the queue is ever wide and this serialises it, the number to
-# revisit is `MIN_HEAD_AGE_SECONDS`, and that is an owner decision, not this
+# The cost is bounded by the queue's own width -- ATTADIPA_WIP_LIMIT active pull
+# requests, two by default (.github/scripts/wip-limit.sh) -- so an ordinary merge
+# re-settles about one other branch at the default width and proportionally more
+# at a lifted one. If the queue is ever wide and this serialises it, the number
+# to revisit is `MIN_HEAD_AGE_SECONDS`, and that is an owner decision, not this
 # file's to take.
 #
 # Prints two lines: the action, then a one-word reason for the run log. The

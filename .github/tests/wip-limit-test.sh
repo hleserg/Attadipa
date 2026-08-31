@@ -22,6 +22,12 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=../scripts/wip-limit.sh
 . .github/scripts/wip-limit.sh
 
+# THE AMBIENT ENVIRONMENT DOES NOT GET TO DECIDE WHAT THIS SUITE PROVES. Every
+# case below states the width it runs under; a developer or a runner that
+# happens to export ATTADIPA_WIP_LIMIT must not be able to turn the original
+# twelve green on a queue width they were never written for.
+unset ATTADIPA_WIP_LIMIT
+
 pass=0; fail=0
 ok()  { pass=$((pass + 1)); printf 'ok %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
@@ -42,6 +48,55 @@ check 'emergency recovery does not consume a normal slot' "[$(pr '[{"name":"queu
 check 'fork PRs do not consume repository capacity' "[$(foreign),$(pr '[]')]" 'ok 1'
 check 'an unreadable response is not a healthy queue' '{"message":"no"}' 'unknown unknown'
 check 'malformed JSON is not a healthy queue' '[' 'unknown unknown'
+
+echo
+echo "The width"
+
+# Each case runs the reader in a `$(...)` subshell, so a value set for one case
+# cannot survive into the next -- a bare assignment prefix on a function call
+# does survive in some shells, and that is exactly how a suite starts proving
+# the previous case twice.
+# SC2030/SC2031 say the assignment is local to the `$(...)` subshell and might
+# be lost. That is not an accident here, it is the containment: the value must
+# not outlive the one case that set it.
+# shellcheck disable=SC2030,SC2031
+width() {  # $1 = description, $2 = value, or the word `unset`, $3 = expected limit
+  local got
+  if [ "$2" = unset ]; then
+    got="$(unset ATTADIPA_WIP_LIMIT; attadipa_wip_limit)"
+  else
+    got="$(export ATTADIPA_WIP_LIMIT="$2"; attadipa_wip_limit)"
+  fi
+  if [ "$got" = "$3" ]; then ok "$1"; else bad "$1: got '$got', wanted '$3'"; fi
+}
+# shellcheck disable=SC2030,SC2031
+check_at() {  # $1 = description, $2 = limit, $3 = payload, $4 = expected decision
+  local got; got="$(export ATTADIPA_WIP_LIMIT="$2"; attadipa_wip_decide "$3")"
+  if [ "$got" = "$4" ]; then ok "$1"; else bad "$1: got '$got', wanted '$4'"; fi
+}
+
+width 'the designed width survives: an unset variable is still two' unset '2'
+width 'an empty variable is two, not nothing' '' '2'
+width 'the owner can lift it' '4' '4'
+width 'a leading zero is a decimal, not an octal literal' '08' '8'
+width 'zero is honoured -- an explicit freeze is closed, not open' '0' '0'
+# The four that matter. Everything a variable can be set to by accident, by a
+# typo, or on purpose must land on the DESIGNED width and never on a wider one.
+width 'a word does not unbound the queue' 'unlimited' '2'
+width 'a negative number does not unbound the queue' '-1' '2'
+width 'whitespace does not unbound the queue' ' 4' '2'
+width 'a number too long to be a queue width falls back rather than overflows' '99999999999999999999' '2'
+
+check_at 'a lifted limit admits the count that used to close the queue' 4 \
+  "[$(pr '[]'),$(pr '[]')]" 'ok 2'
+check_at 'a lifted limit still closes at its own width' 4 \
+  "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'full 4'
+check_at 'and still reports an incident above it' 4 \
+  "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 5'
+check_at 'a frozen queue admits nothing at all' 0 '[]' 'full 0'
+check_at 'junk in the variable leaves the queue at its designed width' unlimited \
+  "[$(pr '[]'),$(pr '[]')]" 'full 2'
+check_at 'an unreadable queue is unknown whatever the width' 4 '{"message":"no"}' 'unknown unknown'
 
 echo
 echo "The transport, executed"
@@ -113,8 +168,12 @@ run_caller() {  # $1 = script, $2 = payload JSON, $3 = stub mode
   local script=$1 payload=$2 mode=${3:-ok}
   printf '%s' "$payload" > "$work/payload"
   : > "$work/output"
+  # WIP_LIMIT, not ATTADIPA_WIP_LIMIT: the variable reaches the script only
+  # through this line, so the suite states the width for every executed case
+  # instead of inheriting whatever the runner happens to export.
   PATH="$work/bin:$PATH" ATTADIPA_STUB_DIR="$work" ATTADIPA_STUB_MODE="$mode" \
     GITHUB_OUTPUT="$work/output" GITHUB_REPOSITORY=hleserg/Attadipa \
+    ATTADIPA_WIP_LIMIT="${WIP_LIMIT-}" \
     bash "$script" > "$work/log" 2>&1
   printf '%s %s\n' \
     "$(sed -n 's/^state=//p' "$work/output")" \
@@ -194,6 +253,42 @@ caller 'emergency work does not consume a slot' \
   "[$(ghpr 1 '[{"name":"queue:emergency"}]'),$(ghpr 2)]" 'ok 1'
 caller 'an empty queue is ok 0, not unknown' '[]' 'ok 0'
 caller 'malformed JSON is unknown, not capacity' '[' 'unknown unknown'
+
+# 6b. The width, through the transport rather than around it. The rule already
+#     honours a lifted limit; this is the half that broke last time -- a
+#     correct rule the shipping script never reaches.
+got=$(WIP_LIMIT=4 run_caller .github/scripts/wip-limit.sh "[$(ghpr 1),$(ghpr 2)]")
+if [ "$got" = "ok 2" ]; then
+  ok "the shipping script honours a lifted limit end to end"
+else
+  bad "with the limit lifted to 4 the script still returned '$got'
+$(sed 's/^/       /' "$work/log")"
+fi
+got=$(WIP_LIMIT=unlimited run_caller .github/scripts/wip-limit.sh "[$(ghpr 1),$(ghpr 2)]")
+if [ "$got" = "full 2" ]; then
+  ok "and junk in the variable closes the queue at two, end to end"
+else
+  bad "junk in the variable returned '$got' through the shipping script"
+fi
+
+# 6c. The operator-facing sentence names the limit IN FORCE. Reading
+#     "normal limit: 2" under a lifted limit sends an operator looking for a bug
+#     in the count, which is the wrong place and the wrong problem.
+say=$(env -u ATTADIPA_WIP_LIMIT bash .github/scripts/wip-limit.sh --say full 2)
+case "$say" in
+  *"normal limit: 2"*) ok "--say names the designed limit when none is set" ;;
+  *) bad "--say full said: $say" ;;
+esac
+say=$(env ATTADIPA_WIP_LIMIT=4 bash .github/scripts/wip-limit.sh --say full 4)
+case "$say" in
+  *"normal limit: 4"*) ok "--say names the lifted limit rather than the literal two" ;;
+  *) bad "--say full under a lifted limit said: $say" ;;
+esac
+say=$(env ATTADIPA_WIP_LIMIT=4 bash .github/scripts/wip-limit.sh --say incident 5)
+case "$say" in
+  *"threshold of 5"*) ok "--say moves the hard threshold with the limit" ;;
+  *) bad "--say incident under a lifted limit said: $say" ;;
+esac
 
 # The operator-facing line is the only way a live run can be confirmed to have
 # counted anything real, so it is asserted rather than assumed.

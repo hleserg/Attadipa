@@ -49,10 +49,11 @@
 # ==========================================================================
 #
 # MAX_PULLS_EXAMINED caps the reads and MAX_UPDATES_PER_RUN caps the writes.
-# The repository's own WIP limit is two active pull requests
-# (.github/scripts/wip-limit.sh: "normal limit: 2") and thirteen open at once is
-# the observed high-water mark, so ten updates per run is a bound that does not
-# truncate in practice. It exists so that a queue nobody expected cannot turn
+# The repository's own WIP limit defaults to two active pull requests and is
+# raised from a repository variable (.github/scripts/wip-limit.sh,
+# ATTADIPA_WIP_LIMIT); thirteen open at once is the observed high-water mark, so
+# ten updates per run is a bound that does not truncate in practice even at a
+# width several times the default. It exists so that a queue nobody expected cannot turn
 # one merge into a hundred pushes. When it does truncate it says so once, and
 # the next merge to the base picks up the rest; nothing is lost, because the
 # decision is recomputed from GitHub's state every run and holds no memory.

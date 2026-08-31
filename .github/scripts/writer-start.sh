@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Mandatory local writer entrypoint: global lease, admission, task claim.
+#
+# `held: full` means the pull-request queue is at its width, not that anything
+# is wrong. The width defaults to two and comes from ATTADIPA_WIP_LIMIT, which
+# is inherited from this shell here and from the repository variable of the same
+# name in Actions -- so a width the owner has lifted in repository settings has
+# to be exported here too for a local run to see it.
 set -uo pipefail
 
 dir="$(cd "$(dirname "$0")" && pwd)" || exit 1
