@@ -544,17 +544,49 @@ jobs:
       - name: Partition table stays below the 16 MB addressing ceiling
         run: python3 tools/flash/partition_check.py
 
-      - name: Build
+      - name: Build the production image
         shell: bash
         run: |
           . "$IDF_PATH/export.sh"
           cd firmware
           idf.py set-target esp32s3
           idf.py build
+          # This is the job that decides whether a product image can answer an
+          # unauthenticated USB host (#346). Two independent proofs, because
+          # the configuration and the artefact can disagree: the generated
+          # config must say the endpoint is off, and the linked ELF must not
+          # contain the dispatcher every privileged opcode goes through.
+          # Restoring CONFIG_ATTADIPA_WATCH_CONTROL=y to sdkconfig.defaults
+          # turns this step red on both counts.
+          grep -q "^# CONFIG_ATTADIPA_WATCH_CONTROL is not set$" sdkconfig
           python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
           # app_main owns the degraded-PSRAM diagnostic. Without this option,
           # ESP-IDF aborts before that diagnostic can run.
           grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
+
+      - name: Build the development/HIL image
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          # -B and -DSDKCONFIG together, for the reason FIRMWARE_BRINGUP.md:86
+          # records: idf.py keeps sdkconfig in the project directory, so
+          # without them this silently rebuilds the production image and calls
+          # it a HIL build.
+          idf.py -B build-hil -DSDKCONFIG=build-hil/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hil" build
+          grep -q "^CONFIG_ATTADIPA_WATCH_CONTROL=y$" build-hil/sdkconfig
+          # This line used to check that sdkconfig.hil had not lost a copy of
+          # the symbol. It now checks that `select LV_USE_SNAPSHOT` on
+          # ATTADIPA_WATCH_CONTROL fires -- sdkconfig.hil no longer names it,
+          # so the only way it can be `y` here is the select. Deleting the
+          # select turns this red, which is the point: LVGL compiles
+          # lv_snapshot_take_to_draw_buf() out under `n` and its own default
+          # is `n`.
+          grep -q "^CONFIG_LV_USE_SNAPSHOT=y$" build-hil/sdkconfig
+          # The same check in the other direction: the bench image is required
+          # to carry the endpoint, so a HIL build that quietly lost it is
+          # caught here rather than at the bench.
+          python3 ../tools/flash/firmware_elf_check.py --variant hil build-hil/attadipa.elf
 
       # The RAM route is the one proved to work on the received unit and the one
       # with nothing to undo, so it is the one a bench session reaches for first.
@@ -636,7 +668,7 @@ jobs:
             echo "| Host build, GCC and Clang | UNIT-TESTED |"
             echo "| Strict warnings, sanitizers | UNIT-TESTED |"
             echo "| Simulator, both geometries | SIMULATED |"
-            echo "| ESP32-S3 firmware build (flash and RAM variants) | CI job: \`${{ needs.firmware-build.result }}\` |"
+            echo "| ESP32-S3 firmware build (production, HIL and RAM variants) | CI job: \`${{ needs.firmware-build.result }}\` |"
             echo "| Anything on a physical board | **NOT EXECUTED — HARDWARE REQUIRED** |"
             echo
             echo "Power, timing and RF numbers are \`ESTIMATED\` or \`UNKNOWN\` until"

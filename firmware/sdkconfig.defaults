@@ -64,10 +64,29 @@ CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 # so anything that turns the console off silently takes it with it.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
-# T-114 captures the LVGL object tree into caller-owned PSRAM and streams it
-# through the existing debug protocol. No panel readback or second renderer.
-CONFIG_ATTADIPA_WATCH_CONTROL=y
-CONFIG_LV_USE_SNAPSHOT=y
+# This file is the PRODUCTION profile, and the USB watch-control endpoint is
+# deliberately absent from it. The endpoint speaks an unauthenticated protocol:
+# CRC and a version byte prove a frame is well formed, not that the host on the
+# other end of the cable is the owner's. Anything that can open the CDC device
+# could read the screen, inject touch and buttons, write host time as trusted,
+# and drive a live MeshCore session (#346). Leaving it on by default published
+# a control plane to every USB port the watch is ever plugged into.
+#
+# Turning it off used to be impossible without breaking the product, because
+# one symbol owned both the endpoint and the touch, button and sleep paths.
+# It does not any more -- physical_input.cpp is compiled into every image --
+# so `n` here costs the product nothing.
+#
+# `idf.py -B build-hil -DSDKCONFIG=build-hil/sdkconfig \
+#     -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hil" build`
+# is the development image. It is an explicit, named choice, it says so in the
+# boot log, and tools/flash/firmware_elf_check.py is what keeps the two apart:
+# a flash image carrying the endpoint's dispatcher fails that check.
+#
+# CONFIG_LV_USE_SNAPSHOT is not repeated here or in sdkconfig.hil: the screenshot
+# buffer has exactly one caller, so ATTADIPA_WATCH_CONTROL selects it and the two
+# symbols cannot drift apart in two files again.
+CONFIG_ATTADIPA_WATCH_CONTROL=n
 
 # T-168 talks to a stock MeshCore Companion as a BLE central. Only the central,
 # observer and GATT-client roles are built; the watch does not advertise a

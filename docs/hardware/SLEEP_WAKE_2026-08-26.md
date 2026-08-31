@@ -95,6 +95,13 @@ watch-control: wake cycle 3: LightSleep -> Idle -> Active by Button
 after register `0x49` reports a latched PWR edge. GPIO is zero for this route.
 The panel restored and the watch continued answering the debug channel.
 
+The transcript above is what that run printed and is left as it was recorded.
+A repeat prints the same two lines under the tag `physical-input`: sleep and
+wake moved to `firmware/main/physical_input.cpp` in #346 so that they survive a
+build with no debug endpoint, and the log tag moved with them. The behaviour
+did not change, and this was not re-measured — **NOT EXECUTED — HARDWARE
+REQUIRED**.
+
 ## Evidence boundary
 
 - **MEASURED:** the flash build and verified write; five debug-origin
