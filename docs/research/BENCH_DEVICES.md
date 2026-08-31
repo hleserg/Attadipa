@@ -93,7 +93,8 @@ MeshCore nodes, not one — `MEASURED` on 2026-08-28 during T-169 and recorded i
 | --- | --- | --- |
 | model, from `RESP_CODE_DEVICE_INFO` | `Heltec T114` | `Heltec V4.3 OLED` |
 | MeshCore firmware | `v1.17.1-d929643` | `v1.17.dev` |
-| advertised name | `Beta test companion` | `✂️Beta Serega` |
+| `RESP_CODE_SELF_INFO` name | `Beta test companion` | `✂️Beta Serega` |
+| advertised name | `UNKNOWN` | `UNKNOWN` |
 | **public key** | **`5c62d9bc82e530fc…`** | **`044e2de8068447d3…`** |
 | negotiated ATT MTU | 247 | 176 |
 

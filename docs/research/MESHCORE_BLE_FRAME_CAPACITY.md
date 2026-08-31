@@ -363,7 +363,7 @@ Attadipa central. Nothing below may be marked `PASS` from a simulation.
    about what it missed.
 
 Steps 1–3 need one node and one central. Steps 4–5 need a second radio-capable
-node; [A3](OPEN_QUESTIONS.md) is resolved with three MeshCore nodes. Step 6 needs a Wi-Fi
+node; [A3](OPEN_QUESTIONS.md) is resolved with five MeshCore nodes. Step 6 needs a Wi-Fi
 companion build; the node behind Home Assistant on `doctor` is the cheapest
 route and needs no BLE stack at all.
 
