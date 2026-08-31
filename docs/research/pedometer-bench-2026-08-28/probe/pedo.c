@@ -100,7 +100,7 @@
  * but that says nothing about the vendor, and nothing about Attadipa either:
  * ITS WRITER CANNOT BE IDENTIFIED AT ALL. T-166 replaced this unit's factory
  * image on 2026-08-25, so found state here is whatever the last program left.
- * VERIFIED_FACTS.md:1582-1586 records that attributing it to Attadipa's own
+ * VERIFIED_FACTS.md:1585-1589 records that attributing it to Attadipa's own
  * firmware "cannot be supported". Two earlier versions of this comment drew an
  * attribution -- first to the vendor, then to Attadipa -- and both were wrong;
  * the point is that no attribution is available, not that a different one is. */
@@ -361,10 +361,16 @@ void app_main(void)
     /* The column that makes a zero mean something. Three earlier runs read 0 and
      * could not distinguish "the engine does not count" from "nothing moved" --
      * once because the board genuinely sat still, once because the walk happened
-     * with the cable out and nothing recorded the motion. So sample fast and
-     * report the peak-to-peak the engine was actually offered, in the same mg
-     * the threshold is written in, and a second whose p2p clears the bar is a
-     * second the engine had no excuse. The bar is PRINTED FROM THE CONSTANTS,
+     * with the cable out and nothing recorded the motion. So report the
+     * peak-to-peak this loop saw, in the same mg the threshold is written in.
+     * It is not what the engine was offered: 20 reads 50 ms apart is a 20 Hz
+     * view of the 112.1 Hz this CTRL2 configures, so it UNDER-reads -- a
+     * subsample's extremes lie inside the full stream's. That asymmetry is the
+     * point. A window OVER the bar is conclusive, because the engine saw at
+     * least that much; a window under it is not, because between two reads the
+     * part produces about five samples this column never sees and a heel strike
+     * is tens of milliseconds. Each iteration is 20 x 50 ms of delay plus its
+     * I2C reads, so t below is an index, not a timestamp. The bar is PRINTED FROM THE CONSTANTS,
      * not quoted: this header used to say the datasheet's 200/100 while the
      * probe had been loosened to SensorLib's 80/60, so the log invited the
      * reader to hold the run to a threshold it was never configured with. */

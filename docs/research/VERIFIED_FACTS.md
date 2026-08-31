@@ -1547,9 +1547,12 @@ constants.
   step count stayed **0 (`+0`)** throughout and `STATUS1` stayed `0x00`.
 - **The milligravity scale of those figures is UNKNOWN.** They are
   `(hi - lo) * 1000 / ACCEL_LSB_PER_G` and no capture records the divisor its
-  binary used — the run's own header says ±8 g (4096), the post-session source
-  says 8192 — so at 4096 they read 161 mg and 1121 mg instead. Either way they
-  clear the 78 mg bar by more than 2×, so the negative result stands.
+  binary used. `shake.log:49`'s `±8 g` is not a candidate for it: that header is
+  one of the four stale labels this session identified, it names a full scale for
+  a register meaning ±4 g, and it records no divisor at all. It is the reason to
+  doubt the scale, not a value for it. Had the binary divided by 4096 the figures
+  would read 161 mg and 1121 mg; either way they clear the 78 mg bar by more than
+  2×, so the negative result stands.
 - **The motion is a burst, not the whole run.** An earlier draft said the watch
   was shaken for 158 s. It was not: the other 142 windows read 0–1 mg — a board
   lying still. Sixteen consecutive seconds is what this run establishes.
