@@ -31,6 +31,18 @@ One run: **159** one-second windows, `t=0` to `t=158`.
 | step count | **0**, `+0` on every window |
 | `STATUS1` | `0x00` throughout |
 
+**The milligravity scale is UNKNOWN.** Every `p2p` figure above is
+`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:385`), and no capture
+records which divisor its binary used. `shake.log:49`, the run's own header,
+says ±8 g — 4096 — while the source says 8192, and that source is the probe *as
+corrected after the session*, not the binary that ran. The capture cannot settle
+it: the earlier builds printed a g triad on every line and this one prints none
+(`grep -c ' g)' shake.log` → 0, against 240 in `pedo-run.log`). At 4096 every
+figure above is half what is printed — 2242 → 1121, 322 → 161. **No conclusion
+in this report moves**: the smallest window still clears the 78 mg bar by more
+than 2×, and nothing here rests on a numeric multiple. The probe now echoes
+`ACCEL_LSB_PER_G`, so the next capture records its own scale.
+
 **The shape of the run matters and two earlier drafts of this report got it
 wrong.** The first said the watch was shaken for 158 s. It was not: the motion is
 one 16-second burst inside a run that was otherwise a board on a desk. The second
@@ -160,10 +172,10 @@ The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledge
 with CmdDone set and cleared — so the engine **processed both Configure
 Pedometer commands**. It does not follow that the parameters were in place when
 it did, and this report no longer says it does: `configure_pedometer()`
-(`probe/pedo.c:182-212`) discards every `wr()` return for the eighteen
+(`probe/pedo.c:183-213`) discards every `wr()` return for the eighteen
 `CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
 nothing reads those registers back. `shake.log:53-54` is not a readback either;
-`probe/pedo.c:304-307` prints the `#define`s. **A return check on the `CAL`
+`probe/pedo.c:305-310` prints the `#define`s. **A return check on the `CAL`
 writes and a readback before the second `0x0D` are required before the
 read-after-walk run #116 needs, and are not in this pull request.** The probe
 refuses to print a step count after a failed configuration, because that number

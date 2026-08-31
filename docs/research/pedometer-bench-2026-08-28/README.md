@@ -20,9 +20,15 @@ one in `walk.log` — and where a header and the report disagree, the report is
 correct. No register or parameter value
 is affected.
 
-Each capture opens with an `esptool` **RAM boot** — every segment loads to a RAM
-address and there is no `write_flash` in the session. The unit still carries the
-T-166 candidate in flash.
+Two of the five captures open with an `esptool` **RAM boot**: `shake.log:1-11`
+and `walk.log:1-11` carry the loader transcript, every segment loading to a RAM
+address, with no `write_flash` anywhere. The three `pedo-run` captures open at
+the image's own boot log instead, with no `# port`, `RAM boot` or `Downloading`
+line. That is a missing record of the loader step, not a different route: all
+five carry `Project name: pedo` at the identical `compile time Aug 28 2026
+12:53:17`, and `probe/sdkconfig.defaults:2-3` builds `PURE_RAM_APP`, which has
+no flash image to boot from. Nothing in the session writes flash; the unit still
+carries the T-166 candidate there.
 
 The QMI8658 datasheet these were read against is not here: it is QST's copyright
 and its cover marks it *Security Level: 3*. The report names it and where it came
@@ -38,7 +44,7 @@ here as **evidence**, not as a component: nothing in `firmware/` or `platform/`
 builds it or depends on it.
 
 **It is the probe as corrected after the session, not byte-for-byte what ran.**
-Four things changed afterwards, and three of them are behaviour rather than
+Five things changed afterwards, and four of them are behaviour rather than
 text — this source does not reproduce the archived captures line for line:
 
 1. **behaviour** — the `OVER` column's bar and the printed threshold now come
@@ -53,7 +59,12 @@ text — this source does not reproduce the archived captures line for line:
    [`HARDWARE_MATRIX.md:514`](../HARDWARE_MATRIX.md) records `CTRL3 = 0x36` as
    *"residue this session knowingly left on the part"*. That remains the correct
    statement **about the run**; it is no longer what this source does;
-4. **text** — five `printf` labels are corrected in this source. Four are the
+4. **behaviour** — the parameter header now echoes `ACCEL_LSB_PER_G`. No
+   archived capture records the divisor its binary used to turn LSB into the
+   `p2p` milligravity column, and none of them can be made to: the scale of
+   every mg figure the report publishes is therefore UNKNOWN. This line is so
+   that the next capture settles it for itself;
+5. **text** — five `printf` labels are corrected in this source. Four are the
    stale `shake.log` labels named above: `CTRL2 = 0x16` is ±4 g at 112.1 Hz in
    6DOF; `CTRL3 = 0x36` is ±128 dps, not the ±1000 dps printed here; the
    banner's register list omitted `CTRL3`; and the p2p header printed the

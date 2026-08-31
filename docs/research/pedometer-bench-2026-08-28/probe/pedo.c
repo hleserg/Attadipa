@@ -75,7 +75,11 @@
 #define CMD_CONFIGURE_PEDOMETER  0x0D
 #define CMD_RESET_PEDOMETER      0x0F
 
-/* SUPERSEDED, kept because the scaling argument below still applies: CTRL2 was
+/* SUPERSEDED. This is what the WALK run wrote, and it is kept so that archived
+ * capture stays readable: walk.log:52-53 echoes exactly this set -- sample_cnt=62,
+ * time_up=250, time_low=25, cnt_entry=10, sig_count=4, with the two mg thresholds
+ * unscaled at 0x00CC/0x0066. Nothing below is scaled; the parameters this probe
+ * writes are SensorLib's, sourced in the block above them. CTRL2 was
  * aFS = 010 (+/-8 g), aODR = 0111 (62.5 Hz, accel-only). QST's worked example
  * in §11.1 is written for 50 Hz and the part has no such rate — the ladder is
  * 250 / 125 / 62.5 / 31.25 — so 62.5 Hz was the nearest and the sample-count
@@ -95,7 +99,7 @@
  * but that says nothing about the vendor, and nothing about Attadipa either:
  * ITS WRITER CANNOT BE IDENTIFIED AT ALL. T-166 replaced this unit's factory
  * image on 2026-08-25, so found state here is whatever the last program left.
- * VERIFIED_FACTS.md:1577-1581 records that attributing it to Attadipa's own
+ * VERIFIED_FACTS.md:1582-1586 records that attributing it to Attadipa's own
  * firmware "cannot be supported". Two earlier versions of this comment drew an
  * attribution -- first to the vendor, then to Attadipa -- and both were wrong;
  * the point is that no attribution is available, not that a different one is. */
@@ -114,9 +118,6 @@
 #define CTRL8_VALUE  0x90          /* handshake + Pedo_EN; the 0->1 edge on   */
                                    /* bit 4 also clears the count, §11.6      */
 
-/* Table 37 parameters, QST's §11.1 example scaled to 62.5 Hz where it is a
- * count of samples. Comments give the physical meaning, which is what a later
- * tuning pass will argue about. */
 /* SensorLib's bring-up profile at 2b9e591f, examples/sensor/qmi8658_pedometer:
  *     imu.configPedometer(50, 80, 60, 400, 8, 1, 0, 1);
  * with the comment "Datasheet profile is conservative and designed to reject
@@ -302,9 +303,11 @@ void app_main(void)
            configured ? "both acknowledged -- CmdDone set and cleared each time"
                       : "FAILED -- a step count read after this means nothing");
     printf("  sample_cnt=%d  peak2peak=0x%04X  peak=0x%04X  time_up=%d\n"
-           "  time_low=%d  cnt_entry=%d  precision=%d  sig_count=%d\n",
+           "  time_low=%d  cnt_entry=%d  precision=%d  sig_count=%d\n"
+           "  accel scale: %d LSB/g -- the divisor every p2p mg below uses\n",
            PED_SAMPLE_CNT, PED_FIX_PEAK2PEAK, PED_FIX_PEAK, PED_TIME_UP,
-           PED_TIME_LOW, PED_TIME_CNT_ENTRY, PED_FIX_PRECISION, PED_SIG_COUNT);
+           PED_TIME_LOW, PED_TIME_CNT_ENTRY, PED_FIX_PRECISION, PED_SIG_COUNT,
+           ACCEL_LSB_PER_G);
     if (!configured) {
         printf("\nRestoring and stopping: configuring failed, so nothing this probe\n"
                "could print afterwards would answer the question it was built for.\n");
