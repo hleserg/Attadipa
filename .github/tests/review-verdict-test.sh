@@ -33,7 +33,8 @@ pass=0; fail=0
 # the script chose not to write it).
 run() {
   rm -f "$work/ledger.md" "$work/deferred.md"
-  bash "$script" "${1:-}" "${2:-}" "${3:-4}" "$work/ledger.md" "$work/deferred.md" 139
+  bash "$script" "${1:-}" "${2:-}" "${3:-4}" "$work/ledger.md" "$work/deferred.md" 139 \
+    "${4:-99}"
 }
 
 # key KEY -> the value from the last run's stdout, held in $out
@@ -257,7 +258,7 @@ f=$(findings f14 <<'EOF'
 old-thing | open | normal | Raised at round 2 and never fixed
 EOF
 )
-out=$(run "$work/old.md" "$f" 4)
+out=$(run "$work/old.md" "$f" 4 99)
 check "a round-2 finding still unfixed at round 9 holds" ai-review:blocking "$(key label)"
 check "and it is the pre-floor clause that does it" pre-floor "$(key reason)"
 check "round 9 counts as round 9" 9 "$(key round)"
@@ -544,6 +545,76 @@ else
   fail=$((fail + 1))
   printf '  FAIL  the live workflow or its shipping prompt is missing\n'
 fi
+
+echo
+echo "The ceiling — past it nothing holds, and a floor finding is not an exception"
+
+# A ledger that puts the next round exactly AT the ceiling, and one that puts it
+# one past. Same finding, same category, same everything else: the only variable
+# is the round, which is what the rule turns on.
+_ceiling_ledger() {
+  cat > "$work/ceil.md" <<EOF
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=$1
+floor=4
+late-floor-thing | $1 | floor | open | A hardware fact with no source
+-->
+EOF
+  printf '%s' "$work/ceil.md"
+}
+f=$(findings f_ceiling <<'EOF'
+late-floor-thing | open | floor | A hardware fact with no source
+EOF
+)
+
+# Round 5 with a ceiling of 5 is AT the ceiling, not past it.
+out=$(run "$(_ceiling_ledger 4)" "$f" 4 5)
+check "at the ceiling the round is 5" 5 "$(key round)"
+check "and a floor finding still holds there" ai-review:blocking "$(key label)"
+check "by the floor clause, unchanged" floor "$(key reason)"
+check "nothing is deferred at the ceiling" 0 "$(key deferred)"
+contains "and the table says it holds" '**yes** — floor' "$(cat "$work/ledger.md")"
+
+# One more round on the same finding, and only the round has changed.
+out=$(run "$(_ceiling_ledger 5)" "$f" 4 5)
+check "one past the ceiling the round is 6" 6 "$(key round)"
+check "the same floor finding no longer holds" ai-review:pass "$(key label)"
+check "and the reason says why, not 'nothing-holding'" ceiling "$(key reason)"
+check "it is still open" 1 "$(key open)"
+check "nothing is holding" 0 "$(key blocking)"
+check "and it is filed instead" 1 "$(key deferred)"
+contains "the table says past the ceiling" 'no — past the ceiling' "$(cat "$work/ledger.md")"
+contains "the ledger states the ceiling" 'convergence ceiling is **round 5**' "$(cat "$work/ledger.md")"
+if [ -r "$work/deferred.md" ]; then
+  pass=$((pass + 1)); printf '  ok    a follow-up body is written for it\n'
+  contains "and it names the finding" 'late-floor-thing' "$(cat "$work/deferred.md")"
+else
+  fail=$((fail + 1)); printf '  FAIL  a follow-up body is written for it\n'
+fi
+
+# A finding that is genuinely fixed past the ceiling is `nothing-holding`, not
+# `ceiling`: the two reasons must stay distinguishable or the ledger lies about
+# why the pull request is green.
+f_fixed=$(findings f_ceiling_fixed <<'EOF'
+late-floor-thing | fixed | floor | A hardware fact with no source
+EOF
+)
+out=$(run "$(_ceiling_ledger 5)" "$f_fixed" 4 5)
+check "a fixed finding past the ceiling is not reported as the ceiling" nothing-holding "$(key reason)"
+
+# A caller typo must not restore the sixteen-round behaviour this rule stops.
+out=$(run "$(_ceiling_ledger 5)" "$f" 4 "not-a-number")
+check "an unreadable ceiling falls back to the default" 5 "$(key ceiling)"
+check "so it still fires rather than disabling itself" ceiling "$(key reason)"
+out=$(run "$(_ceiling_ledger 5)" "$f" 4 0)
+check "a zero ceiling falls back too" 5 "$(key ceiling)"
+
+# A ceiling below the floor would make the floor unreachable, so it is raised to
+# it: the older rule keeps at least the rounds it was written for.
+out=$(run "$(_ceiling_ledger 1)" "$f" 4 2)
+check "a ceiling under the floor is raised to the floor" 4 "$(key ceiling)"
+check "so round 2 is still inside the floor regime" ai-review:blocking "$(key label)"
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"

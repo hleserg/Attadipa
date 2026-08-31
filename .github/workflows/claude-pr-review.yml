@@ -312,7 +312,7 @@ jobs:
           # here costs nothing.
           finding_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_REVIEW_ACTOR) | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | contains("<!-- attadipa-review-findings")) | .id' | tail -1)
           [ -z "$finding_id" ] || gh api "repos/$REPO/issues/comments/$finding_id" --jq '.body' > /tmp/findings.md
-          bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md 4 /tmp/new-ledger.md /tmp/deferred.md "$PR" > /tmp/verdict.txt
+          bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md 4 /tmp/new-ledger.md /tmp/deferred.md "$PR" 5 > /tmp/verdict.txt
           label=$(sed -n 's/^label=//p' /tmp/verdict.txt)
           [ "$label" = "ai-review:pass" ] || [ "$label" = "ai-review:blocking" ] || exit 0
           if [ -n "$ledger_id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$ledger_id" -F body=@/tmp/new-ledger.md > /dev/null; else gh pr comment "$PR" --repo "$REPO" --body-file /tmp/new-ledger.md; fi
