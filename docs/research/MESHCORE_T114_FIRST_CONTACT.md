@@ -298,6 +298,26 @@ I (28477) RX op=0x88 len=10     PUSH_CODE_LOG_RX_DATA  88 31 b5 2a 40 13 38 66 6
 I (28477) RX op=0x82 len=9      PUSH_CODE_SEND_CONFIRMED  82 38 66 6c b8 1b 03 00 00
 ```
 
+**The `**` above were applied by hand, after the capture.** The firmware on
+`51a210a` printed the guest password's real bytes to the USB console, and this
+transcript is the reason #316 exists. It is left as captured — a capture is the
+run — but nothing after this build reproduces it: `log_frame()` now asks
+`attadipa::link::meshcore_loggable_prefix()` how much of each frame may be
+printed, and `CMD_SEND_LOGIN` stops after the public room key. The same run on
+the current tree prints the header and the first 33 bytes:
+
+```
+I (24927) TX op=0x1A len=42 (9 bytes redacted: credential)
+1a ba 4c 1c a4 d6 46 3a 23 e9 9b 54 40 b6 20 67
+23 11 6b f7 87 13 a1 b4 5b 26 6f 83 7b cd e3 14
+9e
+```
+
+That line is `SIMULATED`: it is what the host test asserts the redaction leaves
+(`tests/test_meshcore_companion.cpp`,
+`test_a_room_password_never_reaches_the_transcript`), not a second bench run.
+**NOT EXECUTED — HARDWARE REQUIRED.**
+
 Opcodes and error codes read from
 [`MESHCORE_COMPANION_PROTOCOL.md`](MESHCORE_COMPANION_PROTOCOL.md) §9: `6`
 `SENT`, `0x82` `SEND_CONFIRMED`, `0x85` `LOGIN_SUCCESS`, `0x88` `LOG_RX_DATA`.
@@ -599,11 +619,11 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:958`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`:840`](../../firmware/main/meshcore_ble.cpp)), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:998`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`:880`](../../firmware/main/meshcore_ble.cpp)), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
-| Room Server login | the guest password is sent **in the clear inside the Companion frame** (section 6). It is protected only by BLE link encryption between watch and node, and by whatever MeshCore does beyond the node | `MEASURED` |
+| Room Server login | the guest password is sent **in the clear inside the Companion frame** (section 6) — the wire cannot change, the protocol requires it there. It is protected only by BLE link encryption between watch and node, and by whatever MeshCore does beyond the node. It is **no longer printed to the USB console**: the frame transcript is truncated at the public room key (#316, section 12) | `MEASURED` on the wire; the transcript truncation is `SIMULATED` |
 | Trust model | the watch trusts the node completely. A node — or anything that can present itself as one and satisfy the passkey — chooses every sender name and message body the watch displays | structural, from the protocol |
 
 See [`docs/upstream/meshcore-1.17-review.md`](../upstream/meshcore-1.17-review.md)
@@ -691,3 +711,59 @@ upstream allegation.
   MeshCore push can exceed 176 bytes on this revision is `UNKNOWN` from this
   bench.
 - **Nothing here is a security claim.** Section 8.
+
+## 12. Running this again without publishing a credential
+
+Two credentials appear in this procedure: the node's six-digit BLE passkey and
+the Room Server's guest password. Neither is a command-line argument any more
+(#316) — an argument is readable by every other process on the host while the
+command runs, and the shell writes it to history besides.
+
+**At a terminal**, both are prompted for and neither is echoed:
+
+```
+tools/watch_control.py mesh-configure
+BLE passkey:
+tools/watch_control.py mesh-room-send --room <64-hex> --text "..."
+Room Server password:
+```
+
+**Unattended**, both are one line on stdin, which keeps them out of `ps` and out
+of history:
+
+```
+printf '%s\n' "$BLE_PASSKEY"    | tools/watch_control.py mesh-configure
+printf '%s\n' "$ROOM_PASSWORD"  | tools/watch_control.py mesh-room-send \
+    --room <64-hex> --text "..."
+```
+
+`mesh-configure --unpaired-probe` is the old `--passkey 0`: a diagnostic that
+carries no secret, so it stays a flag and stays scriptable. The host refuses an
+empty password, one longer than the protocol's fifteen bytes, one carrying a
+NUL, and a passkey that is not six digits — refusing here rather than sending a
+half credential to the watch. It also refuses `000000`, which *is* six digits:
+the firmware reads that value as **do not pair** (`secure_pairing = passkey
+!= 0`) and skips `ble_gap_security_initiate()`, so typing it would bring the
+link up unencrypted while the host reported success — and the Room Server
+password below would then cross the air in the clear. The unpaired probe is
+reachable only through its own flag.
+
+**Publishing a capture.** The transcript is truncated at the source, so a raw
+capture taken on the current tree does not contain the password and does not
+need editing before it is committed. Two things still hold:
+
+- Check any capture taken on an **older build** — `51a210a` and anything before
+  the #316 fix printed the password's real bytes. Section 6's transcript is one
+  of those, and its `**` were applied by hand.
+- The truncation covers `CMD_SEND_LOGIN` on the Companion link. It says nothing
+  about a credential typed into a screen recording, a scrollback buffer opened
+  before the fix, or a `sdkconfig` — and `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y`
+  enables the mechanism, never a value (section 8).
+
+**Two residuals this does not close**, stated rather than implied. The password
+crosses the USB debug channel from host to watch and is read in place from the
+receive buffer the transport owns (`debug/src/bridge.cpp`, `handle` takes a
+`const` payload), so that buffer holds it until the transport overwrites it. And
+a Python `str` on the host cannot be zeroized. Both are bounded and neither
+reaches a console or a file; closing either means changing who owns those
+buffers, which #316 does not ask for.

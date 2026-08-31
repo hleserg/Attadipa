@@ -443,6 +443,10 @@ def time_sync_encode(utc_seconds: int, timezone_offset_minutes: int,
 
 
 def mesh_configure_encode(passkey: int) -> bytes:
+    # 0 is in range because it is the wire sentinel for the unpaired diagnostic
+    # probe, not because it is a passkey: the firmware pairs only when the value
+    # is non-zero. watch_control.py refuses an operator-typed 000000 for that
+    # reason; do not read this range as saying 000000 secures a link.
     if not 0 <= passkey <= 999999:
         raise ValueError("MeshCore passkey must be between 000000 and 999999")
     return struct.pack("<I", passkey)

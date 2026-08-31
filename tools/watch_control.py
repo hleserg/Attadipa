@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import getpass
 import json
 import os
 import sys
@@ -198,8 +199,57 @@ def cmd_sync_time(watch: Watch, args) -> int:
     return 0
 
 
+def read_secret(name: str, max_bytes: int) -> str:
+    """One credential, taken from a terminal or a pipe -- never from argv.
+
+    An argument is readable by every other process on the host for as long as
+    the command runs, and a shell writes it to history besides. A prompt and a
+    pipe are neither. With a terminal attached the operator is prompted; without
+    one the value is a single line on stdin, which is what automation uses:
+
+        printf '%s\n' "$ROOM_PASSWORD" | tools/watch_control.py mesh-room-send ...
+
+    Bounded and fail-closed at this boundary: empty, over-long, or carrying a
+    NUL is an error here rather than a half credential sent to the watch.
+    """
+    if sys.stdin.isatty():
+        value = getpass.getpass(f"{name}: ")
+    else:
+        value = sys.stdin.readline().rstrip("\r\n")
+    if "\x00" in value:
+        raise WatchError(f"{name} must not contain a NUL byte")
+    encoded = value.encode("utf-8")
+    if not encoded:
+        raise WatchError(
+            f"{name} is required: type it at the prompt, or pipe it in on stdin")
+    if len(encoded) > max_bytes:
+        raise WatchError(
+            f"{name} must be at most {max_bytes} bytes; got {len(encoded)}")
+    return value
+
+
 def cmd_mesh_configure(watch: Watch, args) -> int:
-    watch.mesh_configure(args.passkey)
+    if args.unpaired_probe:
+        passkey = 0
+    else:
+        raw = read_secret("BLE passkey", 6)
+        if not (len(raw) == 6 and raw.isascii() and raw.isdigit()):
+            raise WatchError("the BLE passkey is six digits")
+        passkey = int(raw)
+        # 000000 is six digits, so it passes the check above, and it is a
+        # passkey to the layer below (watch/protocol.py documents the range as
+        # 000000..999999). The firmware reads the same value as *do not pair*:
+        # meshcore_ble.cpp stores `secure_pairing = passkey != 0` and then
+        # skips ble_gap_security_initiate() entirely. Typed here it would bring
+        # the link up unpaired and unencrypted while this tool prints
+        # "configured" and exits 0 -- and the Room Server password this branch
+        # took off argv would cross the air in the clear. Asking for the
+        # unpaired probe has its own flag, which says what it does.
+        if passkey == 0:
+            raise WatchError(
+                "000000 turns pairing off rather than setting a passkey; "
+                "run --unpaired-probe to ask for the unpaired probe")
+    watch.mesh_configure(passkey)
     emit(args, {"configured": True}, "MeshCore BLE configured; engineering screen enabled")
     return 0
 
@@ -233,7 +283,12 @@ def cmd_mesh_room_send(watch: Watch, args) -> int:
     if len(room) != 32:
         raise WatchError("room must be a 64-digit hexadecimal public key")
     utc_seconds = args.utc_seconds if args.utc_seconds is not None else int(time.time())
-    watch.mesh_room_send(room, args.password, args.text, utc_seconds)
+    # 15 bytes is the Room Server password ceiling the whole path enforces --
+    # link/src/meshcore_companion.cpp kMaxRoomPasswordBytes, and the bridge and
+    # board sinks below it. Refusing a longer one here says so to the operator
+    # instead of failing opaquely three layers down.
+    watch.mesh_room_send(room, read_secret("Room Server password", 15),
+                         args.text, utc_seconds)
     emit(args, {"room": room.hex(), "text": args.text, "utc_seconds": utc_seconds},
          f"MeshCore Room Server message queued for {room.hex()}")
     return 0
@@ -546,9 +601,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     mesh_configure = subparsers.add_parser(
         "mesh-configure", help="configure the watch's MeshCore BLE companion link")
+    # The passkey is read from the terminal or stdin, never from argv: see
+    # read_secret. The unpaired probe carries no secret, so it stays a flag and
+    # stays scriptable.
     mesh_configure.add_argument(
-        "--passkey", type=int, required=True,
-        help="the node's six-digit BLE passkey; 0 runs an unpaired diagnostic probe")
+        "--unpaired-probe", action="store_true",
+        help="run the unpaired diagnostic probe instead of pairing (no passkey)")
     mesh_configure.set_defaults(func=cmd_mesh_configure)
 
     mesh_disconnect = subparsers.add_parser(
@@ -568,7 +626,6 @@ def build_parser() -> argparse.ArgumentParser:
         "mesh-room-send", help="log in to one MeshCore Room Server and send one message")
     mesh_room_send.add_argument("--room", required=True,
                                 help="the Room Server's 64-digit public key")
-    mesh_room_send.add_argument("--password", required=True)
     mesh_room_send.add_argument("--text", required=True)
     mesh_room_send.add_argument("--utc-seconds", type=int,
                                 help="Unix UTC seconds (default: this host's current time)")

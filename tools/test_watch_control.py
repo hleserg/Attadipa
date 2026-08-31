@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Does an explicitly named watch stay named?
+"""What does this command line accept, and what does it refuse?
+
+Two findings, one argument surface. The first is #267 -- does an explicitly
+named watch stay named. The second is #316 -- can a MeshCore credential still
+become a command-line argument. Both are answered against the real parser and
+the real `main()`, with only the transport faked.
 
 `watch_control.py` resolves the bench watch by USB serial and, failing that,
 falls back to a simulator socket. That fallback used to run for *every* failure:
@@ -27,7 +32,7 @@ from __future__ import annotations
 import io
 import os
 import sys
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,6 +40,12 @@ import watch_control as wc  # noqa: E402
 
 PASS = 0
 FAIL = 0
+
+# Not a credential. Fourteen bytes, inside the MeshCore Room Server's
+# fifteen-byte ceiling, and unmistakable if it ever turns up somewhere it should
+# not. No real credential appears in this file.
+CANARY = "CANARY-NOTREAL"
+ROOM = "00" * 32
 
 
 def ok(name: str) -> None:
@@ -137,6 +148,126 @@ if calls and calls[0].get("port") == "/dev/ttyFAKE-28:84:85:B2:18:A4":
 else:
     no("a --serial that resolves still reaches that port",
        f"exit {code}, connect called with {calls}")
+
+class Recorder:
+    """A watch that records what it was asked to send and reaches no device."""
+
+    def __init__(self, calls):
+        self.calls = calls
+
+    def mesh_room_send(self, room, password, text, utc_seconds):
+        self.calls.append(("mesh_room_send", room, password, text, utc_seconds))
+
+    def mesh_configure(self, passkey):
+        self.calls.append(("mesh_configure", passkey))
+
+    def input_reset(self):
+        return (None, 0)
+
+    def close(self):
+        pass
+
+
+def run(argv, stdin_text=""):
+    """main() with the transport faked and stdin a pipe, never a terminal."""
+    calls = []
+    real_connect, real_stdin = wc.connect, sys.stdin
+    wc.connect = lambda **kwargs: Recorder(calls)
+    sys.stdin = io.StringIO(stdin_text)
+    err, out = io.StringIO(), io.StringIO()
+    try:
+        with redirect_stderr(err), redirect_stdout(out):
+            code = wc.main(["--socket", "/tmp/i316-no-such.sock"] + argv)
+    except SystemExit as exc:  # argparse refuses an unknown flag this way
+        code = exc.code if isinstance(exc.code, int) else 2
+    finally:
+        wc.connect, sys.stdin = real_connect, real_stdin
+    return code, calls, err.getvalue() + out.getvalue()
+
+
+print("MeshCore credentials stay out of argv")
+
+# THE FINDING, both halves. Neither flag exists any more, so neither credential
+# can be put on a command line by an operator or by a script that copied one.
+code, calls, err = run(["mesh-room-send", "--room", ROOM,
+                        "--password", CANARY, "--text", "hi"])
+if code != 0 and not calls:
+    ok("--password is refused by the parser")
+else:
+    no("--password is refused by the parser", f"exit {code}, calls {calls}")
+
+code, calls, err = run(["mesh-configure", "--passkey", "123456"])
+if code != 0 and not calls:
+    ok("--passkey is refused by the parser")
+else:
+    no("--passkey is refused by the parser", f"exit {code}, calls {calls}")
+
+# And the replacement works: piped in, the secret reaches the client verbatim
+# without ever having been an argument.
+code, calls, err = run(["mesh-room-send", "--room", ROOM, "--text", "hi",
+                        "--utc-seconds", "1000"],
+                       stdin_text=CANARY + "\n")
+sent = [c for c in calls if c[0] == "mesh_room_send"]
+if code == 0 and sent and sent[0][2] == CANARY:
+    ok("a password piped on stdin reaches the client unchanged")
+else:
+    no("a password piped on stdin reaches the client unchanged",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+# The canary must not be anywhere the operator's terminal can see it, which is
+# the whole point of moving it off the command line.
+if CANARY not in err:
+    ok("and is not echoed back to the console")
+else:
+    no("and is not echoed back to the console", repr(err))
+
+# Fail-closed at the boundary, three ways. Each of these must refuse rather than
+# send a truncated or malformed credential to the watch.
+for name, text in (("an empty password", "\n"),
+                   ("an over-long password", "x" * 16 + "\n"),
+                   ("a password carrying a NUL", "ab\x00cd\n")):
+    code, calls, err = run(["mesh-room-send", "--room", ROOM, "--text", "hi"],
+                           stdin_text=text)
+    if code != 0 and not [c for c in calls if c[0] == "mesh_room_send"]:
+        ok(f"{name} is refused, and nothing is sent")
+    else:
+        no(f"{name} is refused, and nothing is sent", f"exit {code}, calls {calls}")
+
+# The passkey moves the same way, and is validated as six digits before it goes.
+code, calls, err = run(["mesh-configure"], stdin_text="123456\n")
+if code == 0 and ("mesh_configure", 123456) in calls:
+    ok("a six-digit passkey piped on stdin reaches the client")
+else:
+    no("a six-digit passkey piped on stdin reaches the client",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+code, calls, err = run(["mesh-configure"], stdin_text="12x456\n")
+if code != 0 and not calls:
+    ok("a passkey that is not six digits is refused")
+else:
+    no("a passkey that is not six digits is refused", f"exit {code}, calls {calls}")
+
+# 000000 is the one six-digit string that is not a passkey: the firmware reads
+# it as "do not pair". Reaching mesh_configure with it would come back
+# "configured" over a link with no encryption, which is the opposite of what
+# this branch is for.
+code, calls, err = run(["mesh-configure"], stdin_text="000000\n")
+if code != 0 and not calls and "unpaired-probe" in err:
+    ok("000000 is refused, and the error names the flag that means it")
+else:
+    no("000000 is refused, and the error names the flag that means it",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+# THE OTHER HALF. `--passkey 0` was the unpaired diagnostic probe -- not a
+# secret, and something a script runs unattended. It keeps a flag of its own, so
+# removing the credential from argv did not cost the bench its probe.
+code, calls, err = run(["mesh-configure", "--unpaired-probe"])
+if code == 0 and ("mesh_configure", 0) in calls:
+    ok("the unpaired probe stays scriptable and reads no secret")
+else:
+    no("the unpaired probe stays scriptable and reads no secret",
+       f"exit {code}, calls {calls}, err {err!r}")
+
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
