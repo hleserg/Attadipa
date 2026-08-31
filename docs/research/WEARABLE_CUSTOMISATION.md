@@ -84,8 +84,8 @@ budget*.
 
 - **`touch.min.adult` is 44 dp in `ui/tokens.h` and Wear OS requires 48 dp.**
   The 44 came from the touch-target literature the 160 dpi reference belongs to;
-  Wear's own number for a wrist is larger. On the T-Watch that is 72 px versus
-  79 px — 7.0 mm versus 7.6 mm — which is not a rounding difference. **Filed as
+  Wear's own number for a wrist is larger. On the T-Watch that is 61 px versus
+  66 px — 7.0 mm versus 7.6 mm — which is not a rounding difference. **Filed as
   a finding, not changed here:** the token is a design decision and the two
   sources genuinely disagree.
 - **The 15 % ambient rule is the only quantitative always-on constraint anybody
