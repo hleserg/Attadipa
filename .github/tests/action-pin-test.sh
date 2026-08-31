@@ -103,7 +103,21 @@ fi
 # The trailing `# vX` is provenance and deliberately NOT the anchor: the digest
 # is, exactly as with an action pin.
 containers=$(workflow_body .github/workflows/ | grep -oP '^\s*container:\s*\K[^\s#]+' | sort -u)
-if [ -z "$containers" ]; then
+
+# AN EMPTY SCAN IS NOT THE SAME ANSWER AS "NOTHING TO CHECK", and the pattern
+# above cannot tell them apart on its own. `container:` also takes a MAP --
+# `container:` on one line with `image:` indented under it -- and against that
+# form this grep captures nothing after the colon, the list comes back empty,
+# and the arm below reports that a workflow with a container in it has none.
+# The same vacuous-pass shape that made the deny-list pairing rule in
+# bot-actor-test.sh silently stop asserting. So the parsed count is checked
+# against the raw count of `container:` keys, and a disagreement is the failure.
+declared=$(workflow_body .github/workflows/ | grep -cP '^\s*container:' || true)
+parsed=$(printf '%s\n' "$containers" | grep -c . || true)
+if [ "$declared" -ne "$parsed" ]; then
+  no "the container scan sees every container key" \
+     "$declared 'container:' keys, $parsed parsed -- the map form (container:/image:) parses to nothing and would report 'no container image runs'"
+elif [ -z "$containers" ]; then
   ok "no container image runs in a workflow"
 else
   ok "the scan finds container images to check ($(printf '%s\n' "$containers" | grep -c .))"
