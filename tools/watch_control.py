@@ -236,6 +236,19 @@ def cmd_mesh_configure(watch: Watch, args) -> int:
         if not (len(raw) == 6 and raw.isascii() and raw.isdigit()):
             raise WatchError("the BLE passkey is six digits")
         passkey = int(raw)
+        # 000000 is six digits, so it passes the check above, and it is a
+        # passkey to the layer below (watch/protocol.py documents the range as
+        # 000000..999999). The firmware reads the same value as *do not pair*:
+        # meshcore_ble.cpp stores `secure_pairing = passkey != 0` and then
+        # skips ble_gap_security_initiate() entirely. Typed here it would bring
+        # the link up unpaired and unencrypted while this tool prints
+        # "configured" and exits 0 -- and the Room Server password this branch
+        # took off argv would cross the air in the clear. Asking for the
+        # unpaired probe has its own flag, which says what it does.
+        if passkey == 0:
+            raise WatchError(
+                "000000 turns pairing off rather than setting a passkey; "
+                "run --unpaired-probe to ask for the unpaired probe")
     watch.mesh_configure(passkey)
     emit(args, {"configured": True}, "MeshCore BLE configured; engineering screen enabled")
     return 0

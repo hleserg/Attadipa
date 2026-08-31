@@ -741,7 +741,12 @@ printf '%s\n' "$ROOM_PASSWORD"  | tools/watch_control.py mesh-room-send \
 carries no secret, so it stays a flag and stays scriptable. The host refuses an
 empty password, one longer than the protocol's fifteen bytes, one carrying a
 NUL, and a passkey that is not six digits — refusing here rather than sending a
-half credential to the watch.
+half credential to the watch. It also refuses `000000`, which *is* six digits:
+the firmware reads that value as **do not pair** (`secure_pairing = passkey
+!= 0`) and skips `ble_gap_security_initiate()`, so typing it would bring the
+link up unencrypted while the host reported success — and the Room Server
+password below would then cross the air in the clear. The unpaired probe is
+reachable only through its own flag.
 
 **Publishing a capture.** The transcript is truncated at the source, so a raw
 capture taken on the current tree does not contain the password and does not

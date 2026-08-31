@@ -247,6 +247,17 @@ if code != 0 and not calls:
 else:
     no("a passkey that is not six digits is refused", f"exit {code}, calls {calls}")
 
+# 000000 is the one six-digit string that is not a passkey: the firmware reads
+# it as "do not pair". Reaching mesh_configure with it would come back
+# "configured" over a link with no encryption, which is the opposite of what
+# this branch is for.
+code, calls, err = run(["mesh-configure"], stdin_text="000000\n")
+if code != 0 and not calls and "unpaired-probe" in err:
+    ok("000000 is refused, and the error names the flag that means it")
+else:
+    no("000000 is refused, and the error names the flag that means it",
+       f"exit {code}, calls {calls}, err {err!r}")
+
 # THE OTHER HALF. `--passkey 0` was the unpaired diagnostic probe -- not a
 # secret, and something a script runs unattended. It keeps a flag of its own, so
 # removing the credential from argv did not cost the bench its probe.
