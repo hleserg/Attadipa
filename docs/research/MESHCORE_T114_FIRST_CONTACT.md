@@ -441,9 +441,15 @@ the T114 mid-session is a different stimulus and was not performed. The node is
 on battery inside its case on a short charging lead; the operator was unwilling
 to open it, and confirmed afterwards that no reset was pressed during the
 `recovery` run — so none of the three drops above may be attributed to an
-operator action. It is not claimed, not inferred from the drops above, and
-remains an open acceptance item for
-[#296](https://github.com/hleserg/Attadipa/issues/296).
+operator action. It is not claimed and not inferred from the drops above.
+
+It used to say this was an open acceptance item for
+[#296](https://github.com/hleserg/Attadipa/issues/296); #296 and its follow-up
+[#307](https://github.com/hleserg/Attadipa/issues/307) are both closed, so the
+sentence pointed at nothing. **Nothing is waiting on this test.** The stimulus is
+still unperformed and the classification above is still correct — if a future
+plan wants it, it needs the node out of its case and an owner willing to open
+it, which is why #307 was closed as not-now rather than done.
 
 **Why the link was fragile that evening.** Three of five connection attempts to
 the T114 collapsed with `520` before discovery finished, a rate not seen earlier
