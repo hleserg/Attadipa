@@ -148,9 +148,17 @@ case "\$1 \$2" in
       echo 'GraphQL: Could not resolve to an Issue with the number.' >&2
       exit 1
     fi
+    if [ -n "\$ATTADIPA_STUB_EDIT_FAILS" ]; then
+      echo 'HTTP 502' >&2
+      exit 1
+    fi
     shift 2
     printf 'issue %s\n' "\$*" >> "$work/state/labels" ;;
   "pr edit")
+    if [ -n "\$ATTADIPA_STUB_EDIT_FAILS" ]; then
+      echo 'HTTP 502' >&2
+      exit 1
+    fi
     shift 2
     printf 'pr %s\n' "\$*" >> "$work/state/labels" ;;
   "issue comment"|"pr comment")
@@ -166,7 +174,7 @@ STUB
 }
 stub || exit 1
 
-# run_deferred LABELS STATE COUNT [TARGET_KIND]
+# run_deferred LABELS STATE COUNT [TARGET_KIND] [EDIT_FAILS]
 #
 # TARGET_KIND defaults to `issue`; pass `pr` for the three triggers that fire on
 # pull requests. RC is kept because the step runs under `set -euo pipefail` and
@@ -179,6 +187,7 @@ run_deferred() {
   ( export PATH="$work/bin:$PATH"
     export ATTADIPA_STUB_LABELS="$1"
     export ATTADIPA_STUB_KIND="${4:-issue}"
+    export ATTADIPA_STUB_EDIT_FAILS="${5:-}"
     export GH_TOKEN=stub REPO=hleserg/Attadipa ISSUE=264
     export TARGET_KIND="${4:-issue}"
     export TASK_TYPE=continuous-review PRIORITY=P1
@@ -247,8 +256,24 @@ run_deferred "queue:parked" parked 1 pr
 has   "a parked target still gets an answer"           "$COMMENT" "attadipa-deferred"
 hasnt "a parked target is not given an inert label"    "$LABELS_SET" "agent:ready"
 has   "and is told it is an owner hold"                "$COMMENT" "owner hold"
-hasnt "and is NOT told to wait for capacity"           "$COMMENT" "about writer capacity and nothing else"
+# The sentence that was actually wrong is the INSTRUCTION, not the closing
+# paragraph: the `parked` branch had already replaced the latter, so asserting
+# its absence passed while the receipt still said "once capacity returns" nine
+# lines above "no amount of merging lifts it". One comment, two opposite
+# instructions -- and the reader follows the first one.
+hasnt "and is NOT told to wait for capacity"           "$COMMENT" "once capacity returns"
+hasnt "nor told it in the closing paragraph either"    "$COMMENT" "about writer capacity and nothing else"
+has   "and is told what actually lifts it"             "$COMMENT" "queue:parked\` is gone"
+has   "and whose label that is"                        "$COMMENT" "owner's and nobody else's"
 has   "and is told merging will not lift it"           "$COMMENT" "no amount of merging lifts it"
+
+# 5a. A failed label write must not take the receipt down with it. This is the
+#     same silence #293 is about, one layer up: the step runs under
+#     `set -euo pipefail` and the comment is ten lines below the edit.
+run_deferred "" full 2 issue fail
+say   "a failed label edit does not kill the step"     "$RC" "0"
+has   "and the receipt is still posted"                "$COMMENT" "attadipa-deferred"
+has   "and it still says why nothing started"          "$COMMENT" "open pull request limit"
 
 # 6. The second site the same blindness lives at: the writer's own admission
 #    recheck under the lease. `|| true` there means a pull request does not fail
@@ -295,7 +320,7 @@ run_mutant_deferred() {
 # worth anything if the stub would have noticed -- and the shipping step no
 # longer has a path that calls it on a pull request, so nothing else proves the
 # stub is still able to tell the two commands apart.
-# shellcheck disable=SC2031  # scoped on purpose, like the helpers above.
+# shellcheck disable=SC2030,SC2031  # scoped on purpose, like the helpers above.
 if ( export PATH="$work/bin:$PATH" ATTADIPA_STUB_KIND=pr
      gh issue edit 264 --repo x --add-label agent:ready ) >/dev/null 2>&1; then
   no "the stub refuses gh issue edit on a pull request, as the real one does" \
@@ -334,6 +359,51 @@ else
   else
     no "dropping the pull-request guard puts the inert label back" \
        "no agent:ready was recorded, so the guard's assertion is not load-bearing"
+  fi
+fi
+
+# M3. The receipt must survive a failed label write. `|| true` reads as a
+# formality until you delete it: the step is `set -euo pipefail` and the comment
+# is ten lines below the edit, so without it the whole receipt is lost to a 502.
+# shellcheck disable=SC2016  # the pattern matches the step's literal text.
+M3=$(printf '%s\n' "$DEFERRED_RUN" | sed '/|| echo "::warning::could not add agent:ready/d')
+if [ "$M3" = "$DEFERRED_RUN" ]; then
+  no "the failed-label-write mutation changed something" "the sed matched nothing"
+else
+  M3=$(printf '%s\n' "$M3" | sed 's/--add-label agent:ready \\$/--add-label agent:ready/')
+  : > "$work/state/comments"; : > "$work/state/labels"
+  # shellcheck disable=SC2030,SC2031  # same subshell isolation as the helpers.
+  ( export PATH="$work/bin:$PATH"
+    export ATTADIPA_STUB_LABELS="" ATTADIPA_STUB_KIND=issue ATTADIPA_STUB_EDIT_FAILS=1
+    export GH_TOKEN=stub REPO=hleserg/Attadipa ISSUE=264 TARGET_KIND=issue
+    export TASK_TYPE=continuous-review PRIORITY=P1 STATE=full COUNT=2
+    export TRIGGER=issue_comment ACTOR=hleserg RUN_URL=http://run/1
+    printf '%s\n' "$M3" > "$work/m3.sh"
+    bash "$work/m3.sh" >/dev/null 2>&1 )
+  if [ -s "$work/state/comments" ]; then
+    no "dropping the guard on the label write loses the receipt" \
+       "the mutant still posted a comment, so case 5a is not load-bearing"
+  else
+    ok "dropping the guard on the label write loses the receipt"
+  fi
+fi
+
+# M4. `parked` on a pull request must not be told to wait for capacity. The
+# renderer is mutated rather than the step, because that sentence is the
+# renderer's.
+# No backticks in the replacement: they would be command substitution inside
+# the renderer's own double-quoted echo. The grep below is what matters.
+sed 's/A comment is the only start this object has — but it will answer with/Comment here again once capacity returns; a comment is the only/' \
+  .github/scripts/agent-say.sh > "$work/m4-say.sh"
+if cmp -s "$work/m4-say.sh" .github/scripts/agent-say.sh; then
+  no "the parked-instruction mutation changed something" "the sed matched nothing"
+else
+  M4OUT=$(bash "$work/m4-say.sh" deferred http://r/1 quality-audit P1 issue_comment hleserg parked 1 pull-request)
+  if printf '%s' "$M4OUT" | grep -qF "once capacity returns"; then
+    ok "telling a parked pull request to wait for capacity is detected"
+  else
+    no "telling a parked pull request to wait for capacity is detected" \
+       "the mutant did not reintroduce the sentence, so case 5's assertion is not load-bearing"
   fi
 fi
 

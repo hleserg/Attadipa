@@ -185,8 +185,22 @@ attadipa_deferred() {
       echo "a candidate, at any priority. \`agent:ready\` was therefore **not** added:"
       echo "on this object it is a label that promises a pickup which cannot happen."
       echo
-      echo "Comment \`@claude\` here again once capacity returns; a comment is the only"
-      echo "start this object has."
+      # A pull request is never deferred FOR capacity: `writer-admission.sh`
+      # answers `recovery` for any pull request before it consults
+      # `wip-limit.sh`, so the one reachable deferral here is `queue:parked`.
+      # Telling that reader to wait for capacity contradicts the closing
+      # paragraph below, which says merging never lifts it.
+      case "$state" in
+        parked)
+          echo "A comment is the only start this object has — but it will answer with"
+          echo "this same note until \`queue:parked\` is gone, and that label is the"
+          echo "owner's and nobody else's. Remove it, then comment \`@claude\` here."
+          ;;
+        *)
+          echo "Comment \`@claude\` here again once capacity returns; a comment is the only"
+          echo "start this object has."
+          ;;
+      esac
       ;;
     *)
       echo "**Nothing is queued, and draining the queue will not change that.**"

@@ -514,8 +514,14 @@ jobs:
               *) REQUEUED=not-capacity ;;
             esac
           fi
+          # `|| true`, like every other label edit in this workflow, and for the
+          # reason `wip-limit.sh` writes down: under `set -euo pipefail` a failed
+          # label write kills the step before the comment ten lines below -- the
+          # same silence #293 is about, in the step that exists to end it. The
+          # label is the cheaper half of the receipt; the comment is the receipt.
           if [ "$REQUEUED" = true ]; then
-            attadipa_label_edit "$TARGET_KIND" "$ISSUE" "$REPO" --add-label agent:ready
+            attadipa_label_edit "$TARGET_KIND" "$ISSUE" "$REPO" --add-label agent:ready \
+              || echo "::warning::could not add agent:ready to #$ISSUE; the comment below is the receipt"
           fi
 
           # No agent:working and no claim: this task was never started, and a
