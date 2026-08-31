@@ -12,12 +12,12 @@ class TimeSink;
 class MeshSink;
 }
 
-// Starts the physical/remote input path and the existing watch-control
-// protocol. Called with LVGL locked; all mutable state remains on LVGL's task.
-esp_err_t start_watch_control(esp_lcd_touch_handle_t touch,
-                              i2c_master_dev_handle_t pmu,
-                              esp_lcd_panel_handle_t panel,
-                              std::uint8_t awake_brightness,
-                              void (*refresh_ui)(),
-                              attadipa::debug::TimeSink *time_sink,
+// Starts the USB watch-control transport: screenshots, remote input, time and
+// mesh opcodes over USB-Serial/JTAG. Development only -- a production image is
+// built without it, and physical touch, buttons and sleep are unaffected
+// because start_physical_input() owns those (#346).
+//
+// Called with LVGL locked, and after start_physical_input(), whose queue and
+// state this feeds. All mutable state remains on LVGL's task.
+esp_err_t start_watch_control(attadipa::debug::TimeSink *time_sink,
                               attadipa::debug::MeshSink *mesh_sink);
