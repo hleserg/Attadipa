@@ -275,8 +275,8 @@ revision — any less open.
   the daughterboard is *fitted and antenna-fed*, which narrows nothing about
   which receiver is on it: resolving that needs a UBX/NMEA version poll on the
   running board, or the part marking under a loupe.
-- **Panel diagonal (D15) — still `CONFLICTING`.** Nothing in the firmware states
-  a physical size. It needs a ruler on this unit.
+- **Panel diagonal (D15) — `CONFLICTING` then, `RESOLVED` since.** Nothing in
+  the firmware states a physical size; a photograph did — 1.54", 220 ppi (D15).
 - **Board revision (D20's T-Watch counterpart) — `UNKNOWN`.** Not readable from
   flash; it needs a loupe on the silkscreen.
 - **NEW, and in no document: the unit has a crown-shaped side control.**

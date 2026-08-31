@@ -4,13 +4,15 @@ This is the single source of truth for the asset pipeline. `draw_icons.py`
 authors from it and `generate_images.py` converts from it, so the two cannot
 drift into disagreeing about which files should exist.
 
-The unit here is the **pixel**, not the token and not the board. A 39-pixel icon
-is a 39-pixel icon whether it got there as `icon.size.lg` on the T-Watch's
-261 dpi panel or as `icon.size.md` on the Waveshare's 315 dpi one — see
-`SIZE_REASONS` below, where exactly that collision is recorded. Keying on the
-board would produce two identical files with different names and would teach the
-firmware which board it is on, which is the one thing `CLAUDE.md` forbids the
-layers above `platform/` to learn.
+The unit here is the **pixel**, not the token and not the board. Keying on the
+board would teach the firmware which board it is on, which is the one thing
+`CLAUDE.md` forbids the layers above `platform/` to learn, and it would ship the
+same picture twice whenever two boards landed on one size. They no longer do: at
+the measured 220 dpi (D15, closed 2026-08-28) and 315 dpi the two size sets are
+disjoint, and the 39 px collision this file used to cite as its example was an
+artefact of the 1.3" placeholder. `SIZE_REASONS` still records every
+(token, board) pair per pixel size — now one pair each, which is a fact about
+these two panels and not a change of rule.
 """
 
 # The two token systems this has to agree with. Both are duplicated from C++ on
@@ -20,7 +22,7 @@ layers above `platform/` to learn.
 # producing an asset nobody asked for.
 REFERENCE_DPI = 160                       # ui/include/attadipa/ui/metrics.h
 ICON_DP = {"sm": 16, "md": 20, "lg": 24, "xl": 32}   # ui/.../tokens.h dp_of(IconSize)
-BOARD_DPI = {"t-watch-s3-plus": 261, "waveshare-amoled-206": 315}
+BOARD_DPI = {"t-watch-s3-plus": 220, "waveshare-amoled-206": 315}
 
 
 def px(dp: int, dpi: int) -> int:
@@ -46,12 +48,16 @@ SIZE_REASONS = size_reasons()
 # The sizes actually generated, and the reason each is here rather than the
 # whole cross-product.
 #
-# Seven distinct pixel sizes exist across four tokens and two boards; generating
+# Eight distinct pixel sizes exist across four tokens and two boards; generating
 # all of them for every icon would cost about 39 kB of flash for three icons
-# nothing draws yet. These three are the ones the next two screens need — the
-# Clock's status row and the first Settings — and adding a fourth is one line
-# here plus a regeneration. Flash is not free and a cross-product is not a
-# decision.
+# nothing draws yet. These three cover T-Watch `lg` (33 px) and Waveshare `md`
+# (39) and `lg` (47). Flash is not free and a cross-product is not a decision.
+#
+# T-Watch `md` is 28 px at the measured 220 dpi and is deliberately **not**
+# generated: nothing draws it, and `icon()` returns nullptr for a size that was
+# not generated rather than substituting a wrong one, so the omission fails
+# loudly. A screen that wants it adds 28 here *and* an entry to
+# `icon_drawings.GEOMETRY` — geometry is authored per size, never scaled.
 SIZES = (33, 39, 47)
 
 # name -> the drawing, by its function name in `icon_drawings.py`.

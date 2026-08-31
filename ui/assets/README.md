@@ -29,11 +29,12 @@ aspirational. *Enforced by:* `generate_images.py` refusing a missing source,
 asserts the `nullptr` rather than tolerating it.
 
 **A pixel size is a pixel size.** Assets are named by pixels, not by token and
-not by board. `icon.size.lg` on the T-Watch's 261 dpi panel and `icon.size.md`
-on the Waveshare's 315 dpi one are **both 39 px** — the same file, because it is
-the same picture. Naming them by board would put two identical files in flash
-and teach the firmware which board it is on, which is the thing `CLAUDE.md`
-forbids above `platform/`. *Enforced by:* the manifest, and a test that asserts
+not by board. Naming them by board would put the same picture in flash twice
+whenever two boards landed on one size, and would teach the firmware which board
+it is on, which is the thing `CLAUDE.md` forbids above `platform/`. At the
+measured 220 dpi (D15) and 315 dpi the two boards' sizes are in fact disjoint —
+the 39 px collision this file used to cite was an artefact of the 1.3"
+placeholder — but the rule is about the unit, not about that coincidence. *Enforced by:* the manifest, and a test that asserts
 the two lookups return the same pointer.
 
 **Reference art is not asset art.** `docs/ui/reference/` holds 1440-pixel

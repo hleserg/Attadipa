@@ -629,9 +629,9 @@ to every unit of the same model.
   gradient puts it about 0.23 mm lower. Neither term is tightly bounded, and
   they do not cancel by construction. Only three of the four edges are in the
   surviving frame; the panel is square because its raster is 240 × 240.
-- **Impact:** every `Metrics::px` conversion at 261 dpi emits about 19 % more
-  pixels than this panel wants, so the board renders oversized until
-  [#323](https://github.com/hleserg/Attadipa/issues/323) lands. Supporting
+- **Impact:** every `Metrics::px` conversion at 261 dpi emitted about 19 % more
+  pixels than this panel wants, and the board rendered oversized until
+  [#323](https://github.com/hleserg/Attadipa/issues/323) corrected it. Supporting
   detail, including the uncertainty budget:
   [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md).
 

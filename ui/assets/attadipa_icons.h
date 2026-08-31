@@ -21,8 +21,9 @@ enum class Icon : std::uint8_t { Mesh, Position, Warning };
 // later.
 //
 // Note what is *not* a parameter: the board. Two boards asking for different
-// tokens can land on the same pixel size, and do — `icon.size.lg` at 261 dpi
-// and `icon.size.md` at 315 dpi are both 39 px, and both get the same file.
+// tokens can land on the same pixel size and would then share one file. At the
+// measured 220 and 315 dpi they happen not to; the rule is about the unit, not
+// about that coincidence.
 const lv_image_dsc_t* icon(Icon which, ui::IconSize size, const ui::Metrics& metrics);
 
 // The same, by an explicit pixel size. For the simulator's contact sheet and

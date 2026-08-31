@@ -37,7 +37,7 @@ constexpr Dp dp_of(Space s)
 //
 // `Pill` is the odd one out and it is not a length. DESIGN_SYSTEM writes it as
 // 999, which is the CSS idiom for "round the ends completely" — but 999 dp
-// resolved at 261 dpi is 1630 px, larger than either panel, so treating it as a
+// resolved at 220 dpi is 1374 px, larger than either panel, so treating it as a
 // measurement produces nonsense rather than a pill. It is a *rule* — half the
 // shorter side of whatever is being drawn — and it says so in the type system
 // instead of hiding in a magic number.
@@ -122,7 +122,7 @@ constexpr Dp dp_of(ImageSize s)
 }
 
 // The minimum a finger can be asked to hit. Physical, which is the whole reason
-// these are Dp: 44 dp is about 7 mm on any panel, and 44 *pixels* is 4.3 mm on
+// these are Dp: 44 dp is about 7 mm on any panel, and 44 *pixels* is 3.5 mm on
 // the Waveshare and 5.1 mm on the T-Watch — both under the guidance, on
 // different sides of it, for the same source line.
 enum class TouchTarget : std::uint8_t { Adult, ChildMode };

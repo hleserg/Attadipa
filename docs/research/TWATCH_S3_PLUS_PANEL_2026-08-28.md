@@ -33,7 +33,8 @@ The first pass reported 27.76 mm ± 0.15 from 433.5 × 432.5 px at 15.60 px/mm,
 with a 2.3° rotation and a 63 mm working distance. **Those intermediates are
 not repeated as facts anywhere in this repository**, because the frames they
 came from are gone and nobody can check them. This report keeps the numbers the
-committed image reproduces — 27.72 mm from 429.5 px at 15.53 px/mm — and the
+committed image reproduces — 27.72 mm from 429.5 px at 15.49 px/mm, both
+corrected for tilt in §4; the raw pair is 429.85 px at 15.53 px/mm — and the
 0.04 mm between the two passes is the honest size of the difference that
 different crops and different edge criteria make.
 
@@ -55,10 +56,10 @@ buried:
 ![The steel rule resting on the watch case, above the lit panel](twatch-s3-plus-panel/panel-and-rule.png)
 
 The rule lies **on the watch case**, its graduated face towards the camera,
-coplanar with the cover glass. That placement is the whole method: it removes
-parallax between standard and subject instead of bounding it. An earlier
-attempt with the rule on the desk *beside* the watch could yield only an upper
-bound and was reported as one.
+coplanar with the cover glass. That placement is the whole method: it collapses
+the standard-to-subject offset to the rim-to-emitter millimetres §5(a) prices.
+An earlier attempt with the rule on the desk *beside* the watch left the whole
+case height standing and could yield only an upper bound.
 
 The panel is lit and showing the factory Clock face, so the boundary being
 measured is the emitting area — which is what a display's diagonal specifies —
@@ -204,10 +205,10 @@ independently, and that agreement was already in
 [HARDWARE_MATRIX](HARDWARE_MATRIX.md) before this measurement existed.
 
 Density is **220 ppi, not 261**. Every `Metrics::px` conversion at 261 dpi
-yields about 19 % more pixels than the panel wants, so this board renders
-oversized today. `platform/src/board_profiles.cpp` and the asset pipeline still
-carry the placeholder; [#323](https://github.com/hleserg/Attadipa/issues/323)
-corrects them.
+yielded about 19 % more pixels than the panel wants, so this board rendered
+oversized until `platform/src/board_profiles.cpp` and the asset pipeline stopped
+carrying the placeholder in
+[#323](https://github.com/hleserg/Attadipa/issues/323).
 
 **Not established here:**
 

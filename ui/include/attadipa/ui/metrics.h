@@ -10,9 +10,9 @@ namespace attadipa::ui {
 // that a spacing value is *not* a pixel count and the two must not be assignable
 // to each other by accident. 8 px on the T-Watch's 1.54-inch 240x240 panel and
 // 8 px on a 2.06-inch 410x502 one are 0.92 mm and 0.65 mm — a 1.4x difference
-// in a quantity that fingers measure physically. The build still resolves the
-// T-Watch through a 1.3-inch placeholder and so still computes 0.78 mm here;
-// #323 corrects the profile.
+// in a quantity that fingers measure physically. Both figures are what this
+// build computes: the T-Watch's 1.54 inches are MEASURED (D15, 2026-08-28), not
+// the 1.3-inch placeholder that used to make this 0.78 mm.
 struct Dp {
     std::int16_t value = 0;
 
