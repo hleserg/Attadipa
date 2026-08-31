@@ -13,7 +13,7 @@ attempted, could not be logged, and destroyed its own result on the way out.
 | Part | QMI8658, I2C `0x6B`, `REVISION_ID = 0x7C` (Rev A — chapter 11 pedometer) |
 | Board | Waveshare ESP32-S3 AMOLED 2.06 |
 | Operator | the owner, watch in hand, attached over USB |
-| How the probe ran | `esptool` **RAM boot** via `tools/flash/ramhold.py` — every segment loaded to a RAM address, nothing written to flash. Two of the five captures record the loader step itself; `probe/sdkconfig.defaults:3` is `PURE_RAM_APP`, which has no flash image it could have booted instead |
+| How the probe ran | `esptool` **RAM boot** via `tools/flash/ramhold.py` — every segment loaded to a RAM address, nothing written to flash. Two of the five captures record the loader step itself; the other three open at the image's own banner, and **none of the five prints `esp_image: segment` or `Loaded app from partition`** — what a flash boot on this board does print ([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) `:73-77`) |
 | Source key | **S15** ([HARDWARE_MATRIX](HARDWARE_MATRIX.md)) |
 
 ## What was measured
@@ -35,7 +35,7 @@ lower bound, which makes the negative result stronger, not weaker.
 | `STATUS1` | `0x00` throughout |
 
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
-`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:397`), and no capture
+`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:398`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
 prints `+/-8 g` — but that label is itself one of the stale four (`:346-348`):
 the register it names means ±4 g. It is therefore the *reason to doubt* the
@@ -181,10 +181,10 @@ The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledge
 with CmdDone set and cleared — so the engine **processed both Configure
 Pedometer commands**. It does not follow that the parameters were in place when
 it did, and this report no longer says it does: `configure_pedometer()`
-(`probe/pedo.c:190-220`) discards every `wr()` return for the eighteen
+(`probe/pedo.c:191-221`) discards every `wr()` return for the eighteen
 `CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
 nothing reads those registers back. `shake.log:53-54` is not a readback either;
-`probe/pedo.c:312-317` prints the `#define`s. **A return check on the `CAL`
+`probe/pedo.c:313-318` prints the `#define`s. **A return check on the `CAL`
 writes and a readback before the second `0x0D` are required before the
 read-after-walk run #116 needs, and are not in this pull request.** The probe
 refuses to print a step count after a failed configuration, because that number
@@ -230,16 +230,24 @@ the pedometer engine at all
 "Booting the vendor firmware restored"). That is S13, and it stands. What the
 2026-08-28 residue cannot do is corroborate it.
 
-**The shake run's own restore is unverified.** Its capture ends at `t=158` with
-no restore block **and no END banner**, where all three desk runs print
-`--- restored ---` and the banner together (`pedo-run.log:286-290`,
-`pedo-run3.log:946-950`) and `walk.log:111-121` prints a traceback. The capture
-was cut, and the IMU was left armed with `Pedo_EN` set. The loop bound is not
-the evidence here: the archive shows it moved inside the session — 240, then
-900 — so the corrected source cannot say where this run would have stopped. The
-QMI8658 holds none of this in non-volatile memory, so a power cycle clears it;
-short of one, it persists, which is exactly how the walk attempt's state was
-still there half an hour later.
+**The shake run's own restore is unverified, and the state it left is
+`UNKNOWN`.** Its capture ends at `t=158` with no restore block **and no END
+banner**, where all three desk runs print `--- restored ---` and the banner
+together (`pedo-run.log:286-290`, `pedo-run3.log:946-950`). It was cut cleanly:
+`shake.log:239` is a complete `t=` line with **no traceback**, where
+`walk.log:111-121` prints a `SerialException` when the device dropped off the
+bus. A RAM app does not stop when its logger does, so two readings survive and
+this session cannot choose between them — the host tool was stopped and the
+image ran on to its own loop bound, printing `--- restored ---` into a console
+nobody read and leaving the `CTRL2 = 0x27, CTRL7 = 0x01, CTRL8 = 0x90` it found
+at `shake.log:45`; or the part lost power, and the QMI8658 holds none of this in
+non-volatile memory, so a power cycle clears it. The loop bound cannot break the
+tie: the archive shows it moved inside the session — 240, then 900 — so the
+corrected source cannot say where this run would have stopped. **Neither
+reading leaves the engine armed at the `CTRL2 = 0x16, CTRL7 = 0x03,
+CTRL8 = 0x90` of `shake.log:59`, and this tree records no read of the part after
+15:08.** The next operator to attach this unit takes the `--- before ---` line
+it prints as the record, not this report.
 
 ## What this does NOT establish, and why the walk is still open
 
@@ -315,7 +323,13 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 *Security Level: 3*.
 
 **This repository names that document two ways, and this report does not settle
-which is right.** Seven sites, and they do not agree:
+which is right.** The sites below do not agree, and they are **not the whole
+list** — [`PEDOMETER_PARTS.md:450`](PEDOMETER_PARTS.md),
+[`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md),
+[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md),
+[`HARDWARE_MATRIX.md:356`](HARDWARE_MATRIX.md) and
+[`VERIFIED_FACTS.md:1620-1628`](VERIFIED_FACTS.md) name one number or the other
+as well. Enumerating and reconciling them is #341's job, not this report's:
 
 | Site | What it says |
 | --- | --- |
@@ -324,14 +338,20 @@ which is right.** Seven sites, and they do not agree:
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
 | [`VERIFIED_FACTS.md:1506-1508`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
-| [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this repository opened, and defers the number to #341 |
+| [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
 A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
 demonstrably does exist — it is the one quoted here, and it reports `0x7C` on its
-own register-description page. What is in `13-52-25` is **UNKNOWN** to this
-repository: no record shows anyone opening it. This report therefore cites only
-the paper it read, and the tree-wide reconciliation — including which document
+own register-description page. A paper numbered `13-52-25` has been read in
+this tree too: [`PEDOMETER_PARTS.md:450`](PEDOMETER_PARTS.md) records its
+chapter 11 *"Pedometer"* at pp. 64–66 with `STEP_CNT_LOW/MIDL/HIGH` at
+`0x5A`–`0x5C`, `CTRL8.Pedo_EN` and both CTRL9 commands, and
+[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) gives its md5. **What
+is `UNKNOWN` is which number names the Rev A part**, not what either paper
+holds — the two records put the same chapter 11 in both, so no register below
+turns on the number. This report therefore cites only the paper it read, and
+the tree-wide reconciliation — including which document
 the `0x7C` attribution at [`VERIFIED_FACTS.md:1504-1508`](VERIFIED_FACTS.md)
 *"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.

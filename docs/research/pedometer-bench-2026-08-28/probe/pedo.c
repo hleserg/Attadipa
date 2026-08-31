@@ -13,8 +13,9 @@
  * parameters) and Table 38 (§11.2, Configure Pedometer).
  *
  * Which document number names the Rev A part is DISPUTED in this tree and is
- * deferred to issue #341. What is in 13-52-25 is UNKNOWN here -- no record
- * shows anyone opening it -- so nothing below rests on that number.
+ * deferred to issue #341. Both papers have been read in this tree and both
+ * record the same chapter 11 registers (docs/research/PEDOMETER_PARTS.md:450),
+ * so nothing below rests on which number is right.
  *
  * WHY THIS FILE CHANGED. Three bench runs on 2026-08-28 read steps=0 for 240,
  * 240 and 900 seconds. Two faults, not one: the board never moved, and the
