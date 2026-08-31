@@ -575,7 +575,15 @@ to every unit of the same model.
   list p. 1, chapter 11, a **24-bit** count in `STEP_CNT_LOW/MIDL/HIGH`
   (`0x5A`–`0x5C`), `CTRL8.Pedo_EN`, and CTRL9 commands `0x0D` (configure) and
   `0x0F` (reset count).
-  **QMI8658A Rev A** (`13-52-25`, 20 June 2022) documents the identical feature.
+  **QMI8658A Rev A** (`13-52-25`, 20 June 2022) documents the identical feature
+  — read for its chapter 11 and its revision history, never for `REVISION_ID`.
+- **How to name these two, everywhere in this tree.** Write the vendor's own
+  footer form in full — `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and
+  `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` — and **never write "the Rev A
+  datasheet"**. Both are Rev A, both are dated 20 June 2022, and that one
+  ambiguous phrase is what let a correction reach three documents claiming one
+  of them did not exist ([#341](https://github.com/hleserg/Attadipa/issues/341)).
+  The number alone is enough where the context already names the part.
   **QMI8658A Rev D** (`QST-PD-B002-22`, current) **does not**: its feature list
   reads *"Integrated Tap, Any-Motion, No-Motion, Significant-Motion detection"*,
   there is no chapter on the pedometer, and a search of the whole document finds
@@ -1505,10 +1513,19 @@ constants.
 
 - **Claim:** at `0x6B`, `WHO_AM_I = 0x05` and **`REVISION_ID = 0x7C`**. The
   register-description sections of the two candidate documents give different
-  values for that byte: **`0x7C` in `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`**
-  (© 2022 QST), whose chapter 11 documents a complete hardware pedometer, and
-  `0x79` in the `QMI8658C` Rev 0.6 ADVANCE INFORMATION document, which marks
-  `CTRL8` *"Reserved: Not Used"* and has no step counter.
+  values for that byte: **`0x7C` in `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`**
+  (© 2022 QST, 20 June 2022), whose chapter 11 documents a complete hardware
+  pedometer, and `0x79` in the `QMI8658C` Rev 0.6 ADVANCE INFORMATION document,
+  which marks `CTRL8` *"Reserved: Not Used"* and has no step counter.
+  **This entry used to name `13-52-25` for the `0x7C`, and that was not
+  sourced** — corrected under [#341](https://github.com/hleserg/Attadipa/issues/341).
+  The document verified to carry it is `13-52-27`: 88 pages, md5
+  `e093b1cc1d1cf85097f955abbea65c08`, held off-tree because it is copyrighted
+  and marked "Security Level: 3". `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` is a
+  separate file — a different md5 is recorded for it at
+  [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "md5" — and **what
+  it gives for `REVISION_ID` is `UNKNOWN` here.** Nothing in this repository
+  records anyone reading that register out of it.
 - **Corroborated by writing, not only by reading.** With the accelerometer
   configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz; that is the
   *"ODR Rate (Hz) (Accel only)"* column, which is the one that applies because
@@ -1589,7 +1606,7 @@ constants.
   because **its writer cannot be identified at all**. `0x24 / 0x03 / 0x00` is
   exactly the state the 2026-08-23 session left, and an SoC restart does not
   reset the parts on the I2C bus
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:620-623`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:638-642`](WAVESHARE_RUNNING_OUR_CODE.md)
   "does not reset the peripherals"), so a five-day-old vendor write surviving is
   as consistent with it as any later one. An unattributable value corroborates
   nothing. The shake run is the one case where the writer *is* known: it found
@@ -1600,7 +1617,7 @@ constants.
   `0x24` and `CTRL7` to `0x03` over what a probe had left, and never touched
   `CTRL8` — so the vendor runs the IMU in 6DOF and does not use the pedometer
   engine
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:608-610`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:625-627`](WAVESHARE_RUNNING_OUR_CODE.md)
   "Booting the vendor firmware restored"). An earlier draft called that
   **UNKNOWN**, over-correcting: it is the 2026-08-28 residue that is not evidence,
   not the vendor configuration itself.
@@ -1622,10 +1639,10 @@ constants.
   (© 2022 QST, 20 June 2022), which spells out the very sequence the probe uses —
   *"Host can simply clear the CTRL8.bit4 and then set it to restart the Pedometer
   engine and reset the Step Count registers."* That document reports
-  `REVISION_ID = 0x7C`, which is what this silicon reads — **but which document
-  number names the Rev A part is DISPUTED in this tree and deferred to #341**,
-  and `:1506-1508` above attributes the same measured byte to `13-52-25`.
-  Nothing here rests on the number. **That hazard has already cost one result:** the walk attempt
+  `REVISION_ID = 0x7C`, which is what this silicon reads. **The dispute this
+  sentence used to defer to #341 is settled**: two Rev A datasheets exist, and
+  the byte is attributed to this one, `13-52-27`, in both places. Nothing here
+  ever rested on the number. **That hazard has already cost one result:** the walk attempt
   left the engine armed, and the next run configured before reading, clearing
   whatever the walk had accumulated. The walk also could not be logged: walking
   means unplugging, and the probe reports over the USB serial console, so the act

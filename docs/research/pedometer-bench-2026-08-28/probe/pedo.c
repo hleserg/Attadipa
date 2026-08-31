@@ -12,10 +12,11 @@
  * (WCtrl9 protocol), Table 29 (CAL registers), Table 37 (pedometer
  * parameters) and Table 38 (§11.2, Configure Pedometer).
  *
- * Which document number names the Rev A part is DISPUTED in this tree and is
- * deferred to issue #341. Both papers have been read in this tree and both
- * record the same chapter 11 registers (docs/research/PEDOMETER_PARTS.md:450),
- * so nothing below rests on which number is right.
+ * #341 settled that: QST published TWO Rev A datasheets on 20 June 2022, and
+ * both exist -- 13-52-27 (QMI8658C) and 13-52-25 (QMI8658A). The file quoted
+ * above is the one this repository holds and the one every constant below came
+ * from. What 13-52-25 gives for REVISION_ID is UNKNOWN here; nothing below
+ * rests on it.
  *
  * WHY THIS FILE CHANGED. Three bench runs on 2026-08-28 read steps=0 for 240,
  * 240 and 900 seconds. Two faults, not one: the board never moved, and the
@@ -261,8 +262,8 @@ void app_main(void)
 
     uint8_t who = rd1(REG_WHO_AM_I), rev = rd1(REG_REVISION);
     printf("WHO_AM_I  = 0x%02X   (0x05 in both candidate datasheets)\n", who);
-    printf("REVISION  = 0x%02X   (0x7C is the Rev A part; which document number"
-           " names it is disputed -- see #341. 0x79 = Rev 0.6)\n\n",
+    printf("REVISION  = 0x%02X   (0x7C in 13-52-27 QMI8658C Rev A, the paper"
+           " this probe is written from. 0x79 = the C Rev 0.6 draft)\n\n",
            rev);
     if (who != 0x05) {
         printf("Not a QMI8658 signature. Stopping rather than writing anything.\n");

@@ -94,9 +94,10 @@ text — this source does not reproduce the archived captures line for line:
    banner's register list omitted `CTRL3`; and the p2p header printed the
    datasheet's 200/100 mg while the engine held SensorLib's loosened 80/60. The
    fifth is not a configuration label and so is not among that five: the
-   `REVISION` line printed `0x7C = QMI8658A 13-52-25 Rev A` as settled fact,
-   where which document number names the Rev A part is disputed and deferred
-   to #341.
+   `REVISION` line printed `0x7C = QMI8658A 13-52-25 Rev A` as settled fact.
+   #341 has since settled it the other way: two Rev A datasheets exist, and the
+   `0x7C` is read from `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`. The probe's
+   label now names that paper.
 
 **No register or parameter constant differs from the shake run.** That is
 checkable without trusting this note: `shake.log:48-59` echoes every value the

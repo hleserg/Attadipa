@@ -202,10 +202,10 @@ matters, because a second draft then over-corrected in the opposite direction.
 `0x24 / 0x03 / 0x00` is exactly what the 2026-08-23 session left behind: the
 vendor firmware wrote `CTRL2 = 0x24` and `CTRL7 = 0x03`, and `CTRL8` was then
 cleared to `0x00` by hand
-([`WAVESHARE_RUNNING_OUR_CODE.md:615-619`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:632-636`](WAVESHARE_RUNNING_OUR_CODE.md)
 "restored to the power-on default"). The same section records why that could
 still be sitting there five days later: **loading a RAM image**
-([`WAVESHARE_RUNNING_OUR_CODE.md:620-623`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:638-642`](WAVESHARE_RUNNING_OUR_CODE.md)
 "does not reset the peripherals") — the SoC restarts, the parts on the I2C bus
 keep what the last program left. Whether this IMU in fact kept power across the
 five days, through T-166's reflash on 2026-08-25 and everything after it, is not
@@ -226,7 +226,7 @@ UNKNOWN.** On 2026-08-23, with the factory image still present, booting it was
 observed to write `CTRL2 = 0x24` and `CTRL7 = 0x03` over what a probe had left,
 and to leave `CTRL8` alone — so the vendor runs the IMU in 6DOF and does not use
 the pedometer engine at all
-([`WAVESHARE_RUNNING_OUR_CODE.md:608-610`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:625-627`](WAVESHARE_RUNNING_OUR_CODE.md)
 "Booting the vendor firmware restored"). That is S13, and it stands. What the
 2026-08-28 residue cannot do is corroborate it.
 
@@ -339,13 +339,13 @@ list** — [`PEDOMETER_PARTS.md:450`](PEDOMETER_PARTS.md),
 [`VERIFIED_FACTS.md:1620-1628`](VERIFIED_FACTS.md) name one number or the other
 as well. Enumerating and reconciling them is #341's job, not this report's:
 
-| Site | What it says |
+| Site | What it said on 2026-08-28 |
 | --- | --- |
-| [`WAVESHARE_RUNNING_OUR_CODE.md:325-327`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
+| [`WAVESHARE_RUNNING_OUR_CODE.md:329-331`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:1506-1508`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:1514-1516`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 | [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
@@ -363,6 +363,18 @@ the tree-wide reconciliation — including which document
 the `0x7C` attribution at [`VERIFIED_FACTS.md:1504-1508`](VERIFIED_FACTS.md)
 *"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
+
+**Resolved by #341, and the table above is the state it found.** Both Rev A
+documents exist; the false correction — *"the Rev A document number is
+13-52-25, not 13-52-27"* — is withdrawn at its two sites; and the `0x7C` is
+attributed to `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`, the paper this report
+read, in `VERIFIED_FACTS`, `HARDWARE_MATRIX` and `WAVESHARE_RUNNING_OUR_CODE`
+alike. What `13-52-25` gives for `REVISION_ID` is `UNKNOWN` and is written that
+way: nobody here recorded reading that register out of it. One thing this
+report got slightly wrong in passing — it treated `PEDOMETER_PARTS.md:450` as
+proof that `13-52-25` had been read for chapter 11. Its page numbers, pp. 64–66,
+are also `13-52-27`'s, so that row identifies which paper was open no better
+than the rest of the tree did, and it now says so.
 
 ## A caveat about the raw logs
 
