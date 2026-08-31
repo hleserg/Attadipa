@@ -55,29 +55,6 @@ namespace attadipa::link {
 // knows what NimBLE is static_asserts that they agree rather than assuming it.
 inline constexpr std::uint16_t kNoSessionHandle = 0xFFFF;
 
-// A transmit can fail before it is ever handed to the peer, and the reason
-// falls into one of two fault domains that must not be treated alike. The
-// connection the write named may have stopped resolving -- the peer went away
-// between the moment the worker claimed the transmit slot and the moment it
-// made the call, which is an ordinary disconnect arriving through the transmit
-// path instead of through the disconnect callback. That session is over and the
-// next one must be allowed to establish. Every other non-zero status is a local
-// subsystem that failed, and stays fail-closed. Merging the two is #335: an
-// ordinary peer disappearance disabled reconnect until the device was
-// configured again.
-//
-// BLE's `BLE_HS_ENOTCONN` happens to be this, and the one file that knows what
-// NimBLE is static_asserts that they agree rather than assuming it.
-inline constexpr std::int32_t kWriteStatusPeerGone = 7;
-
-// The classifier itself, here rather than beside the transmit call, so that the
-// host test and the shipping caller decide with the same function instead of
-// two copies of one rule that can drift apart.
-constexpr bool write_failure_is_peer_gone(std::int32_t result)
-{
-    return result == kWriteStatusPeerGone;
-}
-
 // A session runs Arriving -> [Ready] -> Ended, once, and then the next session
 // gets the next generation. The phase never moves backwards inside a
 // generation, which is what lets a starved worker reconstruct what it missed
