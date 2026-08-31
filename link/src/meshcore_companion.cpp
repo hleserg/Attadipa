@@ -108,6 +108,9 @@ void MeshCoreCompanion::reset_session()
     self_info_seen_ = false;
     contacts_complete_ = false;
     awaiting_send_ = false;
+    awaiting_confirm_ = false;
+    ack_since_ = {};
+    ack_budget_ = {};
     awaiting_login_ = false;
     room_peer_ = {};
     room_text_.fill('\0');
@@ -163,6 +166,16 @@ void MeshCoreCompanion::fault(core::MonotonicTime now)
 void MeshCoreCompanion::tick(core::MonotonicTime now)
 {
     link_.tick(now);
+    // The node accepted the message and then said nothing. Upstream MeshCore
+    // does not promise a confirmation for every send -- a packet that is never
+    // acknowledged on air produces no PUSH_CODE_SEND_CONFIRMED at all -- so
+    // without a bound the one in-flight slot would be held for the life of the
+    // session by a send that already failed. Fail-closed and observable: the
+    // verdict is Failed, not a silent release.
+    if (awaiting_confirm_ && core::elapsed(ack_since_, now) >= ack_budget_) {
+        awaiting_confirm_ = false;
+        status_.delivery = core::MeshDelivery::Failed;
+    }
     update_availability();
 }
 
@@ -380,12 +393,25 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());
             status_.delivery = core::MeshDelivery::Accepted;
             awaiting_send_ = false;
+            // The operation is not over: these four bytes are what the
+            // confirmation below is matched against, so the slot stays claimed
+            // until one arrives or the budget runs out. Releasing it here is
+            // #315 -- a second send could start, overwrite `expected_ack_`, and
+            // leave the first operation with no way to reach a verdict.
+            awaiting_confirm_ = true;
+            ack_since_ = now;
+            const std::uint32_t estimate = little_u32(&data[6]);
+            ack_budget_ = core::Millis{
+                estimate < kMinAckWait.value   ? kMinAckWait.value
+                : estimate > kMaxAckWait.value ? kMaxAckWait.value
+                                               : estimate};
         }
         break;
     case kPushSendConfirmed:
-        if (size >= 5 &&
+        if (size >= 5 && awaiting_confirm_ &&
             std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) == 0) {
             status_.delivery = core::MeshDelivery::Confirmed;
+            awaiting_confirm_ = false;
         }
         break;
     case kPushMessageWaiting: {
@@ -437,9 +463,10 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseError:
         if (size < 2) { ++malformed_frames_; return false; }
-        if (awaiting_send_) {
+        if (awaiting_send_ || awaiting_confirm_) {
             status_.delivery = core::MeshDelivery::Failed;
             awaiting_send_ = false;
+            awaiting_confirm_ = false;
         }
         break;
     default:
@@ -487,7 +514,13 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
     // condition and its own continuation was refused under a stricter one.
     // MEASURED on the bench 2026-08-28: LOGIN_SUCCESS at 131698, END_OF_CONTACTS
     // at 134228, no CMD_SEND_TXT_MSG ever sent.
-    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || text.empty() ||
+    // One send at a time, all the way to a terminal outcome. `send_room()`
+    // below has always refused an overlapping operation; this path did not, and
+    // that asymmetry is #315. The Room flow's own text send is not caught by
+    // this: `kPushLoginSuccess` clears `awaiting_login_` before it calls here,
+    // because the login and the text it carries are one owned operation.
+    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || send_busy() ||
+        text.empty() ||
         text.size() > core::kMeshTextBytes ||
         timestamp.unix_seconds < 0 ||
         static_cast<std::uint64_t>(timestamp.unix_seconds) >
@@ -514,8 +547,8 @@ bool MeshCoreCompanion::send_room(
     std::string_view password, std::string_view text, core::WallTime timestamp)
 {
     constexpr std::size_t kMaxRoomPasswordBytes = 15;
-    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || awaiting_login_ ||
-        awaiting_send_ || password.empty() || password.size() > kMaxRoomPasswordBytes ||
+    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || send_busy() ||
+        password.empty() || password.size() > kMaxRoomPasswordBytes ||
         text.empty() || text.size() > core::kMeshTextBytes ||
         timestamp.unix_seconds < 0 ||
         static_cast<std::uint64_t>(timestamp.unix_seconds) >

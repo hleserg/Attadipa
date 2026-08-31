@@ -746,6 +746,20 @@ void mesh_commands_are_typed_and_require_a_sink()
     rig.sink.clear();
     rig.send(request(Opcode::MeshConfigure, 7, configure, sizeof(configure)));
     CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+
+    // #315: a send the sink did not take is an error, not MeshOk. On the
+    // device the sink refuses because one send is already in flight -- the
+    // request never reaches the queue, so a caller cannot read "queued" as
+    // "this is the operation being tracked".
+    mesh.result = MeshSinkResult::Failed;
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshSend, 8, send, sizeof(send)));
+    CHECK(!rig.sink.last_is(Opcode::MeshOk));
+    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshRoomSend, 9, room_send, sizeof(room_send)));
+    CHECK(!rig.sink.last_is(Opcode::MeshOk));
+    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
 }
 
 void an_unknown_opcode_is_answered_with_a_typed_error()

@@ -66,9 +66,46 @@ public:
     std::uint32_t malformed_frames() const { return malformed_frames_; }
     std::uint8_t firmware_version_code() const { return firmware_version_code_; }
 
+    // Whether a send is still being tracked. There is exactly one slot, and
+    // #315 is what it cost to have two ways of being in it and only one place
+    // to record the answer: two overlapping sends were both accepted, both
+    // reported success to the caller, and the second `RESP_CODE_SENT` was
+    // counted as malformed because the single `expected_ack_` was already
+    // spoken for. The slot is claimed by an accepted send and released only by
+    // a terminal outcome -- confirmed, an explicit error, the ack timeout, or
+    // the session resetting -- so a `MeshDelivery` read while this is false
+    // describes the operation that just ended and nothing else.
+    //
+    // The transport asks this the same way: `meshcore_ble.cpp` claims a slot of
+    // its own before it posts the request, so a second `mesh-send` is refused
+    // where the caller can still be told, rather than accepted and then lost.
+    bool send_busy() const
+    {
+        return awaiting_send_ || awaiting_confirm_ || awaiting_login_;
+    }
+
+    // The transport claimed the slot and then could not hand the request to the
+    // node -- a contact prefix that is not in the retained chat contacts is the
+    // shipping case, and it is decided by the worker, outside this object.
+    // Nothing here is waiting on that operation, but a caller that was told
+    // MeshOk must not then read the *previous* send's verdict as this one's.
+    void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }
+
 private:
     static constexpr std::size_t kRetainedPeers = 16;
     static constexpr std::size_t kTxDepth = 4;
+
+    // How long to wait for PUSH_CODE_SEND_CONFIRMED. `RESP_CODE_SENT` carries
+    // the node's own estimate of the round trip in bytes 6..9, and that
+    // estimate is the budget: MEASURED 0x0966 = 2406 ms against an actual
+    // 720 ms on the T114 bench (MESHCORE_T114_FIRST_CONTACT.md:326-329
+    // "estimated round trip"). It is clamped, because the node's output is a
+    // peer's output (MESHCORE_PARSER_BOUNDS.md §5): a zero would fail a send
+    // that is merely fast, and a 0xFFFFFFFF would hold the one in-flight slot
+    // for seven weeks. The ceiling is the link's own liveness window below --
+    // an operation cannot outlive the link that carries it.
+    static constexpr core::Millis kMinAckWait{1000};
+    static constexpr core::Millis kMaxAckWait{15000};
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
     bool enqueue_private(const core::MeshPeerId& peer, std::string_view text,
@@ -94,6 +131,12 @@ private:
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
     bool awaiting_send_ = false;
+    // The half of a send that used to have no state at all. `awaiting_send_`
+    // ends at `RESP_CODE_SENT`; the operation does not, because the ack bytes
+    // that arrived with it are what the confirmation is matched against.
+    bool awaiting_confirm_ = false;
+    core::MonotonicTime ack_since_{};
+    core::Millis ack_budget_{};
     bool awaiting_login_ = false;
     core::MeshPeerId room_peer_{};
     std::array<char, core::kMeshTextBytes + 1> room_text_{};

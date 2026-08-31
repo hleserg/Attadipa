@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdio>
 #include <cstring>
 
@@ -465,6 +466,212 @@ void test_hostile_frames_are_bounded_and_the_session_survives()
     }
 }
 
+// #315: two `mesh-send` requests before the first reached a terminal state were
+// both accepted, and there was one `expected_ack_` to correlate them with. The
+// slot is claimed by an accepted send and released only by a terminal outcome,
+// so a second send is refused where the caller can still be told.
+void test_one_send_is_in_flight_at_a_time()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) {
+        room[i] = static_cast<std::uint8_t>(0x80 + i);
+    }
+
+    CHECK(!client.send_busy());
+    CHECK(service.send_private(peer.id, "first", WallTime{1000}));
+    CHECK(client.send_busy());
+
+    // Before RESP_CODE_SENT. Neither a private nor a Room send may start.
+    CHECK(!service.send_private(peer.id, "second", WallTime{1001}));
+    CHECK(!client.send_room(room, "password", "second", WallTime{1001}));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(std::memcmp(&frame.bytes[13], "first", 5) == 0);
+    CHECK(!client.next_tx(frame));  // and nothing was queued behind it
+
+    // Between RESP_CODE_SENT and the confirmation is the window the old code
+    // released the slot in: `expected_ack_` is spoken for, and a second send
+    // would overwrite it and leave this operation with no way to reach a
+    // verdict. est_timeout is 0x0966 = 2406 ms, the value MEASURED on the T114.
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(client.send_busy());
+    CHECK(!service.send_private(peer.id, "second", WallTime{1002}));
+    CHECK(!client.send_room(room, "password", "second", WallTime{1002}));
+
+    // An ack for a different message does not end this operation, and the slot
+    // it does not free stays claimed.
+    const std::uint8_t other_ack[] = {0x82, 9, 9, 9, 9};
+    CHECK(client.receive(other_ack, sizeof(other_ack), at(9)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(client.send_busy());
+
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+    CHECK(client.receive(ack, sizeof(ack), at(10)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+    CHECK(!client.send_busy());
+
+    // Terminal, so the next one may start -- and a late duplicate of the
+    // confirmation cannot end it.
+    CHECK(service.send_private(peer.id, "third", WallTime{1003}));
+    CHECK(client.send_busy());
+    CHECK(client.receive(ack, sizeof(ack), at(11)));
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    CHECK(client.send_busy());
+}
+
+// The Room flow is one owned operation from CMD_SEND_LOGIN to the ack for the
+// text it carries: nothing may start in the middle of it, and the text send it
+// makes itself is not refused by the guard that refuses everyone else.
+void test_a_room_send_owns_the_slot_through_its_login()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) {
+        room[i] = static_cast<std::uint8_t>(0x80 + i);
+    }
+
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.send_busy());
+    CHECK(!service.send_private(peer.id, "cuts in", WallTime{1001}));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.bytes[0] == 26);
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(client.send_busy());
+
+    std::uint8_t login_ok[] = {0x85, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(&login_ok[2], room.data(), 6);
+    CHECK(client.receive(login_ok, sizeof(login_ok), at(9)));
+    // The login's own send made it through the guard, which is the whole point
+    // of clearing `awaiting_login_` before enqueueing the text.
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 18 && frame.bytes[0] == 2);
+    CHECK(client.send_busy());
+    CHECK(!service.send_private(peer.id, "cuts in", WallTime{1002}));
+
+    CHECK(client.receive(sent, sizeof(sent), at(10)));
+    CHECK(client.send_busy());
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+    CHECK(client.receive(ack, sizeof(ack), at(11)));
+    CHECK(client.status().delivery == MeshDelivery::Confirmed);
+    CHECK(!client.send_busy());
+    CHECK(service.send_private(peer.id, "now it may", WallTime{1003}));
+}
+
+// The three other ways an operation ends. A node that accepts a message and
+// then says nothing is the reason the last one exists: without a bound the one
+// slot would be held for the life of the session by a send that already failed.
+void test_a_send_that_is_never_confirmed_still_ends()
+{
+    MeshPeer peer{};
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+
+    // An explicit RESP_CODE_ERR, before the node answered at all.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        const std::uint8_t error[] = {1, 4};
+        CHECK(client.receive(error, sizeof(error), at(8)));
+        CHECK(service.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(service.send_private(peer.id, "again", WallTime{1001}));
+    }
+
+    // An explicit RESP_CODE_ERR after RESP_CODE_SENT. This half used to be
+    // unreachable: the slot was already free, so the error had nothing to end.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        const std::uint8_t error[] = {1, 4};
+        CHECK(client.receive(error, sizeof(error), at(9)));
+        CHECK(service.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+    }
+
+    // The node's own estimate runs out. 0x0966 = 2406 ms from at(8).
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        client.tick(at(8 + 2405));
+        CHECK(service.status().delivery == MeshDelivery::Accepted);
+        CHECK(client.send_busy());
+        client.tick(at(8 + 2406));
+        CHECK(service.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(service.send_private(peer.id, "again", WallTime{1001}));
+    }
+
+    // A node that reports no estimate at all does not fail a send that is
+    // merely fast: the budget has a floor of one second.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        const std::uint8_t no_estimate[] = {6, 0, 1, 2, 3, 4, 0, 0, 0, 0};
+        CHECK(client.receive(no_estimate, sizeof(no_estimate), at(8)));
+        client.tick(at(8 + 999));
+        CHECK(client.send_busy());
+        client.tick(at(8 + 1000));
+        CHECK(!client.send_busy());
+    }
+
+    // And one that reports seven weeks does not hold the slot for seven weeks:
+    // the ceiling is the link's own liveness window.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        const std::uint8_t forever[] = {6, 0, 1, 2, 3, 4, 0xFF, 0xFF, 0xFF, 0xFF};
+        CHECK(client.receive(forever, sizeof(forever), at(8)));
+        client.tick(at(8 + 15000));
+        CHECK(!client.send_busy());
+    }
+
+    // The link dropping ends it too, from either phase, and the session that
+    // follows starts with the slot free rather than with the dead one's.
+    for (const bool after_response : {false, true}) {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        if (after_response) CHECK(client.receive(sent, sizeof(sent), at(8)));
+        CHECK(client.send_busy());
+        client.disconnected(at(9));
+        CHECK(!client.send_busy());
+        CHECK(client.status().delivery == MeshDelivery::None);
+    }
+}
+
 void test_signed_message_does_not_render_signature_as_text()
 {
     MeshCoreCompanion client;
@@ -518,6 +725,9 @@ int main()
     test_a_fault_survives_reconnect_until_begin_restarts_the_session();
     test_bad_frames_and_disconnect_fail_closed();
     test_hostile_frames_are_bounded_and_the_session_survives();
+    test_one_send_is_in_flight_at_a_time();
+    test_a_room_send_owns_the_slot_through_its_login();
+    test_a_send_that_is_never_confirmed_still_ends();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
     if (failures != 0) {
