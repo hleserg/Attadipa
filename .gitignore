@@ -10,6 +10,10 @@ sdkconfig.old
 managed_components/
 dependencies.lock
 
+# Rendered UI frames — `watch-ui-testing` writes them per run and they are
+# evidence for one review, not a durable artefact.
+tools/ui/out/
+
 # CMake / native
 cmake-build-*/
 CMakeUserPresets.json
