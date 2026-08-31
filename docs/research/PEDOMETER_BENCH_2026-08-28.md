@@ -160,10 +160,10 @@ The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledge
 with CmdDone set and cleared — so the engine **processed both Configure
 Pedometer commands**. It does not follow that the parameters were in place when
 it did, and this report no longer says it does: `configure_pedometer()`
-(`probe/pedo.c:173-201`) discards every `wr()` return for the eighteen
+(`probe/pedo.c:182-212`) discards every `wr()` return for the eighteen
 `CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
 nothing reads those registers back. `shake.log:53-54` is not a readback either;
-`probe/pedo.c:293-296` prints the `#define`s. **A return check on the `CAL`
+`probe/pedo.c:304-307` prints the `#define`s. **A return check on the `CAL`
 writes and a readback before the second `0x0D` are required before the
 read-after-walk run #116 needs, and are not in this pull request.** The probe
 refuses to print a step count after a failed configuration, because that number
@@ -299,7 +299,7 @@ which is right.** Seven sites, and they do not agree:
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
 | [`VERIFIED_FACTS.md:1506-1508`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
-| [`pedometer-bench-2026-08-28/probe/pedo.c:8-12`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this repository opened, and defers the number to #341 |
+| [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this repository opened, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
 A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
