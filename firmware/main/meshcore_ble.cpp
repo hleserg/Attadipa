@@ -633,10 +633,10 @@ void log_frame(const char* direction, const std::uint8_t* data, std::size_t size
 
 // pump_tx pops a frame onto its stack and returns from four places. One of the
 // frames that passes through is CMD_SEND_LOGIN, so the copy is cleared on every
-// exit rather than at one of them. Clearing after ble_gattc_write_flat() returns
-// is safe for the same reason the frame may be a local at all: it already goes
-// out of scope the instant pump_tx returns, so the transmit path cannot have
-// been reading it afterwards.
+// exit rather than at one of them. Clearing right after ble_gattc_write_flat()
+// returns is safe because that call copies the flat buffer into an mbuf before
+// it returns, which is the same contract that lets this frame be a stack local
+// at all: the transmit path is not reading these bytes afterwards.
 struct FrameScrub {
     attadipa::link::MeshCoreFrame& frame;
     ~FrameScrub()
