@@ -129,7 +129,7 @@ jobs:
       # from main or from nowhere.
       - name: Fetch the gate logic from the default branch
         if: steps.switch.outputs.enabled == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -389,7 +389,7 @@ jobs:
       contents: read
     steps:
       - name: Fetch the wording from the default branch
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -956,7 +956,7 @@ jobs:
       # THE BRANCH, FOR THE CODING WORK. Deliberately whatever the event points
       # at, because that is the code the task is about. What it is NOT any more
       # is where the hand-over reads its own logic from -- see the next step.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         with:
           fetch-depth: 0
@@ -1007,7 +1007,7 @@ jobs:
       - name: Fetch the hand-over's own code from the default branch
         if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         continue-on-error: true
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -1093,7 +1093,7 @@ jobs:
       - name: Run Claude
         if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@a60f3e1db3edbceed2b1e6c6a9d34c36b8a15eba # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

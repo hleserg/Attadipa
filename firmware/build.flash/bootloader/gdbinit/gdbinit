@@ -1,0 +1,2 @@
+source /home/hleserg/Attadipa/firmware/build.flash/bootloader/gdbinit/symbols
+source /home/hleserg/Attadipa/firmware/build.flash/bootloader/gdbinit/connect

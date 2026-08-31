@@ -1,0 +1,43 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/CMakeFiles/bootloader"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/CMakeFiles/bootloader.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/CMakeFiles/bootloader-complete.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule"
+		},
+		{
+			"file" : "/home/hleserg/Attadipa/firmware/build.hil/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"bootloader"
+		],
+		"name" : "bootloader"
+	}
+}

@@ -1,0 +1,2 @@
+source /home/hleserg/Attadipa/firmware/build.hil/gdbinit/symbols
+source /home/hleserg/Attadipa/firmware/build.hil/gdbinit/connect
