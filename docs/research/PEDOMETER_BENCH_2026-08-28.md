@@ -13,7 +13,7 @@ attempted, could not be logged, and destroyed its own result on the way out.
 | Part | QMI8658, I2C `0x6B`, `REVISION_ID = 0x7C` (Rev A — chapter 11 pedometer) |
 | Board | Waveshare ESP32-S3 AMOLED 2.06 |
 | Operator | the owner, watch in hand, attached over USB |
-| How the probe ran | `esptool` **RAM boot** via `tools/flash/ramhold.py` — every segment loaded to a RAM address, nothing written to flash |
+| How the probe ran | `esptool` **RAM boot** via `tools/flash/ramhold.py` — every segment loaded to a RAM address, nothing written to flash. Two of the five captures record the loader step itself; `probe/sdkconfig.defaults:3` is `PURE_RAM_APP`, which has no flash image it could have booted instead |
 | Source key | **S15** ([HARDWARE_MATRIX](HARDWARE_MATRIX.md)) |
 
 ## What was measured
@@ -32,16 +32,22 @@ One run: **159** one-second windows, `t=0` to `t=158`.
 | `STATUS1` | `0x00` throughout |
 
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
-`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:385`), and no capture
+`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:392`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
-says ±8 g — 4096 — while the source says 8192, and that source is the probe *as
-corrected after the session*, not the binary that ran. The capture cannot settle
+prints `+/-8 g` — but that label is itself one of the stale four (`:339-341`):
+the register it names means ±4 g. It is therefore the *reason to doubt* the
+divisor, not a value for it. The label drifted from its constant when the full
+scale changed, and nothing in the capture shows the divisor did not drift with
+it. The source says 8192, and that source is the probe *as corrected after the
+session*, not the binary that ran. The capture cannot settle
 it: the earlier builds printed a g triad on every line and this one prints none
 (`grep -c ' g)' shake.log` → 0, against 240 in `pedo-run.log`). At 4096 every
 figure above is half what is printed — 2242 → 1121, 322 → 161. **No conclusion
 in this report moves**: the smallest window still clears the 78 mg bar by more
-than 2×, and nothing here rests on a numeric multiple. The probe now echoes
-`ACCEL_LSB_PER_G`, so the next capture records its own scale.
+than 2×, and nothing here rests on a numeric multiple. The probe now **derives**
+`ACCEL_LSB_PER_G` from `CTRL2_VALUE`'s `aFS` field and prints it, so the next
+capture records a divisor that cannot disagree with the register it was
+configured with — which a second hand-kept constant could not have promised.
 
 **The shape of the run matters and two earlier drafts of this report got it
 wrong.** The first said the watch was shaken for 158 s. It was not: the motion is
@@ -172,10 +178,10 @@ The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledge
 with CmdDone set and cleared — so the engine **processed both Configure
 Pedometer commands**. It does not follow that the parameters were in place when
 it did, and this report no longer says it does: `configure_pedometer()`
-(`probe/pedo.c:183-213`) discards every `wr()` return for the eighteen
+(`probe/pedo.c:190-220`) discards every `wr()` return for the eighteen
 `CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
 nothing reads those registers back. `shake.log:53-54` is not a readback either;
-`probe/pedo.c:305-310` prints the `#define`s. **A return check on the `CAL`
+`probe/pedo.c:312-317` prints the `#define`s. **A return check on the `CAL`
 writes and a readback before the second `0x0D` are required before the
 read-after-walk run #116 needs, and are not in this pull request.** The probe
 refuses to print a step count after a failed configuration, because that number
@@ -333,7 +339,11 @@ asserts hardware behaviour this report will not:
 - the header prints `CTRL2 = 0x16 (+/-8 g, 62.5 Hz accel-only)`. `0x16` is
   **±4 g at 112.1 Hz in 6DOF** — wrong on both counts, though the register value
   itself was right. `aFS = 001` is ±4 g (`aFS = 010` would be ±8 g), and the
-  resting `az ≈ -8257` against `ACCEL_LSB_PER_G = 8192` confirms it at 1.008 g.
+  resting triad at `shake.log:81` settles it independently of any label:
+  `|(350, 24, -8257)| = 8264` LSB at 1 g is a sensitivity of **8192 LSB/g**, and
+  would be an impossible **2.02 g** at 4096. That is a fact about the *silicon*,
+  not about the divisor a `printf` used — those are the two different questions
+  this report keeps apart.
   `aODR = 0110` has **two** rates in Table 22, in adjacent columns headed *"ODR
   Rate (Hz) (Accel only)"* and *"ODR Rate (Hz) (6DOF)"*: **125** and **112.1**.
   This run had the gyro up (`CTRL7 = 0x03`, `CTRL3 = 0x36`), so the 6DOF column

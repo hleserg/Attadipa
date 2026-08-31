@@ -24,10 +24,13 @@ Two of the five captures open with an `esptool` **RAM boot**: `shake.log:1-11`
 and `walk.log:1-11` carry the loader transcript, every segment loading to a RAM
 address, with no `write_flash` anywhere. The three `pedo-run` captures open at
 the image's own boot log instead, with no `# port`, `RAM boot` or `Downloading`
-line. That is a missing record of the loader step, not a different route: all
-five carry `Project name: pedo` at the identical `compile time Aug 28 2026
-12:53:17`, and `probe/sdkconfig.defaults:2-3` builds `PURE_RAM_APP`, which has
-no flash image to boot from. Nothing in the session writes flash; the unit still
+line. That is a missing record of the loader step, not a different route:
+`probe/sdkconfig.defaults:2-3` builds `PURE_RAM_APP`, which has no flash image
+to boot from at all, and every capture's banner names `pedo`. The shared
+`compile time` string is *not* evidence here and is worth recording as a trap:
+`shake.log:6-10` and `walk.log:6-10` load demonstrably different images — 48112
+against 47712 bytes, entry `40375a80` against `40375a74` — under the identical
+`Aug 28 2026 12:53:17`. Nothing in the session writes flash; the unit still
 carries the T-166 candidate there.
 
 The QMI8658 datasheet these were read against is not here: it is QST's copyright
@@ -59,11 +62,13 @@ text — this source does not reproduce the archived captures line for line:
    [`HARDWARE_MATRIX.md:514`](../HARDWARE_MATRIX.md) records `CTRL3 = 0x36` as
    *"residue this session knowingly left on the part"*. That remains the correct
    statement **about the run**; it is no longer what this source does;
-4. **behaviour** — the parameter header now echoes `ACCEL_LSB_PER_G`. No
-   archived capture records the divisor its binary used to turn LSB into the
+4. **behaviour** — `ACCEL_LSB_PER_G` is now derived from `CTRL2_VALUE`'s `aFS`
+   field rather than written out beside it, and the parameter header prints it.
+   No archived capture records the divisor its binary used to turn LSB into the
    `p2p` milligravity column, and none of them can be made to: the scale of
-   every mg figure the report publishes is therefore UNKNOWN. This line is so
-   that the next capture settles it for itself;
+   every mg figure the report publishes is therefore UNKNOWN. Deriving it is
+   what keeps the printed line a record instead of a second assertion that can
+   go stale the way `shake.log:49` did;
 5. **text** — five `printf` labels are corrected in this source. Four are the
    stale `shake.log` labels named above: `CTRL2 = 0x16` is ±4 g at 112.1 Hz in
    6DOF; `CTRL3 = 0x36` is ±128 dps, not the ±1000 dps printed here; the

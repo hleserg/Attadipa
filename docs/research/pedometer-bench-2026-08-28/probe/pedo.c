@@ -82,9 +82,10 @@
  * writes are SensorLib's, sourced in the block above them. CTRL2 was
  * aFS = 010 (+/-8 g), aODR = 0111 (62.5 Hz, accel-only). QST's worked example
  * in §11.1 is written for 50 Hz and the part has no such rate — the ladder is
- * 250 / 125 / 62.5 / 31.25 — so 62.5 Hz was the nearest and the sample-count
- * parameters below are scaled by 62.5/50 = 1.25. The two thresholds are
- * amplitudes in mg and do not scale. What this probe actually writes is the
+ * 250 / 125 / 62.5 / 31.25 — so 62.5 Hz was the nearest, and the sample-count
+ * parameters of THAT run, the set named at the top of this comment, were scaled
+ * by 62.5/50 = 1.25. Its two thresholds were amplitudes in mg and did not
+ * scale. None of those defines is in this file; what this probe writes is the
  * 6DOF configuration in the paragraph below. */
 /* SensorLib's working example runs the pedometer in 6DOF with BOTH accelerometer
  * and gyroscope enabled -- "matching vendor pedometer runtime path" -- and notes
@@ -105,7 +106,13 @@
  * the point is that no attribution is available, not that a different one is. */
 #define CTRL2_VALUE 0x16           /* aFS=001 (+/-4 g), aODR=0x06 (112.1 Hz 6DOF) */
 #define CTRL3_VALUE 0x36           /* gFS=011 (+/-128 dps), gODR=0x06 (112.1 Hz)  */
-#define ACCEL_LSB_PER_G 8192       /* +/-4 g, not the 4096 of +/-8 g              */
+/* DERIVED, not asserted. Table 22's aFS ladder is +/-2/4/8/16 g at
+ * 16384/8192/4096/2048 LSB/g, so sensitivity is 16384 >> aFS, and aFS is
+ * CTRL2 bits [6:4]. A hand-kept constant here is exactly how shake.log:49 came
+ * to print "+/-8 g" against a register that means +/-4 g: the label did not
+ * follow CTRL2 when CTRL2 moved. This cannot -- raise the full scale for a
+ * swinging arm and the divisor, and every printed mg, moves with it. */
+#define ACCEL_LSB_PER_G (16384 >> ((CTRL2_VALUE >> 4) & 0x07))
 /* CTRL7: aEN = 1 AND gEN = 1. §11.3 says the engine runs off the accelerometer
  * and that alone counted nothing here across three runs, so this follows
  * SensorLib and the state the board was found in. syncSmpl (bit 7) stays 0:
