@@ -27,6 +27,23 @@ every board-specific value and each one cites the research note it came from;
 read it rather than editing `sdkconfig`, which is a build artefact and is not
 committed.
 
+**That command builds the production image**, which has no USB watch-control
+endpoint. The bench image is a second, named build:
+
+```bash
+idf.py -B build-hil -DSDKCONFIG=build-hil/sdkconfig \
+    -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hil" build
+```
+
+Anything that drives the watch from a host — `tools/watch_control.py`,
+screenshots, injected input, `mesh-configure` — needs that image and not the
+first one. The endpoint has no authentication, so it is not in a product build
+at all; `docs/testing/WATCH_CONTROL.md`
+[states the boundary](../testing/WATCH_CONTROL.md#the-trust-boundary). Both
+images say which they are in the boot log, and
+`tools/flash/firmware_elf_check.py` refuses a flash image that carries the
+endpoint and a `--variant hil` image that lost it.
+
 ## 1. Which route to use, and why they are not interchangeable
 
 | | RAM route (§2) | Flash route (§4) |

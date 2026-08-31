@@ -1,0 +1,24 @@
+# Development / HIL overlay. Stack it on sdkconfig.defaults:
+#
+#   idf.py -B build-hil -DSDKCONFIG=build-hil/sdkconfig \
+#       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hil" build
+#
+# -B and -DSDKCONFIG together are not decoration. idf.py keeps sdkconfig in the
+# project directory, so without them a second build silently reuses the first
+# one's configuration and ignores SDKCONFIG_DEFAULTS without a word --
+# docs/hardware/FIRMWARE_BRINGUP.md:86 ("-DSDKCONFIG= is load-bearing")
+# records that failure.
+#
+# What this image is: a watch with an unauthenticated USB control plane. It is
+# for the bench and for hardware-in-the-loop tests. Do not flash it onto a
+# device that leaves the desk, and do not treat "the cable is mine" as owner
+# consent -- a USB charging port with data lines is a host too (#346).
+#
+# It announces itself. start_waveshare_ui() logs a warning naming the endpoint
+# at boot, and tools/flash/firmware_elf_check.py --variant hil requires the
+# dispatcher to be present, which is the same check that requires it to be
+# absent from a flash image.
+
+# T-114 captures the LVGL object tree into caller-owned PSRAM and streams it
+# through the existing debug protocol. No panel readback or second renderer.
+CONFIG_ATTADIPA_WATCH_CONTROL=y
