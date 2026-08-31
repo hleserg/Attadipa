@@ -104,6 +104,20 @@ if [ "${1-}" = --say ]; then
   # The limit IN FORCE, not the designed one. An operator reading "normal limit:
   # 2" under a lifted limit would go looking for a bug in the count.
   say_limit="$(attadipa_wip_limit)"
+  # A FROZEN QUEUE IS NOT AN OVERFLOWING ONE, and they arrive here as the same
+  # state. Width 0 means "admit nothing", so `full` holds only while the queue is
+  # empty and one ordinary pull request is already `incident` -- the word this
+  # repository reserves for the queue having overflowed, and the word RECOVERY.md
+  # answers with drain/recovery mode. Sending an operator to drain a queue the
+  # owner closed on purpose is the same wrong diagnosis as "normal limit: 2"
+  # under a lifted limit, in the other direction.
+  case "${2-}" in
+    full|incident)
+      if [ "$say_limit" -eq 0 ]; then
+        echo "QUEUE FROZEN: ATTADIPA_WIP_LIMIT is 0, so no new writer is admitted and the ${3-unknown} open pull requests are not an overflow. This is a deliberate freeze; it is lifted by setting or deleting the variable, not by draining."
+        exit 0
+      fi ;;
+  esac
   case "${2-}" in
     full) echo "WIP limit reached: ${3-unknown} active pull requests (normal limit: $say_limit). Finish or explicitly park work before opening another." ;;
     incident) echo "QUEUE INCIDENT: ${3-unknown} active pull requests reached the hard threshold of $((say_limit + 1)). Drain the queue; do not open more work." ;;

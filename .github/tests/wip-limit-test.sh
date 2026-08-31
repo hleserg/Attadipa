@@ -94,6 +94,12 @@ check_at 'a lifted limit still closes at its own width' 4 \
 check_at 'and still reports an incident above it' 4 \
   "[$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]'),$(pr '[]')]" 'incident 5'
 check_at 'a frozen queue admits nothing at all' 0 '[]' 'full 0'
+# THE ONLY WIDTH-0 CASE USED TO BE THE EMPTY QUEUE, which is the single count at
+# that width that does not enter `incident`. One ordinary pull request open under
+# a freeze exceeds the width, so the decision is `incident` -- correct as a
+# refusal, and the reason --say has to be told the difference below.
+check_at 'a freeze with one pull request in it is above its width' 0 \
+  "[$(pr '[]')]" 'incident 1'
 check_at 'junk in the variable leaves the queue at its designed width' unlimited \
   "[$(pr '[]'),$(pr '[]')]" 'full 2'
 check_at 'an unreadable queue is unknown whatever the width' 4 '{"message":"no"}' 'unknown unknown'
@@ -288,6 +294,26 @@ say=$(env ATTADIPA_WIP_LIMIT=4 bash .github/scripts/wip-limit.sh --say incident 
 case "$say" in
   *"threshold of 5"*) ok "--say moves the hard threshold with the limit" ;;
   *) bad "--say incident under a lifted limit said: $say" ;;
+esac
+
+# A FREEZE IS NOT AN OVERFLOW, and at width 0 the state machine calls it one.
+# RECOVERY.md answers `incident` with drain/recovery mode, so the unfixed line
+# sends an operator -- often an agent -- to drain a queue the owner closed on
+# purpose. Both states at width 0 have to say freeze.
+for freeze_state in full incident; do
+  say=$(env ATTADIPA_WIP_LIMIT=0 bash .github/scripts/wip-limit.sh --say "$freeze_state" 1)
+  case "$say" in
+    *"QUEUE FROZEN"*) ok "--say calls width 0 a freeze, not an overflow ($freeze_state)" ;;
+    *) bad "--say $freeze_state at width 0 said: $say" ;;
+  esac
+done
+
+# And the other direction, which is the one that would break silently: a real
+# overflow at a real width must keep saying overflow.
+say=$(env ATTADIPA_WIP_LIMIT=2 bash .github/scripts/wip-limit.sh --say incident 3)
+case "$say" in
+  *"QUEUE INCIDENT"*) ok "a real overflow still reports an incident" ;;
+  *) bad "--say incident at the designed width said: $say" ;;
 esac
 
 # The operator-facing line is the only way a live run can be confirmed to have

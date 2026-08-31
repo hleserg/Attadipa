@@ -96,6 +96,14 @@ stderr; a variable nobody set is the ordinary case and stays quiet. Anything tha
 is not a one- or two-digit number — including a value nobody set — is read as
 two; the variable cannot be used to remove the limit, only to move it.
 
+**A width of `0` is a freeze, and it reads as `incident` above.** Zero means
+"admit nothing", so the state is `full` only while the queue is empty and any
+open pull request puts the count above the width. That is a correct refusal and
+the wrong word: the operator-facing line says `QUEUE FROZEN` and names the
+variable, precisely so nobody arrives at the drain/recovery paragraph above for a
+queue the owner closed on purpose. A freeze is lifted by setting or deleting
+`ATTADIPA_WIP_LIMIT`, never by draining.
+
 ### The same pull request is being repaired over and over
 
 It cannot be: two attempts per problem chain, and the marker is written before
