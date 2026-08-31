@@ -1548,7 +1548,7 @@ constants.
 - **The milligravity scale of those figures is UNKNOWN.** They are
   `(hi - lo) * 1000 / ACCEL_LSB_PER_G` and no capture records the divisor its
   binary used. `shake.log:49`'s `±8 g` is not a candidate for it: that header is
-  one of the four stale labels this session identified, it names a full scale for
+  one of the four stale labels in `shake.log`, it names a full scale for
   a register meaning ±4 g, and it records no divisor at all. It is the reason to
   doubt the scale, not a value for it. Had the binary divided by 4096 the figures
   would read 161 mg and 1121 mg; either way they clear the 78 mg bar by more than

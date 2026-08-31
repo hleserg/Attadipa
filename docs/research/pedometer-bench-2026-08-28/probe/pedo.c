@@ -369,8 +369,7 @@ void app_main(void)
      * point. A window OVER the bar is conclusive, because the engine saw at
      * least that much; a window under it is not, because between two reads the
      * part produces about five samples this column never sees and a heel strike
-     * is tens of milliseconds. Each iteration is 20 x 50 ms of delay plus its
-     * I2C reads, so t below is an index, not a timestamp. The bar is PRINTED FROM THE CONSTANTS,
+     * is tens of milliseconds. The bar is PRINTED FROM THE CONSTANTS,
      * not quoted: this header used to say the datasheet's 200/100 while the
      * probe had been loosened to SensorLib's 80/60, so the log invited the
      * reader to hold the run to a threshold it was never configured with. */

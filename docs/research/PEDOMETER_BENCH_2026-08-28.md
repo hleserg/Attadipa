@@ -18,12 +18,10 @@ attempted, could not be logged, and destroyed its own result on the way out.
 
 ## What was measured
 
-One run: **159** windows, `t=0` to `t=158`. A window is 20 samples 50 ms apart
-plus their I2C reads, so `t` is an index rather than a timestamp and the run is
-nearer 167 s than 159 s. Each window is therefore a 20 Hz view of the part's
-112.1 Hz output, which **under-reads**: a subsample's extremes lie inside the
-full stream's, so every figure below is a lower bound — which makes the negative
-result stronger, not weaker.
+One run: **159** one-second windows, `t=0` to `t=158`. Each window is 20 samples
+50 ms apart — a 20 Hz view of the part's 112.1 Hz output, which **under-reads**:
+a subsample's extremes lie inside the full stream's, so every figure below is a
+lower bound, which makes the negative result stronger, not weaker.
 
 | Quantity | Value |
 | --- | --- |
@@ -37,9 +35,9 @@ result stronger, not weaker.
 | `STATUS1` | `0x00` throughout |
 
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
-`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:398`), and no capture
+`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:397`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
-prints `+/-8 g` — but that label is itself one of the stale four (`:344-346`):
+prints `+/-8 g` — but that label is itself one of the stale four (`:342-344`):
 the register it names means ±4 g. It is therefore the *reason to doubt* the
 divisor, not a value for it. The label drifted from its constant when the full
 scale changed, and nothing in the capture shows the divisor did not drift with
