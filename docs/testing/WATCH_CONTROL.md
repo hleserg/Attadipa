@@ -385,7 +385,7 @@ flashing back therefore works: the PCF85063 is battery-backed and the offset is
 in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1048` "bool configure_meshcore_ble") has exactly one caller,
+(`meshcore_ble.cpp:1055` "bool configure_meshcore_ble") has exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:378`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM rather than
@@ -409,9 +409,9 @@ never appears.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:1033` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:1040` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:1028` "xTaskCreate(mesh_task") for a subsystem that can never
+(`meshcore_ble.cpp:1035` "xTaskCreate(mesh_task") for a subsystem that can never
 scan. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is

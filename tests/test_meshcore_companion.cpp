@@ -575,6 +575,130 @@ void test_a_room_send_owns_the_slot_through_its_login()
 // The three other ways an operation ends. A node that accepts a message and
 // then says nothing is the reason the last one exists: without a bound the one
 // slot would be held for the life of the session by a send that already failed.
+// A room login is a mesh round trip, and every way it can fail to complete used
+// to leave `awaiting_login_` set for the life of the session. Once send_busy()
+// gates every send and the transport's own claim, that is #315 again in the one
+// phase the first fix did not bound: one Room attempt took the private path
+// down with it until the BLE link was dropped and re-established.
+void test_a_room_login_that_is_never_answered_still_ends()
+{
+    MeshPeer peer{};
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) {
+        room[i] = static_cast<std::uint8_t>(0x80 + i);
+    }
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+
+    // The node refuses the login. MESHCORE_COMPANION_PROTOCOL.md section 5: a
+    // defined command failing its guard answers RESP_CODE_ERR, which is where a
+    // login for a room the node does not hold arrives.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+        const std::uint8_t error[] = {1, 2};
+        CHECK(client.receive(error, sizeof(error), at(8)));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        // The private path is not down with it. This is the assertion the
+        // reproduction in the review turns on.
+        CHECK(service.send_private(peer.id, "still works", WallTime{1001}));
+    }
+
+    // The node queues the login and the room never answers: no LOGIN_SUCCESS
+    // and no LOGIN_FAIL, ever. The estimate in RESP_CODE_SENT is the budget --
+    // 0x0966 = 2406 ms -- and the login's own SENT used to discard it.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        client.tick(at(8 + 2405));
+        CHECK(client.send_busy());
+        client.tick(at(8 + 2406));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(service.send_private(peer.id, "still works", WallTime{1001}));
+    }
+
+    // The node answers nothing at all -- not even RESP_CODE_SENT -- so there is
+    // no estimate to run on. kMaxAckWait is the budget, armed on the first tick
+    // that sees the operation.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+        client.tick(at(8));
+        client.tick(at(8 + 14999));
+        CHECK(client.send_busy());
+        client.tick(at(8 + 15000));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(service.send_private(peer.id, "still works", WallTime{1002}));
+    }
+
+    // The same absence one state over: a CMD_SEND_TXT_MSG the node takes over
+    // BLE and answers with nothing wedges the slot identically, and a fix that
+    // covered only the login would leave it.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        client.tick(at(8));
+        client.tick(at(8 + 14999));
+        CHECK(client.send_busy());
+        client.tick(at(8 + 15000));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+    }
+
+    // A second send does not inherit the first one's deadline. One operation
+    // can begin and end between two ticks, so a stamp left behind by the last
+    // one would fail the next one on its first tick -- the opposite defect, and
+    // just as reachable.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "one", WallTime{1000}));
+        CHECK(client.receive(sent, sizeof(sent), at(100)));  // budget 2406 ms
+        const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+        CHECK(client.receive(ack, sizeof(ack), at(101)));
+        CHECK(!client.send_busy());
+        // No tick between the two. The second send is queued and then seen for
+        // the first time well past the first one's deadline.
+        CHECK(service.send_private(peer.id, "two", WallTime{1001}));
+        client.tick(at(100 + 2406));
+        CHECK(client.send_busy());
+        CHECK(client.status().delivery == MeshDelivery::Queued);
+    }
+
+    // And a room login does not inherit one either.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "one", WallTime{1000}));
+        CHECK(client.receive(sent, sizeof(sent), at(100)));
+        const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+        CHECK(client.receive(ack, sizeof(ack), at(101)));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1001}));
+        client.tick(at(100 + 2406));
+        CHECK(client.send_busy());
+        CHECK(client.status().delivery == MeshDelivery::Queued);
+    }
+}
+
 void test_a_send_that_is_never_confirmed_still_ends()
 {
     MeshPeer peer{};
@@ -643,7 +767,7 @@ void test_a_send_that_is_never_confirmed_still_ends()
     }
 
     // And one that reports seven weeks does not hold the slot for seven weeks:
-    // the ceiling is the link's own liveness window.
+    // kMaxAckWait is the ceiling.
     {
         MeshCoreCompanion client;
         connect_and_handshake(client);
@@ -727,6 +851,7 @@ int main()
     test_hostile_frames_are_bounded_and_the_session_survives();
     test_one_send_is_in_flight_at_a_time();
     test_a_room_send_owns_the_slot_through_its_login();
+    test_a_room_login_that_is_never_answered_still_ends();
     test_a_send_that_is_never_confirmed_still_ends();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();

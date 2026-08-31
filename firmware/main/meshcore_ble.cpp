@@ -957,9 +957,16 @@ void mesh_task(void*)
                 else send_claimed.store(false);
                 break;
             }
-        } else {
-            provider.tick(now());
         }
+        // Every pass, not only an idle one. A node that posts anything at all
+        // more often than kPollTicks -- adverts, LOG_RX_DATA, or a frame this
+        // build counts as malformed -- keeps the branch above taken, and a
+        // tick() that ran only in the `else` would never expire the ack budget
+        // while that lasted. The node's output is a peer's output
+        // (MESHCORE_PARSER_BOUNDS.md §5), so that input is not privileged.
+        // It costs nothing: liveness is disabled on this link, so link_.tick()
+        // has no work.
+        provider.tick(now());
         // A terminal outcome -- confirmed, an explicit error, the ack budget
         // running out, or the session resetting -- releases the slot for the
         // next request. Read once per pass rather than signalled, for the same

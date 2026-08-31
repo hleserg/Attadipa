@@ -74,10 +74,23 @@ bool copy_text(std::array<char, N>& out, const std::uint8_t* data,
 }  // namespace
 
 MeshCoreCompanion::MeshCoreCompanion()
-    : link_(LinkState::Config{TransportKind::Bluetooth, core::Millis{0}, true})
 {
     status_.availability = core::Availability::Unreachable;
     status_.transport = link_.phase();
+}
+
+// Every phase of a send down at once, and the Room continuation with it. The
+// three flags are one operation; clearing a subset is what left a login running
+// after the send that owned it had already failed.
+void MeshCoreCompanion::end_operation()
+{
+    awaiting_send_ = false;
+    awaiting_confirm_ = false;
+    awaiting_login_ = false;
+    room_peer_ = {};
+    room_text_.fill('\0');
+    room_timestamp_ = {};
+    op_budget_ = core::Millis{};
 }
 
 void MeshCoreCompanion::reset_session()
@@ -107,14 +120,8 @@ void MeshCoreCompanion::reset_session()
     device_info_seen_ = false;
     self_info_seen_ = false;
     contacts_complete_ = false;
-    awaiting_send_ = false;
-    awaiting_confirm_ = false;
-    ack_since_ = {};
-    ack_budget_ = {};
-    awaiting_login_ = false;
-    room_peer_ = {};
-    room_text_.fill('\0');
-    room_timestamp_ = {};
+    op_since_ = {};
+    end_operation();
 }
 
 void MeshCoreCompanion::begin(core::MonotonicTime now)
@@ -166,15 +173,22 @@ void MeshCoreCompanion::fault(core::MonotonicTime now)
 void MeshCoreCompanion::tick(core::MonotonicTime now)
 {
     link_.tick(now);
-    // The node accepted the message and then said nothing. Upstream MeshCore
-    // does not promise a confirmation for every send -- a packet that is never
-    // acknowledged on air produces no PUSH_CODE_SEND_CONFIRMED at all -- so
-    // without a bound the one in-flight slot would be held for the life of the
-    // session by a send that already failed. Fail-closed and observable: the
-    // verdict is Failed, not a silent release.
-    if (awaiting_confirm_ && core::elapsed(ack_since_, now) >= ack_budget_) {
-        awaiting_confirm_ = false;
+    // The node accepted the message, or the login, and then said nothing.
+    // Upstream MeshCore does not promise a confirmation for every send -- a
+    // packet that is never acknowledged on air produces no
+    // PUSH_CODE_SEND_CONFIRMED at all, and a room out of range produces no
+    // PUSH_CODE_LOGIN_SUCCESS and no PUSH_CODE_LOGIN_FAIL either -- so without
+    // a bound the one in-flight slot is held for the life of the session by an
+    // operation that already failed. Fail-closed and observable: the verdict is
+    // Failed, not a silent release.
+    if (!send_busy()) {
+        op_budget_ = core::Millis{};
+    } else if (op_budget_.value == 0) {
+        op_since_ = now;
+        op_budget_ = kMaxAckWait;
+    } else if (core::elapsed(op_since_, now) >= op_budget_) {
         status_.delivery = core::MeshDelivery::Failed;
+        end_operation();
     }
     update_availability();
 }
@@ -399,9 +413,14 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             // #315 -- a second send could start, overwrite `expected_ack_`, and
             // leave the first operation with no way to reach a verdict.
             awaiting_confirm_ = true;
-            ack_since_ = now;
+        }
+        // Both halves get this, which is the point: the node sends
+        // RESP_CODE_SENT for CMD_SEND_LOGIN too, and gating the budget on
+        // `awaiting_send_` discarded the one estimate the login ever carries.
+        {
+            op_since_ = now;
             const std::uint32_t estimate = little_u32(&data[6]);
-            ack_budget_ = core::Millis{
+            op_budget_ = core::Millis{
                 estimate < kMinAckWait.value   ? kMinAckWait.value
                 : estimate > kMaxAckWait.value ? kMaxAckWait.value
                                                : estimate};
@@ -443,10 +462,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             ++malformed_frames_;
             return false;
         }
-        awaiting_login_ = false;
-        room_peer_ = {};
-        room_text_.fill('\0');
-        room_timestamp_ = {};
+        end_operation();
         status_.delivery = core::MeshDelivery::Failed;
         break;
     case kResponseContactMessage:
@@ -463,10 +479,14 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseError:
         if (size < 2) { ++malformed_frames_; return false; }
-        if (awaiting_send_ || awaiting_confirm_) {
+        // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
+        // command that fails its guard falls through to RESP_CODE_ERR, so a
+        // CMD_SEND_LOGIN for a room the node does not hold arrives here and
+        // nowhere else. Leaving `awaiting_login_` set was one of the two ways
+        // the slot became permanent.
+        if (send_busy()) {
             status_.delivery = core::MeshDelivery::Failed;
-            awaiting_send_ = false;
-            awaiting_confirm_ = false;
+            end_operation();
         }
         break;
     default:
@@ -538,6 +558,7 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
         return false;
     }
     awaiting_send_ = true;
+    op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
     return true;
 }
@@ -574,6 +595,7 @@ bool MeshCoreCompanion::send_room(
     room_text_[text.size()] = '\0';
     room_timestamp_ = timestamp;
     awaiting_login_ = true;
+    op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
     return true;
 }
