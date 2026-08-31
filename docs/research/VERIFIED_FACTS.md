@@ -1622,7 +1622,10 @@ constants.
   (© 2022 QST, 20 June 2022), which spells out the very sequence the probe uses —
   *"Host can simply clear the CTRL8.bit4 and then set it to restart the Pedometer
   engine and reset the Step Count registers."* That document reports
-  `REVISION_ID = 0x7C`, which is what this silicon reads. **That hazard has already cost one result:** the walk attempt
+  `REVISION_ID = 0x7C`, which is what this silicon reads — **but which document
+  number names the Rev A part is DISPUTED in this tree and deferred to #341**,
+  and `:1506-1508` above attributes the same measured byte to `13-52-25`.
+  Nothing here rests on the number. **That hazard has already cost one result:** the walk attempt
   left the engine armed, and the next run configured before reading, clearing
   whatever the walk had accumulated. The walk also could not be logged: walking
   means unplugging, and the probe reports over the USB serial console, so the act

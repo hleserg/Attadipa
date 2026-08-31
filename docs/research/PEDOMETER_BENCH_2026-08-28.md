@@ -37,7 +37,7 @@ lower bound, which makes the negative result stronger, not weaker.
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
 `(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:397`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
-prints `+/-8 g` — but that label is itself one of the stale four (`:342-344`):
+prints `+/-8 g` — but that label is itself one of the stale four (`:346-348`):
 the register it names means ±4 g. It is therefore the *reason to doubt* the
 divisor, not a value for it. The label drifted from its constant when the full
 scale changed, and nothing in the capture shows the divisor did not drift with
@@ -231,8 +231,12 @@ the pedometer engine at all
 2026-08-28 residue cannot do is corroborate it.
 
 **The shake run's own restore is unverified.** Its capture ends at `t=158` with
-no restore block, while the probe's loop runs to 1200 — so the capture was
-stopped, not the probe, and the IMU was left armed with `Pedo_EN` set. The
+no restore block **and no END banner**, where all three desk runs print
+`--- restored ---` and the banner together (`pedo-run.log:286-290`,
+`pedo-run3.log:946-950`) and `walk.log:111-121` prints a traceback. The capture
+was cut, and the IMU was left armed with `Pedo_EN` set. The loop bound is not
+the evidence here: the archive shows it moved inside the session — 240, then
+900 — so the corrected source cannot say where this run would have stopped. The
 QMI8658 holds none of this in non-volatile memory, so a power cycle clears it;
 short of one, it persists, which is exactly how the walk attempt's state was
 still there half an hour later.

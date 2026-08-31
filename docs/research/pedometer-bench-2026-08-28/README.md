@@ -39,7 +39,13 @@ from.
 
 ## The probe
 
-`probe/` is the source that produced these captures — `pedo.c`, its two
+`probe/` is the source that produced `shake.log` and `walk.log`. **It is not
+the source of the three desk runs.** Those came from an earlier build that never
+configured the engine, and the captures say so: no `CTRL9 0x0D` block, no
+`CTRL3`, no `p2p` column, `--- after ---` where this source prints
+`--- armed ---`, and a header naming three registers where `pedo.c:257` writes
+five plus `CAL1_L..CAL4_H`. `pedo.c:19-27` states it as the reason those runs
+read zero. What `probe/` holds is `pedo.c`, its two
 `CMakeLists.txt` (the component's, and the top-level one as
 `CMakeLists-top.txt`) and `sdkconfig.defaults`. ESP-IDF v5.5.5, target
 `esp32s3`, built out of tree and RAM-booted with `tools/flash/ramhold.py`. It is
