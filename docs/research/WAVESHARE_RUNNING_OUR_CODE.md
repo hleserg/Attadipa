@@ -339,9 +339,14 @@ Recorded precisely, because the distinction matters:
   `e093b1cc1d1cf85097f955abbea65c08`, `REVISION_ID  0x7C` in its §5.3 detail
   page and `0b01101000` = `0x68` in its register-map summary, which is the
   discrepancy the bullet above names. `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`
-  is a different file with a different hash; **what byte it gives for
-  `REVISION_ID` is `UNKNOWN` here**, because nothing in this repository records
-  anyone reading that register out of it. See [#341](https://github.com/hleserg/Attadipa/issues/341).
+  is a different file with a different hash, and it has since been read too:
+  **it gives `0x7C` in its register-description section and `0x68` in its
+  register-map summary — the same byte and the same internal discrepancy.**
+  So the `0x7C` above is correctly attributed to `13-52-27`, and it would have
+  been just as correct against `13-52-25`; neither document's `REVISION_ID` can
+  identify which one you are holding —
+  [`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart".
+  See [#341](https://github.com/hleserg/Attadipa/issues/341).
 
 ### 3.3 The touch controller is held in reset until GPIO 9 is pulsed
 

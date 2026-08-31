@@ -567,7 +567,7 @@ to every unit of the same model.
   requires be reported rather than filled. The block is also read–modify–write
   as a whole, so two callers cannot configure two features independently.
 
-### The QMI8658A's datasheet has deleted its pedometer
+### Both Rev A datasheets carry the pedometer; only QMI8658A Rev D deleted it
 
 - **Claim:** the pedometer is a **variant-and-revision** question, not a part
   question.
@@ -576,7 +576,46 @@ to every unit of the same model.
   (`0x5A`–`0x5C`), `CTRL8.Pedo_EN`, and CTRL9 commands `0x0D` (configure) and
   `0x0F` (reset count).
   **QMI8658A Rev A** (`13-52-25`, 20 June 2022) documents the identical feature
-  — read for its chapter 11 and its revision history, never for `REVISION_ID`.
+  on the identical pages — chapter 11 is pp. 64–66 in both, the registers,
+  the `CTRL8` bit and the two CTRL9 commands are the same. The two Rev A
+  documents are near-identical twins; see the entry below for what does and
+  does not differ between them.
+- **The two Rev A documents are twins, and no register tells them apart.**
+  `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` and
+  `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` are both 88 pages, both dated
+  20 June 2022, and identical outside the part name except in these places.
+  Identical: `WHO_AM_I = 0x05`, `REVISION_ID = 0x7C`, and the product id
+  `0x086E00051000`. **Reading the part's own registers therefore cannot tell
+  you which of the two documents describes the silicon in front of you.**
+  What does differ is electrical, and it matters:
+
+  | | `13-52-25` QMI8658**A** | `13-52-27` QMI8658**C** |
+  | --- | --- | --- |
+  | Gyroscope noise density | 13 mdps/√Hz | 15 mdps/√Hz |
+  | Gyroscope full scale, max | ±2048 °/s | ±1024 °/s |
+  | Internal I/O pull-up | 200 kΩ | 2 MΩ |
+  | Min. supply slew rate, POR → 1.71 V | 40 V/s | 95 V/s |
+  | `RESV` (pin 10) left floating | permitted | *"there might be leakage current"* |
+
+  Everything in this repository that quotes one of those five numbers must name
+  which document it came from. The schematic prints `QMI8658C` twice
+  ([`VERIFIED_FACTS.md:1597`](VERIFIED_FACTS.md) "printed twice"), so the C
+  column is the one this board is read against.
+- **Both documents contradict themselves on `REVISION_ID`, in the same way.**
+  The register-*map* summary table gives the default as `01101000` — **`0x68`** —
+  while the register-*description* section three chapters later gives **`0x7C`**.
+  This is true of `13-52-25` and `13-52-27` alike. Every `0x7C` claim in this
+  tree is scoped to the register-description section for that reason, and the
+  part itself answers `0x7C` — `MEASURED` on the bench 2026-08-28. A reader who
+  greps either PDF and finds `0x68` has found the summary table, not a
+  contradiction with this repository.
+- **Source:** both PDFs read 2026-09-01, held off-tree because they are
+  copyrighted and marked "Security Level: 3". `13-52-27`: md5
+  `e093b1cc1d1cf85097f955abbea65c08`. `13-52-25`: md5
+  `5a0fef65a358430d6499944a75d22e19`, fetched from the vendor's own published
+  copy at `files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf` and
+  byte-identical to the copy [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence"
+  already recorded, which closes that document's provenance.
 - **How to name these two, everywhere in this tree.** Write the vendor's own
   footer form in full — `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and
   `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` — and **never write "the Rev A
@@ -584,20 +623,30 @@ to every unit of the same model.
   ambiguous phrase is what let a correction reach three documents claiming one
   of them did not exist ([#341](https://github.com/hleserg/Attadipa/issues/341)).
   The number alone is enough where the context already names the part.
-  **QMI8658A Rev D** (`QST-PD-B002-22`, current) **does not**: its feature list
-  reads *"Integrated Tap, Any-Motion, No-Motion, Significant-Motion detection"*,
-  there is no chapter on the pedometer, and a search of the whole document finds
-  **no `STEP_CNT` register and no `Pedo_EN` bit**. The feature is not marked
-  deprecated or reserved — it is gone from the document, registers included.
-- **Source:** the three QST datasheets named above, read 2026-08-22.
-- **Impact:** [HARDWARE_MATRIX](HARDWARE_MATRIX.md) records the Waveshare board's
-  IMU as *"QMI8658 / QMI8658C"* — the variant is **`UNKNOWN`**, the vendor BSP
-  does not touch the IMU so there is no code to read the answer from, and the two
-  variants differ on precisely the feature OD-6 makes mandatory. Reading a step
-  count out of a QMI8658A and believing it would be relying on a feature its
-  current datasheet does not admit to having. This is the ADR-0003 pattern —
-  the part number does not tell you what you have — arriving in a second
-  subsystem.
+- **The one document that deleted the pedometer is `QMI8658A` Rev D**
+  (`QST-PD-B002-22`, current). Its feature list reads *"Integrated Tap,
+  Any-Motion, No-Motion, Significant-Motion detection"*, there is no chapter on
+  the pedometer, and a search of the whole document finds **no `STEP_CNT`
+  register and no `Pedo_EN` bit**. The feature is not marked deprecated or
+  reserved — it is gone from the document, registers included. That is a
+  **revision** boundary, not a variant one: the A part's own Rev A documents the
+  pedometer as fully as the C part's does.
+- **Source for Rev D:** `QMI8658A` Rev D, `QST-PD-B002-22`, read 2026-08-22.
+- **Impact — smaller than this entry used to claim.** The earlier text here read
+  that *"the two variants differ on precisely the feature OD-6 makes
+  mandatory"*, and that is **false**: they do not differ on it at all, as the
+  twin-document entry above shows. Two things remain true.
+  [HARDWARE_MATRIX](HARDWARE_MATRIX.md) still records the board's IMU as
+  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so no code
+  reads the variant back — but the schematic prints `QMI8658C`, and no register
+  would settle it anyway. And OD-6's feasibility is still open, but for a
+  reason that has nothing to do with which of the two Rev A documents applies:
+  the part answers `REVISION_ID = 0x7C`, the value both of them give, and the
+  step register still did not move under sixteen seconds of deliberate shaking —
+  [`PEDOMETER_BENCH_2026-08-28.md:3-4`](PEDOMETER_BENCH_2026-08-28.md) "the step register never moved".
+  That is a `MEASURED` negative against a part whose documentation, on both
+  readings, says the engine is there. The variant question cannot explain it and
+  should stop being offered as the explanation.
 
 ### The QMI8658 costs at least three times the BMA423
 
@@ -1517,15 +1566,16 @@ constants.
   (© 2022 QST, 20 June 2022), whose chapter 11 documents a complete hardware
   pedometer, and `0x79` in the `QMI8658C` Rev 0.6 ADVANCE INFORMATION document,
   which marks `CTRL8` *"Reserved: Not Used"* and has no step counter.
-  **This entry used to name `13-52-25` for the `0x7C`, and that was not
-  sourced** — corrected under [#341](https://github.com/hleserg/Attadipa/issues/341).
-  The document verified to carry it is `13-52-27`: 88 pages, md5
-  `e093b1cc1d1cf85097f955abbea65c08`, held off-tree because it is copyrighted
-  and marked "Security Level: 3". `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` is a
-  separate file — a different md5 is recorded for it at
-  [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "md5" — and **what
-  it gives for `REVISION_ID` is `UNKNOWN` here.** Nothing in this repository
-  records anyone reading that register out of it.
+  **This entry used to name `13-52-25` for the `0x7C`, was corrected under
+  [#341](https://github.com/hleserg/Attadipa/issues/341) to name `13-52-27`
+  instead, and the correction turned out not to matter**: both Rev A documents
+  have since been read side by side and **both give `0x7C`** in their
+  register-description sections. Either citation was right about the byte. What
+  neither is is a way to tell the two documents apart — see
+  [`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart".
+  Both are 88 pages, both are held off-tree because they are copyrighted and
+  marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
+  `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
 - **Corroborated by writing, not only by reading.** With the accelerometer
   configured per Rev A Table 22 — `CTRL2 = 0x26` (±8 g, 125 Hz; that is the
   *"ODR Rate (Hz) (Accel only)"* column, which is the one that applies because
@@ -1606,7 +1656,7 @@ constants.
   because **its writer cannot be identified at all**. `0x24 / 0x03 / 0x00` is
   exactly the state the 2026-08-23 session left, and an SoC restart does not
   reset the parts on the I2C bus
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:638-642`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:645`](WAVESHARE_RUNNING_OUR_CODE.md)
   "does not reset the peripherals"), so a five-day-old vendor write surviving is
   as consistent with it as any later one. An unattributable value corroborates
   nothing. The shake run is the one case where the writer *is* known: it found
@@ -1617,7 +1667,7 @@ constants.
   `0x24` and `CTRL7` to `0x03` over what a probe had left, and never touched
   `CTRL8` — so the vendor runs the IMU in 6DOF and does not use the pedometer
   engine
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:625-627`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:632`](WAVESHARE_RUNNING_OUR_CODE.md)
   "Booting the vendor firmware restored"). An earlier draft called that
   **UNKNOWN**, over-correcting: it is the 2026-08-28 residue that is not evidence,
   not the vendor configuration itself.

@@ -314,17 +314,26 @@ through a side door: DR consumes odometry, an anchor and — where it exists —
 - **no published accuracy figure** — rev 1.0 offers only the prose *"optimized
   on high accuracy"*. `UNKNOWN`.
 
-**QMI8658C** (Waveshare) — and the variant matters. The schematic names
-`QMI8658C` twice, and the vendor wiki's datasheet link is byte-identical to the
-C document. **The `QMI8658A`'s pedometer registers `Pedo_EN` / `STEP_CNT_*`
-apply to a part that is not on this board.** The C's `CTRL8` is *"Reserved: Not
-Used"*, so **no hardware pedometer is documented**: `UNKNOWN`, leaning absent —
-not "provably absent", because the only obtainable C datasheet is Rev 0.6 of
-January 2021 marked *"ADVANCE INFORMATION"*.
+**QMI8658C** (Waveshare) — and the variant matters, though not for the reason
+this paragraph used to give. The schematic names `QMI8658C` twice. **Three
+sentences that stood here are withdrawn**: that the `QMI8658A`'s `Pedo_EN` /
+`STEP_CNT_*` registers *"apply to a part that is not on this board"*; that the
+C's `CTRL8` is *"Reserved: Not Used"* so *"no hardware pedometer is
+documented"*; and that *"the only obtainable C datasheet is Rev 0.6 of January
+2021"*. All three came from reading Rev 0.6, the `ADVANCE INFORMATION` draft,
+as if it were the only C document. It is not.
+`13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` documents chapter 11, `CTRL8.Pedo_EN`
+and the same `STEP_CNT_*` registers, on the same pages as the A's Rev A does —
+[`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart".
+The pedometer is documented for this part. Whether the silicon honours it is a
+separate and still-open question, and the bench says it did not:
+[`PEDOMETER_BENCH_2026-08-28.md:3-4`](PEDOMETER_BENCH_2026-08-28.md) "the step register never moved".
 
 Correspondingly, C figures only: noise density **15 mdps/√Hz** (not the A's 13),
-TCO **±0.05 dps/°C on all axes** (not per-axis), ARW ≈ 0.90°/√h
-(`ESTIMATED` from the noise density).
+gyroscope full scale **±1024 °/s** (not the A's ±2048), TCO **±0.05 dps/°C on
+all axes** (not per-axis), ARW ≈ 0.90°/√h (`ESTIMATED` from the noise density).
+Those four are why the variant still matters even though the pedometer no
+longer distinguishes them.
 
 **The power asymmetry is the design constraint.** Accelerometer-only low power:
 30 µA at 3 Hz to 55 µA at 128 Hz. Gyroscope: **651 µA at 28 Hz rising to
