@@ -363,6 +363,17 @@ which no Kconfig symbol gates. That separation is what made `n` affordable: it
 used to be that turning the endpoint off also turned the buttons off, which is
 why the shipping defaults had it on (#346).
 
+**What a product image consequently cannot do.** `TimeSync` and `mesh-configure`
+are both debug opcodes, and they were the only way in for the two things a watch
+has to be told once. A production image reads the PCF85063 and restores a
+persisted UTC offset, but cannot write the clock or persist an offset —
+`BoardTimeSink` and `save_time_metadata` are inside the same `#if` — and it
+cannot receive a MeshCore passkey at all. Provisioning currently means flashing
+the HIL image, provisioning, and flashing back. That is a deliberate consequence
+of the trust boundary rather than an oversight, and giving a product image its
+own consented provisioning path is
+[#356](https://github.com/hleserg/Attadipa/issues/356).
+
 There is no runtime switch, by design. A flag an unauthenticated host could
 set itself would be the same control plane wearing a hat.
 

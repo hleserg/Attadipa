@@ -2,8 +2,6 @@
 
 #include "physical_input.h"
 
-#include "power_button_edges.h"
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -12,20 +10,15 @@
 #include <cstring>
 #include <new>
 
-#include "driver/gpio.h"
-#include "driver/i2c_master.h"
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
-#include "esp_lcd_co5300.h"
 #include "esp_log.h"
-#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "lvgl.h"
 
 #include "attadipa/core/input.h"
-#include "attadipa/core/power_state.h"
 #include "attadipa/debug/bridge.h"
 #include "attadipa/link/frame_codec.h"
 #include "attadipa/platform/board_profile.h"
@@ -37,15 +30,7 @@ constexpr char kBoardProfileId[] = "waveshare-amoled-206";
 constexpr std::size_t kOutputCapacity = 16 * 1024;
 constexpr std::size_t kMaxFramesPerPoll = 64;
 constexpr std::size_t kMaxUsbWritesPerPoll = 8;
-constexpr std::size_t kMaxInputPerRead = 16;
 constexpr std::uint32_t kPollMs = 5;
-constexpr std::uint8_t kButtonDebounceSamples = 2;
-constexpr std::uint32_t kPmuPollMs = 20;
-constexpr gpio_num_t kTouchInterrupt = GPIO_NUM_38;
-constexpr std::uint64_t kPmuSleepPollUs = 100'000;
-constexpr std::uint64_t kDebugWakeDelayUs = 750'000;
-constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;
-constexpr std::uint8_t kAxpInterruptStatus2 = 0x49;
 
 class FirmwareScreenSource final : public attadipa::debug::ScreenSource {
 public:

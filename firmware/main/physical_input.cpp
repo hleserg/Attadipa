@@ -105,11 +105,11 @@ private:
     static_cast<PhysicalInput *>(lv_timer_get_user_data(timer))->maybe_sleep();
   }
 
-    static void read_pointer(lv_indev_t *indev, lv_indev_data_t *data) {
+  static void read_pointer(lv_indev_t *indev, lv_indev_data_t *data) {
     static_cast<PhysicalInput *>(lv_indev_get_user_data(indev))->read(data);
   }
 
-    esp_err_t read_pmu(std::uint8_t reg, std::uint8_t &value) const {
+  esp_err_t read_pmu(std::uint8_t reg, std::uint8_t &value) const {
     return i2c_master_transmit_receive(pmu_, &reg, 1, &value, 1, 100);
   }
 
@@ -138,7 +138,7 @@ private:
     return true;
   }
 
-    void maybe_sleep() {
+  void maybe_sleep() {
     if (!sleep_requested_ || !input_queue_.empty() ||
         input_state_.held_count(attadipa::core::InputOrigin::Physical) != 0 ||
         input_state_.held_count(attadipa::core::InputOrigin::Remote) != 0 ||
@@ -267,7 +267,7 @@ private:
     }
   }
 
-    void poll_physical_touch() {
+  void poll_physical_touch() {
     if (input_queue_.size() == attadipa::core::InputQueue::kCapacity) {
       return;
     }
@@ -321,7 +321,7 @@ private:
     physical_y_ = event.y;
   }
 
-    struct PhysicalButton {
+  struct PhysicalButton {
     gpio_num_t pin;
     bool active_high;
     std::uint8_t index;
@@ -396,7 +396,7 @@ private:
     }
   }
 
-    void read(lv_indev_data_t *data) {
+  void read(lv_indev_data_t *data) {
     if (input_read_burst_ == 0) {
       poll_physical_touch();
       poll_physical_buttons();
