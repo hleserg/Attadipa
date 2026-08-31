@@ -51,6 +51,8 @@ constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
 
 static_assert(BLE_HS_CONN_HANDLE_NONE == attadipa::link::kNoSessionHandle,
               "the session record's no-connection value must be NimBLE's");
+static_assert(BLE_HS_ENOTCONN == attadipa::link::kWriteStatusPeerGone,
+              "the peer-gone transmit status must be NimBLE's");
 
 const ble_uuid128_t kServiceUuidValue = BLE_UUID128_INIT(
     0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
@@ -709,7 +711,31 @@ void pump_tx(const SessionSnapshot& session)
             SessionGuard guard;
             (void)owner.write_completed(session.generation, rc);
         }
-        disconnect_fault(session.generation, "write Companion frame", rc);
+        // The window documented above is what this is, and it is not a broken
+        // subsystem: the peer went away, and the write is how this task found
+        // out. Treating it
+        // as a fault is #335 -- disconnect_fault() clears reconnect_allowed, so
+        // an ordinary disappearance left the transport unable to come back
+        // without another Configure or a reboot.
+        //
+        // The completion recorded above is the whole recovery. The worker's next
+        // pass reconciles it and hands it to handle_write_result(), which
+        // terminates the connection; the GAP disconnect then ends the generation
+        // and start_scan() runs. That is the same code an *async* write failure
+        // already recovers through, so the two peer-loss paths are one outcome
+        // rather than two that happen to agree. The frame is lost with the
+        // session, which is correct here for the same reason it is correct when
+        // the claim above fails: the reconnect calls provider.begin() and the
+        // Companion handshake starts again from CMD_APP_START.
+        //
+        // Anything else is local and stays fail-closed.
+        if (attadipa::link::write_failure_is_peer_gone(rc)) {
+            ESP_LOGW(kTag, "Companion write rejected: the peer is gone (%d);"
+                           " recycling the session", rc);
+            wake_worker();
+        } else {
+            disconnect_fault(session.generation, "write Companion frame", rc);
+        }
     } else {
         log_frame("TX", frame.bytes.data(), frame.size);
     }
