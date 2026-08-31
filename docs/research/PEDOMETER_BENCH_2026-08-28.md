@@ -46,8 +46,9 @@ the probe, and every capture in this session carries it:
 | `pedo-run3.log:47-48` | `ax = 1.34 g` | `0.13 g` |
 | `walk.log:75-76` | `az = -1.34 g` | `-0.99 g` |
 
-Four of those five are the report's own *"desk, board stationary"* runs, so the
-first window is wrong on a board that demonstrably never moved. In `shake.log`
+Three of those five are the report's own *"desk, board stationary"* runs, and
+`walk.log` holds a flat triad until the unplug, so the first window is wrong on
+boards that demonstrably never moved. In `shake.log`
 the giveaway is that the **attitude** does not move with it: `t=0` is
 `(350, 24, -8257)` and `t=1` is `(353, 27, -8254)` — and `t=33`, half a minute
 later, is `(354, 26, -8251)`. A watch is not lifted and replaced inside one
@@ -145,7 +146,9 @@ apart again.
    the watch was moving, and it says it was **not**: `walk.log:76-109` holds the
    triad at `(0.13, 0.04, -1.01 g)` for thirty-four unbroken seconds — the same
    attitude as the desk runs — and the first real movement is `t=35`, which is
-   the unplug, one line before the link dies. So the walk never began. Those 36
+   the unplug, one line before the link dies. So the walk had not begun while
+   the link was alive; the capture ends there and cannot speak for what
+   followed. Those 36
    seconds are a stationary board reading zero correctly, which is **not
    evidence** about the engine either way. Saying "both known-good configurations
    were tried" would still overstate it: both were *configured*, one was
@@ -292,14 +295,16 @@ demonstrably does exist — it is the one quoted here, and it reports `0x7C` on 
 own register-description page. What is in `13-52-25` is **UNKNOWN** to this
 repository: no record shows anyone opening it. This report therefore cites only
 the paper it read, and the tree-wide reconciliation — including which document
-the `0x7C` attribution at `VERIFIED_FACTS.md:1481` actually came from — is
+the `0x7C` attribution at [`VERIFIED_FACTS.md:1504-1508`](VERIFIED_FACTS.md)
+*"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
 
 ## A caveat about the raw logs
 
-The archived logs misdescribe their own configuration. **Four** `printf` labels
-had gone stale — three in `shake.log` against the constants they printed, and one
-in `walk.log` that asserts hardware behaviour this report will not:
+The archived logs misdescribe their own configuration. **Five** `printf` labels
+had gone stale — four in `shake.log`, three of them against the constants they
+printed and one against the register list itself, and one in `walk.log` that
+asserts hardware behaviour this report will not:
 
 - the header prints `CTRL2 = 0x16 (+/-8 g, 62.5 Hz accel-only)`. `0x16` is
   **±4 g at 112.1 Hz in 6DOF** — wrong on both counts, though the register value
@@ -333,12 +338,19 @@ in `walk.log` that asserts hardware behaviour this report will not:
   `SerialException`, no restore block was printed, and the engine was left armed
   — which is how the next run came to clear the walk's count. That header was
   written before the run as an expectation and never corrected afterwards.
+- the banner prints *"Writes CTRL2/CTRL7/CTRL8/CTRL9 and CAL1..CAL4 on the IMU
+  at 0x6B. Nothing else, on any device."* (`shake.log:39-40`) — and eleven lines
+  later, at `shake.log:50`, the same run writes `CTRL3 = 0x36`. The omission is
+  the run's, not the log's: the probe's own header carried it too, which is how
+  it reached the capture. It is corrected in the probe, and
+  [`HARDWARE_MATRIX.md:514`](HARDWARE_MATRIX.md) *"plus `CTRL3` in the shake run
+  only"* is what states the run's real write set.
 - the p2p header prints `ped_fix_peak2peak = 200 mg; ped_fix_peak = 100 mg`,
   which are the **datasheet's** numbers, while the engine had been configured
   with SensorLib's loosened 80/60 (≈78/59 mg). The header agreed with the `OVER`
   column's hard-coded bar and disagreed with the engine.
 
-The three `shake.log` labels are fixed in the probe, and the threshold and the
+The four `shake.log` labels are fixed in the probe, and the threshold and the
 `OVER` bar now come from the same constant; `walk.log`'s pre-run expectation is
 corrected here rather than in the probe, because the probe no longer prints it. **No register or parameter value changed**, so the run above
 stands exactly as recorded; where the log headers and this report disagree, this

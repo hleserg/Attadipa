@@ -15,9 +15,10 @@ cites resolves here.
 | `shake.log` | 15:08 | **the result** — 159 windows, hand-moved, step count 0 |
 
 Read them with the report's *"A caveat about the raw logs"* section beside you:
-three `printf` labels in these captures had gone stale against the constants they
-printed, and where a header and the report disagree, the report is correct. No
-register or parameter value is affected.
+five `printf` labels in these captures had gone stale — four in `shake.log`,
+one in `walk.log` — and where a header and the report disagree, the report is
+correct. No register or parameter value
+is affected.
 
 Each capture opens with an `esptool` **RAM boot** — every segment loads to a RAM
 address and there is no `write_flash` in the session. The unit still carries the
@@ -37,19 +38,27 @@ here as **evidence**, not as a component: nothing in `firmware/` or `platform/`
 builds it or depends on it.
 
 **It is the probe as corrected after the session, not byte-for-byte what ran.**
-Three things changed afterwards, all of them in text rather than behaviour:
+Four things changed afterwards, and three of them are behaviour rather than
+text — this source does not reproduce the archived captures line for line:
 
-1. the `OVER` column's bar and the printed threshold now come from one macro, so
-   they cannot disagree (in the captures the column compares against 200 mg while
-   the engine was configured with 80);
-2. the `--- before ---` block now reads and prints the accumulated step count
-   **before** anything is written, which is what makes a read-after-walk possible
-   at all;
-3. two stale `printf` labels are corrected — `CTRL2 = 0x16` is ±4 g at 112.1 Hz
-   in 6DOF, and `CTRL3 = 0x36` is ±128 dps, not the ±1000 dps printed here.
+1. **behaviour** — the `OVER` column's bar and the printed threshold now come
+   from one macro, so they cannot disagree. In the captures the column compares
+   against a hard-coded 200 mg while the engine was configured with 80, so the
+   archived `OVER` column is not what this source would print;
+2. **behaviour** — the `--- before ---` block now reads and prints the
+   accumulated step count **before** anything is written, which is what makes a
+   read-after-walk possible at all. No archived capture carries that line;
+3. **behaviour** — `CTRL3` is now read before the writes and written back
+   afterwards. The shake run did neither, which is why
+   [`HARDWARE_MATRIX.md:514`](../HARDWARE_MATRIX.md) records `CTRL3 = 0x36` as
+   *"residue this session knowingly left on the part"*. That remains the correct
+   statement **about the run**; it is no longer what this source does;
+4. **text** — two stale `printf` labels are corrected — `CTRL2 = 0x16` is ±4 g
+   at 112.1 Hz in 6DOF, and `CTRL3 = 0x36` is ±128 dps, not the ±1000 dps
+   printed here.
 
 **No register or parameter constant differs from the run.** That is checkable
-without trusting this note: `shake.log:53-59` echoes every value the probe wrote
+without trusting this note: `shake.log:48-59` echoes every value the probe wrote
 — `CTRL2 = 0x16`, `CTRL3 = 0x36`, `CTRL8` `0x80` then `0x90`, `sample_cnt=50`,
 `peak2peak=0x0050`, `peak=0x003C`, `time_up=400`, `time_low=8`, `cnt_entry=1`,
 `precision=0`, `sig_count=1` — and each matches the `#define` in `probe/pedo.c`.

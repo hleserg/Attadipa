@@ -1550,7 +1550,8 @@ constants.
   lying still. Sixteen consecutive seconds is what this run establishes.
 - **A seventeenth window is not motion.** `t=0` also reads above the bar, and a
   second draft called it a pick-up. It is a start-up artefact: the attitude at
-  `t=0` matches `t=1` and `t=33` to within 3 LSB on every axis, and all four of
+  `t=0` matches `t=1` to within 3 LSB on every axis and `t=33` to within 6 —
+  `(350, 24, -8257)` against `(353, 27, -8254)` and `(354, 26, -8251)` — and all four of
   the session's *stationary* captures open with the same bad first sample. It is
   excluded from the count.
 - **The comparison is indicative, not a like-for-like multiple.** 78 mg is the

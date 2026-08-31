@@ -21,11 +21,13 @@
  * result for a genuine walk, so the old probe could not tell "does not count"
  * from "was never asked to".
  *
- * WRITES: CTRL2, CTRL7, CTRL8, CTRL9 and CAL1_L..CAL4_H on the IMU at 0x6B,
- * and nothing else on any device. No PMU write, no rail change, no display.
- * The QMI8658 has no non-volatile configuration, so a power cycle restores the
- * defaults; this probe also restores CTRL2/CTRL7/CTRL8 to the values it read
- * at start-up and says whether that took. CAL1..CAL4 are left as written —
+ * WRITES: CTRL2, CTRL3, CTRL7, CTRL8, CTRL9 and CAL1_L..CAL4_H on the IMU at
+ * 0x6B, and nothing else on any device. No PMU write, no rail change, no
+ * display. The QMI8658 has no non-volatile configuration, so a power cycle
+ * restores the defaults; this probe also restores CTRL2/CTRL3/CTRL7/CTRL8 to
+ * the values it read at start-up. It says whether that took for CTRL2, CTRL7
+ * and CTRL8 only: CTRL3 is written back but never read back, so the restore
+ * line below is silent about it. CAL1..CAL4 are left as written —
  * they are scratch inputs to CTRL9 and mean nothing once Pedo_EN is clear.
  */
 #include <stdio.h>
@@ -175,8 +177,12 @@ static bool configure_pedometer(void)
     wr(REG_CAL3_L, PED_FIX_PEAK & 0xFF);
     wr(REG_CAL3_H, PED_FIX_PEAK >> 8);
     /* Table 38 calls CAL4_L "NA" for both command sets. SensorLib writes 0x02
-     * to it in both, and has since its first commit. Whether the part reads it
-     * is UNKNOWN; following the driver that works costs nothing. */
+     * to it in both, and has since its first commit -- but this probe writes
+     * 0x02 and then 0x00 over it, so the engine reads 0x00 at both CTRL9 0x0D
+     * calls, in both sets. That is what the archived captures ran, and no
+     * capture echoes the byte, so its effect is UNKNOWN either way. Left as it
+     * ran rather than reduced to the single SensorLib write: that would be a
+     * behaviour change with no bench run behind it. */
     wr(REG_CAL4_L, 0x02);
     wr(REG_CAL4_L, 0x00);
     wr(REG_CAL4_H, 0x01);
@@ -229,7 +235,7 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &dc, &imu));
 
     printf("\n######## ATTADIPA PEDOMETER PROBE ########\n");
-    printf("Writes CTRL2/CTRL7/CTRL8/CTRL9 and CAL1..CAL4 on the IMU at 0x%02X.\n"
+    printf("Writes CTRL2/CTRL3/CTRL7/CTRL8/CTRL9 and CAL1..CAL4 on the IMU at 0x%02X.\n"
            "Nothing else, on any device. No PMU write, no rail change, no display.\n\n",
            QMI_ADDR);
 
@@ -294,7 +300,6 @@ void app_main(void)
         wr(REG_CTRL8, was_c8);
         wr(REG_CTRL7, was_c7);
         wr(REG_CTRL2, was_c2);
-    wr(REG_CTRL3, was_c3);
         wr(REG_CTRL3, was_c3);
         printf("--- restored --- CTRL2=0x%02X CTRL7=0x%02X CTRL8=0x%02X\n",
                rd1(REG_CTRL2), rd1(REG_CTRL7), rd1(REG_CTRL8));
