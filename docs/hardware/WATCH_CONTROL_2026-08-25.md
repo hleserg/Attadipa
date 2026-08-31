@@ -89,8 +89,12 @@ off in the Kconfig default and off in `sdkconfig.defaults`; the measurements on
 this page were taken on a build with it on, which is now `sdkconfig.hil` and is
 a bench image rather than the product (#346, and
 [the trust boundary](../testing/WATCH_CONTROL.md#the-trust-boundary)). The
-physical-input results below are not affected: that path moved to
-`firmware/main/physical_input.cpp` and is in every image.
+physical-input results below were taken on that same build, and this page does
+not extend them to the product image. The code moved rather than changed — that
+path is now `firmware/main/physical_input.cpp`, which no Kconfig symbol gates,
+so a product image compiles the same producers — but no product image has been
+built, flashed or run, and a code-identity argument is not a hardware `PASS`:
+for that configuration this is **NOT EXECUTED — HARDWARE REQUIRED**.
 
 ## Physical input
 
@@ -121,6 +125,13 @@ I (200564) watch-control: physical power up
 This confirms the replacement AXP2101 PWR negative/positive edge path on the
 physical unit as well as the GPIO0 path.
 
+Both transcripts above are what those runs printed and are left as they were
+recorded. A repeat prints the same lines under the tag `physical-input` rather
+than `watch-control`: the producers moved to `firmware/main/physical_input.cpp`
+in #346 so that they survive a build with no debug endpoint, and the log tag
+moved with them (`physical_input.cpp:25`). The behaviour did not change, and
+this was not re-measured — **NOT EXECUTED — HARDWARE REQUIRED**.
+
 The earlier six FT3168 presses in `BRINGUP_2026-08-25.md` predate the shared
 queue producer. On the same `0413fcc` run the owner tapped the visible target;
 the next physical screenshot was opened at original resolution and showed
@@ -131,6 +142,8 @@ physical pointer transition through the shared `InputQueue` into LVGL.
 
 This run proves the physical USB endpoint, automatic serial selection, complete
 RGB565 capture, orientation/colour order, bounded transfer, remote tap and the
-physical touch, BOOT and PWR input paths. It does not prove sunlight
-readability, panel gamma, touch sensitivity across the panel, PWR wake from an
-SoC-off state or the sleep/wake lifecycle.
+physical touch, BOOT and PWR input paths — on one image, the one with
+`CONFIG_ATTADIPA_WATCH_CONTROL=y`, which is now `sdkconfig.hil`. It does not
+prove sunlight readability, panel gamma, touch sensitivity across the panel, PWR
+wake from an SoC-off state or the sleep/wake lifecycle, and it proves nothing
+about the product image, which had not been built when this was recorded.

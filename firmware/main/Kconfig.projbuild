@@ -4,7 +4,12 @@ config ATTADIPA_WATCH_CONTROL
     bool "USB watch-control endpoint"
     default n
     help
-        Enable screenshots and physical/remote input over USB-Serial/JTAG.
+        Enable the debug control plane over USB-Serial/JTAG: screenshots,
+        remote input, and the time and mesh provisioning opcodes. Any host
+        that can open the port can use all of it; there is no
+        authentication, so this is a bench image rather than a product one.
+        Physical touch and the case buttons are NOT gated by this symbol --
+        they live in physical_input.cpp and are in every image (#346).
         The feature owns one full RGB565 frame in PSRAM while running.
 
 config ATTADIPA_I2C_PROBE

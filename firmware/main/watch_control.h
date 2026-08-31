@@ -1,11 +1,6 @@
 #pragma once
 
-#include <cstdint>
-
-#include "driver/i2c_master.h"
 #include "esp_err.h"
-#include "esp_lcd_panel_ops.h"
-#include "esp_lcd_touch.h"
 
 namespace attadipa::debug {
 class TimeSink;

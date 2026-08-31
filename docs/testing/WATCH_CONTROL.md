@@ -365,14 +365,46 @@ why the shipping defaults had it on (#346).
 
 **What a product image consequently cannot do.** `TimeSync` and `mesh-configure`
 are both debug opcodes, and they were the only way in for the two things a watch
-has to be told once. A production image reads the PCF85063 and restores a
-persisted UTC offset, but cannot write the clock or persist an offset —
-`BoardTimeSink` and `save_time_metadata` are inside the same `#if` — and it
-cannot receive a MeshCore passkey at all. Provisioning currently means flashing
-the HIL image, provisioning, and flashing back. That is a deliberate consequence
-of the trust boundary rather than an oversight, and giving a product image its
-own consented provisioning path is
-[#356](https://github.com/hleserg/Attadipa/issues/356).
+has to be told once. The two are not equally recoverable, and the difference is
+worth stating precisely, because a provisioning procedure that half works is
+worse than one that visibly does not.
+
+*The clock survives the round trip.* A production image reads the PCF85063 and
+restores a persisted UTC offset — `restore_time_metadata()`
+(`waveshare_board.cpp:665`) is outside the `#if` — but cannot write the clock or
+persist an offset, because `BoardTimeSink` and `save_time_metadata` are inside
+it. Flashing the HIL image, setting the time, and flashing back therefore works:
+the PCF85063 is battery-backed and the offset is in NVS.
+
+*MeshCore has no round trip at all.* `configure_meshcore_ble()`
+(`meshcore_ble.cpp:958`) has exactly one caller, `BoardMeshSink::configure`
+(`waveshare_board.cpp:378`), inside the same `#if`, so a production image
+contains no call to it. What that call sets is per-boot RAM rather than storage:
+`configured` and `reconnect_allowed` are `std::atomic_bool{false}`
+(`meshcore_ble.cpp:127`, `:129`), the `Configure` event is the only thing that
+sets either of them **true** (`:843`, `:844` — every other write clears them),
+and `start_scan()` returns unless both are true (`:197`).
+`CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a bond buys nothing without
+a scan. So provisioning over the HIL image does not survive being flashed away —
+it does not survive a power cycle of the HIL image either, which is what shows
+the round trip never existed. A product image stays `Unprovisioned` for its
+whole life and nothing on the watch can change that: `mesh_screen_requested`
+(`waveshare_board.cpp:120`) is set only at `:381`, inside the same `#if`, so the
+mesh screen never appears.
+
+It still pays for the subsystem. `start_meshcore_ble()` is unconditional
+(`attadipa_main.cpp:310`, under `CONFIG_BT_NIMBLE_ENABLED` only), so every
+product image runs `nimble_port_init()` (`meshcore_ble.cpp:943`), brings the
+controller up and creates
+the `meshcore` task with a 6,144-byte stack (`meshcore_ble.cpp:938`) for a
+subsystem that can never scan. That cost is real and is recorded against
+[#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
+gating the BLE start is a change to what the product does, and this change is
+about the USB control plane.
+
+All of this is a deliberate consequence of the trust boundary rather than an
+oversight, and giving a product image its own consented provisioning path — the
+only thing that would make mesh reachable on a shipped watch — is #356.
 
 There is no runtime switch, by design. A flag an unauthenticated host could
 set itself would be the same control plane wearing a hat.
