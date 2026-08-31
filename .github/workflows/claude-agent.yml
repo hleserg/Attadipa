@@ -85,6 +85,9 @@ jobs:
       admission_allow: ${{ steps.admission.outputs.allow }}
       admission_count: ${{ steps.admission.outputs.count }}
       issue: ${{ steps.decide.outputs.issue }}
+      # "pr" or "issue". Empty only on the paths that refuse before the issue is
+      # fetched, and those start none of the jobs that read it.
+      target_kind: ${{ steps.decide.outputs.target_kind }}
       task_type: ${{ steps.decide.outputs.task_type }}
       priority: ${{ steps.decide.outputs.priority }}
       producer: ${{ steps.decide.outputs.producer }}
@@ -200,6 +203,18 @@ jobs:
           # Read the task from the API rather than from the event payload, which
           # is a snapshot of whatever the issue said when the event fired.
           gh api "repos/$REPO/issues/$ISSUE_NUMBER" > /tmp/issue.json
+
+          # WHICH OBJECT THIS IS, decided once and carried out of the gate.
+          # Three of the five triggers fire on pull requests, so `issue` is a
+          # pull request number roughly whenever an agent starts from one, and
+          # `gh issue edit` does not resolve those -- .github/scripts/gh-label.sh
+          # has the whole argument in its header. Every later step that touches
+          # a label used to re-derive this or, worse, not ask; the JSON is
+          # already here, so it is answered here and read from the gate output.
+          TARGET_KIND=$(jq -r 'if .pull_request then "pr" else "issue" end' /tmp/issue.json)
+          case "$TARGET_KIND" in pr|issue) ;; *) TARGET_KIND=issue ;; esac
+          echo "target_kind=$TARGET_KIND" >> "$GITHUB_OUTPUT"
+
           BODY=$(jq -r '.body // ""' /tmp/issue.json)
           LABELS=$(jq -r '[.labels[].name] | join(",")' /tmp/issue.json)
           STATE=$(jq -r '.state' /tmp/issue.json)
@@ -449,6 +464,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
+          TARGET_KIND: ${{ needs.gate.outputs.target_kind }}
           TASK_TYPE: ${{ needs.gate.outputs.task_type }}
           PRIORITY: ${{ needs.gate.outputs.priority }}
           STATE: ${{ needs.gate.outputs.admission }}
@@ -460,19 +476,46 @@ jobs:
           set -euo pipefail
 
           # `agent:ready` is the queue's own durable signal and the watchdog
-          # already reads it -- no new label, no new mechanism. But it is inert
-          # on an issue carrying a state label: queue-scan.jq drops
-          # agent:review and agent:blocked outright, and intake-decision.sh
-          # rejects a workflow_dispatch carrying either. Adding it there would
-          # promise a pickup that cannot happen, so it is not added and the
-          # comment says which path does work instead.
+          # already reads it -- no new label, no new mechanism. But the label is
+          # only worth adding where the watchdog can act on it, and there are
+          # THREE ways it cannot. Asking one of the three and adding the label
+          # anyway is an inert label promising a pickup that will not happen,
+          # which is the failure this step exists to avoid, not to commit.
+          #
+          #   1. The target is a pull request. `queue-scan.jq` is
+          #      `select(.pull_request == null)`: the watchdog never picks one
+          #      up, at any priority, ever.
+          #   2. The target carries a state label. queue-scan.jq drops
+          #      agent:review and agent:blocked outright, and
+          #      intake-decision.sh rejects a workflow_dispatch carrying either.
+          #   3. The deferral was not about capacity. `parked` is an owner hold
+          #      and wip-limit.sh exempts a parked pull request from the count
+          #      entirely, so nothing about draining the queue lifts it; the
+          #      owner does, by removing the label.
+          #
+          # REQUEUED is a reason, not a flag, because the receipt has to say
+          # WHICH of the three applies -- a reader told only "not requeued"
+          # cannot tell an owner hold from a task under review.
+          # shellcheck source=.github/scripts/gh-label.sh
+          # shellcheck disable=SC1091
+          . .github/scripts/gh-label.sh
+
           LABELS=$(gh api "repos/$REPO/issues/$ISSUE" --jq '[.labels[].name] | join(",")')
           REQUEUED=true
           case ",$LABELS," in
-            *,agent:working,*|*,agent:review,*|*,agent:blocked,*) REQUEUED=false ;;
+            *,agent:working,*|*,agent:review,*|*,agent:blocked,*) REQUEUED=state-label ;;
           esac
+          if [ "$REQUEUED" = true ] && [ "$TARGET_KIND" = pr ]; then
+            REQUEUED=pull-request
+          fi
           if [ "$REQUEUED" = true ]; then
-            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:ready
+            case "$STATE" in
+              full|incident|unknown) ;;
+              *) REQUEUED=not-capacity ;;
+            esac
+          fi
+          if [ "$REQUEUED" = true ]; then
+            attadipa_label_edit "$TARGET_KIND" "$ISSUE" "$REPO" --add-label agent:ready
           fi
 
           # No agent:working and no claim: this task was never started, and a
@@ -483,8 +526,12 @@ jobs:
           bash .github/scripts/agent-say.sh deferred \
             "$RUN_URL" "$TASK_TYPE" "$PRIORITY" "$TRIGGER" "$ACTOR" \
             "$STATE" "$COUNT" "$REQUEUED" > /tmp/deferred.md
-          gh issue comment "$ISSUE" --repo "$REPO" --body-file /tmp/deferred.md
-          echo "::notice::deferred #$ISSUE admission=$STATE requeued=$REQUEUED"
+          # `gh issue comment` does resolve a pull request today. Relying on that
+          # is relying on the accident gh-label.sh's header says not to rely on,
+          # and this step is now three lines away from a call that does not
+          # share it.
+          attadipa_label_comment "$TARGET_KIND" "$ISSUE" "$REPO" --body-file /tmp/deferred.md
+          echo "::notice::deferred #$ISSUE ($TARGET_KIND) admission=$STATE requeued=$REQUEUED"
 
   refused:
     name: Say why it was refused
@@ -621,6 +668,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ needs.gate.outputs.issue }}
+          TARGET_KIND: ${{ needs.gate.outputs.target_kind }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           CLAIM_HOLDER: agent-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -652,7 +700,19 @@ jobs:
             # issue was never claimed at this point -- the issue-level claim is
             # the next statement -- so agent:ready is true rather than
             # decorative, and it is what the watchdog rediscovers.
-            gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:ready || true
+            #
+            # ON AN ISSUE. `queue-scan.jq` is `select(.pull_request == null)`,
+            # so on a pull request the watchdog never comes and the label is
+            # decorative; and a bare `gh issue edit ... || true` would not even
+            # have applied it, silently, which is the outcome the paragraph
+            # above claims to remove. The split is written out rather than
+            # sourced because this step runs before the checkout, exactly as
+            # `Normalise labels` does and for the same reason.
+            if [ "${TARGET_KIND:-issue}" = issue ]; then
+              gh issue edit "$ISSUE" --repo "$REPO" --add-label agent:ready || true
+            else
+              echo "::notice::#$ISSUE is a pull request; queue-scan.jq never picks one up, so agent:ready is not added"
+            fi
             exit 0
           fi
 

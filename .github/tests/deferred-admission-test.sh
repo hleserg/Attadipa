@@ -131,15 +131,30 @@ stub() {
   mkdir -p "$work/bin" "$work/state" || return 1
   : > "$work/state/comments"
   : > "$work/state/labels"
+  # THE STUB DISTINGUISHES issue FROM pr ON PURPOSE. `gh issue edit` resolves
+  # through GraphQL `repository.issue(number:)`, which does not resolve a pull
+  # request -- so a stub that answers both the same way cannot see the defect
+  # where a step edits a pull request's labels through the issue command. It is
+  # recorded with its object kind, and `gh issue edit` against a pull request
+  # exits non-zero the way the real one does. `blocked-restart-test.sh` models
+  # the same split.
   cat > "$work/bin/gh" <<STUB
 #!/usr/bin/env bash
 case "\$1 \$2" in
   "api repos/"*)
     printf '%s' "\$ATTADIPA_STUB_LABELS" ;;
   "issue edit")
+    if [ "\$ATTADIPA_STUB_KIND" = pr ]; then
+      echo 'GraphQL: Could not resolve to an Issue with the number.' >&2
+      exit 1
+    fi
     shift 2
-    printf '%s\n' "\$*" >> "$work/state/labels" ;;
-  "issue comment")
+    printf 'issue %s\n' "\$*" >> "$work/state/labels" ;;
+  "pr edit")
+    shift 2
+    printf 'pr %s\n' "\$*" >> "$work/state/labels" ;;
+  "issue comment"|"pr comment")
+    printf '%s\n' "\$1" >> "$work/state/commented-as"
     for a in "\$@"; do
       if [ "\$prev" = --body-file ]; then cat "\$a" >> "$work/state/comments"; fi
       prev=\$a
@@ -151,18 +166,28 @@ STUB
 }
 stub || exit 1
 
+# run_deferred LABELS STATE COUNT [TARGET_KIND]
+#
+# TARGET_KIND defaults to `issue`; pass `pr` for the three triggers that fire on
+# pull requests. RC is kept because the step runs under `set -euo pipefail` and
+# the failure this test exists to catch is one that dies BEFORE the comment.
 run_deferred() {
-  ( : > "$work/state/comments"; : > "$work/state/labels"
-    export PATH="$work/bin:$PATH"
+  : > "$work/state/comments"; : > "$work/state/labels"
+  : > "$work/state/commented-as"
+  ( export PATH="$work/bin:$PATH"
     export ATTADIPA_STUB_LABELS="$1"
+    export ATTADIPA_STUB_KIND="${4:-issue}"
     export GH_TOKEN=stub REPO=hleserg/Attadipa ISSUE=264
+    export TARGET_KIND="${4:-issue}"
     export TASK_TYPE=continuous-review PRIORITY=P1
     export STATE="$2" COUNT="$3"
     export TRIGGER=issue_comment ACTOR=hleserg RUN_URL=http://run/1
     printf '%s\n' "$DEFERRED_RUN" > "$work/deferred.sh"
     bash "$work/deferred.sh" >/dev/null 2>&1 )
+  RC=$?
   COMMENT=$(cat "$work/state/comments")
   LABELS_SET=$(cat "$work/state/labels")
+  COMMENTED_AS=$(cat "$work/state/commented-as")
 }
 
 # 1. Trusted comment, queue `full`, ordinary unclaimed issue -- the #264 case.
@@ -194,6 +219,42 @@ has   "and is told which path actually restarts it" "$COMMENT" '@claude'
 run_deferred "agent:blocked" full 2
 hasnt "a blocked task is not given an inert label either" "$LABELS_SET" "agent:ready"
 
+# 4. A PULL REQUEST target. Three of this workflow's five triggers fire on one,
+#    so `needs.gate.outputs.issue` is a pull request number whenever an agent is
+#    started from a review comment. `gh issue edit` does not resolve those, and
+#    under `set -euo pipefail` the step would die at the label edit -- BEFORE
+#    the comment it exists to post. That is the same silence #293 is about, on
+#    the path this workflow uses most.
+run_deferred "" full 2 pr
+say   "a deferral on a pull request does not die at the label edit" "$RC" "0"
+has   "a deferral on a pull request still answers"     "$COMMENT" "attadipa-deferred"
+hasnt "and never reaches for gh issue edit"            "$LABELS_SET" "issue --add-label"
+say   "and comments as a pull request, not by gh's accident" "$COMMENTED_AS" "pr"
+
+#    ...and the label is not added there at all: queue-scan.jq selects
+#    `.pull_request == null`, so the watchdog never picks a pull request up and
+#    agent:ready on one is an inert label promising a pickup that cannot happen.
+hasnt "a pull request is not given an inert agent:ready" "$LABELS_SET" "agent:ready"
+has   "and the receipt says the watchdog is not coming"  "$COMMENT" "does not pick up pull requests"
+
+# 5. `parked` is an owner hold, not a capacity answer. `wip-limit.sh` exempts a
+#    parked pull request from the open count entirely, so nothing about the
+#    queue draining lifts it -- and the receipt must not say capacity, because
+#    the reader would then wait for the wrong event.
+run_deferred "queue:parked" parked 1 pr
+has   "a parked target still gets an answer"           "$COMMENT" "attadipa-deferred"
+hasnt "a parked target is not given an inert label"    "$LABELS_SET" "agent:ready"
+has   "and is told it is an owner hold"                "$COMMENT" "owner hold"
+hasnt "and is NOT told to wait for capacity"           "$COMMENT" "about writer capacity and nothing else"
+has   "and is told merging will not lift it"           "$COMMENT" "no amount of merging lifts it"
+
+# 6. The second site the same blindness lives at: the writer's own admission
+#    recheck under the lease. `|| true` there means a pull request does not fail
+#    -- it silently does nothing, which is the outcome its own comment claims to
+#    remove.
+has "the lease recheck asks which object it is editing" "$CLAIM_RUN" "TARGET_KIND"
+has "the gate publishes which object it is"             "$GATE_OUTPUTS" "target_kind:"
+
 # ------------------------------------------------------------------- mutation
 # Restore the defect on a copy: `Decide` conditional on admission again. Every
 # assertion above is a grep, and a grep proves nothing unless putting the bug
@@ -209,6 +270,66 @@ elif printf '%s' "$MUT_IF" | grep -qF "admission"; then
 else
   no "restoring 'admit before decide' is detected by the assertion above" \
      "mutant Decide if is '$MUT_IF'"
+fi
+
+# The pull-request half needs its own mutation, and it has to be run rather than
+# grepped: the two defects it guards are a step that DIES and a label that lands
+# where it is inert, neither of which is visible in the text.
+run_mutant_deferred() {
+  : > "$work/state/comments"; : > "$work/state/labels"
+  : > "$work/state/commented-as"
+  ( export PATH="$work/bin:$PATH"
+    export ATTADIPA_STUB_LABELS="" ATTADIPA_STUB_KIND=pr
+    export GH_TOKEN=stub REPO=hleserg/Attadipa ISSUE=264 TARGET_KIND=pr
+    export TASK_TYPE=continuous-review PRIORITY=P1 STATE=full COUNT=2
+    export TRIGGER=issue_comment ACTOR=hleserg RUN_URL=http://run/1
+    printf '%s\n' "$1" > "$work/mutant.sh"
+    bash "$work/mutant.sh" >/dev/null 2>&1 )
+  MRC=$?
+  MLABELS=$(cat "$work/state/labels")
+}
+
+# The stub itself, first. Case 4's "never reaches for gh issue edit" is only
+# worth anything if the stub would have noticed -- and the shipping step no
+# longer has a path that calls it on a pull request, so nothing else proves the
+# stub is still able to tell the two commands apart.
+if ( export PATH="$work/bin:$PATH" ATTADIPA_STUB_KIND=pr
+     gh issue edit 264 --repo x --add-label agent:ready ) >/dev/null 2>&1; then
+  no "the stub refuses gh issue edit on a pull request, as the real one does" \
+     "it exited 0, so every assertion about the two commands above is vacuous"
+else
+  ok "the stub refuses gh issue edit on a pull request, as the real one does"
+fi
+
+# `gh issue comment` DOES resolve a pull request today, so this mutation cannot
+# be caught by an exit code -- only by WHICH command was used. That is the
+# point: the receipt must not rest on an accident of gh's implementation that
+# `gh issue edit` does not share.
+M1=$(printf '%s\n' "$DEFERRED_RUN" | sed 's/attadipa_label_comment "$TARGET_KIND"/gh issue comment/')
+if [ "$M1" = "$DEFERRED_RUN" ]; then
+  no "the object-kind mutation changed something" "the sed matched nothing"
+else
+  run_mutant_deferred "$M1"
+  MCOMMENTED=$(cat "$work/state/commented-as")
+  if [ "$MCOMMENTED" = issue ]; then
+    ok "commenting through the issue command again is detected"
+  else
+    no "commenting through the issue command again is detected" \
+       "the mutant commented as '$MCOMMENTED', so the assertion in case 4 is not load-bearing"
+  fi
+fi
+
+M2=$(printf '%s\n' "$DEFERRED_RUN" | sed 's/\[ "\$TARGET_KIND" = pr \]/false/')
+if [ "$M2" = "$DEFERRED_RUN" ]; then
+  no "the inert-label mutation changed something" "the sed matched nothing"
+else
+  run_mutant_deferred "$M2"
+  if printf '%s' "$MLABELS" | grep -qF "agent:ready"; then
+    ok "dropping the pull-request guard puts the inert label back"
+  else
+    no "dropping the pull-request guard puts the inert label back" \
+       "no agent:ready was recorded, so the guard's assertion is not load-bearing"
+  fi
 fi
 
 # ------------------------------------------------------------------- renderer

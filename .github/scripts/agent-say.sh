@@ -108,10 +108,22 @@ attadipa_receipt() {
 # So refusing to START is now said out loud, separately from refusing the
 # REQUEST. This renderer is the difference between the two.
 #
-# REQUEUED is `true` when `agent:ready` was actually added, and it is not a
-# formality: `queue-scan.jq` skips `agent:review` and `agent:blocked`, and
-# `intake-decision.sh` rejects a `workflow_dispatch` carrying either. On those
-# two the label would be inert, so the text has to name the path that does
+# REQUEUED is `true` when `agent:ready` was actually added, and otherwise names
+# WHICH of the three reasons it was not -- `state-label`, `pull-request` or
+# `not-capacity`. It is a reason and not a flag because the three have three
+# different ways back and a reader told only "not requeued" cannot tell an owner
+# hold from a task under review:
+#
+#   state-label   `queue-scan.jq` skips agent:review and agent:blocked, and
+#                 intake-decision.sh rejects a dispatch carrying either.
+#   pull-request  `queue-scan.jq` is `select(.pull_request == null)` -- the
+#                 watchdog never picks up a pull request, at any priority.
+#   not-capacity  the admission answer was not about the queue being full, so
+#                 draining it changes nothing (`queue:parked` is the case that
+#                 exists today; `wip-limit.sh` exempts a parked pull request
+#                 from the count entirely).
+#
+# In all three the label would be inert, so the text names the path that does
 # work instead of promising one that does not.
 attadipa_deferred() {
   local run_url="$1" task_type="$2" priority="$3" trigger="$4" actor="$5"
@@ -125,6 +137,11 @@ attadipa_deferred() {
       why="the open pull request count is **past** the limit ($count open), which the queue treats as an incident rather than as pressure" ;;
     unknown)
       why="the pull request count could not be read, and admission fails closed" ;;
+    parked)
+      # NOT a capacity answer, and the closing line below must not say it is.
+      # `wip-limit.sh` exempts a parked pull request from the count entirely, so
+      # draining the queue does not lift this and never will.
+      why="this target carries \`queue:parked\`, which is an owner hold rather than a capacity answer" ;;
     *)
       why="writer admission answered \`$state\`" ;;
   esac
@@ -143,26 +160,55 @@ attadipa_deferred() {
   echo "**This request was understood and no agent was started**, because $why."
   echo "Nothing was claimed and no label says work is in progress, because none is."
   echo
-  if [ "$requeued" = true ]; then
-    echo "**What brings it back:** \`agent:ready\` is now on this issue, so the hourly"
-    echo "watchdog picks it up on its next tick once a pull request merges or closes"
-    echo "and capacity returns. You do not need to comment again, and commenting"
-    echo "again does not make it sooner — a second comment starts a second billed"
-    echo "run against the same admission answer."
-  else
-    echo "**What brings it back is not the watchdog, and that is worth knowing.**"
-    echo "This issue carries a state label (\`agent:working\`, \`agent:review\` or"
-    echo "\`agent:blocked\`), and both \`queue-scan.jq\` and the intake gate refuse a"
-    echo "dispatch carrying one — deliberately, so a task under review is not picked"
-    echo "up twice. \`agent:ready\` was therefore **not** added: it would have been an"
-    echo "inert label promising a pickup that cannot happen."
-    echo
-    echo "A comment is the only start that does not need label surgery. When the"
-    echo "state label no longer applies, comment \`@claude\` here."
-  fi
+  case "$requeued" in
+    true)
+      echo "**What brings it back:** \`agent:ready\` is now on this issue, so the hourly"
+      echo "watchdog picks it up on its next tick once a pull request merges or closes"
+      echo "and capacity returns. You do not need to comment again, and commenting"
+      echo "again does not make it sooner — a second comment starts a second billed"
+      echo "run against the same admission answer."
+      ;;
+    state-label)
+      echo "**What brings it back is not the watchdog, and that is worth knowing.**"
+      echo "This issue carries a state label (\`agent:working\`, \`agent:review\` or"
+      echo "\`agent:blocked\`), and both \`queue-scan.jq\` and the intake gate refuse a"
+      echo "dispatch carrying one — deliberately, so a task under review is not picked"
+      echo "up twice. \`agent:ready\` was therefore **not** added: it would have been an"
+      echo "inert label promising a pickup that cannot happen."
+      echo
+      echo "A comment is the only start that does not need label surgery. When the"
+      echo "state label no longer applies, comment \`@claude\` here."
+      ;;
+    pull-request)
+      echo "**The watchdog does not pick up pull requests, so nothing here is queued.**"
+      echo "\`queue-scan.jq\` selects \`.pull_request == null\` — a pull request is never"
+      echo "a candidate, at any priority. \`agent:ready\` was therefore **not** added:"
+      echo "on this object it is a label that promises a pickup which cannot happen."
+      echo
+      echo "Comment \`@claude\` here again once capacity returns; a comment is the only"
+      echo "start this object has."
+      ;;
+    *)
+      echo "**Nothing is queued, and draining the queue will not change that.**"
+      echo "\`agent:ready\` was **not** added, because the hourly watchdog only acts on"
+      echo "admission answers that are about capacity, and this one is not."
+      echo
+      echo "Remove whatever is holding this target — for \`queue:parked\` that is the"
+      echo "owner's label and nobody else's — and then comment \`@claude\` here."
+      ;;
+  esac
   echo
-  echo "The refusal is about writer capacity and nothing else. It is not a verdict"
-  echo "on the request, and the request is not lost."
+  case "$state" in
+    parked)
+      echo "This is not a verdict on the request and the request is not lost. It is"
+      echo "also **not** a capacity answer: a parked pull request is exempt from the"
+      echo "open-pull-request count, so no amount of merging lifts it."
+      ;;
+    *)
+      echo "The refusal is about writer capacity and nothing else. It is not a verdict"
+      echo "on the request, and the request is not lost."
+      ;;
+  esac
 }
 
 # attadipa_outcome KIND RUN_URL DETAIL
