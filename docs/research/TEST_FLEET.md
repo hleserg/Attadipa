@@ -8,10 +8,14 @@ Attadipa node or any transmitter"* in two places (H-3, H-4) and never says which
 nodes those are. A plan whose equipment list is a category rather than a part is
 a plan nobody can start.
 
-Owner-supplied, 2026-08-22. Everything in §1 is **reported by the owner and not
-independently verified** — nothing here has been read off a device by this
-project. §2 is the opposite: it is measured, and it is the part most likely to
-save the next agent a wasted run.
+**§1 is no longer uniformly owner-reported, so read the label on each claim
+rather than the label on the section.** Which nodes exist, what they are for and
+what is fitted to them is owner-reported and unverified. Two of the five nodes
+have since been on a bench and answered a Companion session, so their model,
+firmware and identity fields are `MEASURED` and carry a citation to the run that
+read them; the other three have never been read, and what is not known about
+them says `UNKNOWN` rather than inheriting a neighbour's answer. §2 is measured
+throughout, and it is the part most likely to save the next agent a wasted run.
 
 ## 1. The nodes
 
@@ -24,20 +28,48 @@ node here, not the number.
 | Node | Count | Role | Reachable over |
 |---|---|---|---|
 | **T114** | 4 | Home Assistant · **the free bench node** · Room Server · repeater | BLE, USB |
-| **V4.3** companion | 1 | the second bench node, and the one that answers for the Beta Room | BLE, USB |
+| **V4.3** companion | 1 | the second bench node | BLE, USB |
+
+The **Beta Room** is not a row in this table. It is a Room Server with public
+key `ba4c1ca4d6463a23…` (`MEASURED` 2026-08-28,
+[`MESHCORE_T114_FIRST_CONTACT.md:275`](MESHCORE_T114_FIRST_CONTACT.md)
+"Beta Room"), which is neither of the two bench nodes' keys — the T114's is
+`5c62d9bc…` and the V4.3's `044e2de8…`. **Both** bench nodes answered its login;
+only the V4.3's send was confirmed end to end
+([`MESHCORE_T114_FIRST_CONTACT.md:66`](MESHCORE_T114_FIRST_CONTACT.md)
+"login yes, ack no"). Whether the Room Server role in the table above *is* the
+Beta Room is `UNKNOWN` — nothing has read that node's key. A run that targets
+the room addresses `ba4c1ca4…` and needs it in mesh range; picking a fleet node
+by this table instead gets `ERR`/`NOT_FOUND`.
 
 - The **free T114** is the bench node of T-169. It stays on
   `v1.17.1-d929643` — owner decision, [#90](https://github.com/hleserg/Attadipa/issues/90),
   2026-08-31 — because that is the revision this repository pins for protocol
   work, and reflashing it would leave ADR-0003 with no node to re-check against.
-  It is the only node in the fleet matching the pin.
-- **The other three T114s** are to be flashed to the latest official MeshCore
-  release. The Home Assistant one carries no screen and no GNSS; the free one has
-  both. Roles for the Room Server and repeater nodes are owner-reported and their
-  firmware has not been read off the device.
-- The **V4.3** runs [`dt267/MeshCore-Low-Power-Firmware`](https://github.com/dt267/MeshCore-Low-Power-Firmware)
-  (`v1.17.dev`, `9 Aug dt267`). It is physically connected by USB to the owner's
-  machine — see §2 before assuming that means anything from here.
+  It is the only node **known** to match the pin: it was read at that revision on
+  the bench, and the firmware on the Room Server and the repeater has never been
+  read, so "the only one" is a statement about what this repository knows and not
+  about the flat.
+- **A reflash decision exists for two nodes, not three.** OD-16 records "two
+  Heltec T114s to be flashed with the latest official MeshCore"
+  ([`OWNER_DECISIONS.md:1127`](OWNER_DECISIONS.md) "to be flashed with the latest
+  official"), taken when this repository believed the fleet held two. The Home
+  Assistant node is one of them. **The Room Server and the repeater are in
+  service, their firmware has never been read, and no decision covers writing to
+  them** — treat them the way [`BENCH_DEVICES.md:69`](BENCH_DEVICES.md)
+  "not ours to write to" treats the MeshCore node on this host: do not flash
+  without an owner decision naming the node.
+- **GNSS fitment is known for two T114s and `UNKNOWN` for two.** The Home
+  Assistant one carries no screen and no GNSS; the free bench one has both;
+  owner-reported, 2026-08-31. Nothing records whether the Room Server or the
+  repeater carries a receiver, and it is not to be inferred from the other two.
+- The **V4.3** runs [`dt267/MeshCore-Low-Power-Firmware`](https://github.com/dt267/MeshCore-Low-Power-Firmware).
+  The fork is owner-reported; the version string is not — `v1.17.dev`,
+  `9 Aug dt267` came off `RESP_CODE_DEVICE_INFO` in a Companion session,
+  `MEASURED` 2026-08-28
+  ([`MESHCORE_T114_FIRST_CONTACT.md:61`](MESHCORE_T114_FIRST_CONTACT.md)
+  "14-Aug-2026", the same table's T114 column). It is physically connected by USB
+  to the owner's machine — see §2 before assuming that means anything from here.
 - **Node selection is by advertisement order, not by name, and that is a real
   problem.** `advertises_meshcore()` matches the Companion service UUID or the
   name substring `MeshCore` and connects to whichever advertisement arrives
@@ -45,20 +77,40 @@ node here, not the number.
   as [#304](https://github.com/hleserg/Attadipa/issues/304); every T-169 claim
   names its node for this reason.
 
-  The advertised names are **not** what this file used to say. `MEASURED`
-  2026-08-28, [`MESHCORE_T114_FIRST_CONTACT.md:62`](MESHCORE_T114_FIRST_CONTACT.md)
+  **The advertised name of every node in this fleet is `UNKNOWN`, and the two
+  names this file used to call advertised are not.** `MEASURED` 2026-08-28,
+  [`MESHCORE_T114_FIRST_CONTACT.md:62`](MESHCORE_T114_FIRST_CONTACT.md)
   "`RESP_CODE_SELF_INFO` name": the T114 answers `Beta test companion` and the
-  **V4.3** answers `✂️Beta Serega`. The earlier claim here — that two T114s shared
-  the name `Beta Serega` — was wrong in both halves, and the report that measured
-  it had already withdrawn the reading behind it
-  ([`MESHCORE_T114_FIRST_CONTACT.md:81`](MESHCORE_T114_FIRST_CONTACT.md)
-  "The earlier revision of this report recorded").
+  V4.3 answers `✂️Beta Serega`. Both are read from `RESP_CODE_SELF_INFO`, a
+  Companion field that arrives **after** connect and pair — the advertisement is
+  what a scanner sees *before* any of that, and neither string has been observed
+  in one.
+
+  The distinction is the whole of #304 and it is not pedantic:
+  `advertises_meshcore()` requires the literal substring `MeshCore` and a name of
+  at least 8 bytes (`firmware/main/meshcore_ble.cpp:241`). Neither
+  `Beta test companion` nor `✂️Beta Serega` contains `MeshCore`, so a fix that
+  filters on these two strings matches **nothing**, and the run falls back to
+  whichever node advertised first — the exact defect the filter was added to
+  remove.
+
+  The one advertised name this repository has measured is
+  `MeshCore-🤘Beta Serega`
+  ([`T114_BLE_COMPANION_DEFECTS_2026-08-26.md:24`](T114_BLE_COMPANION_DEFECTS_2026-08-26.md)
+  "advertised as"), on a board the same report labels `OPERATOR REPORTED` as a
+  T114 and which [`BENCH_DEVICES.md:110`](BENCH_DEVICES.md)
+  "Do not close that gap by inference" refuses to tie to either bench node. It is
+  not the V4.3's: the earlier reading that gave both names to one unit is
+  withdrawn ([`MESHCORE_T114_FIRST_CONTACT.md:81`](MESHCORE_T114_FIRST_CONTACT.md)
+  "The earlier revision of this report recorded" — "the two names belong to two
+  different boards"). Which fleet row it belongs to is `UNKNOWN`.
 
 ### 1a. Parts on hand that are not a node yet
 
-Owner, 2026-08-31, recorded here because §1's provenance is exactly right for it:
-**reported by the owner, nothing read off a device.** None of it was on the bench
-during any run in this repository.
+Owner, 2026-08-31. **All of it is owner-reported and none of it has been read off
+a device** — this paragraph states its own provenance rather than borrowing §1's,
+because §1 now mixes owner reports with bench reads. None of these parts was on
+the bench during any run in this repository.
 
 | Part | What it is |
 |---|---|
@@ -142,7 +194,7 @@ Three open questions, each with an issue, none of them answerable from here:
   "14-Aug-2026"), which is the revision `MESHCORE_BLE_FRAME_CAPACITY.md` read its
   source against. Protocol behaviour observed against any *other* node is
   evidence about that node's revision, not about the pin.
-- **No indoor GNSS fix, on the T114 that carries GNSS or on the V4.3.**
+- **No indoor GNSS fix, on a GNSS-fitted T114 or on the V4.3.**
   [#91](https://github.com/hleserg/Attadipa/issues/91). Owner-reported, and it
   is **not** a receiver defect: a GNSS module indoors in a flat is expected to
   see nothing. It is written down so that the next person testing from a desk

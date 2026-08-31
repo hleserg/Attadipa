@@ -1147,6 +1147,34 @@ An earlier version of this table recorded the V4's links as `—`, which was
 wrong. A second side drivable from a laptop is a test fixture, not just another
 radio in the room.
 
+> **Annotated 2026-09-01, [#124](https://github.com/hleserg/Attadipa/issues/124)
+> — the answer above is preserved, and two of its facts are superseded.** Per
+> OD-12 the decision text is not rewritten; what changed is recorded here.
+>
+> **The count.** The owner answered #124 on 2026-08-31: the fleet is **five
+> nodes, four Heltec T114 and one Heltec V4.3** — not three. "Two Heltec T114s"
+> above was a true count of what this repository knew in August, and every
+> sentence written since that said *both* T114s quantified over a set of two
+> that does not exist. The record of record is still TEST_FLEET §1.
+>
+> **The shared advertised name is withdrawn.** The bullet above says the two
+> T114s advertise under the same name; that was never measured. The two names
+> this repository has are `RESP_CODE_SELF_INFO` names read after pairing —
+> `Beta test companion` and `✂️Beta Serega`, on a T114 and the V4.3 — and they
+> differ from each other. The advertised name of every fleet node is `UNKNOWN`.
+> **The rule the bullet draws from it is unaffected and still holds: select by
+> address.** If anything it is stronger, because a name filter now has no
+> measured string to filter on.
+>
+> **The two line ranges cited above no longer land on their subjects.** They
+> were written against `485dddb`. The shared-name claim was at `:29-32`; the
+> pairing PIN is now §1b,
+> [`TEST_FLEET.md:150`](TEST_FLEET.md) "A BLE pairing PIN is required".
+> Both citations were bare ranges, which is why they rotted silently —
+> `check_citation_lines` only requires the line to exist.
+
+
+
 `doctor` as a hostname names no node in this answer — the Home Assistant role
 is a node's job, and the headless T114 inherits it.
 
