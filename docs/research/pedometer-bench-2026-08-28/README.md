@@ -53,9 +53,11 @@ text — this source does not reproduce the archived captures line for line:
    [`HARDWARE_MATRIX.md:514`](../HARDWARE_MATRIX.md) records `CTRL3 = 0x36` as
    *"residue this session knowingly left on the part"*. That remains the correct
    statement **about the run**; it is no longer what this source does;
-4. **text** — two stale `printf` labels are corrected — `CTRL2 = 0x16` is ±4 g
-   at 112.1 Hz in 6DOF, and `CTRL3 = 0x36` is ±128 dps, not the ±1000 dps
-   printed here.
+4. **text** — four stale `printf` labels are corrected: `CTRL2 = 0x16` is ±4 g
+   at 112.1 Hz in 6DOF; `CTRL3 = 0x36` is ±128 dps, not the ±1000 dps printed
+   here; the banner's register list omitted `CTRL3`; and the `REVISION` line
+   printed `0x7C = QMI8658A 13-52-25 Rev A` as settled fact, where which
+   document number names the Rev A part is disputed and deferred to #341.
 
 **No register or parameter constant differs from the run.** That is checkable
 without trusting this note: `shake.log:48-59` echoes every value the probe wrote

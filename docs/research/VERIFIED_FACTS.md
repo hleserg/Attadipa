@@ -1571,7 +1571,9 @@ constants.
   lead at a recorded revision, not a source. Chapter 11's own profile was armed
   and acknowledged for the abandoned walk but never exercised under recorded
   motion. Both `0x0D` calls acknowledged with CmdDone set and cleared on every
-  run, so the parameters reached the engine.
+  run, so the engine processed both commands. Whether the eighteen
+  `CAL1_L..CAL4_H` bytes were in place when it did is **UNKNOWN**: the probe
+  discards every `wr()` return for them and never reads them back.
 - **A claim this run does NOT support.** The three desk runs found `CTRL7 = 0x03`
   on the board at start-up, and an earlier draft read that as the vendor firmware
   running 6DOF. It is not evidence of that — not because the residue is known to

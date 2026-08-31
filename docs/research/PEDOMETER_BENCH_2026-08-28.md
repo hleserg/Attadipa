@@ -143,8 +143,10 @@ apart again.
    cnt_entry=10 sig_count=4`, accelerometer alone at `CTRL2=0x27`, `CTRL7=0x01`),
    and 36 seconds of samples were recorded at zero before the serial link died.
    That binary printed no amplitude column, but the capture does record whether
-   the watch was moving, and it says it was **not**: `walk.log:76-109` holds the
-   triad at `(0.13, 0.04, -1.01 g)` for thirty-four unbroken seconds — the same
+   the watch was moving, and it says it was **not**: `walk.log:77-108` holds the
+   triad at `(0.13, 0.04, -1.01 g)` for thirty-two seconds, `az` reading -1.02
+   on four of them (`:78`, `:81`, `:88`, `:103`) and nothing else moving at all
+   — `:76` is still the start-up sample at `(0.09, 0.01, -0.99 g)` — the same
    attitude as the desk runs — and the first real movement is `t=35`, which is
    the unplug, one line before the link dies. So the walk had not begun while
    the link was alive; the capture ends there and cannot speak for what
@@ -155,7 +157,15 @@ apart again.
    *measured*.
 
 The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledged
-with CmdDone set and cleared — so the parameters reached the engine. The probe
+with CmdDone set and cleared — so the engine **processed both Configure
+Pedometer commands**. It does not follow that the parameters were in place when
+it did, and this report no longer says it does: `configure_pedometer()`
+(`probe/pedo.c:173-201`) discards every `wr()` return for the eighteen
+`CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
+nothing reads those registers back. `shake.log:53-54` is not a readback either;
+`probe/pedo.c:293-296` prints the `#define`s. **A return check on the `CAL`
+writes and a readback before the second `0x0D` are required before the
+read-after-walk run #116 needs, and are not in this pull request.** The probe
 refuses to print a step count after a failed configuration, because that number
 would mean nothing.
 
@@ -280,7 +290,7 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 *Security Level: 3*.
 
 **This repository names that document two ways, and this report does not settle
-which is right.** Five sites, and they do not agree:
+which is right.** Seven sites, and they do not agree:
 
 | Site | What it says |
 | --- | --- |
@@ -289,6 +299,8 @@ which is right.** Five sites, and they do not agree:
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
 | [`VERIFIED_FACTS.md:1506-1508`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`pedometer-bench-2026-08-28/probe/pedo.c:8-12`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this repository opened, and defers the number to #341 |
+| the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
 A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
 demonstrably does exist — it is the one quoted here, and it reports `0x7C` on its

@@ -5,11 +5,16 @@
  * and then whether chapter 11's engine actually counts steps. OD-6 makes the
  * pedometer mandatory, so this is not a curiosity.
  *
- * Every register address, bit and parameter below is taken from
- *   "Document#: 13-52-25 ∙ QMI8658A Datasheet ∙ Rev A" (© 2022 QST),
+ * Every register address, bit and parameter below is taken from the datasheet
+ * this repository has actually read:
+ *   "Document#: 13-52-27 ∙ QMI8658C Datasheet ∙ Rev A" (© 2022 QST),
  * Table 21 (register map, §5.2), Table 22 (CTRL1/2/7/8, §5.3), §5.10.4
  * (WCtrl9 protocol), Table 29 (CAL registers), Table 37 (pedometer
  * parameters) and Table 38 (§11.2, Configure Pedometer).
+ *
+ * Which document number names the Rev A part is DISPUTED in this tree and is
+ * deferred to issue #341. What is in 13-52-25 is UNKNOWN here -- no record
+ * shows anyone opening it -- so nothing below rests on that number.
  *
  * WHY THIS FILE CHANGED. Three bench runs on 2026-08-28 read steps=0 for 240,
  * 240 and 900 seconds. Two faults, not one: the board never moved, and the
@@ -43,7 +48,7 @@
 #define QMI_ADDR 0x6B /* measured, not assumed: the bench probe's scan found */
                       /* 0x6B and no 0x6A — WAVESHARE_RUNNING_OUR_CODE §3.1 */
 
-/* Register map — 13-52-25 Rev A, Table 21 and Table 29 */
+/* Register map — 13-52-27 Rev A, Table 21 and Table 29 */
 #define REG_WHO_AM_I   0x00
 #define REG_REVISION   0x01
 #define REG_CTRL1      0x02
@@ -81,13 +86,19 @@
  * and gyroscope enabled -- "matching vendor pedometer runtime path" -- and notes
  * that in 6DOF the ODR base follows the gyro, so the same aODR code means a
  * different frequency: code 0x06 is 125 Hz accel-only and 112.1 Hz in 6DOF.
- * That library ships on this very board. Three probe runs configured strictly
+ * That library is NOT among this repository's pinned upstreams and is not known
+ * to ship on this board -- it is a lead at a recorded revision, not a source.
+ * Three probe runs configured strictly
  * from chapter 11 -- accelerometer alone at 62.5 Hz -- counted nothing, so this
  * one follows the configuration with field evidence instead of the one with
  * only a datasheet. CTRL7=0x03 is also the state the probe FOUND on the board --
- * but that says nothing about the vendor: T-166 replaced this unit's factory
- * image on 2026-08-25, so the residue is Attadipa's own firmware. An earlier
- * version of this comment drew the vendor conclusion and it was wrong. */
+ * but that says nothing about the vendor, and nothing about Attadipa either:
+ * ITS WRITER CANNOT BE IDENTIFIED AT ALL. T-166 replaced this unit's factory
+ * image on 2026-08-25, so found state here is whatever the last program left.
+ * VERIFIED_FACTS.md:1575-1585 records that attributing it to Attadipa's own
+ * firmware "cannot be supported". Two earlier versions of this comment drew an
+ * attribution -- first to the vendor, then to Attadipa -- and both were wrong;
+ * the point is that no attribution is available, not that a different one is. */
 #define CTRL2_VALUE 0x16           /* aFS=001 (+/-4 g), aODR=0x06 (112.1 Hz 6DOF) */
 #define CTRL3_VALUE 0x36           /* gFS=011 (+/-128 dps), gODR=0x06 (112.1 Hz)  */
 #define ACCEL_LSB_PER_G 8192       /* +/-4 g, not the 4096 of +/-8 g              */
@@ -106,7 +117,7 @@
 /* Table 37 parameters, QST's §11.1 example scaled to 62.5 Hz where it is a
  * count of samples. Comments give the physical meaning, which is what a later
  * tuning pass will argue about. */
-/* SensorLib's bring-up profile, examples/sensor/qmi8658_pedometer:
+/* SensorLib's bring-up profile at 2b9e591f, examples/sensor/qmi8658_pedometer:
  *     imu.configPedometer(50, 80, 60, 400, 8, 1, 0, 1);
  * with the comment "Datasheet profile is conservative and designed to reject
  * non-step vibration. For handheld bring-up, use a lower entry count and lower
@@ -241,8 +252,8 @@ void app_main(void)
 
     uint8_t who = rd1(REG_WHO_AM_I), rev = rd1(REG_REVISION);
     printf("WHO_AM_I  = 0x%02X   (0x05 in both candidate datasheets)\n", who);
-    printf("REVISION  = 0x%02X   (0x7C = QMI8658A 13-52-25 Rev A;"
-           " 0x79 = QMI8658C Rev 0.6)\n\n",
+    printf("REVISION  = 0x%02X   (0x7C is the Rev A part; which document number"
+           " names it is disputed -- see #341. 0x79 = Rev 0.6)\n\n",
            rev);
     if (who != 0x05) {
         printf("Not a QMI8658 signature. Stopping rather than writing anything.\n");
