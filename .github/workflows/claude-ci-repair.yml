@@ -50,7 +50,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Fetch the decision rule from main
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/scripts
@@ -318,7 +318,7 @@ jobs:
           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/attempt.md
           gh pr edit "$PR" --repo "$REPO" --add-label ci:repairing || true
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         with:
           # The agent's branch, not the default branch this workflow_run event
@@ -348,7 +348,7 @@ jobs:
       - name: Fix it
         if: steps.claim.outputs.acquired == 'true' && steps.auth.outputs.ok == 'true'
         id: fix
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@a60f3e1db3edbceed2b1e6c6a9d34c36b8a15eba # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
