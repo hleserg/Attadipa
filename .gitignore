@@ -1,6 +1,10 @@
 # ESP-IDF
 build/
 build-*/
+# `build.flash/` — `idf.py -B build.flash` is a real thing people type, and
+# `build-*` does not match it. 2218 generated files reached a pull request
+# through that gap once; the dot is why.
+build.*/
 sdkconfig
 sdkconfig.old
 managed_components/
