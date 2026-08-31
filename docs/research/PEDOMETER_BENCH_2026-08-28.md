@@ -37,7 +37,7 @@ lower bound, which makes the negative result stronger, not weaker.
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
 `(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:398`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
-prints `+/-8 g` — but that label is itself one of the stale four (`:346-348`):
+prints `+/-8 g` — but that label is itself one of the stale four (`:374-376`):
 the register it names means ±4 g. It is therefore the *reason to doubt* the
 divisor, not a value for it. The label drifted from its constant when the full
 scale changed, and nothing in the capture shows the divisor did not drift with
@@ -244,10 +244,18 @@ at `shake.log:45`; or the part lost power, and the QMI8658 holds none of this in
 non-volatile memory, so a power cycle clears it. The loop bound cannot break the
 tie: the archive shows it moved inside the session — 240, then 900 — so the
 corrected source cannot say where this run would have stopped. **Neither
-reading leaves the engine armed at the `CTRL2 = 0x16, CTRL7 = 0x03,
-CTRL8 = 0x90` of `shake.log:59`, and this tree records no read of the part after
-15:08.** The next operator to attach this unit takes the `--- before ---` line
-it prints as the record, not this report.
+reading leaves the engine armed at *this run's* `CTRL2 = 0x16, CTRL7 = 0x03,
+CTRL8 = 0x90` of `shake.log:59` — but the first one leaves it armed at the
+walk's.** What that branch restores is the `CTRL2 = 0x27, CTRL7 = 0x01,
+CTRL8 = 0x90` of `shake.log:45`, and `CTRL8` bit 4 is `Pedo_EN` (§11.6) with
+`CTRL7` bit 0 `aEN`: the same triple this report calls *"the walk probe's own
+armed state"* above, and the same one it says the walk *"stayed armed"* in. So
+the two readings differ in what the next `--- before ---` prints, not only in
+provenance — **under the first the part has been counting since 15:08 and prints
+a nonzero found count with no walk behind it; under the second it prints `0`
+with the engine off.** This tree records no read of the part after 15:08. The
+next operator to attach this unit takes the `--- before ---` line it prints as
+the record, not this report.
 
 ## What this does NOT establish, and why the walk is still open
 

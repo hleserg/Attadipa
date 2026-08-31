@@ -41,13 +41,23 @@ from.
 
 ## The probe
 
-`probe/` is the source that produced `shake.log` and `walk.log`. **It is not
-the source of the three desk runs.** Those came from an earlier build that never
-configured the engine, and the captures say so: no `CTRL9 0x0D` block, no
+`probe/` is the source that produced `shake.log`, and only that run. **It is
+neither the source of `walk.log` nor of the three desk runs.** The desk runs
+came from an earlier build that never configured the engine, and the captures
+say so: no `CTRL9 0x0D` block, no
 `CTRL3`, no `p2p` column, `--- after ---` where this source prints
 `--- armed ---`, and a header naming three registers where `pedo.c:258` writes
 five plus `CAL1_L..CAL4_H`. `pedo.c:20-28` names it as one of **two**
 sufficient causes for those runs reading zero; the board also never moved.
+
+`walk.log` is a third build, and it also says so: it writes `CTRL2 = 0x27`
+where this source defines `0x16` (`pedo.c:108`), carries **no `CTRL3` line at
+all** where this source writes `0x36` (`pedo.c:109`), configures a different
+engine — `sample_cnt=62 peak2peak=0x00CC peak=0x0066 time_up=250 time_low=25
+cnt_entry=10 sig_count=4` at `walk.log:52-53` against `50 / 0x0050 / 0x003C /
+400 / 8 / 1 / 1` here (`pedo.c:137-144`) — and prints a `g` triad per line
+where this source prints `p2p mg`. Nine constants, not one.
+
 What `probe/` holds is `pedo.c`, its two
 `CMakeLists.txt` (the component's, and the top-level one as
 `CMakeLists-top.txt`) and `sdkconfig.defaults`. ESP-IDF v5.5.5, target
@@ -88,8 +98,9 @@ text — this source does not reproduce the archived captures line for line:
    where which document number names the Rev A part is disputed and deferred
    to #341.
 
-**No register or parameter constant differs from the run.** That is checkable
-without trusting this note: `shake.log:48-59` echoes every value the probe wrote
+**No register or parameter constant differs from the shake run.** That is
+checkable without trusting this note: `shake.log:48-59` echoes every value the
+probe wrote
 — `CTRL2 = 0x16`, `CTRL3 = 0x36`, `CTRL8` `0x80` then `0x90`, `sample_cnt=50`,
 `peak2peak=0x0050`, `peak=0x003C`, `time_up=400`, `time_low=8`, `cnt_entry=1`,
 `precision=0`, `sig_count=1` — and each matches the `#define` in `probe/pedo.c`.
