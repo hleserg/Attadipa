@@ -64,7 +64,10 @@ want to inherit the experience, not only the code.
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
 | `lvgl` | github.com/lvgl/lvgl | `85aa60d1` (**v9.5.0**) | 2026-08-23 | the UI toolkit. **T2 is settled**: [`DEPENDENCIES.md`](DEPENDENCIES.md) pins v9.5.0 = `85aa60d1…`, verified by `git ls-remote` and observed in CI, and source **S14** in [`VERIFIED_FACTS`](VERIFIED_FACTS.md) reads that revision. This row carried `7cc13aaf…` with *"version choice is open question T2"* until 2026-08-24, so the ledger and the dependency record named two different revisions of the same dependency — the ledger being the file `CLAUDE.md` sends an agent to before implementing anything. Found in review |
-| `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards |
+| `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards. **Superseded as evidence 2026-09-01**: this is the *previous-generation* library and it is not what the bench unit runs. The current library for the S3 Plus is the row below, and until that row existed this ledger pinned a revision no T-Watch decision was actually taken against |
+| `LilyGoLib` | github.com/Xinyuan-LilyGO/LilyGoLib | `38e6f8dee3ba78b340512af9a013365ef248a7d0` (v0.2.0) | 2026-08-11 | **the current vendor library for the T-Watch S3 Plus, and the exact-board prior art**: the recovered factory image on our own unit is built from its `examples/factory/factory.ino`. MIT. **Read, never linked** — [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md). Re-checked 2026-09-01: still the default-branch tip. `library.json` declares `"frameworks": ["arduino"]` and pins RadioLib 7.1.2, LVGL 9.2.2, XPowersLib 0.2.9, SensorLib 0.3.1 — colliding with our LVGL 9.5.0 and RadioLib 7.7.1 before any code is read |
+| `SensorLib` | github.com/lewisxhe/SensorLib | `2b9e591f245e447d3d00ec8798c3f49b897882d9` (0.4.1) | 2026-07-30 | MIT at the root, **BSD-3-Clause under `src/bosch/`**, which the component manifest's `exclude` list does not exclude. The only pinnable ESP-IDF-native source for PCF8563, BMA423 and DRV2605. `EVALUATE` — examined under #328, not adopted, because the slice that would consume it does not exist yet |
+| `arduino-esp32` | github.com/espressif/arduino-esp32 | `3.3.2` | — | read for one thing only: `variants/lilygo_twatch_s3/pins_arduino.h`, which is where LilyGoLib's `DISP_*` pin macros actually come from. **The vendor library does not itself contain the T-Watch pin numbers** — a surprise worth recording, because "read the pins out of LilyGoLib" is the obvious plan and it does not work |
 | `esp-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif's BSP collection and the source of the `esp_lcd_touch_ft5x06` dependency. **It does not contain the Waveshare board** — `esp-bsp/bsp` holds 26 board entries and none is a Waveshare AMOLED. Recorded here as `waveshare-bsp` until 2026-08-22, which sent readers to the wrong repository |
 | `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a fork of Espressif's in which `tx_color()` goes unchecked, so a failed frame reports success — **inherited from upstream rather than introduced by the fork**, and fixed upstream in `v2.0.1` (2025-12-10); the "two-line" count is withdrawn pending a re-derivation against the right base, see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0, in `esp-iot-solution` |
 | `Gadgetbridge` | codeberg.org/Freeyourgadget/Gadgetbridge | `40326980ca871989961ba2442e7cabd4d204b1b6` | 2026-08-21 | host side of many watch protocols; companion protocol prior art |
@@ -191,7 +194,7 @@ anything equivalent is written by hand.
 | Candidate | Why it is relevant | License |
 |---|---|---|
 | `meshcore-dev/MeshCore` | the mesh protocol the product is specified around | MIT |
-| `Xinyuan-LilyGO/LilyGoLib` | vendor library for the T-Watch family; schematics and authoritative pin map | MIT |
+| ~~`Xinyuan-LilyGO/LilyGoLib`~~ | **evaluated 2026-09-01 at `38e6f8d` — see the record below.** `REJECT` as a dependency, `ADAPT` as data. The "authoritative pin map" half of this line was half wrong: the `DISP_*` macros live in `arduino-esp32`'s `variants/lilygo_twatch_s3`, not in LilyGoLib, and LilyGO's own hardware page for this board states a panel size that D15 disproved by measurement | MIT |
 | `waveshare/esp32_s3_touch_amoled_2_06` | vendor BSP for the second board — display, touch, audio, SD only | Apache-2.0 |
 | `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | **Apache-2.0** at the pinned `==1.0.2`, checked 2026-08-22 (§ the xiaozhi record). Upstream is `espressif/esp-iot-solution`, **not** `esp-bsp`, whose `components/lcd` contains neither this driver nor `esp_lcd_co5300`. Read 2026-08-23 for D21. **The unchecked `tx_color()` was upstream's own code, not a fork divergence** — see the correction in [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.3 — and upstream fixed it in `v2.0.1`, 2025-12-10 |
 | XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
@@ -2293,3 +2296,119 @@ REQUIRED` until a board runs them.
 direction. The mechanics of copying, linking and redistribution notices are
 [#284](https://github.com/hleserg/Attadipa/issues/284)'s subject and are not
 duplicated here.
+
+### The second board's display and touch, and what a board backend may contain
+
+**Problem:** T-010 slice 2 needs a second physical board backend — display and
+touch on the T-Watch S3 Plus — and the long-open question T6 had to be settled
+first: link a vendor BSP, or take only the verified facts. Getting it wrong in
+either direction is expensive. Linking drags in another project's LVGL,
+RadioLib, PMU and NVS policy; refusing everything rewrites drivers that are
+already in the pinned SDK and already shipping on the Waveshare path.
+Researched under [#328](https://github.com/hleserg/Attadipa/issues/328); the
+evidence is in [TWATCH_S3_PLUS_BSP_REUSE](TWATCH_S3_PLUS_BSP_REUSE.md) and the
+decision is [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md).
+
+**Projects investigated:** ESP-IDF's built-in `esp_lcd_panel_st7789`;
+`espressif/esp_lcd_touch_ft5x06`; `Xinyuan-LilyGO/LilyGoLib`;
+`lewisxhe/SensorLib`; `espressif/esp_bsp_generic` and `esp-bsp`'s `esp-box-3`;
+`meshtastic/firmware`'s T-Watch variant. Pin facts cross-checked against
+`espressif/arduino-esp32` and against this repository's own schematic read.
+
+**ESP-IDF v5.5.5 `esp_lcd_panel_st7789` — `USE AS-IS`, with one board-owned
+correction.** Apache-2.0, already inside the pinned SDK.
+`components/esp_lcd/src/esp_lcd_panel_st7789.c`, read at the tag.
+`panel_st7789_init()` (`:182-201`) sends `SLPOUT` + 100 ms, `MADCTL`, `COLMOD`
+and `RAMCTRL` — the controller baseline and nothing more — and
+`esp_lcd_new_panel_st7789()` reads no `vendor_config`, so there is **no
+init-command extension point**. That is not a reason to fork it: the sequence
+upstream vendors themselves use is `init()` → board table over the public
+`esp_lcd_panel_io_tx_param()` → orientation. **The one thing that does not
+transfer is its reset timing**: with `reset_gpio_num < 0` it waits 20 ms after
+`SWRESET` where the ST7789V datasheet v1.6 p.163 requires 120 ms in sleep-in
+mode, and p.184 says sleep-in is the state after every reset. The T-Watch has no
+display reset line, so that branch is always taken there.
+
+**`espressif/esp_lcd_touch_ft5x06` 1.1.1 — `USE AS DEPENDENCY`, already
+pinned.** Apache-2.0; manifest `idf: ">=5.2"`, `esp_lcd_touch ^1.2.0`. Already
+in `firmware/main/idf_component.yml` and already exercised on the Waveshare
+FT3168 path, so the T-Watch costs no new dependency. Verified at the source that
+it drives an FT6336U on this board: the reset helper is guarded by
+`rst_gpio_num != GPIO_NUM_NC` and returns `ESP_OK` when there is none, and
+`read_data()` clamps the point count before reading `6 * points` bytes, which at
+two points stays inside the FT6336U's documented block. **Two bounded
+reservations**, neither blocking, both in
+[TWATCH_S3_PLUS_BSP_REUSE](TWATCH_S3_PLUS_BSP_REUSE.md) §8: it never reads a
+chip ID, so success proves an ACK at `0x38` and nothing about the part; and five
+of the nine registers it writes are FT5x06-specific and undocumented on the
+FT6336U.
+
+**`LilyGoLib@38e6f8d` — `REJECT` as a dependency, `ADAPT` as data.** MIT,
+v0.2.0. The rejection is not about quality; it is four behaviours in
+`src/LilyGoWatchS3.cpp` that contradict the capability model and ADR-0016: a
+missing PSRAM part is an unbounded `while` loop (`:105-108`), a missing PMU is
+`assert(0)` (`:126-129`), and first boot infers the battery capacity from
+whether GNSS answered a probe and writes the result to NVS (`:181-191`, and
+`:523-532`). What *is* taken is data: the exact panel command table
+(`src/LilyGoDispInterface.cpp:505-524`, transcribed in §5 with the MIT notice
+and with the ordering constraint that makes it work), the rail ordering — PMU
+before panel, because ALDO3 supplies both display and touch — and the vendor's
+own warning that this touch controller has no reset and must not be slept.
+**Two traps recorded so they are hit once, on paper:** the file contains a
+second, *dead* command table inside `#if 0` that differs from the live one in
+`COLMOD`, `PORCTRL` and `RAMCTRL`; and the vendor's specification table for this
+exact board says the panel is 1.3″, which D15 disproved by measurement.
+
+**`lewisxhe/SensorLib@2b9e591` (0.4.1) — `EVALUATE`, not adopted.** MIT, with
+BSD-3-Clause under `src/bosch/` that the component manifest does not exclude. It
+is the only pinnable ESP-IDF-native source for PCF8563, BMA423 and DRV2605, and
+the first T-Watch slice needs none of them. Deferred to the slice that adds the
+RTC and the IMU, with the size and IRQ audit attached rather than promised.
+
+**`espressif/esp_bsp_generic` 3.1.1 — `REJECT`; `esp-box-3` — `INSPIRE
+ARCHITECTURE`.** Apache-2.0. The generic BSP's scope is simple I2C, SPIFFS, SD,
+buttons and LEDs; it models no rail graph, no second I2C bus and no absent reset
+line, and upstream [#630](https://github.com/espressif/esp-bsp/issues/630) shows
+runtime touch-interrupt configuration still requires editing it. What was taken
+is one idea, from `esp-bsp/bsp/esp-box-3`: board-specific panel command tables
+belong at the board boundary. Its `vendor_config` mechanism does not transfer,
+because the built-in ST7789 driver has no such field.
+
+**`meshtastic/firmware` T-Watch variant — `ADAPT` facts only.** GPL-3.0; OD-12
+rejects integration and a merge upstream does not move that. Read for exactly
+two facts, both of which changed a conclusion:
+`variants/esp32s3/t-watch-s3/variant.h` sets `ST7789_RESET -1` — a third
+independent confirmation of the missing reset line — and `SPI_FREQUENCY
+40000000`, against LilyGO's 80 MHz on the same board. **That disagreement is the
+finding**: it turns "80 MHz is what the vendor uses" into "there is no consensus
+value", which is why D7c stays `UNKNOWN` instead of quietly inheriting a number.
+
+**Decision:** `USE AS-IS` the two official components; `ADAPT` the vendor panel
+table as source-pinned board data **if and only if** the experiment proves it
+necessary; `REJECT` every vendor BSP as a link-time dependency.
+
+**Reason:** the shipping tree already exposes the right seam —
+`waveshare_board.cpp:106-107` hands on an `esp_lcd_panel_handle_t` and an
+`esp_lcd_touch_handle_t`, and `physical_input.cpp:483-486` takes exactly those.
+A second backend that reuses it needs no `#ifdef` anywhere above the board
+layer, which is what lets `core/` and `apps/` keep asking what a device can do
+rather than which board it is.
+
+**Attadipa integration:** none yet. #328 is research and changed no production
+code. The executable scope it justifies is
+[TWATCH_S3_PLUS_BSP_REUSE](TWATCH_S3_PLUS_BSP_REUSE.md) §11 and the rules that
+bound it are ADR-0017.
+
+**Tests required:** the three-arm display experiment in §11 — generic init,
+generic init with a spec-conforming 120 ms reset wait, and the vendor table —
+because a two-arm test cannot separate the table's register content from the
+timing it is bundled with. Plus touch coverage, failure injection against the
+negative-path contract in §10, and a size delta per candidate. **Every row of it
+is NOT EXECUTED — HARDWARE REQUIRED**, and a simulator run is never a hardware
+`PASS`.
+
+**Licences:** Apache-2.0 and MIT into GPL-3.0-or-later, compatible in
+direction; BSD-3-Clause likewise, and it applies to `src/bosch/` if SensorLib is
+ever taken. If the vendor command table is adopted, the MIT notice travels with
+it. Mechanics are [#284](https://github.com/hleserg/Attadipa/issues/284)'s
+subject.

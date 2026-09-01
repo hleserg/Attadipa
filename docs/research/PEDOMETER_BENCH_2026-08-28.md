@@ -346,7 +346,7 @@ as well. Enumerating and reconciling them is #341's job, not this report's:
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:1566`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:1625`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 | [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 

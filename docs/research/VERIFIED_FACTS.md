@@ -600,7 +600,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1598`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1657`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -693,6 +693,65 @@ to every unit of the same model.
   detail, including the uncertainty budget:
   [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md).
 
+### The T-Watch display has no reset line and no MISO, so it is write-only
+
+- **Claim:** the ST7789V3 on the T-Watch S3 Plus has neither a reset line to the
+  SoC nor a return path. `reset_gpio_num` must be `-1`, and **no ST7789 read
+  command can ever execute on this board.**
+- **Evidence — three independent sources agree.** Attadipa's own schematic read,
+  [HARDWARE_MATRIX](HARDWARE_MATRIX.md):96: *"MISO and RESET not connected"*.
+  LilyGO's hardware document for this exact board, `LilyGoLib@38e6f8d`
+  `docs/hardware/lilygo-t-watch-s3-plus.md`: `Display RESET | Not Connected`,
+  `Display MISO | Not Connected`. `espressif/arduino-esp32` `3.3.2`
+  `variants/lilygo_twatch_s3/pins_arduino.h`: `#define DISP_RST (-1)`,
+  `#define DISP_MISO (-1)`. Meshtastic's same-board variant sets
+  `ST7789_RESET -1` and `ST7789_MISO -1` independently.
+- **Impact:** `RDDPM (0Ah)` would report the `SLPOUT`, `DISON`, `BSTON`,
+  `IDMON`, `PTLON` and `NORON` bits and `RDDSM (0Eh)` the `TEON`/`TEM` bits
+  (ST7789V datasheet v1.6 pp. 170, 178). Neither is reachable. **The firmware
+  can never confirm the controller's state, and no bring-up test on this board
+  may use a register read-back as evidence** — pass and fail are a photograph.
+  This is separate from, and has the same cause as, the touch controller's
+  missing reset line recorded above.
+
+### ESP-IDF's ST7789 software-reset path is 20 ms where the datasheet says 120
+
+- **Claim:** on any board that leaves `reset_gpio_num` at `-1` — which the fact
+  above makes mandatory here — ESP-IDF v5.5.5's ST7789 driver breaks an explicit
+  datasheet restriction by 6×.
+- **Evidence.** `components/esp_lcd/src/esp_lcd_panel_st7789.c:167-177` at tag
+  `v5.5.5`: with no reset GPIO it sends `LCD_CMD_SWRESET` and then
+  `vTaskDelay(pdMS_TO_TICKS(20))`, commented *"spec, wait at least 5m before
+  sending new command"*. `panel_st7789_init()` (`:182-201`) then sends `SLPOUT`
+  as its first action. ST7789V datasheet **v1.6, 2017/09, p. 163 §9.1.2
+  `SWRESET`**, *Restriction*, verbatim: *"If software reset is sent during sleep
+  in mode, it will be necessary to wait 120msec before sending sleep out
+  command."* The qualifier always holds: **p. 184 §9.1.12 `SLPOUT`**, *Default*
+  table, gives the state after `Power On Sequence`, `S/W Reset` **and**
+  `H/W Reset` as *"Sleep in mode"*. The driver's comment quotes the unqualified
+  5 ms clause, which is not the one in force.
+- **Also:** `panel_st7789_sleep()` (`:319-333`) waits 100 ms after either
+  `SLPIN` or `SLPOUT`, where pp. 182 and 184 both require 120 ms between
+  `SLPOUT` and a following `SLPIN`.
+- **Impact:** this is a defect of the *combination* — this driver with this
+  board's wiring — not of the driver, and it is the reason the panel command
+  table cannot be A/B tested in two arms:
+  [TWATCH_S3_PLUS_BSP_REUSE](TWATCH_S3_PLUS_BSP_REUSE.md) §4 and §11.
+  **Whether it is observable on this panel is NOT EXECUTED — HARDWARE
+  REQUIRED**; that it is a spec violation is documentary and needs no board.
+
+### Two mature same-board firmwares disagree by 2× on the T-Watch SPI clock
+
+- **Claim:** there is no inherited consensus value for the ST7789V3 pixel clock
+  on this board.
+- **Evidence:** `LilyGoLib@38e6f8d` `src/LilyGoWatchS3.cpp:135` calls
+  `LilyGoDispSPI::init(..., 80)`, which becomes `pclk_hz = 80 MHz` at
+  `src/LilyGoDispInterface.cpp:430`. `meshtastic/firmware`
+  `variants/esp32s3/t-watch-s3/variant.h:13` sets `SPI_FREQUENCY 40000000`.
+- **Impact:** `80 MHz` is one vendor's choice, not a property of the panel, and
+  quoting it as an Attadipa default would be inheriting a number rather than a
+  fact. D7c stays `UNKNOWN`; the lower proven value is the defensible starting
+  point and any increase is a measurement on our unit.
 
 ---
 

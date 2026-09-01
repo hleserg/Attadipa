@@ -50,7 +50,7 @@ wrong answer.
 позволяет безопасно проектировать production rail gating"*. D13 was resolved on
 2026-08-28 by [#313](https://github.com/hleserg/Attadipa/issues/313), reading
 the schematic as a drawing:
-[`OPEN_QUESTIONS.md:122`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net". The
+[`OPEN_QUESTIONS.md:126`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net". The
 rail-to-load map is in §6.1 below. Rail gating is no longer blocked on
 evidence; it is blocked on nobody owning it, which is this document's subject.
 
@@ -523,7 +523,7 @@ the issue gave.
 From [#313](https://github.com/hleserg/Attadipa/issues/313), 2026-08-28, by
 reading the schematic as a drawing, with the register decode traced to AXP2101
 Datasheet V1.4 §6.13.2.75–77 rather than to library source. Recorded at
-[`OPEN_QUESTIONS.md:122`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net"; not
+[`OPEN_QUESTIONS.md:126`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net"; not
 restated as a new fact here, only as the input this contract consumes.
 
 | Rail | What it is | May the owner gate it? |
