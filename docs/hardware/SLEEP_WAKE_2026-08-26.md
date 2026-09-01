@@ -41,7 +41,7 @@ Clock is refreshed and LVGL is forced to render a new frame. The log names the
 state being entered, and on return the route back and the wake source
 ([`firmware/main/board_power.cpp:311-313`](../../firmware/main/board_power.cpp) —
 "attadipa::core::to_string(state)," and
-[`firmware/main/physical_input.cpp:228-231`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:247-250`](../../firmware/main/physical_input.cpp) —
 "attadipa::firmware::board_power_owner().cycles()),"). It does not name
 `Active -> Idle ->`. The entry line carried that half until the sleep path moved
 into `board-power`, and no line prints it now.
@@ -113,7 +113,7 @@ the owner records and un-does, rather than a step the log narrates
 "attadipa::core::to_string(state),"). The wake line kept `physical-input` and
 lost the `(cause=4 gpio=0x0)` suffix: causes are a bitmap now, and every one of
 them is named
-([`firmware/main/physical_input.cpp:227-231`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:246-250`](../../firmware/main/physical_input.cpp) —
 "describe_wake(named, sizeof(named), report.wake_causes);") instead of the
 single value the lossy `esp_sleep_get_wakeup_cause()` returned. So `cause=4` is
 in no line this firmware can print, and a repeat grepped for the text above
@@ -134,9 +134,13 @@ three-way ladder; this branch reports a bitmap, and the line reads
 All four together are the failure this paragraph exists to prevent. It is one
 of the two present-tense claims on a page of recorded transcript, and the other
 one — the route sentence in § Mode and wake wiring — went stale in the same
-change and for the same reason, which is why it is worth counting them. What the
-two lines report did not change, and nothing here was re-measured — **NOT
-EXECUTED — HARDWARE REQUIRED**.
+change and for the same reason, which is why it is worth counting them.
+
+Three of the four differences are wording. The fourth is not: `by Timer+Button`
+where `main` printed `by Button` is the same wake classified differently, and a
+repeat that reads the line rather than grepping it will see that. What did not
+change is the two events the lines mark — entry and wake — and nothing here
+was re-measured — **NOT EXECUTED — HARDWARE REQUIRED**.
 
 ## Evidence boundary
 

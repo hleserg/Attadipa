@@ -120,15 +120,20 @@ private:
   // A name for a wake-source bitmask, for the one log line that explains a
   // wake. "0x0005" is not an explanation, and a wake nobody can explain is a
   // battery complaint nobody can debug.
-  static void describe_wake(char *out, std::size_t size, std::uint16_t mask) {
+  // One body for both bit spaces. `PowerDomain` and `WakeSource` are separate
+  // words in `SleepReport` precisely because their bits overlap, and printing
+  // one of them as hex while the other is named was the asymmetry a reader had
+  // to decode. `to_string` is overloaded on the enum, so the only difference is
+  // which count bounds the loop.
+  template <typename Enum, std::uint8_t Count>
+  static void describe_bits(char *out, std::size_t size, std::uint16_t mask) {
     std::size_t used = 0;
     out[0] = '\0';
-    for (std::uint8_t i = 0; i < attadipa::core::kWakeSourceCount; ++i) {
+    for (std::uint8_t i = 0; i < Count; ++i) {
       if ((mask & (1U << i)) == 0) {
         continue;
       }
-      const char *name =
-          attadipa::core::to_string(static_cast<attadipa::core::WakeSource>(i));
+      const char *name = attadipa::core::to_string(static_cast<Enum>(i));
       const int written = std::snprintf(out + used, size - used, "%s%s",
                                         used == 0 ? "" : "+", name);
       if (written <= 0 || static_cast<std::size_t>(written) >= size - used) {
@@ -139,6 +144,16 @@ private:
     if (used == 0) {
       (void)std::snprintf(out, size, "UNKNOWN");
     }
+  }
+
+  static void describe_wake(char *out, std::size_t size, std::uint16_t mask) {
+    describe_bits<attadipa::core::WakeSource,
+                  attadipa::core::kWakeSourceCount>(out, size, mask);
+  }
+
+  static void describe_domains(char *out, std::size_t size, std::uint16_t mask) {
+    describe_bits<attadipa::core::PowerDomain,
+                  attadipa::core::kPowerDomainCount>(out, size, mask);
   }
 
   void maybe_sleep() {
@@ -204,21 +219,25 @@ private:
       // branch that runs. A domain still suspended and a wake source the SoC
       // still holds need different repairs, so they are named separately.
       char stuck[96];
+      char stuck_domains[96];
       describe_wake(stuck, sizeof(stuck), report.blocked_sources);
+      describe_domains(stuck_domains, sizeof(stuck_domains), report.blocked_by);
       ESP_LOGE(kTag,
                "power hardware state is unknown after a failed unwind; "
                "availability is Failed until re-initialisation "
-               "(domains 0x%04x, sources %s)",
-               static_cast<unsigned>(report.blocked_by),
+               "(domains %s, sources %s)",
+               report.blocked_by == 0 ? "none" : stuck_domains,
                report.blocked_sources == 0 ? "none" : stuck);
     }
 
     if (!report.slept()) {
       char refused[96];
+      char refused_domains[96];
       describe_wake(refused, sizeof(refused), report.blocked_sources);
-      ESP_LOGE(kTag, "LightSleep %s (domains 0x%04x, sources %s)",
+      describe_domains(refused_domains, sizeof(refused_domains), report.blocked_by);
+      ESP_LOGE(kTag, "LightSleep %s (domains %s, sources %s)",
                attadipa::core::to_string(report.outcome),
-               static_cast<unsigned>(report.blocked_by),
+               report.blocked_by == 0 ? "none" : refused_domains,
                report.blocked_sources == 0 ? "none" : refused);
       return;
     }

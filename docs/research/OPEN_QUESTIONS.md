@@ -383,7 +383,7 @@ task blocked on a lock there is a task that cannot un-take the decision anyway.
 **Why nothing is broken today, stated so the reason is checkable rather than
 reassuring.** The only sleep plan the firmware issues suspends the display and
 nothing else
-([`firmware/main/physical_input.cpp:168`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:183`](../../firmware/main/physical_input.cpp) —
 "plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
 trip is an intersection
 ([`core/src/power_owner.cpp:369`](../../core/src/power_owner.cpp) —

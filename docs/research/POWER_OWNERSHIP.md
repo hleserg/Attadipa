@@ -88,7 +88,7 @@ recursiveness and per-handle thread-safety caveat (§3.1), and the XPowersLib
 ### 2.1 One sleep transaction, in the input loop
 
 `maybe_sleep()` is the whole of it:
-[`firmware/main/physical_input.cpp:144`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:159`](../../firmware/main/physical_input.cpp) —
 "void maybe_sleep() {". It is the only caller of `esp_light_sleep_start()` in
 the tree — now
 [`firmware/main/board_power.cpp:316`](../../firmware/main/board_power.cpp) —
@@ -99,7 +99,7 @@ Its shape is already close to the transaction the issue asks for, and saying so
 matters: this is not a codebase that needs to be told what a power transaction
 is. It refuses on a busy input queue or a held button; it builds a wake plan and
 validates it against the product model before touching hardware —
-[`firmware/main/physical_input.cpp:159`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:174`](../../firmware/main/physical_input.cpp) —
 "plan.state = attadipa::core::PowerState::LightSleep;"; it arms wake sources;
 it takes the AMOLED down; it sleeps in a loop that re-arms the PMU poll timer;
 it restores the panel and republishes the UI.
