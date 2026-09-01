@@ -155,6 +155,31 @@ def main() -> int:
             "check_citation_lines",
             any("which is now at :2" in problem for problem in problems),
         )
+        # The same href written the two other ways `check_links` accepts.
+        # Both used to be joined onto the citing file's directory, which for a
+        # URL cannot resolve and for `/path` resolves to the wrong place, and
+        # the miss then reached the rename heuristic and reported a file that
+        # had not moved.
+        write(
+            root,
+            "docs/research/CITER.md",
+            'See [`core/thing.h:2`](/core/include/thing.h) — "beta".\n',
+        )
+        case(
+            "a root-relative href resolves from the repository root",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(
+            root,
+            "docs/research/CITER.md",
+            'See [`core/thing.h:2`](https://example.com/core/thing.h) — "beta".\n',
+        )
+        case(
+            "an external href is not read as a local path",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
         # No href, so nothing proves which line to read -- but the basename is
         # unique in this tree, which proves the FILE is ours and moved.
         write(root, "docs/research/CITER.md", "See `core/thing.h:1`.\n")

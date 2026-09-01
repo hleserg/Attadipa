@@ -373,8 +373,20 @@ def check_citation_lines(root: str) -> list[str]:
                     # and check_links already proves it resolves.
                     href = CITATION_HREF.match(line[match.end():])
                     if href:
+                        target = href.group(1)
+                        # An href is resolved the way `check_links` resolves
+                        # one, because it is the same href: `/path` from the
+                        # repository root, and an external target not at all.
+                        # Joining `https://...` onto a local directory yields a
+                        # path that cannot exist, and the failure then fell
+                        # through to the rename heuristic below -- which is how
+                        # a correct external citation was reported as a local
+                        # file this repository had moved.
+                        if target.startswith(EXTERNAL) or target.startswith("<"):
+                            continue
+                        base = root if target.startswith("/") else here
                         via = os.path.normpath(
-                            os.path.join(here, href.group(1).lstrip("/"))
+                            os.path.join(base, target.lstrip("/"))
                         )
                         if os.path.isfile(via):
                             body = lines_of(via)
