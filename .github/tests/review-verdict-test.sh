@@ -617,5 +617,76 @@ check "a ceiling under the floor is raised to the floor" 4 "$(key ceiling)"
 check "so round 2 is still inside the floor regime" ai-review:blocking "$(key label)"
 
 echo
+echo "The cap — five rounds of reviewing, not five rounds of holding"
+
+# `gate` answers before the model is invoked, from the ledger alone. The ceiling
+# tested above decides which findings hold; this decides whether there is a
+# round for it to decide about. The two must agree on where five ends, so these
+# use the same `_ceiling_ledger` and the same ceiling of 5.
+gate() {
+  bash "$script" gate "${1:-}" "${2:-}"
+}
+
+# Round 5 is AT the ceiling and still holds, so it must be allowed to happen: a
+# ledger saying four rounds published means the fifth is the one being gated.
+out=$(gate "$(_ceiling_ledger 4)" 5)
+check "with four rounds published the fifth still runs" yes "$(key run)"
+check "and the gate reports the round it read" 4 "$(key round)"
+check "a running gate names no label" "" "$(key label)"
+
+# Five published means the next is six, where `past_ceiling` defers everything
+# including floor. Running it cannot change the verdict, so it does not run.
+out=$(gate "$(_ceiling_ledger 5)" 5)
+check "with five published the sixth does not run" no "$(key run)"
+check "and the verdict it hands over is the one round six would reach" ai-review:pass "$(key label)"
+check "for a reason that is the cap, not an absent finding" cap "$(key reason)"
+
+# THE GATE NEVER ANSWERS BLOCKING. Past the ceiling `attadipa_review_verdict`
+# cannot answer blocking either, so a cap that could would be a new rule.
+absent "the cap cannot manufacture a block" ai-review:blocking "$out"
+
+# What was still open when the cap fell is reported, because the ledger comment
+# stays on the pull request and the note has to be able to point at it. OD-25
+# keeps recording when it stops holding.
+check "an open finding at the cap is still counted" 1 "$(key open)"
+
+out=$(gate "$(_ceiling_ledger 9)" 5)
+check "a round well past the ceiling does not run either" no "$(key run)"
+
+# IT FAILS TOWARD RUNNING, in every direction a ledger can be wrong. A skipped
+# review is the expensive mistake here: a needless round costs tokens, a round
+# lost to a parse bug costs the review.
+printf '%s' "not a ledger at all" > "$work/junk.md"
+out=$(gate "$work/junk.md" 5)
+check "a file that is not a ledger runs" yes "$(key run)"
+check "and reads as no round having published" 0 "$(key round)"
+
+out=$(gate "$work/nothing-here.md" 5)
+check "an absent ledger runs" yes "$(key run)"
+
+out=$(gate "" 5)
+check "no ledger path at all runs" yes "$(key run)"
+
+cat > "$work/corrupt.md" <<'EOF'
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=seven
+floor=4
+-->
+EOF
+out=$(gate "$work/corrupt.md" 5)
+check "an unreadable round runs rather than caps" yes "$(key run)"
+
+# The ceiling is one constant. A gate with its own default would be a second.
+out=$(gate "$(_ceiling_ledger 5)" "")
+check "an absent ceiling defaults to five" 5 "$(key ceiling)"
+check "so five published still caps on the default" no "$(key run)"
+out=$(gate "$(_ceiling_ledger 5)" not-a-number)
+check "an unreadable ceiling falls back to five rather than to none" no "$(key run)"
+out=$(gate "$(_ceiling_ledger 5)" 7)
+check "and a raised ceiling raises the cap with it" yes "$(key run)"
+
+
+echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
