@@ -361,6 +361,13 @@ jobs:
       - name: Updating a pull request branch decides before it writes
         run: bash .github/tests/pr-branch-update-test.sh
 
+      # The condition, evaluated. `always()` is true on cancellation as well as
+      # on success and failure, so the no-verdict path used to report a
+      # superseded review as a refused credential; a grep for `!cancelled()`
+      # would pass on a file that had it in a comment.
+      - name: A cancelled review is not a review that could not run
+        run: bash .github/tests/review-cancelled-test.sh
+
       # And nothing new joins them in the dark. Wiring three suites by hand is
       # a fix that lasts until somebody adds a fourth file, so the list is
       # checked rather than remembered. `shellcheck -x .github/tests/*.sh` at
