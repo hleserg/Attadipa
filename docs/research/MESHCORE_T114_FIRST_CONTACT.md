@@ -625,7 +625,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1 |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1256`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1058`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1328`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1059`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
@@ -803,6 +803,17 @@ printf '%s\n' "$BLE_PASSKEY"    | tools/watch_control.py mesh-configure
 printf '%s\n' "$ROOM_PASSWORD"  | tools/watch_control.py mesh-room-send \
     --room <64-hex> --text "..."
 ```
+
+**`mesh-configure` on a link that is already up recycles it.** A Configure
+carries a pairing passkey, and the connection it would land on has already
+paired under the previous one — so it cannot be applied to that session. The
+watch ends the connection and pairs afresh on the next one, which is what
+re-sends `CMD_APP_START`. It used to reset only the Companion provider and
+leave the BLE session established, which stopped the exchange on that
+connection until something disconnected (#345). The command is consequently
+**not retried** by the host: a retry after a lost acknowledgement would recycle
+a session the first one had already replaced, and the watch has no request-id
+deduplication that could tell the two apart.
 
 `mesh-configure --unpaired-probe` is the old `--passkey 0`: a diagnostic that
 carries no secret, so it stays a flag and stays scriptable. The host refuses an

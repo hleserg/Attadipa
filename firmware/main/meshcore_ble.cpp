@@ -1,5 +1,6 @@
 #include "meshcore_ble.h"
 #include "meshcore_bond_recovery.h"
+#include "meshcore_boot.h"
 #include "meshcore_write_outcome.h"
 
 #include <algorithm>
@@ -1052,18 +1053,44 @@ void mesh_task(void*)
                 // Nothing to do. apply_lifecycle() above is what this event
                 // exists to bring forward.
                 break;
-            case EventKind::Configure:
+            case EventKind::Configure: {
                 secure_pairing.store(event.passkey != 0);
                 if (event.passkey != 0 &&
                     ble_sm_configure_static_passkey(event.passkey, true) != 0) {
                     provider.fault(now());
-                } else {
-                    configured.store(true);
-                    reconnect_allowed.store(true);
-                    provider.begin(now());
-                    if (session_snapshot().stack_readies != 0) start_scan();
+                    break;
                 }
+                configured.store(true);
+                reconnect_allowed.store(true);
+                // A Configure that lands on a live session is a
+                // reconfiguration, and it cannot be applied to the session it
+                // would reconfigure: the passkey above governs pairing, and
+                // this connection has already paired under the previous one.
+                //
+                // provider.begin() used to run here unconditionally. Over a
+                // live generation that put the transport in a state neither
+                // machine allows on its own -- SessionOwner still Ready,
+                // provider back to Attached -- so no second Ready transition
+                // was ever replayed, provider.connected() was never called
+                // again, no CMD_APP_START went out, and every arriving frame
+                // was counted malformed until something disconnected. #345.
+                //
+                // Ending the session is enough, and it is all that is needed:
+                // the disconnect path allocates a new generation, and
+                // apply_lifecycle()'s Disconnected step is already the one
+                // place that calls provider.begin() when a reconnect will be
+                // attempted. The new session then reaches Ready through the
+                // ordinary route, which is what re-sends CMD_APP_START.
+                const std::uint16_t connection = session_snapshot().connection;
+                if (connection != attadipa::link::kNoSessionHandle) {
+                    (void)ble_gap_terminate(connection,
+                                            BLE_ERR_REM_USER_CONN_TERM);
+                    break;
+                }
+                provider.begin(now());
+                if (session_snapshot().stack_readies != 0) start_scan();
                 break;
+            }
             case EventKind::Deconfigure: {
                 configured.store(false);
                 reconnect_allowed.store(false);
@@ -1229,28 +1256,73 @@ void host_task(void*)
 
 extern "C" void ble_store_config_init(void);
 
-esp_err_t start_meshcore_ble()
-{
-    event_queue = xQueueCreate(kEventDepth, sizeof(Event));
-    if (event_queue == nullptr) return ESP_ERR_NO_MEM;
-    if (xTaskCreate(mesh_task, "meshcore", 6144, nullptr, 3, nullptr) != pdPASS) {
+namespace {
+
+// The real steps behind meshcore_boot.h. Each is the one ESP-IDF call it names,
+// so the order that header holds is the order this build executes.
+struct RealBootOps {
+    esp_err_t port_status = ESP_OK;
+
+    bool port_init()
+    {
+        port_status = nimble_port_init();
+        return port_status == ESP_OK;
+    }
+    void configure_host()
+    {
+        ble_hs_cfg.reset_cb = on_reset;
+        ble_hs_cfg.sync_cb = on_sync;
+        ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+        ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;
+        ble_hs_cfg.sm_bonding = 1;
+        ble_hs_cfg.sm_mitm = 1;
+        ble_hs_cfg.sm_sc = 1;
+        ble_store_config_init();
+    }
+    bool queue_create()
+    {
+        event_queue = xQueueCreate(kEventDepth, sizeof(Event));
+        return event_queue != nullptr;
+    }
+    bool worker_create()
+    {
+        return xTaskCreate(mesh_task, "meshcore", 6144, nullptr, 3, nullptr) ==
+               pdPASS;
+    }
+    void host_start() { nimble_port_freertos_init(host_task); }
+    void queue_delete()
+    {
         vQueueDelete(event_queue);
         event_queue = nullptr;
-        return ESP_ERR_NO_MEM;
     }
-    const esp_err_t result = nimble_port_init();
-    if (result != ESP_OK) return result;
-    ble_hs_cfg.reset_cb = on_reset;
-    ble_hs_cfg.sync_cb = on_sync;
-    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-    ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;
-    ble_hs_cfg.sm_bonding = 1;
-    ble_hs_cfg.sm_mitm = 1;
-    ble_hs_cfg.sm_sc = 1;
-    ble_store_config_init();
+    void port_deinit() { (void)nimble_port_deinit(); }
+};
+
+}  // namespace
+
+esp_err_t start_meshcore_ble()
+{
+    // Before anything the worker could read, and before the worker exists.
+    // This used to run after xTaskCreate, which made it a plain write racing a
+    // publish() that takes snapshot_lock -- one field, two tasks, one of them
+    // unsynchronised.
     snapshot.availability = attadipa::core::Availability::Unprovisioned;
-    nimble_port_freertos_init(host_task);
-    return ESP_OK;
+
+    RealBootOps ops;
+    switch (attadipa::firmware::boot_meshcore(ops)) {
+    case attadipa::firmware::BootResult::Ok:
+        return ESP_OK;
+    case attadipa::firmware::BootResult::PortInitFailed:
+        // The bootstrap used to create the queue and start the worker *before*
+        // this call, so a failure here left a task polling a queue nothing
+        // would ever post to for the rest of the boot -- roughly 24 KiB held,
+        // ESTIMATED -- while app_main logged that MeshCore had failed safely.
+        return ops.port_status;
+    case attadipa::firmware::BootResult::QueueFailed:
+    case attadipa::firmware::BootResult::WorkerFailed:
+        break;
+    }
+    return ESP_ERR_NO_MEM;
 }
 
 bool configure_meshcore_ble(std::uint32_t passkey)
@@ -1265,9 +1337,19 @@ bool stop_meshcore_ble()
 {
     // Disable in the caller before the host callback gets another chance to
     // react to an in-flight discovery or disconnect event.
-    configured.store(false);
-    reconnect_allowed.store(false);
-    return post(Event{EventKind::Deconfigure});
+    const bool was_configured = configured.exchange(false);
+    const bool was_reconnecting = reconnect_allowed.exchange(false);
+    if (post(Event{EventKind::Deconfigure})) return true;
+    // The post is zero-wait, so a full queue refuses it -- and then nothing
+    // will ever carry this transition: the session stays Ready, the connection
+    // is never terminated, and the provider is never told. The caller is
+    // already told the truth (`OperationFailed`), so the state must be the
+    // truth too. Put both flags back rather than leave the transport
+    // half-stopped: publish() would report Unprovisioned over a live session's
+    // facts, which reads as a device that stopped when it did not.
+    configured.store(was_configured);
+    reconnect_allowed.store(was_reconnecting);
+    return false;
 }
 
 bool meshcore_ble_send(const std::array<std::uint8_t, 6>& peer_prefix,
