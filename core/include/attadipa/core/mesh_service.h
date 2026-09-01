@@ -41,6 +41,33 @@ struct MeshStatus {
     Availability availability = Availability::Unreachable;
     TransportPhase transport = TransportPhase::Absent;
     std::array<char, kMeshPeerNameBytes + 1> node_name{};
+    // The node's own public key, from RESP_CODE_SELF_INFO. `node_name` is not
+    // an identity: the bench ran two nodes whose names differed by an emoji and
+    // whose advertisements are interchangeable to `advertises_meshcore()`
+    // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:63 "public key"). This is
+    // what tells them apart, and it is not permanent either -- a factory reset
+    // on the node regenerates it
+    // (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:50` "a factory reset
+    // regenerates it"), which is a new identity by design and is meant to be
+    // visible as one.
+    MeshPeerId node_id{};
+    bool has_node_id = false;
+    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY.
+    //
+    // Unlike `node_id` above, neither is session state, and a disconnect does
+    // not clear them. That is the point of them: a watch that refuses the only
+    // node in range ends up with no session at all, so everything session-scoped
+    // on the mesh screen is empty exactly when an operator most needs to know
+    // why -- and until #356 there is no in-image way to re-pin, so the recovery
+    // is `idf.py erase-flash` and nothing on a blank screen says so.
+    //
+    // `has_refused` is set when a handshake reads a key that is not `pinned_id`,
+    // and cleared when one reads a key that is. Nothing else clears it; in
+    // particular a reconnect does not.
+    MeshPeerId pinned_id{};
+    bool has_pinned = false;
+    MeshPeerId refused_id{};
+    bool has_refused = false;
     std::array<char, kMeshPeerNameBytes + 1> last_sender{};
     std::array<char, kMeshTextBytes + 1> last_message{};
     MeshDelivery delivery = MeshDelivery::None;

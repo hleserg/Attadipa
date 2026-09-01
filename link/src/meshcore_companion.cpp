@@ -96,6 +96,17 @@ void MeshCoreCompanion::end_operation()
 void MeshCoreCompanion::reset_session()
 {
     status_.node_name.fill('\0');
+    // The identity is session state and the pin is not. A reconnect must read
+    // the key again rather than carry the last node's answer into a session
+    // that may be with a different node -- that is the whole defect this
+    // records against.
+    status_.node_id = core::MeshPeerId{};
+    status_.has_node_id = false;
+    wrong_node_ = false;
+    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared
+    // here. They are the two things on the mesh screen that have to survive the
+    // disconnect a refusal causes, or the screen goes blank at the moment it is
+    // the only report of why.
     status_.last_sender.fill('\0');
     status_.last_message.fill('\0');
     status_.delivery = core::MeshDelivery::None;
@@ -345,6 +356,15 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         ++malformed_frames_;
         return false;
     }
+    // A REFUSED NODE IS NOT ANSWERED AGAIN, and its traffic is not liveness.
+    // `wrong_node_` latches in the RESP_CODE_SELF_INFO case below and the
+    // transport then terminates the connection -- but that terminate is
+    // asynchronous, and it is one call whose result nothing enforced, so frames
+    // keep arriving in the window and used to be dispatched in full.
+    //
+    // Not counted as malformed: the frame is well formed and the node is
+    // behaving exactly as a MeshCore node should. It is simply not this watch's.
+    if (wrong_node_) return false;
     (void)link_.apply(LinkEvent::PeerData, now);
     switch (data[0]) {
     case kResponseDeviceInfo:
@@ -362,7 +382,39 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseSelfInfo:
         if (size < 58) { ++malformed_frames_; return false; }
+        // Offset 4, 32 bytes, ahead of the name this frame was already being
+        // read for: MeshCore's own `docs/companion_protocol.md` gives
+        // RESP_CODE_SELF_INFO as type, advert type, tx power, max tx power,
+        // then the public key, and the bench capture agrees -- the name lands
+        // exactly at 58 in a 72-byte frame
+        // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:184
+        // "RESP_CODE_SELF_INFO"). The `size < 58` bound above already covers
+        // it, so no second check is added for a shorter prefix.
+        std::memcpy(status_.node_id.public_key.data(), &data[4],
+                    core::kMeshPublicKeyBytes);
+        status_.has_node_id = true;
         (void)copy_text(status_.node_name, &data[58], size - 58);
+        if (pinned_set_ && !(status_.node_id == pinned_)) {
+            // A well-formed frame from the wrong node. Not a malformed frame,
+            // not a fault, and not a disconnect from here: this class does not
+            // own the link, and a class that tore the link down would tear it
+            // down again on the reconnect that follows. The handshake stops
+            // here -- no CMD_DEVICE_QUERY goes out, so nothing asks this node
+            // for contacts and nothing is sent through it -- and the transport
+            // reads `wrong_node()` and decides.
+            wrong_node_ = true;
+            // ...and this outlives the session, unlike `wrong_node_`. See
+            // MeshStatus in core/include/attadipa/core/mesh_service.h.
+            status_.refused_id = status_.node_id;
+            status_.has_refused = true;
+            break;
+        }
+        if (pinned_set_) {
+            // The pinned node answered, so whatever was refused before is no
+            // longer what stands between this watch and its mesh.
+            status_.refused_id = core::MeshPeerId{};
+            status_.has_refused = false;
+        }
         if (self_info_seen_) break;
         self_info_seen_ = true;
         {
@@ -509,6 +561,28 @@ bool MeshCoreCompanion::peer(std::size_t index, core::MeshPeer& out) const
         return false;
     }
     out = peers_[index];
+    return true;
+}
+
+void MeshCoreCompanion::pin(const core::MeshPeerId& node)
+{
+    pinned_ = node;
+    pinned_set_ = true;
+    status_.pinned_id = node;
+    status_.has_pinned = true;
+}
+
+bool MeshCoreCompanion::pinned(core::MeshPeerId& out) const
+{
+    if (!pinned_set_) return false;
+    out = pinned_;
+    return true;
+}
+
+bool MeshCoreCompanion::node_id(core::MeshPeerId& out) const
+{
+    if (!status_.has_node_id) return false;
+    out = status_.node_id;
     return true;
 }
 

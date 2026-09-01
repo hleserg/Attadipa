@@ -7,6 +7,8 @@
 
 namespace {
 
+namespace core = attadipa::core;
+
 using attadipa::core::Availability;
 using attadipa::core::MeshDelivery;
 using attadipa::core::MeshPeer;
@@ -73,6 +75,165 @@ void connect_and_handshake(MeshCoreCompanion& client)
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
     CHECK(!client.next_tx(frame));
+}
+
+// The node's own key is the only thing on this wire that tells two MeshCore
+// nodes apart. `advertises_meshcore()` matches a service UUID or a name
+// substring and takes whichever advertisement arrives first, and the bench had
+// two nodes answering both -- so a run's node was not a choice the firmware
+// made (docs/research/MESHCORE_T114_FIRST_CONTACT.md:54).
+core::MeshPeerId key_of(std::uint8_t seed)
+{
+    core::MeshPeerId id{};
+    for (std::size_t i = 0; i < core::kMeshPublicKeyBytes; ++i) {
+        id.public_key[i] = static_cast<std::uint8_t>(seed + i);
+    }
+    return id;
+}
+
+// Up to and including RESP_CODE_SELF_INFO, which is where the identity arrives
+// and where a wrong node has to be stopped -- before CMD_DEVICE_QUERY asks it
+// for anything.
+void handshake_to_self_info(MeshCoreCompanion& client, const core::MeshPeerId& id)
+{
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+    CHECK(!client.next_tx(frame));
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[4], id.public_key.data(), core::kMeshPublicKeyBytes);
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+}
+
+void test_self_info_carries_the_node_identity()
+{
+    MeshCoreCompanion client;
+    const core::MeshPeerId id = key_of(0x40);
+    handshake_to_self_info(client, id);
+
+    CHECK(client.status().has_node_id);
+    CHECK(client.status().node_id == id);
+    core::MeshPeerId read{};
+    CHECK(client.node_id(read));
+    CHECK(read == id);
+    CHECK(!client.wrong_node());
+
+    // The name is still read, and from the offset it was always read from --
+    // the key sits in front of it, not over it.
+    CHECK(std::strcmp(client.status().node_name.data(), "Node") == 0);
+
+    // Unpinned, so the handshake goes on: CMD_DEVICE_QUERY is the next frame.
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 2 && frame.bytes[0] == 22);
+}
+
+void test_the_pinned_node_is_the_one_the_handshake_continues_with()
+{
+    MeshCoreCompanion client;
+    const core::MeshPeerId id = key_of(0x40);
+    client.pin(id);
+    handshake_to_self_info(client, id);
+
+    CHECK(!client.wrong_node());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 2 && frame.bytes[0] == 22);
+}
+
+void test_another_node_answers_and_the_handshake_stops_there()
+{
+    MeshCoreCompanion client;
+    client.pin(key_of(0x40));
+    handshake_to_self_info(client, key_of(0x91));
+
+    // Said, not acted on. The frame was well formed, so it is not counted as
+    // malformed; the session is not faulted; and nothing here closed the link.
+    CHECK(client.wrong_node());
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().has_node_id);
+    CHECK(client.status().node_id == key_of(0x91));
+
+    // And nothing was asked of it. No CMD_DEVICE_QUERY means no contact sync
+    // and no send: the wrong node is never reached, only identified.
+    MeshCoreFrame frame{};
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().availability != Availability::Ready);
+
+    // Nor is anything asked of it afterwards. The transport's terminate is
+    // asynchronous and unenforced, so a refused node goes on sending in the
+    // window -- and PUSH_CODE_MSG_WAITING used to enqueue CMD_SYNC_NEXT_MESSAGE
+    // unconditionally, which is the watch asking a node it has just refused for
+    // its queued messages.
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(!client.receive(waiting, sizeof(waiting), at(5)));
+    CHECK(!client.next_tx(frame));
+    // Not malformed either: the frame is well formed and the node is behaving
+    // normally. Counting it would put a refused node's ordinary traffic into
+    // the statistic that means "somebody is sending us rubbish".
+    CHECK(client.malformed_frames() == 0);
+}
+
+void test_the_pin_outlives_the_session_and_the_identity_does_not()
+{
+    MeshCoreCompanion client;
+    const core::MeshPeerId id = key_of(0x40);
+    client.pin(id);
+    handshake_to_self_info(client, key_of(0x91));
+    CHECK(client.wrong_node());
+
+    // Both halves of what the mesh screen shows: which node was turned away and
+    // which one this watch wants.
+    CHECK(client.status().has_refused);
+    CHECK(client.status().refused_id == key_of(0x91));
+    CHECK(client.status().has_pinned);
+    CHECK(client.status().pinned_id == id);
+
+    client.disconnected(at(10));
+    client.begin(at(11));
+    client.peer_arriving(at(12));
+    client.connected(at(13));
+
+    // A reconnect starts with no answer to "which node is this", so a poll
+    // between the connection and the next SELF_INFO cannot read the previous
+    // node's verdict as this one's.
+    CHECK(!client.status().has_node_id);
+    CHECK(!client.wrong_node());
+
+    // ...and the refusal does NOT reset with it. A refused watch has no session
+    // at all, so every session-scoped field on the mesh screen is empty exactly
+    // when the refusal is the only thing that explains the screen.
+    CHECK(client.status().has_refused);
+    CHECK(client.status().refused_id == key_of(0x91));
+    CHECK(client.status().has_pinned);
+
+    core::MeshPeerId still{};
+    CHECK(client.pinned(still));
+    CHECK(still == id);
+
+    // ...and the pin still decides, on a node that is now the right one.
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[4], id.public_key.data(), core::kMeshPublicKeyBytes);
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(14)));
+    CHECK(!client.wrong_node());
+    // The pinned node answered, so the refusal is no longer what stands between
+    // this watch and its mesh, and the screen stops saying it does.
+    CHECK(!client.status().has_refused);
+    CHECK(client.status().has_pinned);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 2 && frame.bytes[0] == 22);
 }
 
 void test_handshake_contacts_and_service_boundary()
@@ -855,6 +1016,10 @@ int main()
     test_a_send_that_is_never_confirmed_still_ends();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
+    test_self_info_carries_the_node_identity();
+    test_the_pinned_node_is_the_one_the_handshake_continues_with();
+    test_another_node_answers_and_the_handshake_stops_there();
+    test_the_pin_outlives_the_session_and_the_identity_does_not();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

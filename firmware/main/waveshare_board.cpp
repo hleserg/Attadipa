@@ -463,6 +463,18 @@ void refresh_clock(lv_timer_t *timer) {
 }
 
 #if CONFIG_BT_NIMBLE_ENABLED
+// Four bytes of a node's public key as hex. The bench reports identify nodes by
+// exactly this much (`5c62d9bc…`, `044e2de8…`), and eight characters is what
+// fits beside a name.
+void key_prefix(const attadipa::core::MeshPeerId &id, char (&out)[9]) {
+  static constexpr char kHex[] = "0123456789abcdef";
+  for (std::size_t i = 0; i < 4; ++i) {
+    out[i * 2] = kHex[id.public_key[i] >> 4U];
+    out[i * 2 + 1] = kHex[id.public_key[i] & 0x0FU];
+  }
+  out[8] = '\0';
+}
+
 void build_mesh_screen() {
   lv_obj_t *screen = lv_screen_active();
   state.clock_face.clear();
@@ -512,9 +524,50 @@ void refresh_mesh() {
                         : status.transport == attadipa::core::TransportPhase::Ready
                               ? "CONNECTED"
                               : attadipa::core::to_string(status.transport));
-  lv_label_set_text_fmt(state.mesh_node, "Node:\n%s",
+  // The key prefix shares the "Node:" line rather than taking one of its own:
+  // the label wraps, the name below it can already be two lines, and there are
+  // 90 px to the message label under it. A name is not an identity -- the two
+  // bench nodes were `Beta test companion` and a name differing by an emoji,
+  // and an operator reading a screenshot could not say which mesh a run was on
+  // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:54 "There are two MeshCore
+  // nodes in range"). Four bytes is what the bench reports already identify
+  // nodes by.
+  char node_key[11] = {};
+  if (status.has_node_id) {
+    char hex[9];
+    key_prefix(status.node_id, hex);
+    std::snprintf(node_key, sizeof(node_key), " %s", hex);
+  }
+  // A REFUSAL IS THE ONE THING ON THIS SCREEN THAT IS NOT SESSION STATE, and it
+  // is here because a refused watch has no session: the state line says
+  // SCANNING, the name is blank, and without this the screen is silent about
+  // the one fact that explains all of it. Until #356 the recovery is
+  // `idf.py erase-flash`, and a serial cable is not how an operator should have
+  // to discover that they need one.
+  //
+  // Third line, and the label has room for it: line_height is 22 px
+  // (assets/fonts/generated/attadipa_nunito_sans_20.c:2892 ".line_height = 22,")
+  // and there are 90 px from this label's y=135 to mesh_message's y=225, so
+  // four lines (88 px) fit and five do not. Worst case is exactly four: the key
+  // line, a 32-byte name wrapping to two on a 354 px label, and this. This line
+  // cannot itself wrap -- its content is fixed, two 8-character prefixes, and
+  // it measures 331.8 px against the 354 px label (COMPUTED from the font's own
+  // `adv_w` table, not measured on glass). NOT EXECUTED -- HARDWARE REQUIRED:
+  // `sim/` has a boot screen and a diagnostic screen and no mesh screen, so
+  // there is no screenshot of this to look at that would be this screen.
+  char refused[40] = {};
+  if (status.has_refused && status.has_pinned) {
+    char bad[9];
+    char want[9];
+    key_prefix(status.refused_id, bad);
+    key_prefix(status.pinned_id, want);
+    std::snprintf(refused, sizeof(refused), "\nrefused %s, pinned %s", bad,
+                  want);
+  }
+  lv_label_set_text_fmt(state.mesh_node, "Node:%s\n%s%s", node_key,
                         status.node_name[0] != '\0' ? status.node_name.data()
-                                                     : "—");
+                                                     : "—",
+                        refused);
   // Sender, text and delivery state are the three things a screenshot has to
   // carry to be evidence of a message going out or coming in, so they share one
   // label rather than one each.

@@ -235,6 +235,49 @@ amendment that `main` has since moved by two documentation commits. Kept as a
 signpost rather than deleted, because two entries saying the same thing is how a
 reader ends up citing the one that was not updated.
 
+### A wrong MeshCore node's bond evicts the pinned node's
+
+- **Claim:** with a passkey armed, a MeshCore node that this watch is *not*
+  pinned to costs the pinned node its bond, and nothing in the firmware can
+  prevent it. The node's public key arrives in `RESP_CODE_SELF_INFO`, which is
+  after `BLE_GAP_EVENT_ENC_CHANGE` — so pairing and bonding are complete before
+  the watch can know which node it is talking to. The store holds exactly one
+  bond, and on overflow NimBLE **evicts rather than refuses**.
+- **Source (upstream, read):** the overflow callback the firmware installs is
+  `ble_store_util_status_rr`, which answers `BLE_STORE_EVENT_OVERFLOW` for
+  `BLE_STORE_OBJ_TYPE_OUR_SEC`, `PEER_SEC` and `PEER_ADDR` by calling
+  `ble_gap_unpair_oldest_peer()`
+  (`esp-idf/components/bt/host/nimble/nimble/nimble/host/src/ble_store_util.c:453`),
+  which resolves the bond list and unpairs `oldest_peer_id_addr[0]`
+  (`.../host/src/ble_gap.c:9516`). With one slot the oldest peer is the only
+  peer, so the arriving bond replaces the pinned node's.
+- **Source (this repository):** the single slot is
+  [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
+  "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
+  [`firmware/main/meshcore_ble.cpp:1613`](../../firmware/main/meshcore_ble.cpp)
+  "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
+- **Condition — it is not unconditional:** the pairing this rests on happens
+  only where a passkey has been armed by the operator
+  ([`firmware/main/meshcore_ble.cpp:156`](../../firmware/main/meshcore_ble.cpp)
+  "std::atomic_bool secure_pairing{false};", stored at
+  [`firmware/main/meshcore_ble.cpp:1384`](../../firmware/main/meshcore_ble.cpp)
+  "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
+  passkey to does not reach the SMP path and does not write a bond.
+- **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
+- **Boundary — this is source-traced, not measured.** No bench run has
+  exercised bonding at all; the bench row in
+  [MESHCORE_T114_FIRST_CONTACT.md](MESHCORE_T114_FIRST_CONTACT.md) §9 still
+  reads `UNKNOWN — not exercised` and stays that way until one does. What is
+  established here is what the code does, not what the radio was observed
+  doing.
+- **Consequence:** the node pin (#304) stops the watch *talking* to a wrong
+  node; it cannot keep the bond. Preventing the eviction needs a second bond
+  slot or a way to identify a node before encrypting — both are provisioning,
+  and #356's. The cooldown in
+  [`firmware/main/meshcore_node_pin.h`](../../firmware/main/meshcore_node_pin.h)
+  "struct RefusalState {" only bounds how often it recurs, which is why a
+  second wrong node in range has to raise a floor rather than overwrite a slot.
+
 ---
 
 ## Toolchain / host environment
@@ -600,7 +643,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1657`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1700`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1632,7 +1675,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:626`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
