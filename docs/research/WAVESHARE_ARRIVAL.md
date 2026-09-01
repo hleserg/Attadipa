@@ -74,13 +74,13 @@ Most of the advice was already answered here, and one part of it this repository
 flatly contradicts.
 
 **The claim that the board's PSRAM is absent or undeclared is false, and was
-false before the advice arrived.** [HARDWARE_MATRIX.md:341](HARDWARE_MATRIX.md)
+false before the advice arrived.** [HARDWARE_MATRIX.md:375](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
 [VERIFIED_FACTS.md:952](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
-([HARDWARE_MATRIX.md:370](HARDWARE_MATRIX.md) — "**not present**"). The only true reading of "not
+([HARDWARE_MATRIX.md:404](HARDWARE_MATRIX.md) — "**not present**"). The only true reading of "not
 declared" was that this repository then contained no ESP-IDF build configuration
 for any target, which made the statement vacuous rather than informative. T-165
 has since added and exercised `sdkconfig.defaults` and a partition CSV. What
@@ -190,7 +190,7 @@ pending its own readback ([OPEN_QUESTIONS.md:93-95](OPEN_QUESTIONS.md)).
 **A flash conflict comes with it, and is not resolved.** Those same five vendor
 `sdkconfig.defaults` set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, while the schematic
 reading gives `GD25Q256EYIGR` = 256 Mbit = **32 MB**
-([HARDWARE_MATRIX.md:302](HARDWARE_MATRIX.md)) and the Waveshare wiki says "an
+([HARDWARE_MATRIX.md:374](HARDWARE_MATRIX.md)) and the Waveshare wiki says "an
 external 32MB Flash". Both sources stand as read. A 16 MB declaration on a 32 MB
 part boots and wastes the upper half, which is the likeliest explanation, but
 that is a hypothesis. It matters for dual-OTA arithmetic and one command settles
@@ -719,7 +719,7 @@ The advice was useful and most of it holds. What follows is only the part that
 does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
-   [HARDWARE_MATRIX.md:341](HARDWARE_MATRIX.md) "8 MB **octal**" and
+   [HARDWARE_MATRIX.md:375](HARDWARE_MATRIX.md) "8 MB **octal**" and
    [VERIFIED_FACTS.md:952](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
    Only the build-configuration reading was true at the time; T-165 has since
    added and exercised that configuration.
@@ -760,7 +760,7 @@ does not, kept because an uncorrected claim propagates.
     display and touch rows, where the bus row was line 326; and the CI status
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
-    [HARDWARE_MATRIX.md:365](HARDWARE_MATRIX.md) "Main I2C bus" and
+    [HARDWARE_MATRIX.md:399](HARDWARE_MATRIX.md) "Main I2C bus" and
     [`.github/workflows/ci.yml:720`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
@@ -778,7 +778,7 @@ twice. **Two are still live.**
 1. HARDWARE_MATRIX called J3 an "Expansion connector … at least 29 pins", and D3
    asked for its pinout. J3 is the 34-pin AMOLED display FPC and there is no
    expansion header. Now a Display FPC row at
-   [HARDWARE_MATRIX.md:367](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
+   [HARDWARE_MATRIX.md:401](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
    as mis-stated rather than answered at
    [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
 2. REUSE_LEDGER recorded the Waveshare BSP as coming from
@@ -798,7 +798,7 @@ twice. **Two are still live.**
    read `—` until it is answered.
 
 5. **Splitting D12 left three places behind, and all three are now closed.**
-   `HARDWARE_MATRIX.md:341` "8 MB **octal**" reads VERIFIED/octal;
+   `HARDWARE_MATRIX.md:375` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
    open-question row in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and
