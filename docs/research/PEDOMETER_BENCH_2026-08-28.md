@@ -10,7 +10,7 @@ attempted, could not be logged, and destroyed its own result on the way out.
 | --- | --- |
 | Status | MEASURED (shake) · NOT EXECUTED — HARDWARE REQUIRED (walk) |
 | Date | 2026-08-28 |
-| Part | QMI8658, I2C `0x6B`, `REVISION_ID = 0x7C` (Rev A — chapter 11 pedometer) |
+| Part | QMI8658, I2C `0x6B`, `REVISION_ID = 0x7C` (`13-52-27` Rev A — chapter 11 pedometer) |
 | Board | Waveshare ESP32-S3 AMOLED 2.06 |
 | Operator | the owner, watch in hand, attached over USB |
 | How the probe ran | `esptool` **RAM boot** via `tools/flash/ramhold.py` — every segment loaded to a RAM address, nothing written to flash. Two of the five captures record the loader step itself; the other three open at the image's own banner, and **none of the five prints `esp_image: segment` or `Loaded app from partition`** — what a flash boot on this board does print ([WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) `:73-77`) |
@@ -35,9 +35,10 @@ lower bound, which makes the negative result stronger, not weaker.
 | `STATUS1` | `0x00` throughout |
 
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
-`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:398`), and no capture
+`(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:402`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
-prints `+/-8 g` — but that label is itself one of the stale four (`:374-376`):
+prints `+/-8 g` — but that label is itself one of the stale four, listed below in
+this same report ([`PEDOMETER_BENCH_2026-08-28.md:400-402`](PEDOMETER_BENCH_2026-08-28.md) "62.5 Hz accel-only"):
 the register it names means ±4 g. It is therefore the *reason to doubt* the
 divisor, not a value for it. The label drifted from its constant when the full
 scale changed, and nothing in the capture shows the divisor did not drift with
@@ -181,10 +182,10 @@ The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledge
 with CmdDone set and cleared — so the engine **processed both Configure
 Pedometer commands**. It does not follow that the parameters were in place when
 it did, and this report no longer says it does: `configure_pedometer()`
-(`probe/pedo.c:191-221`) discards every `wr()` return for the eighteen
+(`probe/pedo.c:194-224`) discards every `wr()` return for the eighteen
 `CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
 nothing reads those registers back. `shake.log:53-54` is not a readback either;
-`probe/pedo.c:313-318` prints the `#define`s. **A return check on the `CAL`
+`probe/pedo.c:317-322` prints the `#define`s. **A return check on the `CAL`
 writes and a readback before the second `0x0D` are required before the
 read-after-walk run #116 needs, and are not in this pull request.** The probe
 refuses to print a step count after a failed configuration, because that number
@@ -202,10 +203,10 @@ matters, because a second draft then over-corrected in the opposite direction.
 `0x24 / 0x03 / 0x00` is exactly what the 2026-08-23 session left behind: the
 vendor firmware wrote `CTRL2 = 0x24` and `CTRL7 = 0x03`, and `CTRL8` was then
 cleared to `0x00` by hand
-([`WAVESHARE_RUNNING_OUR_CODE.md:615-619`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:641`](WAVESHARE_RUNNING_OUR_CODE.md)
 "restored to the power-on default"). The same section records why that could
 still be sitting there five days later: **loading a RAM image**
-([`WAVESHARE_RUNNING_OUR_CODE.md:620-623`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:646`](WAVESHARE_RUNNING_OUR_CODE.md)
 "does not reset the peripherals") — the SoC restarts, the parts on the I2C bus
 keep what the last program left. Whether this IMU in fact kept power across the
 five days, through T-166's reflash on 2026-08-25 and everything after it, is not
@@ -226,7 +227,7 @@ UNKNOWN.** On 2026-08-23, with the factory image still present, booting it was
 observed to write `CTRL2 = 0x24` and `CTRL7 = 0x03` over what a probe had left,
 and to leave `CTRL8` alone — so the vendor runs the IMU in 6DOF and does not use
 the pedometer engine at all
-([`WAVESHARE_RUNNING_OUR_CODE.md:608-610`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:633`](WAVESHARE_RUNNING_OUR_CODE.md)
 "Booting the vendor firmware restored"). That is S13, and it stands. What the
 2026-08-28 residue cannot do is corroborate it.
 
@@ -332,37 +333,62 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 
 **This repository names that document two ways, and this report does not settle
 which is right.** The sites below do not agree, and they are **not the whole
-list** — [`PEDOMETER_PARTS.md:450`](PEDOMETER_PARTS.md),
+list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md),
 [`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md),
 [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md),
 [`HARDWARE_MATRIX.md:356`](HARDWARE_MATRIX.md) and
-[`VERIFIED_FACTS.md:1620-1628`](VERIFIED_FACTS.md) name one number or the other
+[`VERIFIED_FACTS.md:1561-1578`](VERIFIED_FACTS.md) name one number or the other
 as well. Enumerating and reconciling them is #341's job, not this report's:
 
-| Site | What it says |
+| Site | What it said on 2026-08-28 |
 | --- | --- |
-| [`WAVESHARE_RUNNING_OUR_CODE.md:325-327`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
+| [`WAVESHARE_RUNNING_OUR_CODE.md:329-331`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
 | [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:1506-1508`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:1566`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 | [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
 A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
 demonstrably does exist — it is the one quoted here, and it reports `0x7C` on its
 own register-description page. A paper numbered `13-52-25` has been read in
-this tree too: [`PEDOMETER_PARTS.md:450`](PEDOMETER_PARTS.md) records its
+this tree too: [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) records its
 chapter 11 *"Pedometer"* at pp. 64–66 with `STEP_CNT_LOW/MIDL/HIGH` at
 `0x5A`–`0x5C`, `CTRL8.Pedo_EN` and both CTRL9 commands, and
-[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) gives its md5. **What
+[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" gives its md5. **What
 is `UNKNOWN` is which number names the Rev A part**, not what either paper
 holds — the two records put the same chapter 11 in both, so no register below
 turns on the number. This report therefore cites only the paper it read, and
 the tree-wide reconciliation — including which document
-the `0x7C` attribution at [`VERIFIED_FACTS.md:1504-1508`](VERIFIED_FACTS.md)
+the `0x7C` attribution at [`VERIFIED_FACTS.md:1561-1565`](VERIFIED_FACTS.md)
 *"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
+
+**Resolved by #341, and the table above is the state it found.** Both Rev A
+documents exist; the false correction — *"the Rev A document number is
+13-52-25, not 13-52-27"* — is withdrawn at its two sites; and the `0x7C` is
+attributed to `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`, the paper this report
+read, in `VERIFIED_FACTS`, `HARDWARE_MATRIX` and `WAVESHARE_RUNNING_OUR_CODE`
+alike. Then `13-52-25` was fetched from the vendor's own published copy and
+read directly, which **settles what this report left `UNKNOWN` and moots the
+question it was asking**. Its md5 matches the one
+[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" already
+recorded, and it gives **`REVISION_ID = 0x7C`** — the same byte as `13-52-27`,
+in the same register-description section, with the same `0x68` in the same
+register-map summary. `WHO_AM_I` and the product id are identical too. So the
+`0x7C` in the five archived captures is attributable to either paper, and the
+label they print is wrong only about which document, not about the byte.
+
+Two consequences for this report. The attribution question above — *"which
+number names the Rev A part"* — has no answer to find, because no register
+distinguishes them; the schematic's `QMI8658C` is what picks `13-52-27`, and
+[`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart"
+now carries that. And the passage where this report treated
+`PEDOMETER_PARTS.md:448` as proof that `13-52-25` had been read for chapter 11
+was right about the gap and wrong about the remedy: pp. 64–66 are indeed also
+`13-52-27`'s, so the row proved nothing at the time — but the paper has since
+been opened, and chapter 11 is there, on those pages, exactly as the row says.
 
 ## A caveat about the raw logs
 

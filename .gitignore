@@ -14,6 +14,12 @@ dependencies.lock
 # evidence for one review, not a durable artefact.
 tools/ui/out/
 
+# Generated Codex agent definitions, mirrored from `.claude/agents/` on each
+# run. `.codex/skills/` is tracked; these are not. The last of the four
+# untracked generated trees that a wildcard `git add` swept into a pull
+# request once — see the `build.*/` note above.
+.codex/agents/
+
 # CMake / native
 cmake-build-*/
 CMakeUserPresets.json

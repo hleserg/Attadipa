@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "attadipa/link/session_owner.h"
+#include "meshcore_write_outcome.h"
 
 namespace {
 
@@ -39,6 +40,8 @@ using attadipa::link::SessionMark;
 using attadipa::link::SessionOwner;
 using attadipa::link::SessionPhase;
 using attadipa::link::SessionStep;
+using attadipa::firmware::classify_write_failure;
+using attadipa::firmware::WriteOutcome;
 
 int failures = 0;
 
@@ -534,6 +537,113 @@ private:
     Phase phase_ = Phase::Down;
 };
 
+// A transmit that fails immediately fails for one of two reasons, and #335 is
+// what happened when they were treated alike: an ordinary peer disappearance
+// took the same permanent path as a broken radio stack, and the transport could
+// not reconnect until the device was configured again. `pump_tx()` cannot be
+// host-compiled, so the rule it switches on lives in a header that can be --
+// this test compiles the same `meshcore_write_outcome.h` the firmware does.
+void the_transmit_classifier_names_only_a_broken_subsystem()
+{
+    // Session-scoped, every one of them. BLE_HS_ENOTCONN is the peer going away
+    // in the window `pump_tx()` documents; BLE_HS_ENOMEM is the host out of
+    // mbufs, which this transport has twice ruled is backpressure rather than a
+    // broken subsystem; EINVAL and EMSGSIZE are a malformed request. None is a
+    // reason to stop scanning for the rest of the boot.
+    CHECK(classify_write_failure(7) == WriteOutcome::Recycle);   // ENOTCONN
+    CHECK(classify_write_failure(6) == WriteOutcome::Recycle);   // ENOMEM
+    CHECK(classify_write_failure(3) == WriteOutcome::Recycle);   // EINVAL
+    CHECK(classify_write_failure(4) == WriteOutcome::Recycle);   // EMSGSIZE
+    CHECK(classify_write_failure(13) == WriteOutcome::Recycle);  // ETIMEOUT
+    CHECK(classify_write_failure(-7) == WriteOutcome::Recycle);
+
+    // The stack itself, and only the stack itself. `meshcore_ble.cpp`
+    // static_asserts both against BLE_HS_EOS and BLE_HS_ECONTROLLER rather than
+    // repeating the numbers, so an upstream renumber is a build failure.
+    CHECK(attadipa::firmware::kWriteStatusStackFailure == 11);
+    CHECK(attadipa::firmware::kWriteStatusControllerFailure == 12);
+    CHECK(classify_write_failure(11) == WriteOutcome::Fault);
+    CHECK(classify_write_failure(12) == WriteOutcome::Fault);
+}
+
+// And what each answer costs, in the record the worker actually reads. The two
+// arms differ in exactly one thing: whether `fault()` is raised. That one step
+// is what reaches the link model and refuses the session that follows, so it is
+// the whole of #335 expressed at this seam.
+void a_recycled_write_ends_one_generation_a_fatal_one_faults_the_transport()
+{
+    // Recycle. The completion is recorded, the generation ends once, and
+    // nothing in the catch-up tells the link model the transport is broken.
+    {
+        SessionOwner owner;
+        SessionMark applied{};
+        const std::uint32_t first = establish(owner, 7);
+        applied = mark_of(owner.snapshot());
+
+        CHECK(owner.write_submitted(first));
+        CHECK(owner.write_completed(first, 7));
+        CHECK(classify_write_failure(7) == WriteOutcome::Recycle);
+        owner.frame_dropped();  // the frame pump_tx() popped is gone; counted
+
+        auto catch_up = reconcile(applied, owner.snapshot());
+        CHECK(catch_up.write_completed);
+        CHECK(catch_up.write_result == 7);
+        CHECK(catch_up.write_generation == first);
+        CHECK(catch_up.count == 0);
+        CHECK(owner.snapshot().dropped_frames == 1);
+        applied = mark_of(owner.snapshot());
+
+        // handle_write_result() terminates; the GAP disconnect ends it. Once.
+        CHECK(owner.ended(first));
+        CHECK(!owner.ended(first));
+        catch_up = reconcile(applied, owner.snapshot());
+        CHECK(steps_of(catch_up) ==
+              std::vector<SessionStep>{SessionStep::Disconnected});
+        applied = mark_of(owner.snapshot());
+
+        // start_scan() runs, the node advertises again, and the next session
+        // establishes -- which is the recovery #335 says was unreachable.
+        const std::uint32_t second = establish(owner, 9);
+        CHECK(second != first);
+        catch_up = reconcile(applied, owner.snapshot());
+        CHECK(steps_of(catch_up) ==
+              (std::vector<SessionStep>{SessionStep::PeerArriving,
+                                        SessionStep::Ready}));
+        CHECK(owner.snapshot().phase == SessionPhase::Ready);
+
+        // The dead session's immediate result arriving late cannot recycle the
+        // live one: the generation guard refuses it before the classifier is
+        // ever consulted.
+        CHECK(owner.write_submitted(second));
+        CHECK(!owner.write_completed(first, 7));
+        CHECK(owner.snapshot().write_in_flight);
+        CHECK(owner.snapshot().write_completions == 1);
+    }
+
+    // Fault. `disconnect_fault()` raises fault(), and the Fault step the worker
+    // then owes the link model is what suppresses the reconnect. Fail-closed,
+    // and visible -- not a retry loop.
+    {
+        SessionOwner owner;
+        SessionMark applied{};
+        const std::uint32_t generation = establish(owner, 7);
+        applied = mark_of(owner.snapshot());
+
+        CHECK(owner.write_submitted(generation));
+        CHECK(owner.write_completed(generation, 11));  // BLE_HS_EOS
+        CHECK(classify_write_failure(11) == WriteOutcome::Fault);
+        owner.fault();
+        CHECK(owner.ended(generation));
+
+        const auto catch_up = reconcile(applied, owner.snapshot());
+        CHECK(catch_up.write_completed);
+        CHECK(catch_up.write_result == 11);
+        CHECK(steps_of(catch_up) ==
+              (std::vector<SessionStep>{SessionStep::Fault,
+                                        SessionStep::Disconnected}));
+    }
+}
+
 void two_tasks_cannot_tear_a_session_or_lose_a_transition()
 {
     constexpr int kSessions = 400;
@@ -666,6 +776,8 @@ int main()
     a_fault_the_stack_resync_supersedes_is_not_replayed();
     a_write_result_carries_the_generation_that_produced_it();
     a_write_result_reaches_the_worker_without_a_queue();
+    the_transmit_classifier_names_only_a_broken_subsystem();
+    a_recycled_write_ends_one_generation_a_fatal_one_faults_the_transport();
     two_tasks_cannot_tear_a_session_or_lose_a_transition();
 
     if (failures != 0) {

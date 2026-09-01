@@ -46,16 +46,16 @@ neither the source of `walk.log` nor of the three desk runs.** The desk runs
 came from an earlier build that never configured the engine, and the captures
 say so: no `CTRL9 0x0D` block, no
 `CTRL3`, no `p2p` column, `--- after ---` where this source prints
-`--- armed ---`, and a header naming three registers where `pedo.c:258` writes
-five plus `CAL1_L..CAL4_H`. `pedo.c:20-28` names it as one of **two**
+`--- armed ---`, and a header naming three registers where `pedo.c:261` writes
+five plus `CAL1_L..CAL4_H`. `pedo.c:23-31` names it as one of **two**
 sufficient causes for those runs reading zero; the board also never moved.
 
 `walk.log` is a third build, and it also says so: it writes `CTRL2 = 0x27`
-where this source defines `0x16` (`pedo.c:108`), carries **no `CTRL3` line at
-all** where this source writes `0x36` (`pedo.c:109`), configures a different
+where this source defines `0x16` (`pedo.c:111`), carries **no `CTRL3` line at
+all** where this source writes `0x36` (`pedo.c:112`), configures a different
 engine — `sample_cnt=62 peak2peak=0x00CC peak=0x0066 time_up=250 time_low=25
 cnt_entry=10 sig_count=4` at `walk.log:52-53` against `50 / 0x0050 / 0x003C /
-400 / 8 / 1 / 1` here (`pedo.c:137-144`) — and prints a `g` triad per line
+400 / 8 / 1 / 1` here (`pedo.c:140-147`) — and prints a `g` triad per line
 where this source prints `p2p mg`. Nine constants, not one.
 
 What `probe/` holds is `pedo.c`, its two
@@ -94,9 +94,11 @@ text — this source does not reproduce the archived captures line for line:
    banner's register list omitted `CTRL3`; and the p2p header printed the
    datasheet's 200/100 mg while the engine held SensorLib's loosened 80/60. The
    fifth is not a configuration label and so is not among that five: the
-   `REVISION` line printed `0x7C = QMI8658A 13-52-25 Rev A` as settled fact,
-   where which document number names the Rev A part is disputed and deferred
-   to #341.
+   `REVISION` line printed `0x7C = QMI8658A 13-52-25 Rev A` as settled fact.
+   #341 has since settled it the other way: two Rev A datasheets exist, and the
+   `0x7C` is read from `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`. The probe's
+   label now names **both** papers and says the byte does not identify which
+   (`probe/pedo.c:267-269`).
 
 **No register or parameter constant differs from the shake run.** That is
 checkable without trusting this note: `shake.log:48-59` echoes every value the

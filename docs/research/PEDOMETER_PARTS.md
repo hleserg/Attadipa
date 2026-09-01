@@ -425,29 +425,27 @@ a step count *means*:
 With QST's example parameters at 50 Hz, the engine detects steps between **0.4 s
 and 4 s apart** — 0.25 to 2.5 steps per second. Slower or faster is not counted.
 
-**CONFLICTING — this repository holds two readings of the QMI8658C, and they
-disagree about whether it has a pedometer at all.** This section reads document
-`13-52-27` **Rev A, 20 June 2022**, in which chapter 11 is present and `CTRL8`
-bit 4 is `Pedo_EN`. [TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md)
-reports instead that *"the only obtainable C datasheet is Rev 0.6 of January
-2021 marked ADVANCE INFORMATION"*, that its `CTRL8` reads *"Reserved: Not
-Used"*, and that therefore **no hardware pedometer is documented** on the C.
-Those cannot both describe the same part.
-
-Neither reading is withdrawn here, because withdrawing one on the strength of
-the other is guessing with extra steps. What can be said: the two cite different
-document numbers and different dates, so the likeliest explanation is that one
-of them found a revision the other could not — and if `13-52-27` Rev A exists,
-it supersedes an ADVANCE INFORMATION draft from eighteen months earlier. That is
-a plausible reconciliation, not a verified one. Filed as **H14**, and it is now
-cheap: writing `Pedo_EN` and reading `0x5A`–`0x5C` on a powered board tells you
-which document describes the silicon, whatever the paper says.
+**RESOLVED — the conflict this section used to run was between two revisions,
+not two readings of one part.** This section reads document `13-52-27`
+**Rev A, 20 June 2022**, in which chapter 11 is present and `CTRL8` bit 4 is
+`Pedo_EN`. [TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md) once said
+that the only obtainable C datasheet was Rev 0.6 of January 2021, marked
+ADVANCE INFORMATION, whose `CTRL8` reads *"Reserved: Not Used"* — and therefore
+that no hardware pedometer was documented on the C. **That sentence is
+withdrawn there**, under [#341](https://github.com/hleserg/Attadipa/issues/341):
+`13-52-27` Rev A is obtainable, it is what this section reads, and it
+supersedes an ADVANCE INFORMATION draft from eighteen months earlier.
+**H14 is closed** ([`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "RESOLVED").
+What is still worth doing is unchanged and still cheap: writing `Pedo_EN` and
+reading `0x5A`–`0x5C` on a powered board tells you what the silicon does,
+whatever the paper says — and on 2026-08-28 that was tried and
+[the step register never moved](PEDOMETER_BENCH_2026-08-28.md).
 
 ### 2.3 QMI8658A — the pedometer was documented, and then it was not. `UNKNOWN`, urgently.
 
 | Document | Date | Pedometer |
 |---|---|---|
-| QMI8658A Datasheet, `13-52-25`, **Rev A** | 20 June 2022 | **Present.** Feature list p. 1; chapter 11 "Pedometer" pp. 64–66; `STEP_CNT_LOW/MIDL/HIGH` at `0x5A`–`0x5C`; `CTRL8.Pedo_EN`; both CTRL9 commands |
+| QMI8658A Datasheet, `13-52-25`, **Rev A** | 20 June 2022 | **Present**, with a caveat this row must carry. Feature list p. 1; chapter 11 "Pedometer" pp. 64–66; `STEP_CNT_LOW/MIDL/HIGH` at `0x5A`–`0x5C`; `CTRL8.Pedo_EN`; both CTRL9 commands. **Every one of those is also true of `13-52-27`, page numbers included** — its chapter 11 opens on p. 64 and §11.6 is on p. 66 — so this row never distinguished which of the two Rev A documents was open. It no longer needs to: `13-52-25` has been read directly (md5 `5a0fef65a358430d6499944a75d22e19`, 2026-09-01) and every entry in this cell is confirmed in it, on those pages. [#341](https://github.com/hleserg/Attadipa/issues/341) |
 | QMI8658A Datasheet, `QST-PD-B002-22`, **Rev D** | current at 2026-08-22 | **Absent.** The feature list reads *"Integrated Tap, Any-Motion, No-Motion, Significant-Motion detection"* — no Pedometer. There is no chapter 11 on it, and a search of the whole document finds **no `STEP_CNT` register and no `Pedo_EN` bit at all** |
 
 The feature has not been marked deprecated or reserved. It has been **removed
