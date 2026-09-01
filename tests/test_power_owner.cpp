@@ -551,6 +551,31 @@ void test_a_failed_sleep_still_disarms_and_still_resumes()
     CHECK(owner.availability() == Availability::Ready);
 }
 
+void test_a_failed_sleep_still_reports_what_woke_the_board()
+{
+    // A board fills `WakeCauses` before it can know the sleep failed, and the
+    // Waveshare PMU poll descends repeatedly -- so a descent that fails is
+    // reported holding the previous descent's real wake. Discarding it was the
+    // one case where the owner knew what woke the board and said nothing,
+    // which `power_owner.h`'s "never masked away" forbids.
+    FakeHardware hw;
+    hw.sleep_succeeds   = false;
+    hw.soc_causes       = wake_bit(WakeSource::Pmu);
+    hw.unmapped_causes  = 0x400u;
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::FailedSleep);
+    CHECK(report.wake_causes == wake_bit(WakeSource::Pmu));
+    CHECK(report.unmapped_causes == 0x400u);
+    // Pmu was never armed by this plan, so it is unreconciled on the failed
+    // path for the same reason it would be on the woken one.
+    CHECK(report.unexpected_causes == wake_bit(WakeSource::Pmu));
+    // Still not a completed cycle, and the board is still known.
+    CHECK(owner.cycles() == 0);
+    CHECK(report.hardware_known);
+}
+
 void test_a_failed_unwind_publishes_failed_and_refuses_everything_after()
 {
     // ADR-0016 §4. An honest Failed is what lets the layer above decide to
@@ -824,6 +849,7 @@ int main()
     test_a_failed_rail_rolls_back_the_rails_it_cut_and_the_consumers_it_suspended();
     test_a_partly_armed_wake_plan_disarms_exactly_what_it_armed();
     test_a_failed_sleep_still_disarms_and_still_resumes();
+    test_a_failed_sleep_still_reports_what_woke_the_board();
     test_a_failed_unwind_publishes_failed_and_refuses_everything_after();
     test_a_failed_resume_is_retried_by_the_next_sleep();
     test_a_recovery_that_fails_again_refuses_and_touches_no_wake_source();

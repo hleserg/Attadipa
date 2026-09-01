@@ -451,11 +451,13 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
         state_ = PowerState::Active;
     }
 
-    if (!slept) {
-        report.outcome = SleepOutcome::FailedSleep;
-        return report;
-    }
-    report.outcome     = SleepOutcome::Woken;
+    // Read on both paths, because a board fills `causes` before it can tell
+    // this function whether the sleep succeeded, and on the Waveshare board
+    // that ordering is not a corner case: the PMU poll descends repeatedly, so
+    // a descent that fails on iteration N is reported with iteration N-1's
+    // real wake already read into `causes`. `power_owner.h` promises this word
+    // is never masked away, and returning `FailedSleep` with it discarded is
+    // the one case where the owner would know what woke the board and not say.
     report.wake_causes = static_cast<std::uint16_t>(causes.from_soc | causes.derived);
     // Only the SoC's own half is reconciled. A derived cause is a board's
     // conclusion about a register it read, and it was never armed as a wake
@@ -467,6 +469,12 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
     // rather than folded into the mask above, so the log can print the word the
     // hardware actually returned.
     report.unmapped_causes = causes.unmapped_from_soc;
+
+    if (!slept) {
+        report.outcome = SleepOutcome::FailedSleep;
+        return report;
+    }
+    report.outcome = SleepOutcome::Woken;
     ++cycles_;
     return report;
 }
