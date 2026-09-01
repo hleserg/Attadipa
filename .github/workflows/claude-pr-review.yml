@@ -253,7 +253,7 @@ jobs:
           # already on the page with every finding and its status: OD-25 stops
           # the review holding, and now reviewing, but never recording.
           marker='<!-- attadipa-review-cap -->'
-          said=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- attadipa-review-cap -->")) | .id' | tail -1) || said=""
+          said=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_LEDGER_ACTOR) | select(.body | startswith("<!-- attadipa-review-cap -->")) | .id' | tail -1) || said=""
           # The single quotes are the point: every `backtick` below is markdown
           # for the comment this writes, not a command substitution waiting to
           # expand. Double quotes here would run them.
@@ -267,8 +267,8 @@ jobs:
             else
               printf '**The independent review has had its five rounds (OD-25), so this one did not run.**\n\n'
               printf 'Round %s published, and from round six no finding holds a pull request at all — a `floor` finding included. A sixth round could only have returned the verdict this label already carries, so it was not bought.\n\n' "$round"
-              printf '`ai-review:pass` here means *the review is over*, not *the review found nothing*: %s open finding(s) remain in the review ledger on this page. They were judged not to hold this pull request, and they are worth reading before merging.\n\n' "$open"
-              printf 'Независимое ревью исчерпало пять кругов (OD-25) и на этот раз не запускалось. Круг %s опубликован; с шестого ни одна находка PR не держит. `ai-review:pass` здесь значит «ревью закончено», а не «замечаний нет»: открытых находок в леджере — %s.\n' "$round" "$open"
+              printf '`ai-review:pass` here means *the review is over*, not *the review found nothing*: %s open finding(s) remain in the review ledger on this page, and past the ceiling none of them holds a pull request. Read them before merging. One may be `floor` — a finding that *did* hold this pull request up to round five, whose fix, if it was pushed, was checked by nothing. The ledger table says which.\n\n' "$open"
+              printf 'Независимое ревью исчерпало пять кругов (OD-25) и на этот раз не запускалось. Круг %s опубликован; за потолком ни одна находка PR не держит. `ai-review:pass` здесь значит «ревью закончено», а не «замечаний нет»: открытых находок в леджере — %s, и среди них может быть `floor`, который держал PR до пятого круга и чьё исправление никто не проверял.\n' "$round" "$open"
             fi
           } > /tmp/cap-note.md
           if [ "$blocking" -eq 0 ]; then
