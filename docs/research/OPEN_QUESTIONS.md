@@ -278,6 +278,8 @@ one. This project has no Heltec V4 and independently confirming it is
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
+| Q4 | How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node? | **UNKNOWN** | owner decision. Verified 2026-09-01 against `144459f`: a production image can do none of it, and the options are below |
+| Q5 | How does a power lease taken on one task take part in a sleep decision made on another? | **UNKNOWN** | engineering decision, deferred. Blocks [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 only; consequence is zero until a plan suspends a domain a cross-task lease holds |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
 on 2026-08-21 in a way that reframed it. The board is not a lesser device that
@@ -306,6 +308,105 @@ different question than a wrist's does.
 What Q2 now asks is the narrow, still-open thing: **on a board nobody has
 modified, is heading GNSS-course-only for good?** That is a product decision and
 the retrofit does not make it.
+
+### Q4 — a production watch cannot be provisioned at all, and the missing piece is a consent rule
+
+Verified in this tree at `144459f`, not inferred from the issue that predicted
+it. The production image is the one built from `sdkconfig.defaults` alone, and
+that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n".
+Everything that provisions a watch sits behind that symbol:
+
+- **The clock cannot be set.** `write_rtc()` has exactly one caller, inside the
+  `firmware/main/waveshare_board.cpp:268` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+  block. A production watch reads the PCF85063 and never
+  writes it, so a board off the shelf shows whatever its RTC powered up with.
+- **The timezone cannot be kept.** `firmware/main/waveshare_board.cpp:212` —
+  "#if CONFIG_ATTADIPA_WATCH_CONTROL" guards `save_time_metadata()`.
+  `restore_time_metadata()` is unguarded, so production can read a stored offset
+  it has no way to have stored.
+- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of the
+  `configured` flag, and it too is reachable only from inside that block. The
+  worker's `firmware/main/meshcore_ble.cpp:947` — "if (configured.load()) start_scan();"
+  is therefore false forever in a production image: the transport starts, is
+  never configured, and never looks for a node.
+- **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
+  the same single gated caller.
+
+So the gap #346 opened when the unauthenticated USB control plane left the
+product image is **still open**, and it is wider than "time is not settable":
+the mesh half of the product does not run at all without it.
+
+What is missing is not a mechanism. It is a rule about **who may put a watch
+into provisioning mode**, and that is a product decision, not an engineering
+one: every option below is implementable, and they differ in what a stranger
+holding your watch — or a cable — can do to it.
+
+| Option | Security | UX | Implementation |
+|---|---|---|---|
+| **A. Physical consent window.** A button gesture on the watch opens a short provisioning window; only inside it does a provisioning channel answer | Strongest. Possession of the watch is required, and the window bounds the exposure. Does not protect against someone holding the watch | One gesture to learn, and it must be discoverable or the owner is locked out of their own product | Smallest. The button path and its debounce already exist in `physical_input.cpp`; a window is a deadline and a flag |
+| **B. Authenticated channel, no physical step.** A pairing secret provisioned at manufacture or first boot; the channel answers whoever proves it | Depends entirely on where that secret lives. A secret in the image is not a secret; a per-unit secret needs a provisioning step of its own, which is this question again | Best: provision from a phone or host without touching the watch | Largest. Key storage, a pairing protocol, and a factory or first-boot step this project does not have |
+| **C. Physical consent *and* an authenticated channel.** A opens the window, B proves who is inside it | Strongest available, and the only one that survives both a stranger with a cable and a stranger with the watch | Two steps, and both must work on a watch with no keyboard | A plus B. Correct, and it cannot ship before B does |
+| **D. First-boot window only.** An unprovisioned watch answers freely until it is first provisioned, then never again | Weak in the window and strong after. The window is exactly when a watch is most likely to be in transit | Invisible when it works; a factory reset becomes the only recovery, and that is a data-loss path | Small, but the "then never again" latch has to survive a flash erase to mean anything, and on this part it does not |
+
+Two constraints are already settled and bound whichever is chosen. The channel
+must not be the current USB control plane as it stands — `Kconfig.projbuild`
+says of it "Any host that can open the port can use all of it; there is no
+authentication". And a provisioning command must report terminal success, not
+enqueued success: [ADR-0015](../adr/0015-transport-session-ownership.md) already
+draws that line for the transport, and `meshcore_ble_forget_bond()` is the
+existing example of a request whose answer is a queue post — the defect
+[#378](https://github.com/hleserg/Attadipa/issues/378) is open against, so read
+this as naming the shape rather than as a claim about today's code.
+
+**This is not a blocker for power, radio or bring-up work**, and it was not
+treated as one: nothing below the application layer needs the answer. It blocks
+shipping a watch to a person who is not holding a build environment.
+
+### Q5 — a lease taken on one task, read by another, and a sleep decision in between
+
+`PowerOwner` is single-task by contract
+([`core/include/attadipa/core/power_owner.h:272`](../../core/include/attadipa/core/power_owner.h) —
+"// **Not thread-safe, and deliberately so.** Every `acquire()`, `release()` and").
+Issue [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 asks the BLE
+transport to declare a lease, and the transport does not run on the task that
+sleeps. That is the whole of this question, and it is not the data race it looks
+like at first.
+
+**The sequence that has no lock-shaped answer.** The sleeper reads `held()`,
+finds nothing that blocks its plan, and commits. Between that read and the
+hardware actually stopping, the other task acquires a lease. The sleeper has
+already stopped looking. A mutex around the lease table serialises the *table*
+and changes none of it, because the sleeper cannot hold a lock across the sleep:
+it is inside `esp_light_sleep_start()` for as long as the sleep lasts, and a
+task blocked on a lock there is a task that cannot un-take the decision anyway.
+
+**Why nothing is broken today, stated so the reason is checkable rather than
+reassuring.** The only sleep plan the firmware issues suspends the display and
+nothing else
+([`firmware/main/physical_input.cpp:183`](../../firmware/main/physical_input.cpp) —
+"plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
+trip is an intersection
+([`core/src/power_owner.cpp:369`](../../core/src/power_owner.cpp) —
+"static_cast<std::uint16_t>(leases_.held() & (plan.suspend | plan.rails_off));").
+A `NodeLink` lease does not intersect `Display`, so the check that could be
+raced cannot fire whichever way the race lands. The gap is real and its
+consequence is currently zero.
+
+**What answering it costs, which is why it is a question and not a task.** The
+lease has to participate in the sleep decision itself — the sleeper publishes an
+intent, a late acquire either refuses or aborts it, and every consumer learns a
+protocol. That is a general power-management framework, and this project has
+one standing instruction against building one before a consumer needs it
+([ADR-0016](../adr/0016-one-power-owner.md) — the smallest mechanism the current
+product needs). The honest state is: the contract says single-task, the first
+cross-task consumer brings the answer, and until one exists there is nothing to
+measure a design against.
+
+**Not a blocker.** It blocks #367 item 7 and nothing else. Radio, GNSS and
+T-Watch bring-up all reach a working device without it; each of them arriving
+with a lease is what will make the question answerable, because only then is
+there a plan whose `suspend` set a cross-task lease can intersect.
+
 
 ---
 

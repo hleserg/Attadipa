@@ -86,6 +86,15 @@ is refused until a successful re-initialisation. An honest `Failed` is what lets
 the layer above decide to reboot; a hopeful `Ready` is how a watch shows a stale
 screen and answers nothing.
 
+The re-initialisation is the owner's own, and it is a retry rather than a hope:
+each failed unwind step records *which* step it was, and the next `sleep()`
+re-issues exactly those before it will do anything else. It clears `Failed` only
+when every one of them reports its postcondition, and refuses again otherwise.
+Without that the flag has no consumer — one failed `resume(Display)` leaves the
+panel dark and every later sleep refused before it reaches hardware, so nothing
+ever asks the display to come back and the honest `Failed` above becomes a watch
+that is dark until it is reset.
+
 **5. `core::PowerState` stays where it is and gains nothing.** It remains the
 product vocabulary — states, legal transitions, the wake-source whitelist,
 provenance — host-buildable with no ESP-IDF. The owner translates it into GPIO

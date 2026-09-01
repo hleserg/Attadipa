@@ -3,6 +3,7 @@
 
 #include "waveshare_board.h"
 
+#include "board_power.h"
 #include "pcf85063_time.h"
 
 #include <array>
@@ -128,17 +129,6 @@ esp_err_t add_i2c_device(std::uint8_t address, i2c_master_dev_handle_t *out) {
   return i2c_master_bus_add_device(state.i2c, &config, out);
 }
 
-esp_err_t write_reg(i2c_master_dev_handle_t device, std::uint8_t reg,
-                    std::uint8_t value) {
-  const std::uint8_t bytes[] = {reg, value};
-  return i2c_master_transmit(device, bytes, sizeof(bytes), 100);
-}
-
-esp_err_t read_reg(i2c_master_dev_handle_t device, std::uint8_t reg,
-                   std::uint8_t *value) {
-  return i2c_master_transmit_receive(device, &reg, 1, value, 1, 100);
-}
-
 esp_err_t initialize_i2c() {
   i2c_master_bus_config_t config{};
   config.i2c_port = I2C_NUM_0;
@@ -155,27 +145,11 @@ esp_err_t initialize_i2c() {
 esp_err_t initialize_pmu() {
   ESP_RETURN_ON_ERROR(add_i2c_device(kAxp2101Address, &state.pmu), kTag,
                       "add AXP2101");
-
-  // Preserve unrelated rails. The known-working board implementation needs
-  // DC1 plus ALDO1/2, so own only those outputs instead of blanking the PMU.
-  ESP_RETURN_ON_ERROR(write_reg(state.pmu, 0x82, 0x12), kTag, "DC1 3.3 V");
-  ESP_RETURN_ON_ERROR(write_reg(state.pmu, 0x92, 0x1C), kTag, "ALDO1 3.3 V");
-  ESP_RETURN_ON_ERROR(write_reg(state.pmu, 0x93, 0x1C), kTag, "ALDO2 3.3 V");
-
-  std::uint8_t dcdc = 0;
-  std::uint8_t aldo = 0;
-  ESP_RETURN_ON_ERROR(read_reg(state.pmu, 0x80, &dcdc), kTag,
-                      "read DC enables");
-  ESP_RETURN_ON_ERROR(read_reg(state.pmu, 0x90, &aldo), kTag,
-                      "read LDO enables");
-  ESP_RETURN_ON_ERROR(write_reg(state.pmu, 0x80, dcdc | 0x01), kTag,
-                      "enable DC1");
-  ESP_RETURN_ON_ERROR(write_reg(state.pmu, 0x90, aldo | 0x03), kTag,
-                      "enable ALDO1/2");
-
-  ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x, LDO enable 0x%02x", dcdc | 0x01,
-           aldo | 0x03);
-  return ESP_OK;
+  // The rail writes themselves live in board_power.cpp, unchanged. ADR-0016 §1
+  // puts every AXP2101 enable and voltage write in one translation unit, and a
+  // boot-time write is still a rail write; tools/flash/one_power_owner.py is
+  // what turns that from a paragraph into a rule.
+  return attadipa::firmware::board_power_bring_up_rails(state.pmu);
 }
 
 esp_err_t read_rtc(attadipa::firmware::RtcDateTime *time,

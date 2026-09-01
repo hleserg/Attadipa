@@ -38,7 +38,13 @@ pointer, and the touch wake input is inactive. The panel brightness is set
 to zero and the CO5300 is commanded off before `esp_light_sleep_start()`. On
 return the panel is enabled, safe brightness is restored, the PCF85063-backed
 Clock is refreshed and LVGL is forced to render a new frame. The log names the
-full `Active -> Idle -> LightSleep -> Idle -> Active` route and the wake source.
+state being entered, and on return the route back and the wake source
+([`firmware/main/board_power.cpp:311-313`](../../firmware/main/board_power.cpp) —
+"attadipa::core::to_string(state)," and
+[`firmware/main/physical_input.cpp:248-251`](../../firmware/main/physical_input.cpp) —
+"attadipa::firmware::board_power_owner().cycles()),"). It does not name
+`Active -> Idle ->`. The entry line carried that half until the sleep path moved
+into `board-power`, and no line prints it now.
 
 ## Build and flash
 
@@ -96,11 +102,45 @@ after register `0x49` reports a latched PWR edge. GPIO is zero for this route.
 The panel restored and the watch continued answering the debug channel.
 
 The transcript above is what that run printed and is left as it was recorded.
-A repeat prints the same two lines under the tag `physical-input`: sleep and
-wake moved to `firmware/main/physical_input.cpp` in #346 so that they survive a
-build with no debug endpoint, and the log tag moved with them. The behaviour
-did not change, and this was not re-measured — **NOT EXECUTED — HARDWARE
-REQUIRED**.
+It is no longer what a repeat prints, and in four ways rather than one. Both
+lines moved to `firmware/main/physical_input.cpp` in #346, so that they survive
+a build with no debug endpoint, and the tag moved with them. Then the sleep line
+moved again in [#367](https://github.com/hleserg/Attadipa/issues/367): it comes
+from the board's power owner now, so its tag is `board-power`, and it has lost
+the `display off;` prefix — turning the panel off became a `suspend(Display)`
+the owner records and un-does, rather than a step the log narrates
+([`firmware/main/board_power.cpp:312-314`](../../firmware/main/board_power.cpp) —
+"attadipa::core::to_string(state),"). The wake line kept `physical-input` and
+lost the `(cause=4 gpio=0x0)` suffix: causes are a bitmap now, and every one of
+them is named
+([`firmware/main/physical_input.cpp:247-251`](../../firmware/main/physical_input.cpp) —
+"describe_wake(named, sizeof(named), report.wake_causes);") instead of the
+single value the lossy `esp_sleep_get_wakeup_cause()` returned. So `cause=4` is
+in no line this firmware can print, and a repeat grepped for the text above
+finds nothing.
+
+Fourth, the wake line no longer says `by Button` on this route. The PWR key is
+still classified from register `0x49`, but it is classified *during* a timer
+wake, so the board's derived `Button` is now reported alongside the SoC's own
+`Timer`
+([`firmware/main/board_power.cpp:352-354`](../../firmware/main/board_power.cpp) —
+"attadipa::core::wake_bit(attadipa::core::WakeSource::Button);")
+rather than replacing it — the owner publishes the union of the two halves
+([`core/src/power_owner.cpp:461`](../../core/src/power_owner.cpp) —
+"causes.from_soc | causes.derived);"). `main` picked one answer from a
+three-way ladder; this branch reports a bitmap, and the line reads
+`by Timer+Button`. So a repeat grepped for `by Button` also finds nothing.
+
+All four together are the failure this paragraph exists to prevent. It is one
+of the two present-tense claims on a page of recorded transcript, and the other
+one — the route sentence in § Mode and wake wiring — went stale in the same
+change and for the same reason, which is why it is worth counting them.
+
+Three of the four differences are wording. The fourth is not: `by Timer+Button`
+where `main` printed `by Button` is the same wake classified differently, and a
+repeat that reads the line rather than grepping it will see that. What did not
+change is the two events the lines mark — entry and wake — and nothing here
+was re-measured — **NOT EXECUTED — HARDWARE REQUIRED**.
 
 ## Evidence boundary
 

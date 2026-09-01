@@ -468,6 +468,20 @@ target_link_libraries(test_power PRIVATE attadipa_core)
 add_test(NAME power COMMAND test_power)
 set_tests_properties(power PROPERTIES LABELS power)
 
+# ---------------------------------------------------------------------------
+# The power owner: the lease table, and the sleep transaction.
+#
+# docs/adr/0016-one-power-owner.md. The fake hardware records the *order* of
+# every call, because "resume exactly the recorded consumers in exact reverse
+# order" is a claim about order and a test that counts calls cannot fail on it,
+# and it fails any single operation on demand, because a fake that always
+# succeeds turns every rollback assertion into an assertion about nothing.
+
+add_executable(test_power_owner test_power_owner.cpp)
+target_link_libraries(test_power_owner PRIVATE attadipa_core)
+add_test(NAME power_owner COMMAND test_power_owner)
+set_tests_properties(power_owner PROPERTIES LABELS power)
+
 # The third compile boundary, and the same argument as the two above.
 #
 # `GnssCapabilities` was four `bool`s, so `{false, false, false, false}` said
