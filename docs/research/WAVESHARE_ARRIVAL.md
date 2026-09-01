@@ -190,11 +190,11 @@ pending its own readback ([OPEN_QUESTIONS.md:93-95](OPEN_QUESTIONS.md)).
 **A flash conflict comes with it, and is not resolved.** Those same five vendor
 `sdkconfig.defaults` set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, while the schematic
 reading gives `GD25Q256EYIGR` = 256 Mbit = **32 MB**
-([HARDWARE_MATRIX.md:374](HARDWARE_MATRIX.md)) and the Waveshare wiki says "an
-external 32MB Flash". Both sources stand as read. A 16 MB declaration on a 32 MB
-part boots and wastes the upper half, which is the likeliest explanation, but
-that is a hypothesis. It matters for dual-OTA arithmetic and one command settles
-it.
+([HARDWARE_MATRIX.md:376](HARDWARE_MATRIX.md) "GD25Q256EYIGR") and the Waveshare
+wiki says "an external 32MB Flash". Both sources stand as read. A 16 MB
+declaration on a 32 MB part boots and wastes the upper half, which is the
+likeliest explanation, but that is a hypothesis. It matters for dual-OTA
+arithmetic and one command settles it.
 
 ### 3.2 The main I2C bus has six devices, not four
 
