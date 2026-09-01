@@ -32,6 +32,7 @@
 #include "attadipa/link/session_owner.h"
 #include "meshcore_boot.h"
 #include "meshcore_bond_recovery.h"
+#include "meshcore_forget_outcome.h"
 #include "meshcore_write_outcome.h"
 
 namespace {
@@ -916,6 +917,88 @@ void a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry()
 }
 
 // ---------------------------------------------------------------------------
+// #378 -- who may answer a forget-bond, and when.
+//
+// The seam is firmware/main/meshcore_forget_outcome.h, compiled here rather
+// than copied: the request task and the mesh worker are two tasks, and the rule
+// that keeps one answer per request is the reservation below.
+
+void a_forget_bond_is_answered_only_after_the_store_says_the_bond_is_gone()
+{
+    using attadipa::firmware::ForgetBondOperation;
+    using attadipa::firmware::ForgetOutcome;
+    ForgetBondOperation op;
+
+    CHECK(op.take() == ForgetOutcome::Idle);
+    CHECK(op.reserve());
+    // The whole of #378 in one line: between here and complete() the old code
+    // had already told the operator the bond was gone.
+    CHECK(op.take() == ForgetOutcome::InFlight);
+
+    op.complete(true);
+    CHECK(op.take() == ForgetOutcome::Deleted);
+    // Read once. A second reader would either send a second terminal response
+    // or hand this answer to the request after it.
+    CHECK(op.take() == ForgetOutcome::Idle);
+}
+
+void a_deletion_the_store_refused_is_not_a_success_and_never_becomes_one()
+{
+    using attadipa::firmware::ForgetBondOperation;
+    using attadipa::firmware::ForgetOutcome;
+    ForgetBondOperation op;
+
+    CHECK(op.reserve());
+    op.complete(false);
+    CHECK(op.take() == ForgetOutcome::Refused);
+    CHECK(op.take() == ForgetOutcome::Idle);
+}
+
+void two_forget_bonds_cannot_both_be_answered_by_one_deletion()
+{
+    using attadipa::firmware::ForgetBondOperation;
+    ForgetBondOperation op;
+
+    CHECK(op.reserve());
+    // The second request arrives while the worker still has the first. Refused
+    // where the caller can be told, rather than queued behind a correlation
+    // that does not exist: one deletion, one answer.
+    CHECK(!op.reserve());
+}
+
+void a_request_that_was_never_queued_gives_the_slot_back()
+{
+    using attadipa::firmware::ForgetBondOperation;
+    using attadipa::firmware::ForgetOutcome;
+    ForgetBondOperation op;
+
+    CHECK(op.reserve());
+    // post() refused -- a full event queue. The worker will never see this one,
+    // so nothing will ever complete it, and a slot left in flight behind a
+    // request that does not exist refuses every later forget-bond forever.
+    op.release();
+    CHECK(op.take() == ForgetOutcome::Idle);
+    CHECK(op.reserve());
+}
+
+void an_answer_nobody_collected_does_not_wedge_the_next_request()
+{
+    using attadipa::firmware::ForgetBondOperation;
+    using attadipa::firmware::ForgetOutcome;
+    ForgetBondOperation op;
+
+    CHECK(op.reserve());
+    op.complete(true);
+    // The host disconnected, or the bridge's deadline expired: the answer is
+    // sitting here and the request it belonged to is gone. If that refused the
+    // next reservation, forget-bond would be dead until the watch rebooted --
+    // a worse failure than the one this file fixes.
+    CHECK(op.reserve());
+    op.complete(false);
+    CHECK(op.take() == ForgetOutcome::Refused);
+}
+
+// ---------------------------------------------------------------------------
 // #344 -- the bootstrap is a transaction.
 //
 // firmware/main/meshcore_boot.h holds the acquisition order and the rollback,
@@ -1145,6 +1228,11 @@ int main()
     encryption_coming_up_retires_the_conflict();
     a_key_missing_failure_records_the_bond_and_shares_the_one_slot();
     a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry();
+    a_forget_bond_is_answered_only_after_the_store_says_the_bond_is_gone();
+    a_deletion_the_store_refused_is_not_a_success_and_never_becomes_one();
+    two_forget_bonds_cannot_both_be_answered_by_one_deletion();
+    a_request_that_was_never_queued_gives_the_slot_back();
+    an_answer_nobody_collected_does_not_wedge_the_next_request();
     a_successful_boot_starts_the_host_last();
     a_failed_port_init_publishes_nothing_and_releases_nothing();
     a_failed_queue_gives_nimble_back();

@@ -174,7 +174,12 @@ public:
     virtual TimeSinkResult synchronize(const TimeSyncBody& request) = 0;
 };
 
-enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed };
+// `Pending` is answered by `forget_bond` alone, and it means "the request was
+// taken and the answer is not known yet". Every other operation here is
+// answered by the sink synchronously, so `Accepted` still means what it says
+// for them -- and for a forget-bond sink that really is synchronous, which is
+// why this is a fourth value rather than a redefinition of `Accepted`.
+enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed, Pending };
 
 // The array extents below are a contract, not a constraint: an array parameter
 // decays to a pointer, so nothing makes the compiler check that 6 or 32 bytes
@@ -194,7 +199,28 @@ public:
     // operation takes no address. This is not a new privilege on the debug
     // channel: whoever reaches it already holds `configure`, which sets the
     // pairing passkey, and `disconnect`.
+    //
+    // `Pending` means the deletion has not happened yet and the bridge must not
+    // answer -- #378, where the reply that said the bond was gone went out
+    // before `ble_store_util_delete_peer()` had been called, and stayed a
+    // success when the store then refused. A sink that answers `Pending` owes
+    // exactly one `forget_bond_outcome()` other than `Pending` afterwards.
     virtual MeshSinkResult forget_bond() = 0;
+
+    // The answer to the `Pending` forget-bond, or `Pending` while the operation
+    // is still running. `Accepted` here -- and nowhere else -- means the bond is
+    // actually gone.
+    //
+    // Consuming: an outcome is reported once. The bridge sends one terminal
+    // response per request, so a second reader would either send a second one
+    // or hand a stale answer to the next request.
+    //
+    // No default implementation. A sink that never answers `Pending` still has
+    // to say so, by writing `return MeshSinkResult::Pending;` and meaning it: a
+    // default would reach every test double by inheritance, and the value it
+    // returned would be either a spurious success or a spurious failure for
+    // whichever sink forgot to override it.
+    virtual MeshSinkResult forget_bond_outcome() = 0;
     virtual MeshSinkResult send(const std::uint8_t peer_prefix[6],
                                 const char* text, std::size_t text_length,
                                 std::int64_t utc_seconds) = 0;
@@ -216,8 +242,16 @@ public:
            TimeSink* time_sink = nullptr, MeshSink* mesh_sink = nullptr,
            BridgeLimits limits = BridgeLimits{});
 
-    // Handles one de-framed message. Every request produces at least one
-    // response, including a typed error -- ADR-0005 section 4: never ignored.
+    // Handles one de-framed message. Every request produces exactly one
+    // terminal response, including a typed error -- ADR-0005 section 4: never
+    // ignored.
+    //
+    // One request sends its response from `tick` instead of from here:
+    // MeshForgetBond, whose answer is not known until another task has deleted
+    // the bond (#378). It is still exactly one, against the same req_id, and
+    // still bounded -- see `kForgetBondDeadlineMs` in bridge.cpp. A host that
+    // calls `handle` and never calls `tick` will wait forever for that one
+    // opcode and no other.
     void handle(const std::uint8_t* payload, std::size_t length, std::uint32_t now_ms, Emit emit,
                 void* ctx);
 
@@ -289,6 +323,17 @@ private:
 
     BridgeLimits limits_{};
     Stats  stats_{};
+
+    // The one forget-bond whose answer has not arrived. One slot, not a table:
+    // the sink behind it has one slot too (`ForgetBondOperation`), so a second
+    // request is refused here rather than queued into a correlation this cannot
+    // make. #344's rule against a lifecycle framework for one bootstrap reads
+    // the same way for one operation.
+    struct PendingForget {
+        bool          active     = false;
+        std::uint16_t req_id     = 0;
+        std::uint32_t started_ms = 0;
+    } forget_{};
 
     struct Transfer {
         bool          active   = false;

@@ -264,6 +264,17 @@ def cmd_mesh_forget_bond(watch: Watch, args) -> int:
         # The generic text is written for the touch and button opcodes and
         # names a button this board does not have -- for a command that takes
         # no arguments at all it says nothing true.
+        if exc.code is p.ErrorCode.OPERATION_FAILED:
+            # Since #378 this is an answer about the bond, not about the
+            # request reaching the watch: the reply now waits for
+            # `ble_store_util_delete_peer()`, so a failure here means the
+            # deletion was attempted and the bond is still there. The generic
+            # text says the hardware operation failed and stops, which leaves
+            # the operator not knowing whether to run it again.
+            raise WatchError(
+                "the MeshCore bond was not deleted and is still on the watch; "
+                "mesh stays down until it goes, so run this again -- if it "
+                "keeps failing the bond store itself is the fault") from exc
         if exc.code is not p.ErrorCode.BAD_INPUT:
             raise
         raise WatchError(

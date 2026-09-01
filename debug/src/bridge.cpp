@@ -9,6 +9,20 @@ namespace {
 // the four-byte offset that says where it belongs.
 constexpr std::size_t kChunkBytes = kMaxBody - 4;
 
+// How long a forget-bond may stay unanswered before the bridge answers for it.
+//
+// Not hypothetical robustness: `mesh-disconnect` or a `stop_meshcore_ble()`
+// after the request was accepted tears the worker down, and then no outcome
+// ever arrives. "Exactly one terminal response" is violated by zero of them
+// just as surely as by two, and the shape of the failure matters -- with no
+// deadline the host waits out its own read and reports a dead link, when what
+// happened is a deletion that did not run.
+//
+// Below the host's read timeout on purpose, so the operator sees a typed
+// OperationFailed rather than a timeout: `tools/watch/client.py:31` --
+// "DEFAULT_TIMEOUT = 10.0".
+constexpr std::uint32_t kForgetBondDeadlineMs = 6000;
+
 void put_u32(std::uint8_t* p, std::uint32_t v)
 {
     p[0] = static_cast<std::uint8_t>(v & 0xFFu);
@@ -237,7 +251,23 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
             send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
             return;
         }
+        // Refused before the sink is called, not after. There is one slot on
+        // each side of this, and a second request the bridge could not
+        // correlate is exactly how #378's two back-to-back forget-bonds would
+        // both be told they succeeded off one deletion.
+        if (forget_.active) {
+            send_error(envelope.req_id, ErrorCode::OperationFailed, emit, ctx);
+            return;
+        }
         const MeshSinkResult result = mesh_sink_->forget_bond();
+        if (result == MeshSinkResult::Pending) {
+            // Nothing goes out here. The answer is sent from `tick` when the
+            // deletion has actually happened, against this req_id.
+            forget_.active     = true;
+            forget_.req_id     = envelope.req_id;
+            forget_.started_ms = now_ms;
+            return;
+        }
         if (result != MeshSinkResult::Accepted) {
             send_error(envelope.req_id,
                        result == MeshSinkResult::Rejected
@@ -744,8 +774,36 @@ void Bridge::handle_input_reset(std::uint16_t req_id, std::uint32_t now_ms, Emit
 
 void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
 {
-    (void)emit;
-    (void)ctx;
+    // The late half of a forget-bond. `handle` runs on whichever task services
+    // the transport and the deletion runs on the mesh worker, so this is the
+    // only place the answer can be picked up -- and `tick` already runs from
+    // both hosts' loops (firmware/main/watch_control.cpp, sim/debug_server.cpp),
+    // which is why there is no new hook for it.
+    if (forget_.active && mesh_sink_ != nullptr) {
+        const MeshSinkResult outcome = mesh_sink_->forget_bond_outcome();
+        if (outcome != MeshSinkResult::Pending) {
+            forget_.active = false;
+            if (outcome == MeshSinkResult::Accepted) {
+                Envelope reply;
+                reply.req_id = forget_.req_id;
+                reply.op     = Opcode::MeshOk;
+                send(reply, nullptr, 0, emit, ctx);
+            } else {
+                // The bond is still there. Both ways of failing say so with
+                // the same code: the store refused, or the record was gone by
+                // the time the worker looked, and neither is a malformed
+                // request. "Nothing conflicted" is still BadInput, answered
+                // above before anything was reserved.
+                send_error(forget_.req_id, ErrorCode::OperationFailed, emit, ctx);
+            }
+        } else if (now_ms - forget_.started_ms > kForgetBondDeadlineMs) {
+            // No outcome is coming. Answering is the point: a late one arriving
+            // after this finds `active` false and is never sent, so the request
+            // still gets exactly one terminal response.
+            forget_.active = false;
+            send_error(forget_.req_id, ErrorCode::OperationFailed, emit, ctx);
+        }
+    }
 
     // Push first, mutate second -- the order `core::InputState::release_all`
     // establishes and argues for at length. `apply()` runs first in an `&&`,
@@ -807,6 +865,11 @@ void Bridge::on_disconnect(std::uint32_t now_ms)
 {
     (void)state_.release_all(core::InputOrigin::Remote, now_ms, queue_);
     transfer_.active = false;
+    // There is nobody left to answer, and the req_id belongs to a host that is
+    // gone. The deletion itself is not cancelled -- it is already queued on the
+    // worker and the bond is the owner's, not the connection's; the sink's slot
+    // is reclaimed by the next request rather than held by this dead one.
+    forget_.active = false;
 }
 
 }  // namespace attadipa::debug

@@ -394,10 +394,27 @@ public:
     // that is recorded.
     switch (meshcore_ble_forget_bond()) {
     case ESP_OK:
-      return attadipa::debug::MeshSinkResult::Accepted;
+      // Accepted, not done. The bond is deleted on the mesh worker and the
+      // answer comes back through forget_bond_outcome() below (#378).
+      return attadipa::debug::MeshSinkResult::Pending;
     case ESP_ERR_INVALID_STATE:
       return attadipa::debug::MeshSinkResult::Rejected;
     default:
+      return attadipa::debug::MeshSinkResult::Failed;
+    }
+  }
+
+  attadipa::debug::MeshSinkResult forget_bond_outcome() override {
+    switch (meshcore_ble_forget_bond_outcome()) {
+    case attadipa::firmware::ForgetOutcome::Deleted:
+      return attadipa::debug::MeshSinkResult::Accepted;
+    case attadipa::firmware::ForgetOutcome::InFlight:
+      return attadipa::debug::MeshSinkResult::Pending;
+    default:
+      // Refused, and Idle with it. Idle means the answer was already consumed
+      // or the slot was given back, and there is no operation left to wait
+      // for; reporting that as Pending would hold the request open until the
+      // bridge's deadline for an answer that is never coming.
       return attadipa::debug::MeshSinkResult::Failed;
     }
   }

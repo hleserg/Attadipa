@@ -333,10 +333,15 @@ else:
 # Every other typed error still travels as itself. Swallowing BAD_INPUT must not
 # turn into swallowing the transport failing, which is the answer the same
 # command gives when the firmware's event queue is full.
+#
+# Since #378 that answer also carries a fact the operator has to act on: the
+# reply waits for the deletion now, so OPERATION_FAILED means the bond is still
+# on the watch. "The hardware operation failed" alone does not say whether
+# running it again is the fix.
 Recorder.forget_bond_error = p.ProtocolError(
     "the device could not complete the operation", p.ErrorCode.OPERATION_FAILED)
 code, calls, err = run(["mesh-forget-bond"])
-if code != 0 and "nothing to forget" not in err:
+if code != 0 and "nothing to forget" not in err and "still on the watch" in err:
     ok("a forget-bond that failed in the transport is not reported as no bond")
 else:
     no("a forget-bond that failed in the transport is not reported as no bond",
