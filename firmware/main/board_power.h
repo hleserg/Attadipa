@@ -18,6 +18,19 @@
 // rather than a paragraph. Everything above this file talks to
 // `attadipa::core::PowerOwner`, which knows nothing about ESP-IDF.
 //
+// That list is three operations and the ADR's sentence names five: the two it
+// leaves out are turning the AMOLED off or on and publishing `Availability`.
+// The three named are exactly the ones the ADR's *enforcement* clause names,
+// which is why the check has no panel pattern. The owner does turn the panel
+// off and on for a sleep, but `waveshare_board.cpp` also switches it at boot,
+// so the AMOLED clause is the one part of section 1 that is neither exclusive
+// nor checked. Harmless today -- both sites take brightness from the same
+// `kBrightnessPercent` and boot cannot race a sleep -- and recorded rather
+// than fixed, because moving the boot call means reordering it against
+// `lvgl_port_init()` and `start_physical_input()`. What it would cost silent
+// is a second display-power site added during T-Watch bring-up by somebody
+// who read the CI step as enforcing the whole sentence.
+//
 // Two board facts shape the implementation, and both are why the generic
 // mechanism could not be written to assume them:
 //
