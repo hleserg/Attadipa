@@ -383,7 +383,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:709` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:683` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because `BoardTimeSink` and
 `save_time_metadata` are inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
@@ -391,7 +391,7 @@ in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:1345` "bool configure_meshcore_ble") has exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:378`
+`BoardMeshSink::configure` (`waveshare_board.cpp:352`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM rather than
 storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
