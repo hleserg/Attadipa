@@ -1642,17 +1642,21 @@ asked for the mechanism before any of it was built, and answered after reading
 the ADR rather than before it — he had asked for the analysis first and the
 implementation second.
 
-**What it obliges:** #356's implementation adds an on-device entry screen in
-`apps/`, in both languages ([OD-24](#od-24--language-follows-the-reader),
-[ADR-0010](../adr/0010-localization.md)), and the storage for what was entered.
+**What it obliges:** #356's implementation adds an on-device entry screen — a
+second LVGL face beside `ui/lvgl/clock_face.cpp`, with its application half in
+`apps/` — in both languages ([OD-24](#od-24--language-follows-the-reader),
+[ADR-0010](../adr/0010-localization.md)), and one NVS key for what was entered,
+in the `attadipa_mesh` namespace #304 already created.
 It does **not** add a listener of any kind to a product image: no BLE peripheral
 role, no provisioning endpoint, no bounded window, and nothing to authenticate,
 because nothing accepts input except the panel.
 
 **What it invalidates:** ADR-0014's sentence naming
-`watch_control.py sync-time` as the first real time input. That sentence
-describes the HIL image and is amended when the entry screen ships, so the
-sentence and the code change together.
+`watch_control.py sync-time` as the first real time input. That sentence stopped
+being true of the product image at #346, not at this decision —
+`firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n" — so
+ADR-0014 now points here for what replaces it. The sentence itself is rewritten
+when the entry screen ships, so it and the code change together.
 
 ## OD-25 — The independent review gets five rounds, then it files rather than holds
 

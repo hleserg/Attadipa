@@ -311,6 +311,28 @@ the retrofit does not make it.
 
 ### Q4 — a production watch cannot be provisioned at all, and the missing piece is a consent rule
 
+**ANSWERED 2026-09-02 by the owner — and the answer was not in the table below.**
+He chose **on-device entry**: the holder types the value on the watch itself.
+[OD-26](OWNER_DECISIONS.md#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen)
+records the decision, [ADR-0018](../adr/0018-owner-consent-for-provisioning.md)
+the reasoning. #356 carries the implementation; this entry stays for the
+reasoning it holds and is no longer a question.
+
+Two things in what follows are worth reading against that, rather than deleted:
+
+- **Every row below assumes a provisioning channel exists** and asks who may
+  open it. The decision was to have none — nothing in a product image accepts
+  provisioning input except the panel — so the answer sits outside the table
+  rather than in it. The letters also collide: this table's **A** is roughly
+  ADR-0018's **C**, and neither of its A/B/C means the other's.
+- **Row A prices its gesture as already paid, and on this board it is not.**
+  "The button path and its debounce already exist in `physical_input.cpp`" is
+  true of BOOT, which is a GPIO. It is not true of the power key: PWR reaches
+  the AXP2101 `PWRON` pin and never a GPIO, so press *duration* is PMU register
+  policy and whether a long press can be reported to firmware at all is
+  **UNKNOWN** — `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
+  Any future option resting on a held-key gesture has to close that first.
+
 Verified in this tree at `144459f`, not inferred from the issue that predicted
 it. The production image is the one built from `sdkconfig.defaults` alone, and
 that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n".
@@ -333,13 +355,17 @@ Everything that provisions a watch sits behind that symbol:
   the same single gated caller.
 
 So the gap #346 opened when the unauthenticated USB control plane left the
-product image is **still open**, and it is wider than "time is not settable":
-the mesh half of the product does not run at all without it.
+product image was wider than "time is not settable": the mesh half of the
+product does not run at all without it. That gap is what OD-26 answers; it is
+closed as a question and open as work, in #356.
 
-What is missing is not a mechanism. It is a rule about **who may put a watch
+What was missing was not a mechanism. It was a rule about **who may put a watch
 into provisioning mode**, and that is a product decision, not an engineering
 one: every option below is implementable, and they differ in what a stranger
-holding your watch — or a cable — can do to it.
+holding your watch — or a cable — can do to it. The rule chosen makes the
+question narrower than any of them: there is no mode to put the watch into, and
+a stranger with a cable can do nothing, while a stranger holding the watch can
+do everything — possession is the whole factor, which ADR-0018 records.
 
 | Option | Security | UX | Implementation |
 |---|---|---|---|

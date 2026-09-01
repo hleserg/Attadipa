@@ -37,25 +37,29 @@ recorded here so that no option is credited with paying them.
 
 2. **The passkey is RAM-only today, and the storage it needs is one key in a
    namespace that already exists.** Nothing persists the passkey:
-   `firmware/main/meshcore_ble.cpp:1721` —
-   "bool configure_meshcore_ble(std::uint32_t passkey)" reaches `:1384` —
-   "secure_pairing.store(event.passkey != 0);" and nothing else, and the two
-   flags a scan waits on are plain atomics: `:152` —
-   "std::atomic_bool configured{false};" and `:154` —
-   "std::atomic_bool reconnect_allowed{false};". But the seam that would hold it
-   is already in this translation unit, put there by #304: `:219` —
-   "constexpr const char* kMeshNvsNamespace = \"attadipa_mesh\";", read at
-   `:305` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey," and
-   written at `:326`, behind an `nvs_flash_init()` at `:1669` whose failure path
-   is already handled. So this is one key added to a live namespace, not a
+   `firmware/main/meshcore_ble.cpp:1721` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   reaches `firmware/main/meshcore_ble.cpp:1384` — "secure_pairing.store(event.passkey != 0);"
+   and nothing else, and the two flags a scan waits on are plain atomics:
+   `firmware/main/meshcore_ble.cpp:155` — "std::atomic_bool configured{false};"
+   and `firmware/main/meshcore_ble.cpp:157` — "std::atomic_bool reconnect_allowed{false};".
+   But the seam that would hold it is already in this translation unit, put
+   there by #304: `firmware/main/meshcore_ble.cpp:219` — "constexpr const char* kMeshNvsNamespace = ",
+   read at `firmware/main/meshcore_ble.cpp:305` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
+   and written at `firmware/main/meshcore_ble.cpp:326` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:1669` —
+   "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
+   handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
    persisting what was provisioned is orthogonal to the channel that delivered
    it.
 
 3. **Touch already works, as an LVGL pointer device.**
    `firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);".
-   No `lv_keyboard`, `lv_textarea` or `lv_buttonmatrix` exists anywhere in the
-   tree, and `apps/src/` holds only `clock.cpp` and `app_manifest.cpp`. On-screen
+   No screen in this tree uses an `lv_keyboard`, `lv_textarea` or
+   `lv_buttonmatrix` — the names appear only in `tools/ui/lvgl_inventory.py`,
+   which catalogues LVGL's API, and in `sim/lv_conf_simulator.h`, which
+   configures it — and `apps/src/` holds only `clock.cpp` and
+   `app_manifest.cpp`. On-screen
    entry is therefore **new UI on a working input path**, not a new input path.
 
 4. **Both sink interfaces live in the same header as the forbidden symbol.**
@@ -143,8 +147,11 @@ Priced against the current build, B is **A plus a radio**:
   and of bench images, not of every build. It is still B's cost, because B's
   whole purpose is to provision a second peer.
 - The I/O capability is one host-wide global, not a per-connection property:
-  `components/bt/host/nimble/nimble/nimble/host/include/host/ble_hs.h:421`
-  declares `extern struct ble_hs_cfg ble_hs_cfg;`. Showing a code needs a
+  ESP-IDF v5.5.5's vendored NimBLE declares it once, as
+  `extern struct ble_hs_cfg ble_hs_cfg;` in
+  `components/bt/host/nimble/nimble/nimble/host/include/host/ble_hs.h` — a path
+  outside this repository, so nothing here checks it and it is quoted for a
+  reader to confirm. Showing a code needs a
   DISPLAY capability, so a provisioning window has to flip a global that the
   MeshCore path also reads, and flip it back.
 - And there is one connection slot —
@@ -189,9 +196,26 @@ one ADR-0014 already named, and the one that makes the firmware's existing
 first makes either of them cheaper later rather than foreclosing them.
 
 The weakness of A is repetition: six digits is nothing, but typing a full UTC is
-tedious. That is a one-time act — the RTC holds the time once set and the offset
-persists (`firmware/main/waveshare_board.cpp:190` — "esp_err_t restore_time_metadata() {") — and GNSS, which
-ADR-0014 ranks first, removes it entirely when the radio work lands.
+tedious. **How often it has to be typed is UNKNOWN, and that is a hardware fact
+this ADR is not entitled to assume.** What is MEASURED is retention across a
+*software* reset — `docs/hardware/TIME_SYNC_2026-08-26.md:31` — "$ python -m esptool --chip esp32s3 -p /dev/ttyACM1 run",
+where the RTC never lost its rail. Retention across power-off and battery
+removal is listed as unknown in the same report: `docs/hardware/TIME_SYNC_2026-08-26.md:68` —
+"- **UNKNOWN:**" and `docs/hardware/TIME_SYNC_2026-08-26.md:69` —
+"  PCF85063 long-term drift, behavior across battery removal, DST/zone-rule".
+The Waveshare RTC's own rail is not resolved either —
+`docs/research/HARDWARE_MATRIX.md:409` — "The `Power rail` column reads `D13` where the load is known to be on a PMU rail" —
+and the documented backup cell belongs to the other board.
+
+The persisted UTC offset does survive, because it is in NVS rather than in the
+chip: `firmware/main/waveshare_board.cpp:190` — "esp_err_t restore_time_metadata() {".
+
+If the RTC does not retain, hand entry is recurring rather than one-time, on the
+path the owner meets first, because GNSS has not landed. That makes GNSS more
+urgent; it does not make B or C cheaper, because neither is any less
+hand-entered — both display or accept a code the person still types, and both
+pay for a channel on top. The decision does not move. The claim that A's
+weakness is bounded does, and it is withdrawn until somebody measures it.
 
 ## Alternatives considered
 
@@ -216,6 +240,15 @@ Beyond B and C:
   rule asks for.
 - Commits to an NVS seam for what was provisioned — shared with every future
   mechanism, so it is not a cost of this choice alone.
+- **Fixes the authentication factor at possession alone, and this ADR should be
+  the place that says so.** There is no lock and no confirmation: whoever is
+  holding the watch can set its clock and arm a passkey. That is the same factor
+  B and C establish — a gesture and a screen are both possession — so it does
+  not separate them, but it is a boundary the record should carry rather than
+  leave for somebody to discover. Arming a passkey is also what puts the watch
+  on the SMP path where a wrong node's bond evicts the pinned node's, so
+  possession is what stands between a stranger and that eviction. Child Mode on
+  the roadmap is where a second factor would belong if one is ever wanted.
 - Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
   no gesture. B or C would first have to close it.
 - Does not decide the timezone-offset UI, only that the offset is entered on the
