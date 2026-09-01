@@ -12,7 +12,6 @@
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
-#include "esp_lcd_co5300.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "lvgl.h"
@@ -38,10 +37,8 @@ class PhysicalInput {
 public:
   PhysicalInput(const attadipa::platform::BoardProfile &board,
                 esp_lcd_touch_handle_t touch, i2c_master_dev_handle_t pmu,
-                esp_lcd_panel_handle_t panel, std::uint8_t awake_brightness,
                 void (*refresh_ui)())
-      : board_(board), touch_(touch), pmu_(pmu), panel_(panel),
-        awake_brightness_(awake_brightness), refresh_ui_(refresh_ui) {}
+      : board_(board), touch_(touch), pmu_(pmu), refresh_ui_(refresh_ui) {}
 
   attadipa::core::InputQueue &queue() { return input_queue_; }
   std::uint32_t sleep_cycles() const {
@@ -201,15 +198,28 @@ private:
                named, static_cast<unsigned>(report.unmapped_causes));
     }
     if (!report.hardware_known) {
+      // What is un-done, printed here and not only on the refused path below,
+      // because an unwind that fails after the SoC actually slept leaves
+      // `outcome == Woken`: `!report.slept()` is false and this is the only
+      // branch that runs. A domain still suspended and a wake source the SoC
+      // still holds need different repairs, so they are named separately.
+      char stuck[96];
+      describe_wake(stuck, sizeof(stuck), report.blocked_sources);
       ESP_LOGE(kTag,
                "power hardware state is unknown after a failed unwind; "
-               "availability is Failed until re-initialisation");
+               "availability is Failed until re-initialisation "
+               "(domains 0x%04x, sources %s)",
+               static_cast<unsigned>(report.blocked_by),
+               report.blocked_sources == 0 ? "none" : stuck);
     }
 
     if (!report.slept()) {
-      ESP_LOGE(kTag, "LightSleep %s (blocked 0x%04x)",
+      char refused[96];
+      describe_wake(refused, sizeof(refused), report.blocked_sources);
+      ESP_LOGE(kTag, "LightSleep %s (domains 0x%04x, sources %s)",
                attadipa::core::to_string(report.outcome),
-               static_cast<unsigned>(report.blocked_by));
+               static_cast<unsigned>(report.blocked_by),
+               report.blocked_sources == 0 ? "none" : refused);
       return;
     }
 
@@ -416,8 +426,6 @@ private:
   const attadipa::platform::BoardProfile board_;
   esp_lcd_touch_handle_t touch_ = nullptr;
   i2c_master_dev_handle_t pmu_ = nullptr;
-  esp_lcd_panel_handle_t panel_ = nullptr;
-  std::uint8_t awake_brightness_ = 0;
   void (*refresh_ui_)() = nullptr;
   attadipa::core::InputQueue input_queue_{};
   attadipa::core::InputState input_state_{};
@@ -460,7 +468,7 @@ esp_err_t start_physical_input(esp_lcd_touch_handle_t touch,
     return power_result;
   }
   auto *candidate = new (std::nothrow)
-      PhysicalInput(*board, touch, pmu, panel, awake_brightness, refresh_ui);
+      PhysicalInput(*board, touch, pmu, refresh_ui);
   if (candidate == nullptr) {
     return ESP_ERR_NO_MEM;
   }

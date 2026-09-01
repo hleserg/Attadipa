@@ -267,15 +267,26 @@ public:
       break;
     }
     if (result == ESP_ERR_INVALID_STATE) {
-      // Already not armed, which is this call's postcondition. ESP-IDF v5.5.5
-      // reaches its `else` and returns `ESP_ERR_INVALID_STATE` when the
-      // trigger bit is clear -- `esp_sleep_disable_wakeup_source` guards every
-      // branch with `CHECK_SOURCE(source, value, mask)`, defined as
-      // `((s_config.wakeup_triggers & mask) && (source == value))`. Light
-      // sleep never clears those bits, so the first disarm after a sleep is a
-      // real one; it is the owner's recovery retry that arrives second, and
-      // reporting it as a failure would make a board that is provably in the
-      // requested state unrecoverable.
+      // Not armed, which is exactly what this call was asked to achieve, so
+      // it is a success. ESP-IDF v5.5.5 reaches its `else` and returns
+      // `ESP_ERR_INVALID_STATE` when the trigger bit is clear:
+      // `esp_sleep_disable_wakeup_source` guards every branch with
+      // `CHECK_SOURCE(source, value, mask)`, defined as
+      // `((s_config.wakeup_triggers & mask) && (source == value))`, and a
+      // chain of `else if` guards that all fail reaches the final `else`. The
+      // trace is in docs/research/POWER_OWNERSHIP.md.
+      //
+      // **Nothing in this tree reaches it today**, and it is kept rather than
+      // deleted as dead code, which is the trade worth stating. Every path
+      // that could produce it closes itself: the owner disarms only a source
+      // it recorded as armed, `arm_wake(Touch)` un-does its own first step
+      // when its second fails, and `recover()` retries only a disarm that
+      // failed -- which left the trigger bit set, so the retry gets `ESP_OK`.
+      // What the branch is for is the arithmetic on the other side. Mapping
+      // this code to a failure costs a board that is provably in the requested
+      // state a latch into `Failed` and a reboot to leave it; mapping it to
+      // success costs one log line if a future source can be half-armed. The
+      // second is the cheaper way to be wrong.
       ESP_LOGW(kTag, "disarm %s: already disarmed",
                attadipa::core::to_string(source));
       return true;
