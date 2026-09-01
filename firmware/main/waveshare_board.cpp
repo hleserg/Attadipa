@@ -187,6 +187,18 @@ bool wall_time_from_rtc(const attadipa::firmware::RtcDateTime &rtc,
       out);
 }
 
+// Reads the stored UTC offset back at boot. This one is **outside**
+// CONFIG_ATTADIPA_WATCH_CONTROL and runs in the product image, which is the
+// whole reason the key it reads is the one that matters.
+//
+// It requires *both* keys. `last_sync_utc` is read and thrown away -- nothing
+// in the tree consumes it -- and it is read anyway because its presence is the
+// only evidence a `save_time_metadata()` ran to completion. A write can be
+// interrupted between the two sets with nothing reported to anybody: on power
+// loss the caller never returns, so no roll-back can run, and the timezone key
+// is already on flash. Requiring the second key is the only place that case
+// can be caught, and catching it here also gives a watch left holding a bad
+// key by a bench image a way back that does not need another bench image.
 esp_err_t restore_time_metadata() {
   ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, "initialize time metadata");
   nvs_handle_t handle{};
@@ -196,7 +208,11 @@ esp_err_t restore_time_metadata() {
   }
   ESP_RETURN_ON_ERROR(err, kTag, "open time metadata");
   std::int16_t offset = 0;
+  std::int64_t last_sync_utc = 0;
   err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);
+  if (err == ESP_OK) {
+    err = nvs_get_i64(handle, kLastSyncNvsKey, &last_sync_utc);
+  }
   nvs_close(handle);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
     return ESP_OK;
