@@ -1648,11 +1648,14 @@ second LVGL face beside `ui/lvgl/clock_face.cpp`, with its application half in
 [ADR-0010](../adr/0010-localization.md)), and storage for what was entered. That
 storage is two different things and neither is the largest item. The passkey's
 storage is one entry in the `attadipa_mesh` namespace #304 already created; what
-it has no part of is a seam an application may use to reach it — `core::`
-carries no method that arms a passkey and the only writer is a
-`firmware/main/` header — so the passkey half is a `core::` provisioning method
-and the firmware provider behind it, or it is `apps/` reaching into firmware,
-which this repository does not allow. The
+it has no part of is a seam a product image compiles. The shape is already
+written — `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" —
+but the layer it lives in is added only under
+`firmware/main/CMakeLists.txt:31` — "if(CONFIG_ATTADIPA_WATCH_CONTROL)", the
+same symbol that keeps the debug bridge out. So the passkey half is that
+interface brought out from behind the gate, or a `core::` method with a
+firmware provider behind it; what it may not be is `apps/` reaching into
+`firmware/main/`, which this repository does not allow. The
 clock half means moving `write_rtc()`'s caller and `save_time_metadata()` out
 from behind `CONFIG_ATTADIPA_WATCH_CONTROL` — the same symbol that gates the
 debug bridge — and showing `firmware_elf_check.py` still keeps

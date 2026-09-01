@@ -371,7 +371,9 @@ records. One clause of that is weaker than it sounds and belongs here rather
 than in a review: what is provisioned is stored in plain NVS, this project
 builds with no flash or NVS encryption and will not, since `AGENTS.md` forbids
 burning eFuses, and a full flash read over that same cable is documented on this
-unit. So the factor is possession of the watch **or** of a cable and esptool.
+unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:314` —
+"esptool.py --port <port> --baud 921600 read_flash 0 0x2000000 waveshare-2.06-factory.bin".
+So the factor is possession of the watch **or** of a cable and esptool.
 Every option stores the same secret, so this separates none of them; it bounds
 all of them.
 

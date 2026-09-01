@@ -30,7 +30,10 @@ recorded here so that no option is credited with paying them.
 1. **The RTC write path exists and is compiled out, not missing.**
    `firmware/main/waveshare_board.cpp:268` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    gates `firmware/main/waveshare_board.cpp:269` — "class BoardTimeSink final : public attadipa::debug::TimeSink {",
-   and `firmware/main/waveshare_board.cpp:213` — "esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {".
+   and a second one — `firmware/main/waveshare_board.cpp:212` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   — gates `firmware/main/waveshare_board.cpp:213` — "esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {".
+   Two blocks rather than one, which is the difference between ungating this and
+   thinking it is ungated.
    The restore side is already unconditional:
    `firmware/main/waveshare_board.cpp:190` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
@@ -131,7 +134,10 @@ six digits, not a key: `firmware/main/meshcore_ble.cpp:1721` —
 The clock half is likewise already anticipated by the ADR that owns time.
 `docs/adr/0014-time-source-and-synchronization.md` ranks sources "GNSS, network,
 companion, mesh, manual, RTC, simulated" — `manual` is in that list, above
-`RTC`, and nobody has built it. A hand-typed UTC is minutes-accurate at best,
+`RTC`, and it is built: `firmware/main/waveshare_board.cpp:299` —
+"             attadipa::core::TimeSource::Manual," — is what the existing sink
+tags its observation with. What no product image has is a caller for it.
+A hand-typed UTC is minutes-accurate at best,
 which is precisely the quality `manual` denotes.
 
 Cost: a numeric entry screen, in two languages
@@ -275,7 +281,9 @@ Beyond B and C:
   hides the second half.** What is provisioned is stored in plain NVS, this
   project builds with no flash or NVS encryption and will not — `AGENTS.md`
   forbids burning eFuses — and a full flash read over that same port is
-  documented on this unit. esptool writes as well as reads, and the bond store
+  documented on this unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:314` —
+  "esptool.py --port <port> --baud 921600 read_flash 0 0x2000000 waveshare-2.06-factory.bin".
+  esptool writes as well as reads, and the bond store
   is in the same unencrypted NVS: `firmware/sdkconfig.defaults:108` —
   "CONFIG_BT_NIMBLE_NVS_PERSIST=y". So what a cable reaches is not only the
   passkey it can read but the bond records it can overwrite. Whether a
@@ -283,25 +291,38 @@ Beyond B and C:
   ADR does not need it to be: the passkey alone reaches the SMP path with nobody
   touching the panel, which is the scenario #346 exists for. Every option here
   stores the same secret in the same place, so this separates none of them; it
-  bounds all of them, and the register records it at
-  [OPEN_QUESTIONS.md:374](../research/OPEN_QUESTIONS.md).
-- **The passkey half has no `core::` seam, and that is the largest unpriced item
-  in this decision.** The clock half has one: an entry screen hands a time to
-  `core/include/attadipa/core/time_service.h:60` — "bool observe(const TimeObservation& observation);" —
-  ranked as what `core/include/attadipa/core/time_service.h:13` — "    Manual," — names.
-  Nothing equivalent exists for a passkey.
-  `core/include/attadipa/core/mesh_service.h:83` — "class MeshProvider {" — is
-  four methods — status, peer count, peer, send — and not one of them arms one;
-  the only writer is `firmware/main/meshcore_ble.h:12` —
-  "bool configure_meshcore_ble(std::uint32_t passkey);" — whose single caller is
-  inside the gated block, and `grep -rn configure_meshcore_ble core/ apps/`
-  returns nothing. So the implementation is a `core::` method and the firmware
-  provider behind it, not an NVS key: the shortest path from `apps/` to that
-  header is the application-layer hardware access `AGENTS.md` forbids, and an
+  bounds all of them, and the register records it under
+  [Q4 in OPEN_QUESTIONS.md](../research/OPEN_QUESTIONS.md#q4--a-production-watch-cannot-be-provisioned-at-all-and-the-missing-piece-is-a-consent-rule).
+- **Both interfaces exist and are the right shape, and a product image
+  compiles neither. That is the largest unpriced item in this decision.**
+  Fact 4 above named them; this is what they cost. The clock's is
+  `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
+  by `firmware/main/waveshare_board.cpp:269` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  — which validates the request, tags it `firmware/main/waveshare_board.cpp:299`
+  — "             attadipa::core::TimeSource::Manual," — writes the PCF85063 and
+  persists the offset. The passkey's is
+  `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
+  `configure` takes a passkey and may refuse it: a request the application makes
+  and the firmware answers, which is the shape this needs. Neither is missing
+  and neither is merely uncalled. `firmware/main/CMakeLists.txt:31` —
+  "if(CONFIG_ATTADIPA_WATCH_CONTROL)" — is what adds the `debug` layer, and
+  `debug/CMakeLists.txt:14` — "target_include_directories(attadipa_debug PUBLIC include)"
+  — is the only route its headers take into `firmware/main/`. So under the
+  symbol that keeps the bridge out, a product image cannot name `TimeSink`,
+  `MeshSink` or `MeshSinkResult` in any signature at all. That is a stronger
+  constraint than a missing caller and it points somewhere else: what #356 adds
+  is a seam a product image can compile.
+  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:83` —
+  "class MeshProvider {" — is four methods — status, peer count, peer, send —
+  and not one of them arms a passkey, while
+  `core/include/attadipa/core/time_service.h:60` —
+  "bool observe(const TimeObservation& observation);" — is one step inside the
+  clock sequence and the step that does not persist; nothing in `core/` reaches
+  the PCF85063 or NVS. So what an option here buys is that seam and the firmware
+  behind it, not an NVS key: the shortest path from `apps/` to
+  `firmware/main/meshcore_ble.h:12` — "bool configure_meshcore_ble(std::uint32_t passkey);"
+  — is the application-layer hardware access `AGENTS.md` forbids, and an
   implementer reading a cost list that stops at `firmware/main/` will take it.
-  It is **not** `observe`'s shape. `observe` ranks what it is given against what
-  it holds and may keep what it holds; arming a passkey has nothing to rank. It
-  is a request the application makes and the firmware may refuse.
 - Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
   no gesture at all. B or C would not have to close it either — they would use
   BOOT, and pay for a reset strap that cannot be injected remotely and that on
