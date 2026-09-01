@@ -1631,9 +1631,9 @@ secrets, or destroying keys still each require an explicit owner request.
 **five rounds**. From round six on, no open finding blocks the merge — a `floor`
 finding included. Findings are still published, still recorded in the ledger and
 still filed as the follow-up issue the review already produces; only the "holds
-the merge" column changes. His words: *"поставь максимум 5 кругов, дальше если
-нет риска серьёзных поломок — мержим. Лучше уж накосячим и починим чем всё до
-запятой вычитывать по 15 раз сжигая токены на этот ОКР."*
+the merge" column changes. What he weighed: shipping a mistake and fixing it
+costs less than proof-reading one change fifteen times over, so past five rounds
+the merge goes ahead unless something risks a serious breakage.
 
 **What prompted it:** #338 ran **sixteen** rounds. The convergence floor of #169
 (OD is `review-verdict.sh`'s `FLOOR`, set to 4) caps which *categories* may hold
@@ -1648,9 +1648,9 @@ hours of wall clock for a documentation change.
 rounds of *reviewing*. Until this amendment the cap was applied after the model
 had answered — the sixth round ran in full, and only then did the rule defer
 every finding it had just paid to produce and return `ai-review:pass`. #382
-bought three such rounds. His words: *"Так, просил же поставить не больше 5
-кругов ревью. Доработай систему, делаем пять кругов ревью, если после исправлений
-по пятому нет опасных багов больше - мержим как есть"*. A sixth round is no
+bought three such rounds. What he decided: five rounds of *reviewing*, and if
+the fixes made after the fifth leave no dangerous bug behind, the pull request
+merges as it stands. A sixth round is no
 longer run at all: `attadipa_review_gate` reads the round out of the same ledger
 before the model is invoked, and the workflow skips the paid step and hands over
 the verdict round six could only have reached.
