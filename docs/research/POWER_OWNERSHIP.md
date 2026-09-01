@@ -235,9 +235,9 @@ by construction.
 Recorded here because it is the same defect on the other end of the lifetime,
 and the executable issue in §8 should not fix one without the other.
 `start_waveshare_ui()` raises I2C, then the PMU, then display, then touch:
-[`firmware/main/waveshare_board.cpp:680`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:724`](../../firmware/main/waveshare_board.cpp) —
 "initialize AXP2101", through
-[`firmware/main/waveshare_board.cpp:694`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:738`](../../firmware/main/waveshare_board.cpp) —
 "initialize touch". Every step is `ESP_RETURN_ON_ERROR`. A touch failure after a
 successful display therefore returns with the panel up, LVGL running, the PMU
 programmed and nothing torn down — a partially initialised board reported as a
