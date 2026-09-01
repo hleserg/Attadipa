@@ -70,15 +70,21 @@ Dismissed as *used in tests*, one alert at a time. This note used to say that
 the per-alert form was deliberate — that a `paths-ignore` for `tests/` would
 also stop the scan seeing genuine defects in code that links against `core`.
 
-**That is no longer what runs.** The whole test tree is excluded by
-`.github/codeql/codeql-config.yml:2` — "- tests/**", and the scan is given that
-config by `.github/workflows/codeql.yml:47` — "config-file: ./.github/codeql".
-The
-five dismissals above are history rather than the mechanism in force, and the
-cost the old note named is now being paid in full: nothing under `tests/` is
-scanned, so a genuine defect there raises nothing to triage. Whether that is
-the right scope is a decision for whoever changes it; what this file records is
-which one is running.
+**That is no longer what runs.** `.github/codeql/codeql-config.yml:2` —
+"- tests/**" excludes the test tree, and the scan is given that config by
+`.github/workflows/codeql.yml:47` — "config-file: ./.github/codeql". The five
+dismissals above are history rather than the mechanism in force.
+
+What that exclusion does and does not do is worth being exact about. The tests
+are still **built and analysed**
+(`.github/workflows/codeql.yml:5` — "Tests are built in this job"), so the
+compilation path stays covered and the database is complete. What the exclusion
+removes is the *alerts*: nothing in `tests/` is ever reported. So the cost the
+old note named is being paid in full — a genuine defect in test code raises
+nothing to triage — and it is paid silently, because a clean scan looks the
+same either way. Whether that is the right scope is a
+decision for whoever changes it; what this file records is which one is
+running.
 
 ## If you are about to dismiss something
 
