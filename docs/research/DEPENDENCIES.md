@@ -98,6 +98,49 @@ maintainer behaviour and it is also the whole argument: a resolution recorded
 yesterday is not a fact about today, so every SHA above was re-resolved
 immediately before the commit that introduced it.
 
+### Where the resolved graph lives, and where notices go
+
+**`firmware/dependencies.lock` is tracked.**
+`firmware/main/idf_component.yml` names four components and pins all four to
+exact versions. The lock holds seven entries: those four, ESP-IDF itself, and
+the two nothing pins — `espressif/cmake_utilities`, which `esp_lcd_co5300` asks
+for as `0.*`, and `espressif/esp_lcd_touch`, which `esp_lcd_touch_ft5x06` asks
+for as `^1.2.0`.
+
+Those two are the only versions in the linked image a clean build was ever free
+to move, and they are exactly the two the audit below records as audited:
+`esp_lcd_touch` 1.2.1 and `cmake_utilities` 0.5.3. The lock committed here says
+both numbers were right. That is the argument rather than a reprieve — nothing
+in the repository could have shown it, and a build that resolved something else
+would have left the same page looking equally true.
+
+**The direct pins are load-bearing too, and the lock is where that shows.**
+`espressif/esp_lvgl_port` accepts `lvgl/lvgl >=8,<10`; only the manifest's own
+`lvgl/lvgl: "9.5.0"` holds it at the version the rest of this file reasons
+about. That entry also means LVGL is obtained twice by two routes — from the
+component registry for the firmware, and by `FetchContent` at tag `v9.5.0` with
+commit `85aa60d1…` verified for the host and simulator builds (*LVGL v9.5.0 —
+the reasoning*, below). Both name the same release and nothing ties them
+together; a registry component hash is not a git commit, and a bump applied to
+one is not a bump to the other. Recorded rather than fixed: both are pinned
+exactly, so neither drifts on its own, and the only failure left is a bump made
+on one route and forgotten on the other — which a third mechanism could catch
+and this paragraph catches more cheaply.
+
+**The lock is binding, not decorative.** The firmware CI job rebuilds — which
+re-resolves and rewrites the lock — and then fails on `git diff --exit-code`.
+Drift is the failure. Bumping a component means committing the new lock and
+re-reading the licence of whatever moved, in the same pull request.
+
+**Redistribution notices** are assembled for a release artefact, not carried in
+the tree: `LICENSE` (GPL-3.0-or-later) plus, for any binary or source bundle, the
+Apache-2.0 notices of the ESP-IDF components and managed components, the MIT
+notices of LVGL, MeshCore, RadioLib and the vendored `LVGLImage.py`, and the OFL
+1.1 text for Inter and Nunito Sans — each copied from the licence file beside the
+artefact it covers rather than retyped. **No release bundle has been produced
+yet**, so this is a stated policy and not a described procedure; the first
+release is what turns it into one.
+
 ### GPL-3.0-or-later compatibility audit — 2026-08-26
 
 | Result | Components | Distribution consequence |

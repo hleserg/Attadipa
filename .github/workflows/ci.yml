@@ -682,6 +682,15 @@ jobs:
           # turns this step red on both counts.
           grep -q "^# CONFIG_ATTADIPA_WATCH_CONTROL is not set$" sdkconfig
           python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
+          # The build above re-resolves the component graph and rewrites
+          # dependencies.lock. If what it resolved is not what this repository
+          # holds, the licence audit in DEPENDENCIES.md describes a graph
+          # nobody is building -- so the drift is the failure, not the diff.
+          # Committing the lock without this check makes it decoration.
+          git diff --exit-code -- dependencies.lock || {
+            echo "::error title=Resolved dependency graph moved::firmware/dependencies.lock changed during the build. Commit the new lock and re-run the licence audit in docs/research/DEPENDENCIES.md before merging." >&2
+            exit 1
+          }
           # app_main owns the degraded-PSRAM diagnostic. Without this option,
           # ESP-IDF aborts before that diagnostic can run.
           grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
