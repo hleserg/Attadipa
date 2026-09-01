@@ -90,7 +90,7 @@ OPCODE_VALUES = {
     "INPUT_EVENT": 0x0020, "INPUT_RESET": 0x0021, "WAIT_STABLE": 0x0030,
     "TIME_SYNC": 0x0040,
     "MESH_CONFIGURE": 0x0050, "MESH_SEND": 0x0051, "MESH_ROOM_SEND": 0x0052,
-    "MESH_DISCONNECT": 0x0053,
+    "MESH_DISCONNECT": 0x0053, "MESH_FORGET_BOND": 0x0054,
     "HELLO_OK": 0x8001, "CAPABILITIES_OK": 0x8002, "SCREEN_INFO": 0x8010,
     "SCREEN_DATA": 0x8011, "SCREEN_END": 0x8012, "INPUT_OK": 0x8020,
     "STABLE_OK": 0x8030, "TIME_SYNC_OK": 0x8040, "MESH_OK": 0x8050,
@@ -671,11 +671,13 @@ def mesh_commands_are_validated_and_a_send_is_not_retried() -> None:
     watch = Watch(device, timeout=1.0)
     watch.mesh_configure(123456)
     watch.mesh_disconnect()
+    watch.mesh_forget_bond()
     watch.mesh_send(bytes.fromhex("010203040506"), "Hello", 1234567890)
     watch.mesh_room_send(bytes.fromhex("00" * 32), "pass", "Hello", 1234567890)
     check(device.asked == [
         (p.Op.MESH_CONFIGURE, bytes.fromhex("40e20100")),
         (p.Op.MESH_DISCONNECT, b""),
+        (p.Op.MESH_FORGET_BOND, b""),
         (p.Op.MESH_SEND,
          bytes.fromhex("010203040506d202964900000000") + b"Hello"),
         (p.Op.MESH_ROOM_SEND,

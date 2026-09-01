@@ -17,4 +17,10 @@ bool meshcore_ble_send_room(
     const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& room,
     std::string_view password, std::string_view text,
     attadipa::core::WallTime timestamp);
+// Deletes the bond of the peer whose repeat-pairing attempt faulted the
+// transport, and arms one fresh pairing. Refuses -- returns false -- when no
+// such conflict was recorded, which is what keeps it from being a way to walk
+// the bond store. See firmware/main/meshcore_bond_recovery.h.
+bool meshcore_ble_forget_bond();
+
 attadipa::core::MeshStatus meshcore_ble_status();

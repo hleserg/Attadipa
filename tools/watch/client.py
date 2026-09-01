@@ -589,6 +589,14 @@ class Watch:
     def mesh_disconnect(self) -> None:
         self.request(p.Op.MESH_DISCONNECT, b"", (p.Op.MESH_OK,))
 
+    def mesh_forget_bond(self) -> None:
+        # No body, and no peer to name: the watch deletes the one bond a
+        # repeat-pairing conflict recorded, or answers BAD_INPUT because none
+        # did. Deleting a bond is not idempotent in any useful sense -- a
+        # repeat would find nothing recorded and report a refusal the operator
+        # would have to interpret -- so a lost acknowledgement is reported.
+        self.request(p.Op.MESH_FORGET_BOND, b"", (p.Op.MESH_OK,), retries=0)
+
     def mesh_send(self, peer_prefix: bytes, text: str, utc_seconds: int) -> None:
         try:
             body = p.mesh_send_encode(peer_prefix, text, utc_seconds)

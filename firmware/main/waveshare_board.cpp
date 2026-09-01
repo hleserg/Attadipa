@@ -387,6 +387,15 @@ public:
                                : attadipa::debug::MeshSinkResult::Failed;
   }
 
+  attadipa::debug::MeshSinkResult forget_bond() override {
+    // Rejected, not Failed: the only reason this returns false is that no
+    // repeat-pairing conflict was recorded, and that is a statement about the
+    // request rather than about the transport.
+    return meshcore_ble_forget_bond()
+               ? attadipa::debug::MeshSinkResult::Accepted
+               : attadipa::debug::MeshSinkResult::Rejected;
+  }
+
   attadipa::debug::MeshSinkResult
   send(const std::uint8_t peer_prefix[6], const char *text,
        std::size_t text_length, std::int64_t utc_seconds) override {

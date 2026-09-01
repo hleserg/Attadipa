@@ -2412,3 +2412,79 @@ direction; BSD-3-Clause likewise, and it applies to `src/bosch/` if SensorLib is
 ever taken. If the vendor command table is adopted, the MIT notice travels with
 it. Mechanics are [#284](https://github.com/hleserg/Attadipa/issues/284)'s
 subject.
+---
+
+### Recovering a MeshCore link when the node's keys are gone
+
+**Problem:** the watch keeps a persistent NimBLE bond
+(`CONFIG_BT_NIMBLE_NVS_PERSIST=y`, MITM, Secure Connections). A MeshCore node
+that is factory-reset or reflashed loses its half of that bond and asks to pair
+again, which reaches the application as `BLE_GAP_EVENT_REPEAT_PAIRING`. The
+shipping handler answered `BLE_GAP_REPEAT_PAIRING_IGNORE` and left nothing
+behind, so the link could never come back without erasing the watch's NVS
+([#325](https://github.com/hleserg/Attadipa/issues/325)).
+
+**Candidates:**
+
+1. **Apache NimBLE, the event contract itself** — Apache-2.0, already a
+   dependency through pinned ESP-IDF v5.5.5. `host/ble_gap.h:211-212` assigns
+   `BLE_GAP_REPEAT_PAIRING_RETRY = 1` and `..._IGNORE = 2`; the contract at
+   `:1069-1077` says RETRY is returned *"after deleting the conflicting bond"*
+   and that the stack *"will verify the bond has been deleted and continue the
+   pairing procedure"*, while IGNORE means the stack *"will silently ignore the
+   pairing request"*. `USE AS-IS` — this is the authority for what the two
+   answers mean, and the reason the recovery cannot be a RETRY.
+2. **ESP-IDF v5.5.5 `examples/bluetooth/nimble/blecent`** — Apache-2.0, the
+   mature official central example. Its handler
+   (`main/main.c`, `BLE_GAP_EVENT_REPEAT_PAIRING`) calls `ble_gap_conn_find`,
+   then `ble_store_util_delete_peer`, then returns RETRY, and says of itself:
+   *"This app sacrifices security for convenience: just throw away the old bond
+   and accept the new link."* `ADAPT THE LOOKUP, REJECT THE POLICY` — the
+   `ble_gap_conn_find` → `desc.peer_id_addr` → `ble_store_util_delete_peer`
+   sequence is exactly right and is what this firmware uses; the ordering is
+   not.
+3. **NimBLE's own internal handling**, `CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION`
+   (`components/bt/host/nimble/Kconfig.in:197`, `default n`). With it on,
+   `ble_gap.c:9679-9685` deletes the bond and returns RETRY without posting any
+   event to the application. `REJECT` — it is the example's policy moved into
+   the stack, and it would silently retire this firmware's handler.
+
+**Decision:** `USE AS-IS` for the contract, `ADAPT` the peer lookup, `REJECT`
+both automatic policies. The recovery is an owner action, taken outside the
+callback.
+
+**Reason:** [Apache NimBLE issue #2206](https://github.com/apache/mynewt-nimble/issues/2206),
+open as of 2026-08-28, is that the automatic deletion happens **before Phase 2
+authentication**. Anything that deletes inside the callback therefore lets an
+unauthenticated radio peer evict a legitimate bond with one Pairing Request —
+so both candidate 2's policy and candidate 3 are unusable here regardless of
+how convenient they are. Answering IGNORE is not the defect #325 reports; the
+defect is that IGNORE recorded nothing. This firmware keeps IGNORE, records the
+conflicted peer identity, faults the transport so the failure is visible rather
+than silent, and deletes only when the owner asks — at which point no pairing
+procedure is in flight and #2206's window does not exist. `RETRY` is never
+returned by any input.
+
+**Source revision:** ESP-IDF `v5.5.5`, local clone `b774170ff46`; NimBLE as
+vendored there under `components/bt/host/nimble/nimble/`.
+
+**Attadipa integration:** `firmware/main/meshcore_bond_recovery.h` is the whole
+policy, host-buildable and dependency-free;
+`firmware/main/meshcore_ble.cpp` static_asserts both constants against the
+`BLE_GAP_*` definitions they mirror and holds the two call sites;
+`firmware/sdkconfig.defaults` pins candidate 3 off rather than inheriting its
+default. The owner surface is `mesh-forget-bond` on the debug channel
+(`MeshForgetBond = 0x0054`), which exists only in a build with
+`CONFIG_ATTADIPA_WATCH_CONTROL=y` — the same builds that can create a bond at
+all, because `secure_pairing` is only ever set by `MeshConfigure`.
+
+**Tests required:** `tests/test_session_owner.cpp` compiles the policy header
+and proves that no input returns RETRY, that a forget with nothing recorded is
+refused, that one conflict yields exactly one deletion, that a second peer
+cannot displace the recorded one, that an unidentifiable peer nominates
+nothing, and that encryption coming up retires the conflict. Mutation-checked:
+letting the newest peer overwrite the record turns the fourth case red.
+`tests/test_debug.cpp` covers the opcode — no body, no sink, and a refusal
+reported as `BadInput` rather than a transport failure. The physical case — a
+node reset on the bench, and a nearby unselected peer failing to evict the
+bond — is `NOT EXECUTED — HARDWARE REQUIRED`.

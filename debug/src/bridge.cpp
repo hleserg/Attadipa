@@ -228,6 +228,30 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         send(reply, nullptr, 0, emit, ctx);
         return;
     }
+    case Opcode::MeshForgetBond: {
+        if (mesh_sink_ == nullptr) {
+            send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
+            return;
+        }
+        if (envelope.body_len != 0) {
+            send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
+            return;
+        }
+        const MeshSinkResult result = mesh_sink_->forget_bond();
+        if (result != MeshSinkResult::Accepted) {
+            send_error(envelope.req_id,
+                       result == MeshSinkResult::Rejected
+                           ? ErrorCode::BadInput
+                           : ErrorCode::OperationFailed,
+                       emit, ctx);
+            return;
+        }
+        Envelope reply;
+        reply.req_id = envelope.req_id;
+        reply.op = Opcode::MeshOk;
+        send(reply, nullptr, 0, emit, ctx);
+        return;
+    }
     case Opcode::MeshSend: {
         constexpr std::size_t kHeader = 6 + 8;
         if (mesh_sink_ == nullptr) {

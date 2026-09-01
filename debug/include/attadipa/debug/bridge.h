@@ -188,6 +188,13 @@ public:
     virtual ~MeshSink() = default;
     virtual MeshSinkResult configure(std::uint32_t passkey) = 0;
     virtual MeshSinkResult disconnect() = 0;
+    // Forgets the one bond a repeat-pairing conflict recorded, and arms one
+    // fresh pairing. `Rejected` means nothing conflicted, so there is no bond
+    // this may touch -- see firmware/main/meshcore_bond_recovery.h for why the
+    // operation takes no address. This is not a new privilege on the debug
+    // channel: whoever reaches it already holds `configure`, which sets the
+    // pairing passkey, and `disconnect`.
+    virtual MeshSinkResult forget_bond() = 0;
     virtual MeshSinkResult send(const std::uint8_t peer_prefix[6],
                                 const char* text, std::size_t text_length,
                                 std::int64_t utc_seconds) = 0;

@@ -624,13 +624,43 @@ state.
 | Layer | Observed state | Label |
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
-| BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1097`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:962`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1 |  |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1210`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1031`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
 | Room Server login | the guest password is sent **in the clear inside the Companion frame** (section 6) — the wire cannot change, the protocol requires it there. It is protected only by BLE link encryption between watch and node, and by whatever MeshCore does beyond the node. It is **no longer printed to the USB console**: the frame transcript is truncated at the public room key (#316, section 12) | `MEASURED` on the wire; the transcript truncation is `SIMULATED` |
 | Trust model | the watch trusts the node completely. A node — or anything that can present itself as one and satisfy the passkey — chooses every sender name and message body the watch displays | structural, from the protocol |
+
+### 8.1 When the node's keys are gone · `NOT EXECUTED — HARDWARE REQUIRED`
+
+The node in this report was factory-reset once, and it came back with a
+different self name and public key. A node that is reset or reflashed after a
+bond exists loses its half of that bond and asks to pair again; NimBLE reports
+that to the application as `BLE_GAP_EVENT_REPEAT_PAIRING`.
+
+The watch does not delete the bond. Returning `BLE_GAP_REPEAT_PAIRING_RETRY`
+would mean deleting it first, before Phase 2 authentication — [Apache NimBLE
+issue #2206](https://github.com/apache/mynewt-nimble/issues/2206), open as of
+2026-08-28 — so any peer in radio range could evict the bond with one Pairing
+Request. Instead the watch records which peer conflicted, faults the transport
+and stops reconnecting, and says so on the console. Recovery is an operator
+action:
+
+```
+tools/watch_control.py mesh-forget-bond
+```
+
+It deletes only the bond that the conflict recorded — it takes no peer to name
+— and arms one fresh pairing. With no conflict recorded it refuses, so it is
+not a way to walk the bond store. `mesh-configure` is still needed afterwards
+if the watch has been reset since, because the passkey lives only in RAM.
+
+Everything in this subsection is `SIMULATED` on a host
+([`../../tests/test_session_owner.cpp`](../../tests/test_session_owner.cpp),
+[`../../tests/test_debug.cpp`](../../tests/test_debug.cpp)). No bond has been
+made stale on this bench and no recovery has run on hardware: the row above
+stays `UNKNOWN` until one does.
 
 See [`docs/upstream/meshcore-1.17-review.md`](../upstream/meshcore-1.17-review.md)
 for the upstream review of what MeshCore does and does not guarantee at this
