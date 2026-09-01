@@ -397,8 +397,27 @@ jobs:
 
       - name: Work out why the review did not happen
         id: why
+        # `!cancelled()` RATHER THAN `always()`, AND THE DIFFERENCE IS ONE
+        # SENTENCE THIS WORKFLOW WAS PRINTING FALSELY.
+        #
+        # `always()` is true on cancellation as well as on success and failure.
+        # The concurrency group above cancels a review whose head has been
+        # superseded -- deliberately, because "a review of an old head is worse
+        # than no review" -- and a cancelled job wrote no execution log, so
+        # `steps.happened.outputs.ran` is `no` and this whole path used to run.
+        # On #173 at `1c13322e` it posted **the independent review did not run**
+        # and offered six causes, none of which was "this run was superseded",
+        # beside a real review of the current head.
+        #
+        # `!cancelled()` is true for success and failure and false for
+        # cancellation, which is exactly the line wanted here: a job killed by
+        # `timeout-minutes` reports `failure`, not `cancelled`, so every run
+        # that genuinely could not reach the model still says so with all six
+        # causes intact. `.github/tests/review-cancelled-test.sh` evaluates both
+        # of these conditions under a cancelled context and a failed one rather
+        # than trusting that sentence.
         if: >-
-          always() && steps.auth.outputs.ok == 'true' &&
+          !cancelled() && steps.auth.outputs.ok == 'true' &&
           (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no') &&
           steps.published.outputs.state != 'published'
         env:
@@ -449,8 +468,18 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Say that the review did not happen
+        # The step that actually posts and strips labels, so this is where the
+        # cancellation distinction is load-bearing rather than tidy. See the
+        # note on `Work out why the review did not happen` above.
+        #
+        # `Say that the review published nothing` deliberately keeps `always()`:
+        # its condition needs `steps.published.outputs.state == 'silent'`, which
+        # is reachable only when the review ran and published nothing, and that
+        # is a true finding about this head whether or not a newer one has since
+        # arrived. Dropping a stale `ai-review:pass` off a superseded head is
+        # the fail-closed direction; suppressing it would not be.
         if: >-
-          always() && steps.auth.outputs.ok == 'true' &&
+          !cancelled() && steps.auth.outputs.ok == 'true' &&
           (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no') &&
           steps.published.outputs.state != 'published'
         env:
