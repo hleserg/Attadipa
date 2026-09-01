@@ -399,6 +399,10 @@ set_tests_properties(meshcore_companion PROPERTIES LABELS "mesh;transport")
 # unsynchronised read hiding inside the class would be seen on a host.
 find_package(Threads REQUIRED)
 add_executable(test_session_owner test_session_owner.cpp)
+# The transmit-outcome rule pump_tx() switches on is a header in firmware/main
+# with no ESP-IDF dependency, so this test compiles the shipping file rather
+# than a copy of the rule -- the pattern test_time_service uses above.
+target_include_directories(test_session_owner PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 target_link_libraries(test_session_owner PRIVATE attadipa_link Threads::Threads)
 add_test(NAME session_owner COMMAND test_session_owner)
 set_tests_properties(session_owner PROPERTIES LABELS "mesh;transport")
