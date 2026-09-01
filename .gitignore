@@ -10,6 +10,24 @@ sdkconfig.old
 managed_components/
 dependencies.lock
 
+# One exception to the rule above, and it is an exception rather than a
+# deletion. `dependencies.lock` is the resolved transitive graph -- exact
+# versions and component hashes -- and the firmware project's copy is tracked on
+# purpose. The manifest pins the four direct components; esp_lcd_touch and
+# cmake_utilities are pulled in by them at `^1.2.0` and `0.*`, so those two were
+# free to move between clean builds and nothing in the tree recorded which ones
+# the licence audit of 2026-08-26 was describing. The manifest declares intent;
+# the lock is what was actually built and licence-audited (#284).
+#
+# The negation, not the deletion, is what makes this one path trackable, and it
+# works only because the rule it negates excludes a **file**: git cannot
+# re-include a path through an excluded directory. Dropping `dependencies.lock`
+# instead would un-ignore the lock of every ESP-IDF project this tree ever
+# grows -- a second app, a component test project, an example -- and `git add
+# -A` from the root would sweep it in, which is the failure the `build.*/` note
+# above is already a monument to.
+!firmware/dependencies.lock
+
 # Rendered UI frames — `watch-ui-testing` writes them per run and they are
 # evidence for one review, not a durable artefact.
 tools/ui/out/

@@ -368,6 +368,14 @@ jobs:
       - name: A cancelled review is not a review that could not run
         run: bash .github/tests/review-cancelled-test.sh
 
+      # The dependency-lock gate, exercised against a planted drift. The
+      # firmware job runs the same script on a real build; this runs it on two
+      # files, which is the only way to prove it goes red -- committing a
+      # deliberately wrong lock to see CI fail is not a test anybody can leave
+      # in the tree.
+      - name: A moved dependency graph fails the lock gate
+        run: bash .github/tests/lock-drift-check-test.sh
+
       # And nothing new joins them in the dark. Wiring three suites by hand is
       # a fix that lasts until somebody adds a fourth file, so the list is
       # checked rather than remembered. `shellcheck -x .github/tests/*.sh` at
@@ -671,6 +679,17 @@ jobs:
         run: |
           . "$IDF_PATH/export.sh"
           cd firmware
+          # The build rewrites dependencies.lock in place, so the committed
+          # copy is taken before anything runs. `git diff` cannot do this job
+          # here, and the reason is worth writing down rather than leaving for
+          # the next person to rediscover: the workspace is created by the
+          # runner as one user and this step runs as another inside the
+          # container, so git stops its discovery walk at the ownership
+          # boundary and answers "Not a git repository". That is exactly what
+          # the first version of this check did, on the pull request that
+          # added it -- the check is compared against a file, not against the
+          # index, for that reason and not by preference.
+          cp dependencies.lock "$RUNNER_TEMP/dependencies.lock.committed"
           idf.py set-target esp32s3
           idf.py build
           # This is the job that decides whether a product image can answer an
@@ -682,6 +701,23 @@ jobs:
           # turns this step red on both counts.
           grep -q "^# CONFIG_ATTADIPA_WATCH_CONTROL is not set$" sdkconfig
           python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
+          # If the build resolved something other than what this repository
+          # holds, the licence audit in DEPENDENCIES.md describes a graph
+          # nobody is building -- so the drift is the failure, not the diff.
+          #
+          # It does not re-resolve on every build, and the comment that used to
+          # say so was wrong. `is_solve_required()` returns false for a lock
+          # that is still valid, so this catches a lock stale against a changed
+          # manifest, target, IDF version or direct-dependency set -- not a new
+          # `cmake_utilities 0.*` appearing in the registry. DEPENDENCIES.md,
+          # "The lock is binding", has the sourced version.
+          #
+          # The decision lives in a script so that
+          # `.github/tests/lock-drift-check-test.sh` can plant a moved version
+          # and prove the gate goes red; as an inline block it was the one
+          # check here that nothing checked.
+          bash ../.github/scripts/lock-drift-check.sh \
+            "$RUNNER_TEMP/dependencies.lock.committed" dependencies.lock
           # app_main owns the degraded-PSRAM diagnostic. Without this option,
           # ESP-IDF aborts before that diagnostic can run.
           grep -q "^CONFIG_SPIRAM_IGNORE_NOTFOUND=y$" sdkconfig
