@@ -340,6 +340,18 @@ jobs:
       - name: A completed review reaches the pull request
         run: bash .github/tests/review-published-test.sh
 
+      # The step above drives `review-published.sh`. This one drives the
+      # workflow around it -- that a review which reached the model and
+      # published nothing reports red, and that the previous head's
+      # `ai-review:pass` comes off when the new head arrives.
+      #
+      # It is added here because it was never run. The file has existed since
+      # #277; every other suite in `.github/tests/` has an explicit `run:`
+      # above or below, and this one had none, so it was shellcheck-linted at
+      # `:233` and never executed. #339's assertions existed only on a laptop.
+      - name: A review that publishes nothing is red, and drops the stale pass
+        run: bash .github/tests/review-invalidate-workflow-test.sh
+
       - name: A re-review eventually converges without weakening floor findings
         run: bash .github/tests/review-verdict-test.sh
 
