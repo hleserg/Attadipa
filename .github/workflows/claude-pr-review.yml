@@ -193,10 +193,97 @@ jobs:
             echo ATTADIPA_REVIEW_PROMPT
           } >> "$GITHUB_OUTPUT"
 
+      - name: Has this review already had its five rounds
+        id: cap
+        # OD-25 caps the independent review at five rounds. Until now the cap was
+        # applied AFTER the model answered: `review-verdict.sh` defers every
+        # finding past round five, floor included, and returns `ai-review:pass` —
+        # a verdict that was fixed before the round started. #382 paid for three
+        # of those, rounds six, seven and eight, none of which could reach any
+        # other answer. Five rounds of holding is now also five rounds of
+        # reviewing, which is what the owner asked for on 2026-09-01.
+        #
+        # It sits here, between the staged bundle and the paid step, because that
+        # is the only place a skip saves anything. And it fails toward running:
+        # no bundle, no ledger, an unreadable round, a `gh` that errors — every
+        # one of those leaves `run=yes`. A needless round costs tokens; a round
+        # skipped by a parse bug costs the review.
+        if: steps.auth.outputs.ok == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TRUSTED: ${{ env.ATTADIPA_TRUSTED_SCRIPTS }}
+          # THE SAME AUTHOR FILTER AS `Converge the published reviewer verdict`,
+          # and for the reason spelled out there: this repository is public, so a
+          # ledger query with no author condition reads a comment anyone could
+          # have written. The two queries must stay identical. This one decides
+          # whether to review at all, which is the cheaper of the two to subvert.
+          ATTADIPA_LEDGER_ACTOR: github-actions[bot]
+        run: |
+          set -uo pipefail
+          run=yes
+          open=0
+          round=0
+          if [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-verdict.sh" ]; then
+            : > /tmp/previous-ledger.md
+            ledger_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_LEDGER_ACTOR) | select(.body | startswith("<!-- attadipa-review-ledger -->")) | .id' | tail -1) || ledger_id=""
+            if [ -n "$ledger_id" ]; then
+              gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' > /tmp/previous-ledger.md || : > /tmp/previous-ledger.md
+            fi
+            if bash "$TRUSTED/review-verdict.sh" gate /tmp/previous-ledger.md 5 > /tmp/gate.txt; then
+              [ "$(sed -n 's/^run=//p' /tmp/gate.txt)" = no ] && run=no
+              open=$(sed -n 's/^open=//p' /tmp/gate.txt)
+              round=$(sed -n 's/^round=//p' /tmp/gate.txt)
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          [ "$run" = no ] || exit 0
+          echo "::notice::#$PR has had its five review rounds (OD-25); round $((round + 1)) was not run."
+          # A STANDING BLOCK IS NOT CLEARED BY RE-RUNNING THE WORKFLOW. The
+          # invalidation step above strips both labels on `synchronize` only, so
+          # after a push there is no label here and the cap hands over the pass
+          # round six would have returned. Without a push the round-five
+          # `ai-review:blocking` is still on the pull request, and applying a
+          # pass over it would let a bare re-run launder a blocking verdict into
+          # a merge with no commit in between. Push the fix; the cap clears it.
+          blocking=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' | grep -cx 'ai-review:blocking') || blocking=0
+          # One note, not one per trigger. The ledger comment it points at is
+          # already on the page with every finding and its status: OD-25 stops
+          # the review holding, and now reviewing, but never recording.
+          marker='<!-- attadipa-review-cap -->'
+          said=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- attadipa-review-cap -->")) | .id' | tail -1) || said=""
+          # The single quotes are the point: every `backtick` below is markdown
+          # for the comment this writes, not a command substitution waiting to
+          # expand. Double quotes here would run them.
+          # shellcheck disable=SC2016
+          {
+            printf '%s\n' "$marker"
+            if [ "$blocking" -gt 0 ]; then
+              printf '**The independent review has had its five rounds (OD-25), and this pull request still carries `ai-review:blocking`.**\n\n'
+              printf 'No round will run on it again. That label is from round %s, and only a push clears it: pushing the fix drops the stale verdict, and the cap then hands over `ai-review:pass` without paying for a round whose answer is already fixed. Re-running this workflow will not clear it, on purpose — a re-run with no commit between it and the block would turn a blocking verdict into a merge with nothing changed.\n\n' "$round"
+              printf 'Круги ревью исчерпаны (OD-25, пять кругов). `ai-review:blocking` с круга %s снимается только пушем: перезапуск воркфлоу его намеренно не снимает.\n' "$round"
+            else
+              printf '**The independent review has had its five rounds (OD-25), so this one did not run.**\n\n'
+              printf 'Round %s published, and from round six no finding holds a pull request at all — a `floor` finding included. A sixth round could only have returned the verdict this label already carries, so it was not bought.\n\n' "$round"
+              printf '`ai-review:pass` here means *the review is over*, not *the review found nothing*: %s open finding(s) remain in the review ledger on this page. They were judged not to hold this pull request, and they are worth reading before merging.\n\n' "$open"
+              printf 'Независимое ревью исчерпало пять кругов (OD-25) и на этот раз не запускалось. Круг %s опубликован; с шестого ни одна находка PR не держит. `ai-review:pass` здесь значит «ревью закончено», а не «замечаний нет»: открытых находок в леджере — %s.\n' "$round" "$open"
+            fi
+          } > /tmp/cap-note.md
+          if [ "$blocking" -eq 0 ]; then
+            gh pr edit "$PR" --repo "$REPO" --add-label ai-review:pass --remove-label ai-review:blocking ||
+              echo "::error::could not apply \`ai-review:pass\` to #$PR after the review cap; add it by hand"
+          else
+            echo "::warning::#$PR is capped and still carries \`ai-review:blocking\` from round $round. The cap does not clear it without a push."
+          fi
+          [ -z "$said" ] || exit 0
+          gh pr comment "$PR" --repo "$REPO" --body-file /tmp/cap-note.md || true
+
       # The model may fail for quota or authentication reasons. A later step
       # distinguishes that from a published review and clears stale verdicts.
       - name: Review
-        if: steps.auth.outputs.ok == 'true'
+        if: steps.auth.outputs.ok == 'true' && steps.cap.outputs.run != 'no'
         id: review
         continue-on-error: true
         uses: anthropics/claude-code-action@a60f3e1db3edbceed2b1e6c6a9d34c36b8a15eba # v1
@@ -418,6 +505,7 @@ jobs:
         # than trusting that sentence.
         if: >-
           !cancelled() && steps.auth.outputs.ok == 'true' &&
+          steps.cap.outputs.run != 'no' &&
           (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no') &&
           steps.published.outputs.state != 'published'
         env:
@@ -480,6 +568,7 @@ jobs:
         # the fail-closed direction; suppressing it would not be.
         if: >-
           !cancelled() && steps.auth.outputs.ok == 'true' &&
+          steps.cap.outputs.run != 'no' &&
           (steps.review.outcome == 'failure' || steps.happened.outputs.ran == 'no') &&
           steps.published.outputs.state != 'published'
         env:
