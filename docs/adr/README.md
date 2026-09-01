@@ -50,6 +50,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** |
 | [0014](0014-time-source-and-synchronization.md) | Time source, trust and synchronization | **accepted** |
 | [0015](0015-transport-session-ownership.md) | A transport session has one owner, a generation, and no lifecycle queue | **accepted** |
+| [0016](0016-one-power-owner.md) | Power, PMU rails and sleep have one owner, and consumers hold leases | **accepted** |
 
 ### What the statuses mean here
 
