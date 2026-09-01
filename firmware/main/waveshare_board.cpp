@@ -287,12 +287,19 @@ esp_err_t erase_if_present(nvs_handle_t handle, const char *key) {
 // **The order of the two writes is the mechanism, not a detail.** The timezone
 // key is the one the product image reads, so it is written **last** here and
 // erased **first** in the roll-back below. A power loss cannot be reported, the
-// caller never returns and no roll-back can run, so the only thing that
-// protects the product image is that at every instant the key it reads holds
-// the last value anybody accepted. Writing it first -- which this did until
-// round 3 of #396 -- left a watch that had synchronized before with the new
-// offset beside the old stamp: two present keys, a read that accepts them, and
-// an offset from a synchronization that never reached the PCF85063.
+// caller never returns and no roll-back can run, so within this function the
+// only thing protecting the product image is that at every instant the key it
+// reads holds the last value anybody accepted. Writing it first -- which this
+// did until round 3 of #396 -- left a watch that had synchronized before with
+// the new offset beside the old stamp: two present keys, a read that accepts
+// them, and an offset from a synchronization that never reached the PCF85063.
+//
+// **Within this function is the whole of the claim.** `synchronize()` calls
+// this before it writes the chip, so between the two there is a window in which
+// the key holds an offset for a synchronization the PCF85063 has not taken --
+// and a cut there is no more reportable than a cut in here. That window is
+// named and priced where it is opened; do not read this paragraph as covering
+// it.
 //
 // `nvs_commit()` does not make the pair a transaction and nothing here pretends
 // it does: it is a no-op on ESP-IDF v5.5.5 and a successful `nvs_set_*` is
@@ -460,7 +467,7 @@ public:
 
     // The metadata write goes first, and it IS the fail-closed check ahead of
     // the RTC write. #264's ledger names the shape: boot may already know the
-    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:914` --
+    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:941` --
     // "time metadata unavailable; continuing without it" logs it and carries
     // on -- and this function used to write and verify the PCF85063 anyway,
     // discovering only afterwards that nvs_open() could not succeed. That is a
@@ -496,6 +503,26 @@ public:
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
+    // Metadata first, chip second, and the order is a **trade rather than a
+    // win** -- there is no ordering of a flash key and an I2C chip with no
+    // window between them, so the only choice is which residue a power cut
+    // leaves.
+    //
+    // This way round, the write that can be predicted to fail is the one that
+    // runs first, which is what makes the sequence fail-closed and is the whole
+    // of #264's second defect: a doomed `nvs_open()` used to be discovered only
+    // after the PCF85063 had already been rewritten. The cost is the residue a
+    // cut between here and `write_and_verify_rtc()` leaves -- the new offset
+    // beside the old UTC, an offset for a synchronization that never happened.
+    // `main` has the opposite residue, the old offset beside the new UTC, which
+    // is the better of the two whenever the timezone did not change; it pays
+    // for that by discovering an unusable metadata layer too late to matter.
+    //
+    // Neither residue can be cleared by a product image today, because no
+    // product image can synchronize at all. That is what #356 is for, and it is
+    // also where this stops being a trade: the sequence moves behind one seam
+    // there, and one `nvs_set_blob` of the pair makes the flash side a single
+    // atomic write.
     const esp_err_t metadata_result = save_time_metadata(
         request.timezone_offset_minutes, request.utc_seconds);
     if (metadata_result != ESP_OK) {
