@@ -293,8 +293,10 @@ intermediate: [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.
 
 **How it was measured.** The rule lay on the watch case, coplanar with the
 glass, which collapses the standard-to-subject offset to the rim-to-emitter
-millimetres priced below: an earlier attempt with the rule on the desk beside
-the watch left the whole case height and could yield only an upper bound. Standard and subject are therefore in one frame at one scale.
+millimetres priced in [TWATCH_S3_PLUS_PANEL_2026-08-28](TWATCH_S3_PLUS_PANEL_2026-08-28.md#5-what-the-number-is-worth) §5(a)
+— `ESTIMATED`, +0.14 to +0.71 mm across the plausible depth and working
+distance, and not re-derived here: an earlier attempt with the rule on the desk
+beside the watch left the whole case height and could yield only an upper bound. Standard and subject are therefore in one frame at one scale.
 Repeating the fit over four graduation bands and four row windows moves the
 answer by 0.03 mm — but two systematics of comparable size pull opposite ways:
 rule-on-case against emitters-under-glass raises the true width, and the frame's
