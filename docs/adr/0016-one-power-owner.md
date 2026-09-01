@@ -2,7 +2,7 @@
 
 Status: **accepted**
 Date: 2026-09-01
-Constrains: [ADR-0001](0001-capability-model.md) §3 · [ADR-0015](0015-transport-session-ownership.md) §1
+Constrains: [ADR-0015](0015-transport-session-ownership.md) §1
 
 ## Context
 

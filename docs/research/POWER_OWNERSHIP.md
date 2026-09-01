@@ -606,7 +606,7 @@ IMU each still answering afterwards.
 
 ## 8. Scope for the executable issue
 
-One finite issue, `type:implementation`. It is deliberately smaller than this
+One finite issue, filed as #367. It is deliberately smaller than this
 document.
 
 **In scope.** A board-side power owner holding the rail graph from §6.1 —
