@@ -38,7 +38,13 @@ pointer, and the touch wake input is inactive. The panel brightness is set
 to zero and the CO5300 is commanded off before `esp_light_sleep_start()`. On
 return the panel is enabled, safe brightness is restored, the PCF85063-backed
 Clock is refreshed and LVGL is forced to render a new frame. The log names the
-full `Active -> Idle -> LightSleep -> Idle -> Active` route and the wake source.
+state being entered, and on return the route back and the wake source
+([`firmware/main/board_power.cpp:311-313`](../../firmware/main/board_power.cpp) —
+"attadipa::core::to_string(state)," and
+[`firmware/main/physical_input.cpp:228-231`](../../firmware/main/physical_input.cpp) —
+"attadipa::firmware::board_power_owner().cycles()),"). It does not name
+`Active -> Idle ->`. The entry line carried that half until the sleep path moved
+into `board-power`, and no line prints it now.
 
 ## Build and flash
 
@@ -111,8 +117,10 @@ them is named
 "describe_wake(named, sizeof(named), report.wake_causes);") instead of the
 single value the lossy `esp_sleep_get_wakeup_cause()` returned. So `cause=4` is
 in no line this firmware can print, and a repeat grepped for the text above
-finds nothing — which is the failure this paragraph exists to prevent, since it
-is the only forward-looking sentence on a page of recorded transcript. What the
+finds nothing — which is the failure this paragraph exists to prevent. It is one
+of the two present-tense claims on a page of recorded transcript, and the other
+one — the route sentence in § Mode and wake wiring — went stale in the same
+change and for the same reason, which is why it is worth counting them. What the
 two lines report did not change, and nothing here was re-measured — **NOT
 EXECUTED — HARDWARE REQUIRED**.
 
