@@ -200,8 +200,9 @@ private:
       // Reported, never reclaimed. A consumer holding a domain past its
       // deadline is a bug in that consumer, and taking it away would turn it
       // into a bug nobody can find.
-      ESP_LOGW(kTag, "power lease past its deadline on domains 0x%04x",
-               static_cast<unsigned>(report.overdue_leases));
+      char overdue[96];
+      describe_domains(overdue, sizeof(overdue), report.overdue_leases);
+      ESP_LOGW(kTag, "power lease past its deadline on domains %s", overdue);
     }
     if (report.unexpected_causes != 0 || report.unmapped_causes != 0) {
       char named[96];

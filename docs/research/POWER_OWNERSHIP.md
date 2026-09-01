@@ -194,7 +194,7 @@ bits — only this function does — so the first disarm after a sleep is a real
 one and it is the owner's recovery retry that arrives second. `disarm_wake()`
 therefore reports `ESP_ERR_INVALID_STATE` as the postcondition it is: the source
 is not armed. Reporting it as a failure would make a board that is provably in
-the requested state unrecoverable. It is harmless while
+the requested state unrecoverable. The persistence two paragraphs above is harmless while
 every sleep entry arms the same plan, and it stops being harmless the moment a
 second consumer arms a different source: `wake_plan_is_legal()` will have
 validated a plan the SoC does not hold, because the SoC holds the union of

@@ -41,7 +41,7 @@ Clock is refreshed and LVGL is forced to render a new frame. The log names the
 state being entered, and on return the route back and the wake source
 ([`firmware/main/board_power.cpp:311-313`](../../firmware/main/board_power.cpp) —
 "attadipa::core::to_string(state)," and
-[`firmware/main/physical_input.cpp:247-250`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:248-251`](../../firmware/main/physical_input.cpp) —
 "attadipa::firmware::board_power_owner().cycles()),"). It does not name
 `Active -> Idle ->`. The entry line carried that half until the sleep path moved
 into `board-power`, and no line prints it now.
@@ -113,7 +113,7 @@ the owner records and un-does, rather than a step the log narrates
 "attadipa::core::to_string(state),"). The wake line kept `physical-input` and
 lost the `(cause=4 gpio=0x0)` suffix: causes are a bitmap now, and every one of
 them is named
-([`firmware/main/physical_input.cpp:246-250`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:247-251`](../../firmware/main/physical_input.cpp) —
 "describe_wake(named, sizeof(named), report.wake_causes);") instead of the
 single value the lossy `esp_sleep_get_wakeup_cause()` returned. So `cause=4` is
 in no line this firmware can print, and a repeat grepped for the text above
