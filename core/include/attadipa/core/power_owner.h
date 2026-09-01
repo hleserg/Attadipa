@@ -161,6 +161,16 @@ private:
 struct WakeCauses {
     std::uint16_t from_soc = 0;  // what the silicon said woke it
     std::uint16_t derived  = 0;  // what the board concluded, from a register or a pin
+
+    // Raw, board-shaped bits that `from_soc` could not name.
+    //
+    // A board maps the causes it knows into `WakeSource` and would otherwise
+    // drop the rest, which turns "woke on something nobody armed" -- the exact
+    // state this owner exists to detect -- into a zero indistinguishable from
+    // "nothing was wrong". It is deliberately not a `WakeSource` mask: naming
+    // it would mean inventing a name, and the value of this field is that it is
+    // the hardware's own word, printable, and not translated by anyone.
+    std::uint32_t unmapped_from_soc = 0;
 };
 
 class PowerHardware {
@@ -234,6 +244,11 @@ struct SleepReport {
     // outside the owner is still arming wake sources.
     std::uint16_t unexpected_causes = 0;
 
+    // The same evidence for a cause the board has no name for. Non-zero means
+    // the SoC reported a wake this project cannot yet map, and the raw value is
+    // what a log has to print, because there is nothing else to say about it.
+    std::uint32_t unmapped_causes = 0;
+
     // False once an unwind step failed. The board is then in a state nobody
     // read back, and ADR-0016 §4 is what happens next: `Failed`, never `Ready`.
     bool hardware_known = true;
@@ -279,8 +294,12 @@ public:
         return hardware_known_ ? Availability::Ready : Availability::Failed;
     }
 
-    // The board has re-established the hardware and read it back. Only this
-    // clears a failure; nothing does it on a timer, and nothing does it hopefully.
+    // The board has re-established the hardware and read it back.
+    //
+    // The blunt way out of `Failed`, for a caller that re-initialised the
+    // hardware itself. The ordinary way is `sleep()`, which retries the exact
+    // steps that failed before it will refuse -- see `recover()`. Neither
+    // happens on a timer and neither happens hopefully.
     void reinitialised();
 
     // Completed sleep episodes. The count a wake log is numbered by.
@@ -293,11 +312,27 @@ private:
     bool unwind_rails(std::uint16_t cut, SleepReport& report);
     bool unwind_wake(std::uint16_t armed, SleepReport& report);
 
+    // Retry exactly the unwind steps that failed, and nothing else.
+    //
+    // Without this the latch has no consumer: one failed `resume(Display)`
+    // leaves the panel dark, `availability()` Failed, and every later `sleep()`
+    // refused before it touches hardware -- so the screen is never asked to
+    // come back and the watch is dark until it is reset. Retrying is honest
+    // here because each failed step recorded *which* step it was, so this
+    // re-issues that one operation rather than re-deriving a teardown.
+    bool recover(SleepReport& report);
+
     PowerHardware& hardware_;
     PowerLeases    leases_{};
     PowerState     state_          = PowerState::Active;
     std::uint32_t  cycles_         = 0;
     bool           hardware_known_ = true;
+
+    // What an unwind left un-done, and what `recover()` retries. Domains for
+    // the first two, `WakeSource` bits for the third.
+    std::uint16_t failed_resume_  = 0;
+    std::uint16_t failed_rail_    = 0;
+    std::uint16_t failed_disarm_  = 0;
 };
 
 }  // namespace attadipa::core

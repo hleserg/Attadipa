@@ -191,6 +191,60 @@ void PowerOwner::reinitialised()
 {
     hardware_known_ = true;
     state_          = PowerState::Active;
+    failed_resume_  = 0;
+    failed_rail_    = 0;
+    failed_disarm_  = 0;
+}
+
+bool PowerOwner::recover(SleepReport& report)
+{
+    // Reverse order of the unwind that failed: sources first, then rails, then
+    // consumers, so a consumer is never resumed onto a rail still down.
+    for (std::uint8_t i = kWakeSourceCount; i > 0; --i) {
+        const WakeSource source = kWakeOrder[i - 1];
+        if ((failed_disarm_ & wake_bit(source)) == 0) {
+            continue;
+        }
+        if (hardware_.disarm_wake(source)) {
+            failed_disarm_ = static_cast<std::uint16_t>(failed_disarm_ & ~wake_bit(source));
+        }
+    }
+    for (std::uint8_t i = kPowerDomainCount; i > 0; --i) {
+        const PowerDomain domain = kOrder[i - 1];
+        // Unreachable while no plan cuts a rail, and it will stay unreachable
+        // on the Waveshare board, whose `set_rail` refuses by design. It is
+        // here so that the first board with a rail plan does not have to
+        // discover that its failure was the one nothing retried.
+        if ((failed_rail_ & domain_bit(domain)) == 0) {
+            continue;
+        }
+        if (hardware_.set_rail(domain, true)) {
+            failed_rail_ = static_cast<std::uint16_t>(failed_rail_ & ~domain_bit(domain));
+        }
+    }
+    for (std::uint8_t i = kPowerDomainCount; i > 0; --i) {
+        const PowerDomain domain = kOrder[i - 1];
+        if ((failed_resume_ & domain_bit(domain)) == 0) {
+            continue;
+        }
+        if (hardware_.resume(domain)) {
+            failed_resume_ = static_cast<std::uint16_t>(failed_resume_ & ~domain_bit(domain));
+        }
+    }
+
+    if ((failed_disarm_ | failed_rail_ | failed_resume_) != 0) {
+        report.blocked_by = static_cast<std::uint16_t>(
+            failed_disarm_ | failed_rail_ | failed_resume_);
+        return false;
+    }
+    // Everything that was owed has been re-issued and read back. The state
+    // assignment matters as much as the flag: an unwind that failed left
+    // `state_` at whatever it had reached, and clearing only the flag would
+    // leave the next transition refused from a resting state the board is no
+    // longer in.
+    hardware_known_ = true;
+    state_          = PowerState::Active;
+    return true;
 }
 
 bool PowerOwner::unwind_suspend(std::uint16_t suspended, SleepReport& report)
@@ -210,6 +264,8 @@ bool PowerOwner::unwind_suspend(std::uint16_t suspended, SleepReport& report)
             report.hardware_known  = false;
             report.blocked_by      = static_cast<std::uint16_t>(
                 report.blocked_by | domain_bit(domain));
+            failed_resume_         = static_cast<std::uint16_t>(
+                failed_resume_ | domain_bit(domain));
         }
     }
     return ok;
@@ -228,6 +284,8 @@ bool PowerOwner::unwind_rails(std::uint16_t cut, SleepReport& report)
             report.hardware_known = false;
             report.blocked_by     = static_cast<std::uint16_t>(
                 report.blocked_by | domain_bit(domain));
+            failed_rail_          = static_cast<std::uint16_t>(
+                failed_rail_ | domain_bit(domain));
         }
     }
     return ok;
@@ -244,9 +302,16 @@ bool PowerOwner::unwind_wake(std::uint16_t armed, SleepReport& report)
         if (!hardware_.disarm_wake(source)) {
             // This is finding 2 of POWER_OWNERSHIP.md, and it is the one that
             // must never be silent: a source the SoC still holds while the
-            // software believes it does not is a wake nobody can explain.
+            // software believes it does not is a wake nobody can explain. So
+            // it is named in `blocked_by` like the other two unwinds, and not
+            // only counted -- "the board is unknown" without which source is a
+            // report nobody can act on.
             ok                    = false;
             report.hardware_known = false;
+            report.blocked_by     = static_cast<std::uint16_t>(
+                report.blocked_by | wake_bit(source));
+            failed_disarm_        = static_cast<std::uint16_t>(
+                failed_disarm_ | wake_bit(source));
         }
     }
     return ok;
@@ -256,12 +321,16 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
 {
     SleepReport report;
     report.overdue_leases = leases_.overdue(now);
-    report.hardware_known = hardware_known_;
 
-    if (!hardware_known_) {
-        report.outcome = SleepOutcome::RefusedHardwareFailed;
+    if (!hardware_known_ && !recover(report)) {
+        // Retried, still failing. Refusing is right *now*, and it is not
+        // permanent: the next call retries again, so a panel that comes back on
+        // the third attempt comes back.
+        report.hardware_known = false;
+        report.outcome        = SleepOutcome::RefusedHardwareFailed;
         return report;
     }
+    report.hardware_known = true;
 
     // Validate. Every sleep is entered from Idle (power_state.cpp), so the walk
     // is state -> Idle -> plan.state, and both halves have to be legal before
@@ -391,6 +460,11 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
     // source, so measuring it against `armed` would report every button press
     // as an unreconciled source.
     report.unexpected_causes = static_cast<std::uint16_t>(causes.from_soc & ~armed);
+    // A cause the board could not name is unexpected by definition -- it cannot
+    // be in `armed`, because nothing can arm what has no name here. Carried raw
+    // rather than folded into the mask above, so the log can print the word the
+    // hardware actually returned.
+    report.unmapped_causes = causes.unmapped_from_soc;
     ++cycles_;
     return report;
 }

@@ -50,6 +50,7 @@ public:
 
     std::uint16_t soc_causes     = 0;
     std::uint16_t derived_causes  = 0;
+    std::uint32_t unmapped_causes = 0;
     bool          sleep_succeeds  = true;
     int           sleeps          = 0;
 
@@ -67,8 +68,9 @@ public:
     bool sleep(PowerState state, WakeCauses& causes) override
     {
         ++sleeps;
-        causes.from_soc = soc_causes;
-        causes.derived  = derived_causes;
+        causes.from_soc          = soc_causes;
+        causes.derived           = derived_causes;
+        causes.unmapped_from_soc = unmapped_causes;
         return record("sleep", to_string(state)) && sleep_succeeds;
     }
 
@@ -570,10 +572,103 @@ void test_a_failed_unwind_publishes_failed_and_refuses_everything_after()
     CHECK(!second.hardware_known);
     CHECK(hw.sleeps == 1);  // it did not try again
 
-    // Only an explicit re-initialisation clears it. Nothing does it on a timer.
+    // The retry above ran and failed again, because `fail_on` is still set. An
+    // explicit re-initialisation is the other way out, and it is unconditional.
     owner.reinitialised();
     CHECK(owner.availability() == Availability::Ready);
     CHECK(owner.acquire(domain_bit(PowerDomain::Gnss), {}, why) != kNoLease);
+}
+
+void test_a_failed_resume_is_retried_by_the_next_sleep()
+{
+    // The blocking half of ADR-0016 §4: `Failed` has to be a state something
+    // can leave, or the first failed resume leaves the panel dark for good --
+    // every later sleep refused before it touches hardware, so nothing ever
+    // asks the display to come back.
+    FakeHardware hw;
+    hw.fail_on = "resume:Display";
+    PowerOwner owner(hw);
+
+    (void)owner.sleep(light_sleep_plan(), kNow);
+    CHECK(owner.availability() == Availability::Failed);
+
+    // The panel answers this time.
+    hw.fail_on = "";
+    hw.calls.clear();
+
+    const SleepReport second = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(second.outcome == SleepOutcome::Woken);
+    CHECK(second.hardware_known);
+    CHECK(owner.availability() == Availability::Ready);
+    CHECK(hw.sleeps == 2);
+
+    // The retry is the *recorded* step re-issued, and it happens before the
+    // transaction starts: resume, then this cycle's own suspend.
+    CHECK(hw.index_of("resume:Display") < hw.index_of("suspend:Display"));
+    CHECK(hw.index_of("resume:Display") >= 0);
+    // And nothing else was re-issued. Only resume failed, so only resume is owed.
+    CHECK(hw.count("rail-on:Display") == 0);
+}
+
+void test_a_recovery_that_fails_again_refuses_and_touches_no_wake_source()
+{
+    FakeHardware hw;
+    hw.fail_on = "resume:Display";
+    PowerOwner owner(hw);
+
+    (void)owner.sleep(light_sleep_plan(), kNow);
+    hw.calls.clear();
+
+    const SleepReport second = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(second.outcome == SleepOutcome::RefusedHardwareFailed);
+    CHECK(!second.hardware_known);
+    // Refused, and it says what is still broken rather than only that
+    // something is.
+    CHECK(second.blocked_by == domain_bit(PowerDomain::Display));
+    CHECK(hw.sleeps == 1);
+    // It retried the one owed step and then stopped. Arming a wake source on a
+    // board whose state is unknown is the thing the latch exists to prevent.
+    CHECK(hw.count("resume:Display") == 1);
+    CHECK(hw.index_of("arm:Timer") == -1);
+    CHECK(hw.index_of("suspend:Display") == -1);
+}
+
+void test_a_failed_disarm_names_the_source_and_is_retried()
+{
+    // The unwind that must never be silent was the one that recorded nothing:
+    // a source the SoC still holds is not actionable as "the board is unknown".
+    FakeHardware hw;
+    hw.fail_on = "disarm:Timer";
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::Woken);
+    CHECK(!report.hardware_known);
+    CHECK((report.blocked_by & wake_bit(WakeSource::Timer)) != 0);
+
+    hw.fail_on = "";
+    hw.calls.clear();
+    const SleepReport second = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(second.outcome == SleepOutcome::Woken);
+    CHECK(hw.index_of("disarm:Timer") < hw.index_of("suspend:Display"));
+}
+
+void test_a_cause_the_board_cannot_name_is_carried_raw()
+{
+    // A board maps the causes it knows and would otherwise drop the rest,
+    // which makes `unexpected_causes` read zero both when nothing is wrong and
+    // when a source nobody armed woke the device.
+    FakeHardware hw;
+    hw.soc_causes      = wake_bit(WakeSource::Timer);
+    hw.unmapped_causes = 0x00000400u;  // whatever bit 10 is on that SoC
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::Woken);
+    // Timer was armed, so the named half is not unexpected...
+    CHECK(report.unexpected_causes == 0);
+    // ...and the unnamed half survives anyway, in the hardware's own word.
+    CHECK(report.unmapped_causes == 0x00000400u);
 }
 
 void test_a_release_is_accepted_even_when_the_hardware_is_unknown()
@@ -698,6 +793,10 @@ int main()
     test_a_partly_armed_wake_plan_disarms_exactly_what_it_armed();
     test_a_failed_sleep_still_disarms_and_still_resumes();
     test_a_failed_unwind_publishes_failed_and_refuses_everything_after();
+    test_a_failed_resume_is_retried_by_the_next_sleep();
+    test_a_recovery_that_fails_again_refuses_and_touches_no_wake_source();
+    test_a_failed_disarm_names_the_source_and_is_retried();
+    test_a_cause_the_board_cannot_name_is_carried_raw();
     test_a_release_is_accepted_even_when_the_hardware_is_unknown();
     test_two_cycles_leave_no_residue();
     test_only_a_resting_state_is_a_sleep();
