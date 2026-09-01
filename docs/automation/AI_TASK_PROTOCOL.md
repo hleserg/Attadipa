@@ -53,7 +53,7 @@ The issue/PR is the record. Lifecycle labels are mutually exclusive:
 
 | Event | From | To | Recovery |
 | --- | --- | --- | --- |
-| accepted task | ready | working | claim returns after two hours, once its run has finished; a local lease needs `claim.sh break` |
+| accepted task | ready | working | claim returns after two hours, once the run it recorded has finished; a local lease needs `claim.sh break` |
 | draft PR/result | working | review | PR and checks hold detail |
 | explicit blocker | working | blocked + cause | external action, then fresh request |
 | first failed run | working | failed + ready | one automatic retry |
@@ -85,9 +85,12 @@ At most three progress comments precede the outcome. Messages are rendered by
 1. Read the issue/comments, `AGENTS.md`, nearest scoped rules and open PRs.
 2. Before creating a branch or editing, run
    `.github/scripts/writer-start.sh start REPO ISSUE AGENT_ID` from current `main`.
-   `AGENT_ID` labels the holder — `agent-<run>-<attempt>`, matching
+   `AGENT_ID` labels the holder — `local-<who>-<n>`, matching
    `^[A-Za-z0-9._-]{1,64}$`. It is **not** a credential: the lease publishes it
    in a public tag, so `claim.sh` refuses credential-shaped values outright.
+   It is also **not** provenance: the claim records `kind=local` or
+   `kind=hosted` with the run behind it when it is acquired, and recovery reads
+   that, so a name that happens to match a finished run proves nothing.
    `held`, `full`, `incident` or `unknown` means stop. Workflows use the same
    repository lease, admission check and atomic claim.
 3. Verify stale findings and relevant hardware/upstream facts.

@@ -46,13 +46,21 @@ gh run cancel <run-id>
 
 Cancelling a *writer* mid-run can leave a branch half-pushed and a repository
 claim behind. The watchdog releases a claim two hours after the annotated tag's
-timestamp **and only once the run behind the holder id has finished** — a holder
-is `agent-<run_id>-<attempt>`, and that run's status is the only evidence this
-repository has that the writer stopped. A **local** lease (`writer-start.sh`,
-holder `agent-i254-r1` and the like) has no such run and is never reaped: end it
-with `writer-start.sh finish`, or break it by hand. Do not remove only
-`agent:working`: that would hide a live lock. Inspect or deliberately break it
-with the shared rule:
+timestamp **and only once the Actions run that claim recorded has finished** —
+that run's status is the only evidence this repository has that the writer
+stopped. The claim writes its own provenance when it is acquired: the tag
+message carries the holder on its first line and then `kind=hosted`, `run=` and
+`attempt=` for a claim made on the workflow path, or `kind=local` for one made
+anywhere else. The holder id is a label the caller chose and is never read as
+evidence — a person who names their lease `agent-4242-1` is not Actions run
+4242 (#369).
+
+So a **local** lease (`writer-start.sh` from a terminal) is never reaped: end it
+with `writer-start.sh finish`, or break it by hand. A claim created before
+provenance was written carries neither `kind` nor `run`, and is treated the same
+way — unattributed is not finished, so it holds until someone breaks it. Do not
+remove only `agent:working`: that would hide a live lock. Inspect or
+deliberately break it with the shared rule:
 
 ```bash
 bash .github/scripts/claim.sh owner OWNER/REPO <n>
@@ -66,9 +74,10 @@ bash .github/scripts/claim.sh break OWNER/REPO <n>
 ### An issue is stuck on `agent:working`
 
 The run died, was cancelled, or is still live. The watchdog clears only a claim
-that is at least two hours old *and* whose Actions run has completed; a local
-lease stays until someone runs `claim.sh break`, and the watchdog log names that
-command. A break that could not delete the ref reports failure and leaves
+that is at least two hours old *and* recorded a hosted Actions run that has
+completed; a local or unattributed lease stays until someone runs
+`claim.sh break`, and the watchdog log names that command and why it declined.
+A break that could not delete the ref reports failure and leaves
 `agent:working` on, so a stuck queue always has a visible owner.
 `/ci-repair reset` also breaks the PR claim after its existing
 collaborator/whole-command checks. The agent's branch,

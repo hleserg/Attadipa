@@ -15,6 +15,15 @@ cd "$(dirname "$0")/../.." || exit 1
 # agent asked to run these checks.
 unset ATTADIPA_WIP_LIMIT
 
+# AND IT DOES NOT GET TO DECIDE WHERE A CLAIM CAME FROM EITHER. claim.sh writes
+# `kind=hosted` when the acquire ran on the workflow path, which it reads from
+# GITHUB_ACTIONS and GITHUB_RUN_ID -- and this suite itself runs inside Actions,
+# where both are set. Left alone, every case below would claim as hosted against
+# the id of whatever run is executing the tests, and the local cases would go
+# green without ever exercising a local claim. Each case states its own
+# provenance by prefix assignment instead (claim_as).
+unset GITHUB_ACTIONS GITHUB_RUN_ID GITHUB_RUN_ATTEMPT
+
 pass=0; fail=0
 ok() { pass=$((pass + 1)); printf 'ok %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s: %s\n' "$1" "$2"; }
@@ -245,19 +254,109 @@ PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o
 [ ! -d "$work/state/ref.lock" ] && ! grep -Fxq agent:working "$work/state/labels" \
   && ok 'the winner releases ref and visible label' || bad 'the winner releases ref and visible label' 'claim remains'
 
-# A claim is only stale once its holder is proven finished. A hosted holder is
-# `agent-<run_id>-<attempt>`, and the run behind it answers that question.
+# A claim is only stale once it is proven finished, and what proves that is the
+# Actions run the claim recorded when it was acquired -- not how its holder id
+# happens to be spelled (#369).
 age_tag() {
-  local tag; tag=$(cat "$work/state/ref.sha")
+  local tag; tag=$(cat "$work/state/${1:-ref}.sha")
   jq '.tagger.date="2000-01-01T00:00:00Z"' "$work/state/tag.$tag" > "$work/state/old"
   mv "$work/state/old" "$work/state/tag.$tag"
 }
-claimed() { PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "${1:-$CLAIM}" acquire o/r 7 "${2:-agent-4242-1}" >/dev/null 2>&1; age_tag; }
+# claim_as KIND NUMBER HOLDER [SCRIPT] [RUN_ID] -- acquire and age in one step.
+# `hosted` runs the acquire with the workflow path's environment, `local` without
+# it; the holder id is deliberately free to be identical in both.
+claim_as() {
+  local kind=$1 number=$2 holder=$3 script=${4:-$CLAIM} run_id=${5:-4242} lock=ref
+  case "$number" in writer) lock=writer ;; esac
+  if [ "$kind" = hosted ]; then
+    PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+      GITHUB_ACTIONS=true GITHUB_RUN_ID="$run_id" GITHUB_RUN_ATTEMPT=1 \
+      bash "$script" acquire o/r "$number" "$holder" >/dev/null 2>&1
+  else
+    PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+      bash "$script" acquire o/r "$number" "$holder" >/dev/null 2>&1
+  fi
+  age_tag "$lock"
+}
+claimed() { claim_as local 7 "${2:-agent-4242-1}" "${1:-$CLAIM}"; }
+# Leaves the outcome in `reap_status` and `reap_err` rather than returning it:
+# a helper that returned 3 would trip the errexit the cases below switch on, and
+# a `set -e` restored unconditionally would switch it on for everything after.
+reap_rc() {
+  local errexit=0
+  case $- in *e*) errexit=1 ;; esac
+  set +e
+  reap_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+    bash "${2:-$CLAIM}" reap o/r "${1:-7}" 7200 2>&1 >/dev/null)"
+  reap_status=$?
+  [ "$errexit" -eq 0 ] || set -e
+}
 
-reset_state; printf 'completed\n' > "$work/state/run-status"; claimed
+reset_state; printf 'completed\n' > "$work/state/run-status"; claim_as hosted 7 agent-4242-1
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
 [ ! -d "$work/state/ref.lock" ] && ok 'a crashed writer whose run has finished is reaped after the stale bound' \
   || bad 'a crashed writer whose run has finished is reaped after the stale bound' 'lock remains'
+
+# The holder id is a label the caller picks, and AGENTS.md publishes an example
+# of it. THE SAME EXACT STRING, CLAIMED FROM A TERMINAL, IS NOT THAT RUN: run
+# 4242 finished, the person is still typing, and reaping here would hand a second
+# writer the task the first one is holding (#369).
+reset_state; printf 'completed\n' > "$work/state/run-status"; claim_as local 7 agent-4242-1
+reap_rc 7; collision_rc=$reap_status
+[ "$collision_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'a local claim is not reaped because a finished run shares its holder id' \
+  || bad 'a local claim is not reaped because a finished run shares its holder id' \
+        "rc=$collision_rc, lock gone=$([ -d "$work/state/ref.lock" ] || echo yes)"
+second_writer_rc=0
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4243-1 >/dev/null 2>&1 \
+  || second_writer_rc=$?
+[ "$second_writer_rc" -eq 3 ] \
+  && ok 'no second writer follows a local claim the watchdog declined to reap' \
+  || bad 'no second writer follows a local claim the watchdog declined to reap' "rc=$second_writer_rc"
+
+# ...and the mirror image: a hosted claim is recoverable whatever its holder is
+# called. `ci-repair-<run>-<attempt>` is what claude-ci-repair.yml actually
+# passes, and no `agent-` regex ever matched it, so a dead repair run used to
+# hold the queue until a human broke it by hand.
+reset_state; printf 'completed\n' > "$work/state/run-status"; claim_as hosted 7 ci-repair-4242-1
+reap_rc 7
+[ "$reap_status" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] \
+  && ok 'a finished hosted run is recovered whatever its holder id is called' \
+  || bad 'a finished hosted run is recovered whatever its holder id is called' "rc=$reap_status, lock remains"
+
+# The global lease and a per-task claim are the same rule, read from the same
+# place. A writer lease nobody can reap is the whole repository, not one issue.
+reset_state; printf 'completed\n' > "$work/state/run-status"; claim_as local writer agent-4242-1
+reap_rc writer; writer_local_rc=$reap_status
+[ "$writer_local_rc" -eq 3 ] && [ -d "$work/state/writer.lock" ] \
+  && ok 'the global writer lease follows the same provenance rule as a task claim' \
+  || bad 'the global writer lease follows the same provenance rule as a task claim' "rc=$writer_local_rc"
+reset_state; printf 'completed\n' > "$work/state/run-status"; claim_as hosted writer agent-4242-1
+reap_rc writer
+[ "$reap_status" -eq 0 ] && [ ! -d "$work/state/writer.lock" ] \
+  && ok 'a hosted writer lease whose run finished is still recovered' \
+  || bad 'a hosted writer lease whose run finished is still recovered' "rc=$reap_status, lease remains"
+
+# A claim written before provenance existed carries one line and no `kind`.
+# Unattributed is not finished: it holds, and the log says so.
+reset_state; printf 'completed\n' > "$work/state/run-status"
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+legacy_tag=$(cat "$work/state/ref.sha")
+jq '.message="agent-4242-1" | .tagger.date="2000-01-01T00:00:00Z"' "$work/state/tag.$legacy_tag" \
+  > "$work/state/old" && mv "$work/state/old" "$work/state/tag.$legacy_tag"
+reap_rc 7; legacy_rc=$reap_status
+[ "$legacy_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'a pre-provenance claim is not reaped on the strength of its name' \
+  || bad 'a pre-provenance claim is not reaped on the strength of its name' "rc=$legacy_rc"
+case "$reap_err" in
+  *'records no provenance'*) ok 'the refusal says the claim carries no provenance' ;;
+  *) bad 'the refusal says the claim carries no provenance' \
+         "stderr was: $(printf '%s' "$reap_err" | tr '\n' ' ')" ;;
+esac
+# The holder still round-trips: a release by the writer that made it must match.
+[ "$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" owner o/r 7)" = agent-4242-1 ] \
+  && ok 'a pre-provenance tag still reads back as its holder' \
+  || bad 'a pre-provenance tag still reads back as its holder' 'the owner is not the holder'
 
 # #254, root cause 2: age was the whole test, so a local writer still typing was
 # indistinguishable from a dead one. It has no Actions run and never will.
@@ -274,9 +373,9 @@ case "$local_reap_err" in
   *) bad 'refusing to reap names the command that releases it by hand' "stderr was: $(printf '%s' "$local_reap_err" | tr '\n' ' ')" ;;
 esac
 
-# The same refusal for a hosted holder whose run is still going: an agent that
+# The same refusal for a hosted claim whose run is still going: an agent that
 # is slow is not an agent that died.
-reset_state; printf 'in_progress\n' > "$work/state/run-status"; claimed
+reset_state; printf 'in_progress\n' > "$work/state/run-status"; claim_as hosted 7 agent-4242-1
 set +e
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null 2>&1
 live_reap_rc=$?
@@ -285,9 +384,9 @@ set -e
   && ok 'a hosted claim whose run is still going is not reaped' \
   || bad 'a hosted claim whose run is still going is not reaped' "rc=$live_reap_rc"
 
-# ...and for a hosted-shaped holder whose run cannot be read at all. Unknown is
-# not finished.
-reset_state; claimed
+# ...and for a hosted claim whose run cannot be read at all. Unknown is not
+# finished.
+reset_state; claim_as hosted 7 agent-4242-1
 set +e
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null 2>&1
 norun_reap_rc=$?
@@ -553,8 +652,8 @@ else
 fi
 
 byage="$work/reap-by-age.sh"
-sed 's/if ! holder_finished "$repo" "$holder"; then/if false; then/' "$CLAIM" > "$byage"
-if grep -q 'if ! holder_finished' "$byage"; then
+sed 's/if ! claim_finished "$repo" "$message"; then/if false; then/' "$CLAIM" > "$byage"
+if grep -q 'if ! claim_finished' "$byage"; then
   bad 'a reap that trusts the clock makes the mutation red' \
       'the mutation did not remove the completion check -- repoint this sed'
 else
@@ -579,6 +678,43 @@ else
   set -e
   [ -d "$work/state/ref.lock" ] && ok 'an acquire that keeps its failed ref makes the mutation red' \
     || bad 'an acquire that keeps its failed ref makes the mutation red' 'the mutant left no orphan'
+fi
+
+# Deleting the #369 fix has two halves, and each one on its own has to turn the
+# collision case above red: reading provenance out of the holder id again, and
+# writing `hosted` somewhere other than the workflow path.
+echo 'Deleting each #369 fix makes its case red'
+
+regexkind="$work/kind-from-holder.sh"
+sed 's@^claim_field() .*@claim_field() { local h; h=$(head -1 <<<"$1"); case "$2" in kind) if grep -Eq "^agent-[0-9]+-[0-9]+$" <<<"$h"; then echo hosted; else echo local; fi ;; run) h=${h#agent-}; echo "${h%-*}" ;; esac; }@' \
+  "$CLAIM" > "$regexkind"
+if ! grep -q 'kind) if grep -Eq' "$regexkind"; then
+  bad 'reading provenance from the holder id again makes the mutation red' \
+      'the mutation did not replace claim_field -- the line moved, repoint this sed'
+else
+  reset_state; printf 'completed\n' > "$work/state/run-status"
+  claim_as local 7 agent-4242-1 "$regexkind"
+  reap_rc 7 "$regexkind"
+  [ ! -d "$work/state/ref.lock" ] \
+    && ok 'reading provenance from the holder id again makes the mutation red' \
+    || bad 'reading provenance from the holder id again makes the mutation red' \
+          'the mutant kept the live local lease, so the collision case proves nothing'
+fi
+
+alwayshosted="$work/always-hosted.sh"
+sed 's@^  if \[ "${GITHUB_ACTIONS-}".*@  if GITHUB_RUN_ID="${GITHUB_RUN_ID:-4242}"; then@' \
+  "$CLAIM" > "$alwayshosted"
+if grep -q 'GITHUB_ACTIONS' "$alwayshosted" || ! grep -q 'GITHUB_RUN_ID:-4242' "$alwayshosted"; then
+  bad 'writing hosted provenance off the workflow path makes the mutation red' \
+      'the mutation did not remove the workflow-path test -- repoint this sed'
+else
+  reset_state; printf 'completed\n' > "$work/state/run-status"
+  claim_as local 7 agent-4242-1 "$alwayshosted"
+  reap_rc 7
+  [ ! -d "$work/state/ref.lock" ] \
+    && ok 'writing hosted provenance off the workflow path makes the mutation red' \
+    || bad 'writing hosted provenance off the workflow path makes the mutation red' \
+          'the mutant marked a terminal claim local anyway'
 fi
 
 # A claim is a git ref and a run status is Actions data. The recovery jobs asked

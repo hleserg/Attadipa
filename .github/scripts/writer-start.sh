@@ -20,7 +20,7 @@ number="${3-}"
 holder="${4-}"
 : "${repo:?repository required}"
 : "${number:?issue or pull-request number required}"
-: "${holder:?agent id required: an opaque label such as agent-<run>-<attempt>, never a credential -- it is published in a public tag}"
+: "${holder:?agent id required: an opaque label such as local-<who>-<n>, never a credential -- it is published in a public tag}"
 
 case "$op" in
   start)
