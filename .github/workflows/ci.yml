@@ -534,89 +534,14 @@ jobs:
       # It was not run here at all until #378 needed it. Every host-side defect
       # in this file's history -- a poll that never polled, a blacklist that
       # outlived what it protected, an id space that wrapped -- was caught by
-      # that suite and by nothing else, on a laptop. Nine more Python suites
-      # under `tools/` were in that state until #387; eight of them are below
-      # and the ninth is in the simulator job, which is the only one with the
-      # LVGL tree it reads.
+      # that suite and by nothing else, on a laptop. The nine other Python
+      # suites #387 named are NOT in that state and never were: all nine are
+      # `ctest` entries in `tests/CMakeLists.txt`, which six jobs in this file
+      # run. #387 measured coverage by grepping this directory alone, so it
+      # could not see them. This one is genuinely different -- it is the only
+      # suite under `tools/` that no `add_test` registers.
       - name: The host's own protocol logic, without a device
         run: python3 tools/watch/selftest.py
-
-      # --- The eight suites #387 found unwired. --------------------------------
-      #
-      # They are here rather than in a job of their own because this job is
-      # already where the repository's host-side Python is proved: two steps
-      # above run the watch client, which is not documentation either. A tenth
-      # job to hold eight steps that take nine seconds between them would be a
-      # mechanism, and the working agreement asks for one only when it lets an
-      # old one go.
-      #
-      # What was checked before wiring them, because the issue asked for a
-      # decision per suite and not eight `run:` lines:
-      #
-      # None of the eight touches a device, a serial port or a large artefact.
-      # `backup_flash_selftest.py` replaces the esptool module with a fake
-      # before calling anything; `ramhold_selftest.py` names /dev/ttyACM0 only
-      # in prose; the rest drive their checker through
-      # `subprocess.run([sys.executable, ...])`, which is a second Python and
-      # not hardware.
-      #
-      # And the local green was not borrowed from a developer's machine: run
-      # again with `esptool`, `serial` and `PIL` made unimportable, seven of
-      # the eight still pass. The eighth is `tools/assets/selftest.py`, which
-      # needs Pillow and says so with an ImportError -- it fails, it does not
-      # skip -- so Pillow is installed for it and nothing else needs setup.
-      # That install is the only reason this job now touches apt.
-      - name: Pillow, for the image suite below
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends python3-pil
-
-      # The generated PNGs and the manifest that describes them, against the
-      # drawing code and against `color.cpp` -- an icon whose olive is not the
-      # firmware's olive is the failure it is looking for.
-      - name: Generated images agree with the manifest and with the palette
-        run: python3 tools/assets/selftest.py
-
-      # 33 partition-table cases. The firmware job already runs
-      # `tools/flash/partition_check.py` on the real table; until now nothing
-      # proved that checker still rejects what it claims to reject. A tripwire
-      # that has quietly stopped tripping passes every run.
-      - name: The partition-table check still rejects a bad table
-        run: python3 tools/flash/selftest.py
-
-      # Four cases against a fake esptool. The real one is never imported.
-      - name: A flash backup names, sizes and verifies what it saved
-        run: python3 tools/flash/backup_flash_selftest.py
-
-      # Seven cases on the RAM-hold argument and port logic. Nothing is opened.
-      - name: Holding the chip in RAM resolves its port without opening one
-        run: python3 tools/flash/ramhold_selftest.py
-
-      # The SPIFFS extractor, including the path cases -- an entry that escapes
-      # the output directory is the one that matters, and `..` is not the only
-      # way to write it.
-      - name: The SPIFFS extractor does not write outside its output directory
-        run: python3 tools/flash/spiffs_selftest.py
-
-      # 49 deliberate mutations across fourteen generated outputs, each
-      # required to be rejected for its own reason. It states the one thing it
-      # does not cover -- reproducibility across checkout paths, which needs
-      # the pinned converter -- in its own output rather than in silence.
-      - name: Every generated output is checked against its source
-        run: python3 tools/integrity/selftest.py
-
-      # Eight deliberate mistakes in the string catalogue, each rejected for
-      # its own reason: a rejection that fires for the wrong reason is a
-      # coincidence, and it stops firing when the coincidence goes.
-      - name: The localisation catalogue rejects each mistake for its own reason
-        run: python3 tools/l10n/selftest.py
-
-      # 30 rejected, 28 accepted, 3 diagnostics. The accepted half is the half
-      # that matters: a checker that rejects everything is not a checker, and
-      # this one is looking for raw pixel literals in UI code, where false
-      # positives are what get a check switched off.
-      - name: The raw-value check accepts what it should as well as rejecting
-        run: python3 tools/ui/selftest.py
 
   simulator:
     name: Simulator build and headless run
@@ -661,21 +586,6 @@ jobs:
         env:
           SDL_VIDEODRIVER: dummy
         run: ctest --test-dir build-sim --output-on-failure
-
-      # The ninth suite from #387, and the only one that needs a build. It
-      # reads LVGL's own headers out of `build-sim/_deps/lvgl-src`, which
-      # Configure fetched and the cache above keeps, so it goes here rather
-      # than in the docs job with the other eight.
-      #
-      # The issue said this one "already degrades to 'no LVGL source tree
-      # found' and exits successfully", which would have made it the green step
-      # that checks nothing that #339 exists to remove. It does not: `main()`
-      # returns 2 and names `ATTADIPA_LVGL_SOURCE_DIR`. So there was nothing to
-      # fix before wiring it -- but the check is real either way, because a
-      # cache restore that produced an empty `_deps` would now fail this step
-      # instead of passing it.
-      - name: The widget inventory still catches a mutated LVGL API
-        run: python3 tools/ui/selftest_inventory.py
 
       - name: Upload screenshots
         if: always()
