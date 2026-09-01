@@ -295,6 +295,114 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
+        # A CONTINUATION -- `:2` with no path -- continues the citation before
+        # it ON THE SAME LINE. Both the bind and the four ways it must NOT bind
+        # are below, because binding by proximity instead is what makes this
+        # rule dangerous: 132 of the 138 bare forms in these documents either
+        # continue a path into a tree we do not have or follow no citation at
+        # all, and a rule that reaches backwards for a path verifies our lines
+        # against claims about somebody else's file.
+        write(root, "docs/CITER.md", 'See `docs/TARGET.md:1` and `:9`.\n')
+        case(
+            "a continuation is checked against the file cited before it",
+            "check_citation_lines",
+            any(
+                "cites docs/TARGET.md:9" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        write(root, "docs/CITER.md", 'See `docs/TARGET.md:1` and `:2`.\n')
+        case(
+            "a continuation naming a line that exists passes",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # THE 77. No citation before it on the line, so there is no file to
+        # check it against and nothing to say.
+        write(root, "docs/CITER.md", "See `:9` in the table above.\n")
+        case(
+            "a continuation with no citation before it is not guessed at",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # THE 55. The anchor is a path this repository does not contain, so it
+        # resolves to nothing -- and a continuation of nothing is nothing. The
+        # bind is to the anchor's RESOLVED TARGET, never to its path text.
+        write(
+            root,
+            "docs/CITER.md",
+            "InfiniTime `upstream/infinitime/clock.py:97`, and `:9999`.\n",
+        )
+        case(
+            "a continuation of an upstream citation is not checked here",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # A second citation MOVES the anchor: `:9` continues the file it
+        # follows, not the one before that.
+        write(
+            root,
+            "docs/CITER.md",
+            'Both `docs/TARGET.md:1` and `core/thing.h:1` — "alpha", so `:9`.\n',
+        )
+        case(
+            "a second citation on the line takes over as the anchor",
+            "check_citation_lines",
+            any(
+                "cites core/thing.h:9" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        # ...and an UNRESOLVED citation takes the anchor away rather than
+        # leaving the last resolved one standing. This is the shape that makes
+        # a document's own prose dangerous: a line naming a file of ours and
+        # then an upstream one, where `:9` belongs to the upstream file and
+        # only a cleared anchor keeps it from being read against ours.
+        write(
+            root,
+            "docs/CITER.md",
+            "Ours `docs/TARGET.md:1`, theirs "
+            "`upstream/infinitime/clock.py:97` and `:9`.\n",
+        )
+        case(
+            "an unresolved citation clears the anchor rather than passing it on",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # Backticks are what separate a citation from prose, and `:9` is far
+        # too small a shape to read outside them.
+        write(root, "docs/CITER.md", "See `docs/TARGET.md:1` at :9 today.\n")
+        case(
+            "an unbackticked :NN in prose is not a continuation",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # AND IT INHERITS #337: a continuation into a file this repository
+        # edits carries its own fingerprint. The anchor's quote is about the
+        # anchor's line and says nothing about this one.
+        write(
+            root,
+            "docs/CITER.md",
+            'See `core/thing.h:1` — "alpha", and `:2`.\n',
+        )
+        case(
+            "a continuation into a source file still needs a fingerprint",
+            "check_citation_lines",
+            any(
+                "with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        write(
+            root,
+            "docs/CITER.md",
+            'See `core/thing.h:1` — "alpha", and `:2` — "beta".\n',
+        )
+        case(
+            "a continuation into a source file that carries one passes",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
         # `file:line:column:` is a compiler transcript, quoted verbatim and not
         # editable. It is not this repository's citation syntax and must not be
         # asked for a promise.

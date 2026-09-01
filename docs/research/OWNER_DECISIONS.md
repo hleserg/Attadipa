@@ -1138,8 +1138,9 @@ duplicate — because a copy that drifts is worse than a pointer:
   **select by address**, which is correct for every node here under either
   reading;
 - **a BLE pairing PIN is required and is deliberately not in this repository**
-  (`:33-36`). This repository is public and a pairing PIN is a device access
-  credential. The owner holds it; ask in the session that needs it.
+  (`TEST_FLEET.md:160-163`). This repository is public and a pairing PIN is a
+  device access credential. The owner holds it; ask in the session that needs
+  it.
 
 The V4 reaches a host over BLE and USB, as both T114s do — the **T114** and
 **V4** rows of the fleet table in [TEST_FLEET](TEST_FLEET.md) §1.
@@ -1206,7 +1207,7 @@ radio in the room.
 >
 > **"Either unit" is superseded too, and the question it left open for the
 > owner is closed** —
-> [`OWNER_DECISIONS.md:1258`](OWNER_DECISIONS.md) "the fleet records only one".
+> [`OWNER_DECISIONS.md:1259`](OWNER_DECISIONS.md) "the fleet records only one".
 > The owner answered it on 2026-08-28 in
 > [#124](https://github.com/hleserg/Attadipa/issues/124): exactly one T114
 > carries GNSS, and — correcting the same day — *«приемники есть и у t114 и
@@ -1214,7 +1215,7 @@ radio in the room.
 > pair #91's observation was made over is the GNSS-fitted T114 and the Heltec
 > V4.3, not two T114s; the headless node is **not** credited with a receiver,
 > and the disjunction resolves to its second reading —
-> [`OWNER_DECISIONS.md:1259-1260`](OWNER_DECISIONS.md) "Either the headless node".
+> [`OWNER_DECISIONS.md:1260-1261`](OWNER_DECISIONS.md) "Either the headless node".
 > The operational consequence recorded there is unchanged: no indoor fix from
 > anything in this fleet. Whether the Room Server or the repeater carries a
 > receiver is `UNKNOWN` and is not to be inferred from the other two.
@@ -1287,9 +1288,11 @@ cause.
   read through a loupe is weaker evidence than a fuse read of the die under it.
   A2 and A3 move to RESOLVED, pointing here.
 - **A divergence to record rather than paper over.**
-  [ADR-0003](../adr/0003-radio-not-lora.md):109-111, :265 and :270-271 still
-  list A2 as open. Its stated reason is not "no marking read" but ownership:
-  `:270-271` calls A2 *"the owner's to answer"*, and the owner has now answered
+  [ADR-0003](../adr/0003-radio-not-lora.md) still lists A2 as open at
+  `../adr/0003-radio-not-lora.md:109-111`, `:265` and `:270-271`. Its stated
+  reason is not "no marking read" but ownership: the last of those,
+  `../adr/0003-radio-not-lora.md:270-271`, calls A2 *"the owner's to answer"*,
+  and the owner has now answered
   it. So the divergence is narrower than it looks — what the ADR is still
   waiting for is the evidence it treats as decisive, a marking read off the
   part, and this decision supplies a seller's listing instead. No ADR edit is
