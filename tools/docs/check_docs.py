@@ -34,7 +34,12 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 # Runs of backticks delimit inline code spans; run length matters for CommonMark.
 TICK_RUN = re.compile(r"`+")
 
-SKIP_DIRS = {".git", "build", "node_modules", "external", ".venv", "__pycache__"}
+# `managed_components` is ESP-IDF's vendored dependency tree: gitignored, absent
+# from CI's checkout, and not ours to edit. It was walked anyway, so a local
+# firmware build made the checker report two broken anchors and a moved line in
+# somebody else's README -- findings nobody here can act on and CI never sees.
+SKIP_DIRS = {".git", "build", "node_modules", "external", ".venv",
+             "__pycache__", "managed_components"}
 EXTERNAL = ("http://", "https://", "mailto:", "tel:", "ftp://", "//")
 
 
