@@ -37,9 +37,11 @@ namespace attadipa::firmware {
 // Bring the rails this board needs up, and own only those.
 //
 // Moved here unchanged from `waveshare_board.cpp`'s `initialize_pmu()`: same
-// registers, same values, same order, same log line. It lives here because
-// ADR-0016 §1 puts every AXP2101 rail write in one translation unit, and a
-// boot-time write is still a rail write.
+// registers, same values, same order, same format string. The tag in front of
+// it is not the same -- it is `board-power` here and was `waveshare` there, so
+// a bench transcript from before this move greps differently. It lives here
+// because ADR-0016 §1 puts every AXP2101 rail write in one translation unit,
+// and a boot-time write is still a rail write.
 esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu);
 
 // Bind the owner to this board's hardware. Called once, before any sleep.
