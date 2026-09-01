@@ -71,6 +71,12 @@ not enter the queue automatically.
   push directly to `main`.
 - A PR links its issue with `Fixes #<issue>` and states what was tested and what
   was not. Update durable documentation only when the durable fact changed.
+- A citation into a file this repository edits carries the text it cites:
+  `` `core/include/attadipa/core/clock.h:86` — "struct WallTime {" ``. A bare
+  line number rots the next time anybody inserts a paragraph above it, and it
+  rots silently, because the line it lands on is real. `check_docs.py` requires
+  the quote for a source target and then keeps it — that example is itself a
+  live citation, checked like any other. For a `.md` target it stays optional.
 - A blocker comment states reason, evidence, impact and one recommended next
   action; add `needs-owner` or `needs-hardware` only when that dependency is real.
 - Run the smallest meaningful checks that exercise the shipping seam. A test

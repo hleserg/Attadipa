@@ -268,6 +268,33 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
+        # THE FORM MOST SOURCE CITATIONS IN THIS REPOSITORY ARE WRITTEN IN:
+        # a short label for the reader, the real path in the href. The rule has
+        # to reach the target THROUGH the href, or it is enforced on the minority
+        # of citations that spell the path out and silently skipped on the rest.
+        write(
+            root,
+            "docs/CITER.md",
+            "See [`thing.h:2`](../core/thing.h).\n",
+        )
+        case(
+            "a source cited through an href still needs a fingerprint",
+            "check_citation_lines",
+            any(
+                "with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        write(
+            root,
+            "docs/CITER.md",
+            'See [`thing.h:2`](../core/thing.h) \u2014 "beta".\n',
+        )
+        case(
+            "a source cited through an href that carries one passes",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
         # `file:line:column:` is a compiler transcript, quoted verbatim and not
         # editable. It is not this repository's citation syntax and must not be
         # asked for a promise.

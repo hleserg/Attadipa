@@ -46,16 +46,20 @@ neither the source of `walk.log` nor of the three desk runs.** The desk runs
 came from an earlier build that never configured the engine, and the captures
 say so: no `CTRL9 0x0D` block, no
 `CTRL3`, no `p2p` column, `--- after ---` where this source prints
-`--- armed ---`, and a header naming three registers where `pedo.c:261` writes
-five plus `CAL1_L..CAL4_H`. `pedo.c:23-31` names it as one of **two**
-sufficient causes for those runs reading zero; the board also never moved.
+`--- armed ---`, and a header naming three registers where
+`pedo.c:261` — "Writes CTRL2/CTRL3/CTRL7/CTRL8/CTRL9" writes five plus
+`CAL1_L..CAL4_H`. `pedo.c:23-31` — "WHY THIS FILE CHANGED" names it as one of
+**two** sufficient causes for those runs reading zero; the board also never
+moved.
 
 `walk.log` is a third build, and it also says so: it writes `CTRL2 = 0x27`
-where this source defines `0x16` (`pedo.c:111`), carries **no `CTRL3` line at
-all** where this source writes `0x36` (`pedo.c:112`), configures a different
+where this source defines `0x16` (`pedo.c:111` — "#define CTRL2_VALUE 0x16"),
+carries **no `CTRL3` line at all** where this source writes `0x36`
+(`pedo.c:112` — "#define CTRL3_VALUE 0x36"), configures a different
 engine — `sample_cnt=62 peak2peak=0x00CC peak=0x0066 time_up=250 time_low=25
 cnt_entry=10 sig_count=4` at `walk.log:52-53` against `50 / 0x0050 / 0x003C /
-400 / 8 / 1 / 1` here (`pedo.c:140-147`) — and prints a `g` triad per line
+400 / 8 / 1 / 1` here (`pedo.c:140-147` — "#define PED_SAMPLE_CNT") — and
+prints a `g` triad per line
 where this source prints `p2p mg`. Nine constants, not one.
 
 What `probe/` holds is `pedo.c`, its two
@@ -98,7 +102,7 @@ text — this source does not reproduce the archived captures line for line:
    #341 has since settled it the other way: two Rev A datasheets exist, and the
    `0x7C` is read from `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`. The probe's
    label now names **both** papers and says the byte does not identify which
-   (`probe/pedo.c:267-269`).
+   (`probe/pedo.c:267-269` — "0x7C in BOTH Rev A datasheets").
 
 **No register or parameter constant differs from the shake run.** That is
 checkable without trusting this note: `shake.log:48-59` echoes every value the
