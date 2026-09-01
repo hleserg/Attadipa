@@ -9,10 +9,11 @@
 - Research output is evidence, not production implementation. Link an existing
   fact instead of copying it into a new ledger.
 - A citation into a file this repository edits carries the text it cites:
-  `` `core/clock.h:86` -- "struct WallTime {" ``. A line number alone rots the
-  next time anybody inserts a paragraph above it, and it rots silently, because
-  the line it lands on is real. `check_docs.py` requires the quote there and
-  keeps it; for a `.md` target it stays optional.
+  `` `core/include/attadipa/core/clock.h:86` — "struct WallTime {" ``. That
+  example is itself a live citation, checked like any other. A line number alone
+  rots the next time anybody inserts a paragraph above it, and it rots silently,
+  because the line it lands on is real. `check_docs.py` requires the quote
+  there and keeps it; for a `.md` target it stays optional.
 - Never promote a mock, simulator result or estimate to hardware `PASS` or
   `MEASURED`.
 
