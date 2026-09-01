@@ -188,16 +188,28 @@ and filed as a follow-up issue instead of held. The round a finding was first
 seen is read from the ledger the script itself wrote, never from what the
 reviewer says this round, so a finding cannot be re-aged into a blocker.
 
-**The ceiling is round 5.** Past it nothing holds at all, *floor* included. The
-finding is still published, still recorded, still filed; only the "holds the
-merge" column changes. The floor caps which categories may hold late; it does not
-cap how many rounds there can be, and #338 ran sixteen because every round's fix
-minted the next round's floor finding in the same document. That is OD-25, and
-the number is an owner decision — `docs/research/OWNER_DECISIONS.md` is where it
-changes, not this file.
+**The ceiling is round 5, and round six does not run.** The floor caps which
+categories may hold late; it does not cap how many rounds there can be, and #338
+ran sixteen because every round's fix minted the next round's floor finding in
+the same document. Past round five nothing holds at all, *floor* included — so a
+sixth round could only ever return the verdict already reached, and since
+2026-09-01 it is not bought. `attadipa_review_gate` reads the round out of the
+ledger before the model is invoked; the `Has this review already had its five
+rounds` step skips the paid step, applies `ai-review:pass` and posts a note
+saying the review is over rather than that it found nothing. Findings open at
+the cap stay in the ledger comment, which is where that note points.
 
-Both are asserted offline in `.github/tests/review-verdict-test.sh`: two files
-and two numbers in, `key=value` lines out.
+A standing `ai-review:blocking` is the one thing the cap will not clear. The
+invalidation step drops both labels on a push, so a pushed fix reaches the cap
+with no label and gets its pass; a bare workflow re-run reaches it with the
+block still on and leaves it there, because a verdict cleared with no commit in
+between is not a verdict.
+
+That is OD-25, and the number is an owner decision —
+`docs/research/OWNER_DECISIONS.md` is where it changes, not this file.
+
+All three are asserted offline in `.github/tests/review-verdict-test.sh`: two
+files and two numbers in, `key=value` lines out.
 
 ### When the review publishes no verdict
 

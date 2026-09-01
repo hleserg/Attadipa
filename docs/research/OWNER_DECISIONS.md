@@ -1644,14 +1644,37 @@ finding inside the same document — round 14 fixed five and created three, one 
 them `floor`. Sixteen review cycles at roughly twenty minutes each is over five
 hours of wall clock for a documentation change.
 
+**Amended 2026-09-01, by the owner, in conversation:** the five rounds are five
+rounds of *reviewing*. Until this amendment the cap was applied after the model
+had answered — the sixth round ran in full, and only then did the rule defer
+every finding it had just paid to produce and return `ai-review:pass`. #382
+bought three such rounds. His words: *"Так, просил же поставить не больше 5
+кругов ревью. Доработай систему, делаем пять кругов ревью, если после исправлений
+по пятому нет опасных багов больше - мержим как есть"*. A sixth round is no
+longer run at all: `attadipa_review_gate` reads the round out of the same ledger
+before the model is invoked, and the workflow skips the paid step and hands over
+the verdict round six could only have reached.
+
 **What this does not change:** what the reviewer is asked to look for, the floor
-list itself, and the rule that a deferred finding never ages into a blocker. The
-ceiling is a ceiling on *holding*, not on reviewing or on recording.
+list itself, the rule that a deferred finding never ages into a blocker, and
+which findings hold a pull request in rounds one to five. The ceiling caps
+holding and, since the amendment, reviewing. It has never capped *recording*:
+every finding still open when the cap falls stays in the ledger comment on the
+pull request, and the cap posts a note saying so rather than letting a skipped
+review read as a clean one.
+
+**One claim in this entry was never true.** "Still filed as the follow-up issue
+the review already produces" describes a mechanism that is not wired:
+`review-verdict.sh` renders the follow-up body to the path its caller passes, and
+`claude-pr-review.yml` passes `/tmp/deferred.md` and never opens it again. The
+recording OD-25 relies on is the ledger comment, which is real and is what the
+cap's note cites. Filing the issue is worth doing and is not part of the cap;
+recorded here so the next reader does not take the promise for the mechanism.
 
 **Where it lives:** `CEILING` in `.github/scripts/review-verdict.sh`, passed as
-`5` from `.github/workflows/claude-pr-review.yml`, asserted in
-`.github/tests/review-verdict-test.sh`. Raising or lowering it is an owner
-decision; edit this entry when it changes.
+`5` from `.github/workflows/claude-pr-review.yml` to both the verdict and the
+gate, asserted in `.github/tests/review-verdict-test.sh`. Raising or lowering it
+is an owner decision; edit this entry when it changes.
 
 ## OD-24 — Language follows the reader
 
