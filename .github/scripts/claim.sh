@@ -9,10 +9,47 @@ attadipa_claim_tag_sha() {
     jq -er '.object.sha' 2>/dev/null
 }
 
-attadipa_claim_owner() {
+attadipa_claim_message() {
   local tag_sha
   tag_sha="$(attadipa_claim_tag_sha "$1" "$2")" || return 1
   gh api "repos/$1/git/tags/$tag_sha" 2>/dev/null | jq -er '.message' 2>/dev/null
+}
+
+# The holder is the first line of the tag message; the lines under it are this
+# claim's provenance (see claim_message). A claim written before provenance
+# existed is one line and nothing else, and reads back the same way here.
+attadipa_claim_owner() {
+  local message
+  message="$(attadipa_claim_message "$1" "$2")" || return 1
+  printf '%s\n' "${message%%$'\n'*}"
+}
+
+# One value or nothing. Two `kind=` lines would answer with both and match no
+# case below, which is the direction a claim of unclear provenance should fail.
+claim_field() { printf '%s\n' "$1" | sed -n "s/^$2=//p"; }
+
+# WHAT KIND OF CLAIM THIS IS, RECORDED WHERE IT HAPPENS, ONCE.
+#
+# The holder id is a label the caller picks and AGENTS.md publishes an example
+# of. Reading provenance back out of that string is reading the caller's
+# preference as evidence: a person at a terminal who copied `agent-<run>-<attempt>`
+# lands on some finished run's number, the watchdog calls their live lease a
+# dead hosted one and a second writer follows it in (#369). The same guess fails
+# the other way -- claude-ci-repair.yml claims as `ci-repair-<run>-<attempt>`,
+# which no `agent-` regex ever matched, so a genuinely dead repair run was never
+# recoverable at all.
+#
+# So the tag records it instead, at acquire, from the only context that is not a
+# guess: `kind=hosted` and the run behind it are written when and only when the
+# acquire itself ran on the workflow path. Everything else is `kind=local`, and
+# local is never reaped by the clock (#254).
+claim_message() {
+  printf '%s\n' "$1"
+  if [ "${GITHUB_ACTIONS-}" = true ] && printf '%s' "${GITHUB_RUN_ID-}" | grep -Eq '^[0-9]+$'; then
+    printf 'kind=hosted\nrun=%s\nattempt=%s\n' "$GITHUB_RUN_ID" "${GITHUB_RUN_ATTEMPT:-1}"
+  else
+    printf 'kind=local\n'
+  fi
 }
 
 attadipa_claim_create_ref() {
@@ -87,7 +124,7 @@ reject_unsafe_holder() {
 acquire() {
   local repo="$1" number="$2" holder="$3" branch head tag_json tag_sha winner existing now
   reject_unsafe_holder "$holder" || {
-    printf 'pass an agent id such as agent-<run>-<attempt>; see AGENTS.md\n' >&2
+    printf 'pass an agent id such as local-<who>-<n>; see AGENTS.md\n' >&2
     return 64
   }
   if existing="$(attadipa_claim_owner "$repo" "$number")"; then
@@ -100,7 +137,7 @@ acquire() {
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   tag_json="$(gh api --method POST "repos/$repo/git/tags" \
     -f "tag=attadipa-claim-$number-${holder//[^A-Za-z0-9._-]/-}" \
-    -f "message=$holder" -f "object=$head" -f type=commit \
+    -f "message=$(claim_message "$holder")" -f "object=$head" -f type=commit \
     -f 'tagger[name]=Attadipa automation' -f 'tagger[email]=actions@users.noreply.github.com' \
     -f "tagger[date]=$now")" || return 2
   tag_sha="$(printf '%s' "$tag_json" | jq -er '.sha')" || return 2
@@ -158,24 +195,38 @@ break_claim() {
   printf 'claim cleared\n'
 }
 
-# The only completion evidence this repository has is the Actions run named by a
-# hosted holder id, `agent-<run_id>-<attempt>` (claude-agent.yml, claude-ci-repair.yml).
-# A local holder -- `agent-i254-r1`, a person at a terminal -- has none: the
-# process runs on a machine Actions cannot see, and the tag's creation time says
-# only when the work started, never whether it stopped. So age alone reaps
-# nothing now; a local lease is released by `writer-start.sh finish`, or by hand
-# with `claim.sh break` (#254).
-holder_finished() {
-  local repo="$1" holder="$2" run status
-  if ! printf '%s' "$holder" | grep -Eq '^agent-[0-9]+-[0-9]+$'; then
-    printf 'holder %s is not a hosted run; nothing proves it ended\n' "$holder" >&2
+# The only completion evidence this repository has is the Actions run this claim
+# recorded when it was acquired. A local claim -- a person at a terminal -- has
+# none: the process runs on a machine Actions cannot see, and the tag's creation
+# time says only when the work started, never whether it stopped. So age alone
+# reaps nothing; a local lease is released by `writer-start.sh finish`, or by
+# hand with `claim.sh break` (#254).
+#
+# Read the recorded `kind`, never the holder's spelling (#369). A claim from
+# before provenance was written carries neither, and unattributed is not
+# finished: it holds until someone breaks it, which is the safe direction.
+claim_finished() {
+  local repo="$1" message="$2" holder kind run status
+  holder="${message%%$'\n'*}"
+  kind="$(claim_field "$message" kind)"
+  case "$kind" in
+    hosted) ;;
+    local)
+      printf 'claim by %s was made off Actions; nothing proves it ended\n' "$holder" >&2
+      return 1 ;;
+    *)
+      printf 'claim by %s records no provenance; it cannot be read as a finished run\n' "$holder" >&2
+      return 1 ;;
+  esac
+  run="$(claim_field "$message" run)"
+  if ! printf '%s' "$run" | grep -Eq '^[0-9]+$'; then
+    printf 'hosted claim by %s names no Actions run\n' "$holder" >&2
     return 1
   fi
-  run="${holder#agent-}"; run="${run%-*}"
-  # A local holder can still be shaped like a hosted one. A run that cannot be
-  # read is not a run that finished, so it falls into the same bucket.
+  # A run that cannot be read is not a run that finished, so it falls into the
+  # same bucket as one that is still going.
   status="$(gh api "repos/$repo/actions/runs/$run" 2>/dev/null | jq -er '.status' 2>/dev/null)" || {
-    printf 'no readable Actions run %s behind holder %s\n' "$run" "$holder" >&2
+    printf 'no readable Actions run %s behind the claim by %s\n' "$run" "$holder" >&2
     return 1
   }
   [ "$status" = completed ] || {
@@ -185,12 +236,13 @@ holder_finished() {
 }
 
 reap() {
-  local repo="$1" number="$2" max_age="$3" tag_sha tag_json holder date claimed_epoch now
+  local repo="$1" number="$2" max_age="$3" tag_sha tag_json message holder date claimed_epoch now
   if tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"; then
     tag_json="$(gh api "repos/$repo/git/tags/$tag_sha")" || return 2
     date="$(printf '%s' "$tag_json" | jq -er '.tagger.date')" || return 2
-    holder="$(printf '%s' "$tag_json" | jq -er '.message')" || return 2
-    if ! holder_finished "$repo" "$holder"; then
+    message="$(printf '%s' "$tag_json" | jq -er '.message')" || return 2
+    holder="${message%%$'\n'*}"
+    if ! claim_finished "$repo" "$message"; then
       printf '%s is held by %s and stays held; release it by hand with: claim.sh break %s %s\n' \
         "$(claim_ref "$number")" "$holder" "$repo" "$number" >&2
       return 3

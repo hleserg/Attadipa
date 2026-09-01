@@ -61,10 +61,12 @@ not enter the queue automatically.
 
 - Before creating a branch or editing, run
   `.github/scripts/writer-start.sh start REPO ISSUE AGENT_ID` from current `main`;
-  `AGENT_ID` is an opaque label for the holder, such as `agent-<run>-<attempt>` —
+  `AGENT_ID` is an opaque label for the holder, such as `local-<who>-<n>` —
   **never a credential**: it is published in a tag anyone can read, and the tag
-  object survives deleting the tag;
-  its repository lease and atomic claim are the machine-enforced writer gate.
+  object survives deleting the tag. It is a name, not evidence: the claim records
+  whether it came from a workflow or a terminal when it is made, and only a
+  workflow claim is ever reaped automatically.
+  Its repository lease and atomic claim are the machine-enforced writer gate.
   Run `writer-start.sh finish ...` on hand-off. Keep commits logical and never
   push directly to `main`.
 - A PR links its issue with `Fixes #<issue>` and states what was tested and what
