@@ -85,16 +85,6 @@ public:
         if (!conflicted_.valid && peer.valid) conflicted_ = peer;
     }
 
-    // The repeat-pairing answer. Unreachable in the central role (see
-    // `record()`); kept because it is the callback's contract, and because a
-    // role that does receive a Pairing Request must not fall through to
-    // NimBLE's default.
-    int repeat_pairing(const BondIdentity& peer)
-    {
-        record(peer);
-        return kRepeatPairingIgnore;
-    }
-
     bool recovery_required() const { return conflicted_.valid; }
 
     // The owner action, and the only path that yields an address to delete.
