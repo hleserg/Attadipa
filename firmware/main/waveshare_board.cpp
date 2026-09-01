@@ -210,12 +210,22 @@ esp_err_t restore_time_metadata() {
 }
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
-// What `attadipa_time` held before a synchronization started. `present` is one
-// flag rather than one per key because `save_time_metadata()` is the only
-// writer of either and commits both together, so they are both there or
-// neither is -- and "neither" has to be restorable as *neither*: a watch that
-// has never been synchronized must not come back from a refused RTC write
-// holding a UTC offset it never accepted.
+// What `attadipa_time` held before a synchronization started, and whether that
+// was a *complete* stored state.
+//
+// One flag rather than one per key -- but not because the two keys move
+// together, which they do not. A successful `nvs_set_*` is already on flash --
+// in ESP-IDF v5.5.5, nvs_commit() in components/nvs_flash/src/nvs_api.cpp is
+// commented "no-op for now, to be used when intermediate cache is added" and
+// NVSHandleSimple::commit() returns ESP_OK without touching storage -- so a
+// `save_time_metadata()` that fails between its two sets leaves `tz_min`
+// behind without `last_utc`. A version bump re-reads that. The flag means
+// complete, and a
+// half-written store is deliberately not complete: restoring it would put back
+// a UTC offset from a synchronization that failed, which is the one thing this
+// type exists to prevent. So `present == false` is restored by erasing both
+// keys, and it covers "there was nothing" and "there was half of something"
+// with the same answer, on purpose.
 struct TimeMetadata {
   std::int16_t offset;
   std::int64_t last_sync_utc;
@@ -237,11 +247,20 @@ esp_err_t read_time_metadata(TimeMetadata *out) {
   }
   nvs_close(handle);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
+    // Either key missing means there is no complete state to restore. Clear
+    // what the first read may already have filled in, so that a half-read
+    // `offset` never travels beside `present == false`.
+    *out = TimeMetadata{};
     return ESP_OK;
   }
   ESP_RETURN_ON_ERROR(err, kTag, "read time metadata to read");
   out->present = true;
   return ESP_OK;
+}
+
+esp_err_t erase_if_present(nvs_handle_t handle, const char *key) {
+  const esp_err_t err = nvs_erase_key(handle, key);
+  return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
 }
 
 esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
@@ -260,10 +279,13 @@ esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
   return err;
 }
 
-// Puts `previous` back after a refused RTC write. Erasing rather than writing
-// when nothing was there is the whole reason `TimeMetadata` carries a flag;
-// both keys were written by the call this is undoing, so neither erase can
-// report ESP_ERR_NVS_NOT_FOUND.
+// Puts `previous` back after a refused write, chip or metadata. No complete
+// state means erasing rather than writing, which is what the flag on
+// `TimeMetadata` is for -- and either key may already be absent, because
+// `previous` can predate any synchronization at all and because the store can
+// be half-written. `ESP_ERR_NVS_NOT_FOUND` from an erase is therefore the
+// outcome asked for and not a failure; treating it as one used to abandon the
+// second erase and report an error for a store that had ended up correct.
 esp_err_t roll_back_time_metadata(const TimeMetadata &previous) {
   if (previous.present) {
     return save_time_metadata(previous.offset, previous.last_sync_utc);
@@ -271,9 +293,9 @@ esp_err_t roll_back_time_metadata(const TimeMetadata &previous) {
   nvs_handle_t handle{};
   ESP_RETURN_ON_ERROR(nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle),
                       kTag, "open time metadata to roll back");
-  esp_err_t err = nvs_erase_key(handle, kTimezoneNvsKey);
+  esp_err_t err = erase_if_present(handle, kTimezoneNvsKey);
   if (err == ESP_OK) {
-    err = nvs_erase_key(handle, kLastSyncNvsKey);
+    err = erase_if_present(handle, kLastSyncNvsKey);
   }
   if (err == ESP_OK) {
     err = nvs_commit(handle);
@@ -425,18 +447,13 @@ public:
     // not reach `state.time_service = candidate`, which is what makes the
     // sequence all-or-nothing rather than differently partial.
     //
-    // That includes a refused metadata write, which round 2 of the review left
-    // out and this comment then claimed it had covered. It is not only a wrong
-    // sentence. `save_time_metadata()` has four exits and two of them -- the
-    // second set and the commit -- happen after the first set has already
-    // returned ESP_OK, so the question is whether an uncommitted set survives.
-    // On the version this repository pins it does: in ESP-IDF v5.5.5,
-    // nvs_commit() in components/nvs_flash/src/nvs_api.cpp carries the comment
-    // "no-op for now, to be used when intermediate cache is added" and hands
-    // off to NVSHandleSimple::commit(), which checks the handle and returns
-    // ESP_OK without touching storage. The set is already on flash and the
-    // missing commit undoes nothing, so that path leaves a `tz_min` the wearer
-    // never accepted exactly as the RTC path did.
+    // That includes a refused metadata write, which the first version of this
+    // comment claimed it had covered and did not. It is not only a wrong
+    // sentence: `save_time_metadata()` has four exits and two of them happen
+    // after the first `nvs_set` has already returned ESP_OK, and on the pinned
+    // ESP-IDF that set is already on flash -- see the note on `TimeMetadata`,
+    // which carries the source. So that exit leaves a `tz_min` the wearer
+    // never accepted, exactly as the RTC path did.
     TimeMetadata previous{};
     const esp_err_t previous_result = read_time_metadata(&previous);
     if (previous_result != ESP_OK) {
