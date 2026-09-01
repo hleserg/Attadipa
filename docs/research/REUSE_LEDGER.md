@@ -2293,8 +2293,8 @@ live in exactly one translation unit. HIL rows stay `NOT EXECUTED — HARDWARE
 REQUIRED` until a board runs them.
 
 **Licences:** Apache-2.0 and MIT into GPL-3.0-or-later, compatible in
-direction. The mechanics of copying, linking and redistribution notices are
-[#284](https://github.com/hleserg/Attadipa/issues/284)'s subject and are not
+direction. The mechanics of copying, linking and redistribution notices live in
+[*Where the resolved graph lives, and where notices go*](DEPENDENCIES.md#where-the-resolved-graph-lives-and-where-notices-go) and are not
 duplicated here.
 
 ### The second board's display and touch, and what a board backend may contain
@@ -2412,8 +2412,8 @@ is NOT EXECUTED — HARDWARE REQUIRED**, and a simulator run is never a hardware
 **Licences:** Apache-2.0 and MIT into GPL-3.0-or-later, compatible in
 direction; BSD-3-Clause likewise, and it applies to `src/bosch/` if SensorLib is
 ever taken. If the vendor command table is adopted, the MIT notice travels with
-it. Mechanics are [#284](https://github.com/hleserg/Attadipa/issues/284)'s
-subject.
+it. Mechanics are
+[*Where the resolved graph lives, and where notices go*](DEPENDENCIES.md#where-the-resolved-graph-lives-and-where-notices-go)'s.
 
 ---
 

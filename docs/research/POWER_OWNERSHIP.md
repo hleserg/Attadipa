@@ -383,8 +383,8 @@ the strongest reason to reconsider, behind the same wrapper, at the same pin.
 
 Licence compatibility above is the direction only — Apache-2.0 and MIT into
 GPL-3.0-or-later. The mechanics of copying, linking and redistribution notices
-are [#284](https://github.com/hleserg/Attadipa/issues/284)'s subject and are
-deliberately not duplicated here.
+live in [*Where the resolved graph lives, and where notices go*](DEPENDENCIES.md#where-the-resolved-graph-lives-and-where-notices-go)
+and are deliberately not duplicated here.
 
 ## 4. The contract
 

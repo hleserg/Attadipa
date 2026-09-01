@@ -24,8 +24,8 @@ Required for every entry:
 | **`espressif/esp_lcd_co5300`** | **2.1.0**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild the display path and re-check the licence file |
 | **`espressif/esp_lcd_touch_ft5x06`** | **1.1.1**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild the touch path and re-check the licence file |
 | **`esp_lvgl_port`** | **2.8.0~1**, direct in `firmware/main/idf_component.yml` | Apache-2.0, read from the resolved component's `license.txt` | change the manifest version deliberately; rebuild both display geometries and re-check the licence file |
-| **`espressif/esp_lcd_touch`** | **1.2.1**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | re-audit after any clean dependency resolution; the uncommitted lock is tracked in [#284](https://github.com/hleserg/Attadipa/issues/284) |
-| **`espressif/cmake_utilities`** | **0.5.3**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | re-audit after any clean dependency resolution; the uncommitted lock is tracked in [#284](https://github.com/hleserg/Attadipa/issues/284) |
+| **`espressif/esp_lcd_touch`** | **1.2.1**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | this resolution is what `firmware/dependencies.lock` records, and CI fails the build on any drift from it (*Where the resolved graph lives*, above); re-audit the licence when a deliberate bump moves it |
+| **`espressif/cmake_utilities`** | **0.5.3**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | this resolution is what `firmware/dependencies.lock` records, and CI fails the build on any drift from it (*Where the resolved graph lives*, above); re-audit the licence when a deliberate bump moves it |
 | **LVGL** | **v9.5.0** — `85aa60d18b3d5e5588d7b247abf90198f07c8a63`, 2026-02-18 | MIT | tagged releases only. Retest both geometries, the font-subset size and asset regeneration on every bump |
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
@@ -127,13 +127,42 @@ exactly, so neither drifts on its own, and the only failure left is a bump made
 on one route and forgotten on the other — which a third mechanism could catch
 and this paragraph catches more cheaply.
 
-**The lock is binding, not decorative.** The firmware CI job copies the
-committed lock aside, rebuilds — which re-resolves and rewrites it — and then
-fails on a `diff` between the two. Drift is the failure. It compares against a
-copy rather than against the index because `git` cannot read the repository
-from inside that container at all: the workspace belongs to the runner's user
-and the step runs as another, so git stops at the ownership boundary and
-answers "Not a git repository". Bumping a component means committing the new lock and
+**The lock is binding, and what it binds is narrower than "the graph cannot
+move".** The firmware CI job copies the committed lock aside, builds, and runs
+`.github/scripts/lock-drift-check.sh` over the two; drift is the failure. It
+compares against a copy rather than against the index because `git` cannot read
+the repository from inside that container at all: the workspace belongs to the
+runner's user and the step runs as another, so git stops at the ownership
+boundary and answers "Not a git repository".
+
+What that catches follows from *when the component manager solves at all*,
+which is not on every build. `is_solve_required()` returns `False` for a lock
+that is still valid — same manifest hash, same target, a compatible IDF
+version, the same set of direct dependencies, and every locked version still
+present in its source with a matching component hash. So:
+
+- **Caught.** A lock gone stale against a changed manifest, a changed target,
+  an incompatible IDF version, a changed set of direct dependencies, or a
+  locked version deleted from the registry. Each forces a re-solve, the
+  re-solve rewrites the lock, and the rewritten lock differs from the copy.
+- **Not caught.** `cmake_utilities` publishing 0.5.4, or `esp_lcd_touch`
+  publishing 1.2.2. The lock stays valid, so nothing re-solves and CI is
+  silent. Registry movement in those two `0.*` and `^1.2.0` requests is caught
+  by re-running the audit on a deliberate bump — by the row above saying so —
+  and not by this gate. Committing the lock is what makes "a deliberate bump"
+  a thing that exists.
+- **Stronger than either.** If the registry ever serves a *different artefact
+  under a version this lock names*, the build does not drift — it stops:
+  `InvalidComponentHashError`, "This could be due to a potential spoofing of
+  the download server, or your lock file may have become corrupted." That check
+  has nothing to compare against until the lock is committed, and no version
+  pin in the manifest can produce it.
+
+Read in `idf_component_manager/dependencies.py` of **idf-component-manager
+2.5.0** — within the `idf-component-manager~=2.2` that
+`tools/requirements/requirements.core.txt:16` pins for ESP-IDF v5.5.5 — and the
+same function is unchanged in 3.1.0, so a manager bump does not silently
+invalidate this paragraph. Bumping a component means committing the new lock and
 re-reading the licence of whatever moved, in the same pull request.
 
 **Redistribution notices** are assembled for a release artefact, not carried in
@@ -151,7 +180,7 @@ release is what turns it into one.
 |---|---|---|
 | **Compatible** | ESP-IDF and the five managed components above (Apache-2.0); LVGL, FreeRTOS, MeshCore and RadioLib (MIT); Newlib and the GCC runtime libraries with their runtime exception; Nunito Sans (OFL-1.1) | These may be used with GPLv3 code. Their own copyright, licence and notice obligations remain; the OFL font remains under OFL-1.1 rather than being relicensed |
 | **Build/tool only** | CMake (BSD), SDL2 (Zlib), `lv_font_conv` and its npm graph (permissive), `pypng` (MIT), Python `lz4` (BSD-3-Clause), Pillow (HPND) and GitHub Actions used by CI | They are not linked into or shipped as the firmware. Preserve their licences if a tool is redistributed |
-| **Requires attention** | the ignored ESP-IDF dependency lock and future release notice bundle | The audited graph is compatible today, but transitive versions can drift; resolution and redistribution notices are tracked in [#284](https://github.com/hleserg/Attadipa/issues/284) |
+| **Requires attention** | the future release notice bundle | The audited graph is compatible and no longer free to move underneath this table: `firmware/dependencies.lock` is tracked and CI fails on drift (*Where the resolved graph lives*, above), so a transitive version that moves is a red build rather than a silently stale audit. What is still open is the other half — the notices themselves, which are assembled per release artefact and no release artefact exists yet |
 | **Do not combine into the current distribution** | Espressif `esp-sr`, `esp_audio_codec`, `esp_audio_effects` and `esp_codec_dev` 2.x field-of-use licences; proprietary vendor SDKs; AGPL-3.0 code unless the combined work is distributed under AGPL terms | These are not current dependencies. The field-of-use and proprietary terms are incompatible with the project's GPL terms; an AGPL combination could not be distributed solely as `GPL-3.0-or-later` |
 
 No incompatible component or proprietary blob was found in the current linked
@@ -346,8 +375,8 @@ simulator driving timed frames, or a board.
   [`firmware/main/idf_component.yml`](../../firmware/main/idf_component.yml) and
   already shipping on the Waveshare path. Apache-2.0 is compatible with GPLv3
   but carries notice and patent terms that must be preserved if code is
-  vendored; the mechanics belong to
-  [#284](https://github.com/hleserg/Attadipa/issues/284).
+  vendored; *Where the resolved graph lives, and where notices go* (above) is
+  where that obligation is answered.
 
 ### SensorLib — evaluated, not adopted
 

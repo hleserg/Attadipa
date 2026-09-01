@@ -360,9 +360,9 @@ driver for.
 and `src/bosch/` carries its own `LICENSE`. The component manifest's `exclude`
 list does not exclude `src/bosch/`, so those files ship with the component. Both
 MIT and BSD-3-Clause flow into GPL-3.0-or-later in the right direction, and both
-require retained notices; the redistribution mechanics are
-[#284](https://github.com/hleserg/Attadipa/issues/284)'s subject and are not
-restated here.
+require retained notices; the redistribution mechanics live in
+[*Where the resolved graph lives, and where notices go*](DEPENDENCIES.md#where-the-resolved-graph-lives-and-where-notices-go)
+and are not restated here.
 
 **The verdict is `EVALUATE`, and this slice does not need it.** The first
 T-Watch backend is display and touch, and SensorLib supplies neither — touch
