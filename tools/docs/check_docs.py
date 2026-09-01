@@ -3,7 +3,8 @@
 
 Checks resolve relative links, validate inline-code spans, keep decision and
 open-question IDs unique, reject unexpected tracked root files, and verify that
-line-number citations still land on nonblank content.
+line-number citations still land on nonblank content -- and, where the citation
+names a source file this repository tracks, on the text it was cited for.
 
 Run: python3 tools/docs/check_docs.py [root]
 """
@@ -205,7 +206,11 @@ CITATION = re.compile(
     # which then failed as a descending range and reddened CI for a true
     # sentence. Every real range in this repository is written closed up.
     # Found in review.
-    r"\)?:(\d+)(?:[-\u2013](\d+))?\b"
+    # NOT a compiler diagnostic. `file.cpp:9:10: fatal error:` is line and
+    # COLUMN, quoted from a transcript nobody may edit, and it is not this
+    # repository's citation syntax -- but `:9` matched, and the mandatory
+    # fingerprint below then asked a build log to make a promise.
+    r"\)?:(\d+)(?:[-\u2013](\d+))?\b(?!:\d)"
 )
 
 # An optional FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display
@@ -299,6 +304,28 @@ def basename_index(root: str) -> dict[str, str]:
     return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
 
 
+def tracked_files(root: str) -> set[str]:
+    """Every path this repository tracks, repo-relative.
+
+    A citation into a file we EDIT is the one that rots: documentation lines
+    are comparatively stable and are themselves checked, while source is under
+    active change. Tracking is the test for "ours" -- a build directory or a
+    vendored `managed_components/` tree is neither ours to keep nor present in
+    CI, and requiring a promise about it would redden a checkout and not a
+    change. Outside a git checkout this returns nothing and the rule is off.
+    """
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        return set()
+    return {name for name in listing.stdout.split("\0") if name}
+
+
 def check_citation_lines(root: str) -> list[str]:
     """A `file:line` citation points at a line that exists, is not blank, and --
     where the citation carries a fingerprint -- still says what it was cited
@@ -324,6 +351,23 @@ def check_citation_lines(root: str) -> list[str]:
 
     bare_index = bare_document_index(root)
     by_basename = basename_index(root)
+    tracked = tracked_files(root)
+
+    def source_target(resolved: str) -> str:
+        """Repo-relative path, when a citation lands in a source file we edit.
+
+        Empty for a `.md`, for a path this repository does not track, and for
+        anything outside the tree -- those stay opt-in, which is what #331
+        settled. What is NOT opt-in is a line number in a file under active
+        edit: inserting a paragraph above it lands the citation on a line that
+        is real, non-blank and about something else, and nothing here could
+        see it.
+        """
+        if not resolved or resolved.endswith(".md"):
+            return ""
+        rel = os.path.relpath(resolved, root)
+        return rel if rel in tracked else ""
+
     for path in markdown_files(root):
         if os.path.basename(path) == PLACEHOLDER:
             problems.append(
@@ -355,7 +399,7 @@ def check_citation_lines(root: str) -> list[str]:
                     if body is not None:
                         _report(
                             problems, rel_self, lineno, cited, match, body,
-                            line, nxt
+                            line, nxt, source_target(resolved)
                         )
                     continue
                 # Resolve beside the citing file first, then from the root. A
@@ -392,7 +436,8 @@ def check_citation_lines(root: str) -> list[str]:
                             body = lines_of(via)
                             if body is not None:
                                 _report(problems, rel_self, lineno, cited,
-                                        match, body, line, nxt)
+                                        match, body, line, nxt,
+                                        source_target(via))
                             continue
                     resolved = by_basename.get(os.path.basename(cited), "")
                     if not resolved or "/" in cited.strip("./"):
@@ -456,12 +501,12 @@ def check_citation_lines(root: str) -> list[str]:
                 if body is None:
                     continue
                 _report(problems, rel_self, lineno, cited, match, body, line,
-                        nxt)
+                        nxt, source_target(resolved))
     return problems
 
 
 def _report(problems, rel_self, lineno, cited, match, body, line="",
-            next_line="") -> None:
+            next_line="", source="") -> None:
     first = int(match.group(2))
     last = match.group(3)
     span = match.group(0).split(":", 1)[1]
@@ -511,6 +556,21 @@ def _report(problems, rel_self, lineno, cited, match, body, line="",
         if tail in ("", "\u2014", "-"):
             stamp = FINGERPRINT.match(next_line.strip())
     if not stamp:
+        if source:
+            # MANDATORY for a source file, opt-in everywhere else. Twice on one
+            # branch a source citation was moved onto different real code and
+            # this checker said `none` -- once onto the same function's
+            # `printf`, under a sentence quoting a formula that line does not
+            # contain. A reader following it lands on plausible, wrong code.
+            # Eighteen citations were in that state when the rule was written,
+            # which is what makes it affordable in one change where the blanket
+            # rule was not.
+            problems.append(
+                "%s:%d: cites %s:%s into %s, a file this repository edits, "
+                "with no fingerprint -- a line number alone rots silently "
+                "there. Quote what it is cited for: `%s:%s` -- \"...\""
+                % (rel_self, lineno, cited, span, source, cited, span)
+            )
         return
     snippet = stamp.group(1)
     if any(snippet in body[n - 1] for n in wanted):
@@ -782,6 +842,7 @@ CHECKS = (
     ("Unexpected files tracked at the repository root", "check_root_files"),
     (
         "Citations pointing at a blank line, past the end of a file, "
+        "into a source file with no fingerprint, "
         "or at a path this repository no longer has",
         "check_citation_lines",
     ),

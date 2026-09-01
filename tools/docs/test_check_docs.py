@@ -227,6 +227,61 @@ def main() -> int:
             bool(check_docs.check_root_files(root)),
         )
 
+    # A FINGERPRINT IS MANDATORY into a file this repository edits, and the
+    # rule is scoped by what git tracks -- so this block needs a real checkout,
+    # unlike the citation cases above.
+    with tempfile.TemporaryDirectory() as root:
+        subprocess.run(["git", "init", "-q", root], check=True)
+        write(root, "core/thing.h", "alpha\nbeta\ngamma\n")
+        write(root, "docs/TARGET.md", "one\ntwo\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+
+        write(root, "docs/CITER.md", "See `core/thing.h:2`.\n")
+        case(
+            "a source citation with no fingerprint is reported",
+            "check_citation_lines",
+            any(
+                "with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        write(root, "docs/CITER.md", 'See `core/thing.h:2` — "beta".\n')
+        case(
+            "a source citation that carries one passes",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # The exemption #331 settled: documentation lines are stable and are
+        # themselves checked, so a citation into one stays opt-in.
+        write(root, "docs/CITER.md", "See `docs/TARGET.md:2`.\n")
+        case(
+            "a documentation citation still needs no fingerprint",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # Scoped to what we EDIT. A build directory or a vendored tree is not
+        # ours to keep, and is not in CI's checkout at all.
+        write(root, "build/generated.h", "alpha\nbeta\n")
+        write(root, "docs/CITER.md", "See `build/generated.h:2`.\n")
+        case(
+            "an untracked file is not required to carry one",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # `file:line:column:` is a compiler transcript, quoted verbatim and not
+        # editable. It is not this repository's citation syntax and must not be
+        # asked for a promise.
+        write(
+            root,
+            "docs/CITER.md",
+            "```\ncore/thing.h:2:10: fatal error: nope\n```\n",
+        )
+        case(
+            "a compiler diagnostic is not read as a citation",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+
     missing = {function for _title, function in check_docs.CHECKS} - called
     if missing:
         failures.append("checks without a mutation case: " + ", ".join(sorted(missing)))

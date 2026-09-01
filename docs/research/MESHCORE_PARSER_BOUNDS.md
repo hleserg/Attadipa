@@ -757,7 +757,8 @@ pattern with two instances, which changes how much weight a future
 
 **It is not a fact about Attadipa's code**, which has no production radio stack
 at all, and not a defect report against `attadipa_link`, whose decoder validates
-the declared length before reading (§5, and `frame_codec.cpp:139`, `:147`).
+the declared length before reading (§5, and `frame_codec.cpp:145` —
+"declared > kMaxPayload" — and `frame_codec.cpp:153` — "size_ < needed").
 
 **Two things are deliberately not claimed.** Whether Meshtastic's `assert()` was
 compiled out in shipping firmware is **UNKNOWN** from this reading: `NDEBUG`

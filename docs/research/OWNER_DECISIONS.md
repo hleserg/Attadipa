@@ -1189,7 +1189,7 @@ radio in the room.
 > **The two line ranges cited above no longer land on their subjects.** They
 > were written against `485dddb`. The shared-name claim was at `:29-32`; the
 > pairing PIN is now §1b,
-> [`TEST_FLEET.md:159`](TEST_FLEET.md) "A BLE pairing PIN is required".
+> [`TEST_FLEET.md:160`](TEST_FLEET.md) "A BLE pairing PIN is required".
 > Both citations were bare ranges, which is why they rotted silently —
 > `check_citation_lines` only requires the line to exist.
 >

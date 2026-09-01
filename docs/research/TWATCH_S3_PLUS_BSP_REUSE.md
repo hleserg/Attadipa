@@ -28,7 +28,8 @@ softened into a prediction.
 The composition that follows from these is the one the issue proposed as its
 baseline: a thin Attadipa board backend that hands the existing runtime an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, exactly as
-`waveshare_board.cpp:106-107` already does. The durable half of that is
+`waveshare_board.cpp:106-107` — "esp_lcd_panel_handle_t panel" — already does.
+The durable half of that is
 [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md).
 
 **The one finding that changes the plan** is §4: on this board, and only on

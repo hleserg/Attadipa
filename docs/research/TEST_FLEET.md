@@ -97,7 +97,8 @@ by this table instead gets `ERR`/`NOT_FOUND`.
 
   The distinction is the whole of #304 and it is not pedantic:
   `advertises_meshcore()` requires the literal substring `MeshCore` and a name of
-  at least 8 bytes (`firmware/main/meshcore_ble.cpp:261`). Neither
+  at least 8 bytes (`firmware/main/meshcore_ble.cpp:284` — "fields.name_len >= 8").
+  Neither
   `Beta test companion` nor `✂️Beta Serega` contains `MeshCore`, so a fix that
   filters on these two strings matches **nothing**, and the run falls back to
   whichever node advertised first — the exact defect the filter was added to

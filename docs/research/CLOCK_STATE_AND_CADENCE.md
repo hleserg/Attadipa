@@ -46,21 +46,22 @@ this repository, and most of them are not obviously about a clock.
 
 | The Clock needs | It already exists as | Where |
 |---|---|---|
-| a wall clock | `core::WallTime` — UNIX seconds, **no arithmetic** | [`core/clock.h:86`](../../core/include/attadipa/core/clock.h) |
+| a wall clock | `core::WallTime` — UNIX seconds, **no arithmetic** | [`core/clock.h:86`](../../core/include/attadipa/core/clock.h) — "struct WallTime {" |
 | elapsed time, for anything timed | `core::MonotonicTime` / `Millis` / `elapsed()` | [`core/clock.h:45`](../../core/include/attadipa/core/clock.h) — "struct MonotonicTime {", [`core/clock.h:62`](../../core/include/attadipa/core/clock.h) — "constexpr Millis elapsed" |
-| "the time is not usable" | `core::Availability` — seven values, seven *remedies* | [`core/availability.h:16`](../../core/include/attadipa/core/availability.h) |
+| "the time is not usable" | `core::Availability` — seven values, seven *remedies* | [`core/availability.h:16`](../../core/include/attadipa/core/availability.h) — "enum class Availability" |
 | "the time is old / not trustworthy" | `core::Validity{Unknown, Valid, Stale, Invalid}` | [`core/availability.h:63`](../../core/include/attadipa/core/availability.h) — "enum class Validity" |
 | a datum plus its two ages | `core::Timed<T>` | [`core/availability.h:70`](../../core/include/attadipa/core/availability.h) — "struct Timed {" |
 | "who is supplying the time" | `core::Capability::Time` — *"a wall clock worth displaying"* | [`core/capability.h:21`](../../core/include/attadipa/core/capability.h) — "a wall clock worth displaying" |
 | whether a number was measured or guessed | `core::Provenance{Unknown, Estimated, Measured}` | [`core/power_state.h`](../../core/include/attadipa/core/power_state.h) |
 | screen on / screen off / asleep | `core::PowerState`, `core::WakeSource` | [`core/power_state.h:29`](../../core/include/attadipa/core/power_state.h) — "enum class PowerState" and [`core/power_state.h:43`](../../core/include/attadipa/core/power_state.h) — "enum class WakeSource" |
-| a colour, a spacing, a type role | `ui::ColorRole`, `Space`, `ui::TypeRole::Display` | [`ui/tokens.h:152`](../../ui/include/attadipa/ui/tokens.h) |
+| a colour, a spacing, a type role | `ui::ColorRole`, `Space`, `ui::TypeRole::Display` | [`ui/tokens.h:152`](../../ui/include/attadipa/ui/tokens.h) — "enum class TypeRole" |
 | a translated string | `l10n::tr()`, `StringId`, runtime `set_locale()` | [ADR-0010](../adr/0010-localization.md) |
 | which panel, at what density | `platform::BoardProfile`, resolved through `Dp` | `ui/metrics.h` |
 
 **So `Capability::Time` is the clock's source, and it is not local by
-definition.** `sim/main.cpp:122` already lists `Capability::Time` among what an
-attached Attadipa node provides. A watch whose own RTC has never been set and
+definition.** `sim/main.cpp:122` — "core::Capability::Time" — already lists
+`Capability::Time` among what an attached Attadipa node provides. A watch whose
+own RTC has never been set and
 which has a node attached has a *Ready* time from `Origin::Node`; the same watch
 with the node gone has the same time going `Stale` and then `Unreachable`. The
 Clock must render all of that, and — ADR-0004 — it must never learn which of the
@@ -72,7 +73,7 @@ two answered.
 |---|---|
 | any calendar arithmetic at all — no `localtime`, no civil-from-days, no month or weekday table anywhere in `core/`, `ui/`, `apps/` or `l10n/` | a `WallTime` cannot become "30 сентября" by any route that exists today |
 | any date, weekday, month or clock string in the catalogue — 63 `StringId`s, none of them temporal | [`l10n/string_id.h`](../../l10n/include/attadipa/l10n/string_id.h) |
-| a tick period on `AppManifest` | [`apps/app_manifest.h:23`](../../apps/include/attadipa/apps/app_manifest.h) declares `id`, `required`, `enhanced_by` and nothing else — see §5 |
+| a tick period on `AppManifest` | [`apps/app_manifest.h:23`](../../apps/include/attadipa/apps/app_manifest.h) — "struct AppManifest {" — declares `id`, `required`, `enhanced_by` and nothing else — see §5 |
 | an Adult/Child switch anywhere | final §57 requires one in the simulator; `sim/options.h` has none |
 | any way to inject a time into the simulator | so 00:00, 23:59 and a rollover cannot be photographed — see §8 |
 | a font above 28 px | see §7 |
@@ -214,7 +215,7 @@ spelling.
 
 | Datum | Type it should be | Domain or presentation | Why |
 |---|---|---|---|
-| the instant | `Timed<WallTime>` | domain | carries `Validity` and both ages with it; a node-supplied time is old in two different ways (`availability.h:46`) |
+| the instant | `Timed<WallTime>` | domain | carries `Validity` and both ages with it; a node-supplied time is old in two different ways (`availability.h:65-74` — "Two ages, because a datum that crossed a link") |
 | time availability | `Availability` for `Capability::Time` | domain | `Unprovisioned` (never set), `Unreachable` (node gone), `Ready` are three different sentences and one `bool` cannot hold them |
 | the civil fields — year, month, day, weekday, hour, minute | derived, presentation | presentation | a pure function of the instant plus the zone; see §1 on not undoing `WallTime`'s missing arithmetic |
 | the time zone / offset | domain | domain | not currently modelled anywhere. **Open** — see §10 |
@@ -475,9 +476,10 @@ in `tools/font/charset.py`, at 14/16/20/28 px, **4 bpp**, `--no-compress`, with
 class kerning (`kern_scale = 16`), generated by `lv_font_conv` 1.5.3 from the
 TTF LVGL ships at `85aa60d`, SHA-256
 `421f26b23e2be6b98373d32acd3cb2897b154d4bf0a77d26534ce476e4cbed53`
-(`tools/font/generate_ui_fonts.py:44`). **This was scaffolding, not the product
-typeface.** T-037 subsequently resolved D16 to Nunito Sans Regular 400 on
-2026-08-26. Every number below remains the preserved Montserrat measurement and
+(the generator pinned it then; that hash is no longer in the file, which now
+pins Nunito Sans — `tools/font/generate_ui_fonts.py:57` — "TTF_SHA256").
+**This was scaffolding, not the product typeface.** T-037 subsequently resolved
+D16 to Nunito Sans Regular 400 on 2026-08-26. Every number below remains the preserved Montserrat measurement and
 must not be quoted as the current Clock's geometry.
 
 ### 7.1 The figures are proportional, and the time moves
@@ -607,9 +609,9 @@ checked-in artefacts and `INPUTS.sha256`. `FONT_MEASUREMENTS` has the size
 table: Inter at 48 px bpp 4 compressed is 34 997 B, which is affordable and not
 free.
 
-T-037 resolved this gap: `tools/font/generate_ui_fonts.py:50` now generates
-64, 84 and 96 px display sizes as well, and the Clock pins each numeral into a
-fixed-width cell rather than allowing proportional figures to move the face.
+T-037 resolved this gap: `tools/font/generate_ui_fonts.py:50` — "64, 84, 96" —
+now generates those display sizes as well, and the Clock pins each numeral into
+a fixed-width cell rather than allowing proportional figures to move the face.
 
 ---
 
@@ -631,7 +633,7 @@ that the Clock is one of the six minimum screens.
 | a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:230`](../../sim/main.cpp) — "g_clock_live = !options.clock_time_set" |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
 | node attached / detached | **yes** — `--node` | `sim/options.cpp:128-131` — "out.node_attached = true;" |
-| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:335-343` takes the snapshot, then the frame loop runs |
+| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:335-343` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
 
@@ -642,7 +644,8 @@ foreach(_board t-watch-s3-plus waveshare-amoled-206)
                      --screenshot ${_attadipa_shot_dir}/${_board}.png)
 ```
 
-— [`tests/CMakeLists.txt:195-198`](../../tests/CMakeLists.txt). Two boards, EN,
+— [`tests/CMakeLists.txt:274-277`](../../tests/CMakeLists.txt) —
+"foreach(_board t-watch-s3-plus waveshare-amoled-206)". Two boards, EN,
 Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with
 no comparison against anything.**
@@ -666,7 +669,7 @@ the assertions that catch a regression and can say *why*:
 | the formatted time string, per locale, per 12/24 setting, for a table of instants | a wrong string is a wrong string in every theme; testing it four times is testing it once |
 | the formatted date string, including the genitive month, for all twelve months | the failure is grammatical, and a screenshot cannot tell you which |
 | the rollover: 23:59 → 00:00 advances the date by exactly one day, and 23:59 on 31 December advances the year | this is arithmetic and belongs in arithmetic |
-| the degraded string for **every** `Availability` the time can be in, in both locales | the enum has seven values because it has seven remedies, and no two may render identically (`availability.h:8-12`) — that is an assertion over a table, not something to eyeball |
+| the degraded string for **every** `Availability` the time can be in, in both locales | the enum has seven values because it has seven remedies, and no two may render identically (`availability.h:8-12` — "no two of them may render") — that is an assertion over a table, not something to eyeball |
 | battery at 0, 9, 10, 99, 100, unknown, charging | boundaries, and `unknown` must not render as `0` |
 
 **Assert as measured widths against the layout's bound** — these catch the

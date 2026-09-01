@@ -42,8 +42,9 @@ exists. No window between choosing a path and owning it.
 
 ### A path from `argv` reaching `std::ifstream` in the replay tooling
 
-`cpp/path-injection`, five instances: `tests/replay/replay_main.cpp:33` and
-`tests/test_replay_rig.cpp` at 36, 61, 127 and 150.
+`cpp/path-injection`, five instances: `tests/replay/replay_main.cpp:33` —
+"no replay fixtures in %s" — and `tests/test_replay_rig.cpp` at 36, 61, 127 and
+150.
 
 Both of these binaries take a path to a trace file and open it. That is not an
 oversight in the interface — it *is* the interface. `replay` is a developer
