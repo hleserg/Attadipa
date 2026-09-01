@@ -2216,3 +2216,80 @@ vendor BSP is not evidence for its own wiring claim.
 `PURE_RAM_APP` probe loaded with `esptool load_ram`; it does not enter the
 firmware image or write board flash. Its result is `NOT EXECUTED — HARDWARE
 REQUIRED` until the owner runs it with a named expendable card.
+
+### One owner for power, PMU rails and sleep
+
+**Problem:** the shipping firmware has one function that may enter Light-sleep
+and one that may write an AXP2101 rail, and neither knows the other exists.
+That is correct for one consumer. The MeshCore BLE transport is now a second
+one and holds no power opinion at all; GNSS is next in `PLATFORM_AUDIT`. Before
+either is allowed to want something, the seam between product policy and board
+backend has to say who may act and in what order. Researched under
+[#292](https://github.com/hleserg/Attadipa/issues/292); the evidence and the
+contract are in [POWER_OWNERSHIP.md](POWER_OWNERSHIP.md).
+
+**Projects investigated:** ESP-IDF `esp_pm` and `esp_sleep`; Zephyr's runtime
+device PM; XPowersLib as an AXP2101 backend. Failure modes taken from
+Meshtastic, Offband `meshcore-firmware` and `agrucza/uhrwerk-rs`, the last of
+which runs on this same board family.
+
+**ESP-IDF v5.5.5 — `USE AS-IS`.** `components/esp_pm/include/esp_pm.h` (lines
+47–57, 123–130) and `components/esp_hw_support/include/esp_sleep.h` (lines
+716–717, 728). Apache-2.0. Read in the local pinned clone at
+`b774170ff46`. The locks are recursive and the documented thread-safety caveat
+is per handle, not per subsystem, so the Attadipa mapping is one handle per
+consumer. `esp_sleep_get_wakeup_causes()` exists at this revision and replaces
+the single-cause API the firmware currently uses. **Cannot be the power
+manager**: its whole vocabulary is three SoC frequency and sleep terms, with no
+term for an external device — verified at the source, which is a sharper
+rejection than "it does not know the board".
+
+**Zephyr v4.4.2 — `INSPIRE ARCHITECTURE`.** Tag
+`671f64aa79924606253238f801c494c84b02c2a0`, Apache-2.0.
+`subsys/pm/device_runtime.c` (lines 77–81, 100–103, 288–296),
+`subsys/pm/pm.c` (line 201), `subsys/pm/device_system_managed.c` (lines 63–64,
+70–82). Four invariants transfer and nothing else: a failed action restores the
+usage count, so a refused consumer holds nothing; a release below zero is a
+reported error and not a wrap; only the devices actually recorded as suspended
+are resumed, in exact reverse order; a failed system suspend resumes what it had
+already suspended. The implementation does not transfer — it is welded to
+Zephyr's device model, devicetree power domains, work queues and Kconfig, and
+importing it puts a second device framework on top of ESP-IDF. Take the four
+sentences as a test matrix.
+
+**XPowersLib `d6997586e68f65afd51baa775903df930db39821` — `REJECT` for this
+scope.** MIT, 2026-07-01. Audited at that exact commit, and two of the concerns
+recorded in #292 do not survive the audit: `XPowersAXP2101.hpp` guards its
+Arduino include and `XPowersCommon.hpp` selects ESP-IDF's `driver/i2c_master.h`
+for IDF ≥ 5.0 (lines 36–51) — the same new-style API this firmware already
+uses — and the 99 KB header is 3142 lines of in-class inline definitions whose
+flash cost is the API actually called, not the file. The `getIrqStatus`
+byte-order bug this pin exists for (lines 2590–2596) **cannot reach this
+firmware**, which reads register `0x49` as one byte and masks it. The rejection
+rests on API shape instead: 76 `enable`/`disable`/`set` methods whose premise is
+that every rail is independently switchable by whoever holds the object, on a
+board where `disableALDO2()` blanks the display through a route that reads as a
+wiring fault. That contradicts the invariant the research exists to establish,
+inside a component reviewers do not read. **Re-open as `WRAP` if a battery-state
+consumer needs the charger/gauge coverage** — D22 established this cell
+terminates at 4.35 V, `MEASURED`, so that is a live direction.
+
+**Reason the current driver stays:** it is three register writes and two reads.
+It does not need replacing; it needs a rail graph in front of it, and that graph
+is Attadipa-specific board data that no generic library can supply.
+
+**Attadipa integration:** none yet — #292 is research and changes no production
+code. The scope it justifies is in [POWER_OWNERSHIP.md](POWER_OWNERSHIP.md) §8
+and the decision is [ADR-0016](../adr/0016-one-power-owner.md).
+
+**Tests required:** designed in [POWER_OWNERSHIP.md](POWER_OWNERSHIP.md) §7.
+Host-side: lease balance, double release, refused acquire, deadline reporting,
+dependency order, rollback at each step, wake-plan read-back, bitmap
+classification, and a static check that sleep entry and AXP2101 rail writes
+live in exactly one translation unit. HIL rows stay `NOT EXECUTED — HARDWARE
+REQUIRED` until a board runs them.
+
+**Licences:** Apache-2.0 and MIT into GPL-3.0-or-later, compatible in
+direction. The mechanics of copying, linking and redistribution notices are
+[#284](https://github.com/hleserg/Attadipa/issues/284)'s subject and are not
+duplicated here.
