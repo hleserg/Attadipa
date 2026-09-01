@@ -694,11 +694,14 @@ second forget-bond arriving while the first is in flight is refused as `Busy`
 rather than answered from the same deletion — and `Busy` rather than a failure,
 because that branch has not asked the bond store anything and telling the
 operator the bond survived sent them to run the command again, into "there is
-nothing to forget" as soon as the first deletion landed. Only the store refusing
-says the bond is still there; a conflict record that had already gone answers
-"nothing to forget", the same sentence the synchronous refusal gives. When the
-operator is told the bond survived, the record has gone back, nothing has been
-re-armed, and running the command again is the fix.
+nothing to forget" as soon as the first deletion landed. A conflict record that
+had already gone answers "nothing to forget", the same sentence the synchronous
+refusal gives. What is left under the failure code is "the bond is still there",
+which the store refusing and a worker queue that could not take the request both
+produce — the wire does not separate them, so the host says the bond survived
+and sends the reader to the watch's log rather than naming the bond store. When
+the operator is told the bond survived, the record has gone back, nothing has
+been re-armed, and running the command again is the fix.
 `mesh-configure` is still needed afterwards if the watch has been reset since,
 because the passkey lives only in RAM.
 

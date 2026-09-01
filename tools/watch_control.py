@@ -276,17 +276,24 @@ def cmd_mesh_forget_bond(watch: Watch, args) -> int:
                 "for it to answer rather than sending another; nothing here "
                 "says whether the bond is still there") from exc
         if exc.code is p.ErrorCode.OPERATION_FAILED:
-            # Since #378 this is an answer about the bond, and since #381 it is
-            # the *only* answer that is: the reply waits for
-            # `ble_store_util_delete_peer()`, and the two ways of not reaching
-            # it -- a request that found the operation busy, and a conflict
-            # record that had already gone -- have their own codes above and
-            # below. So a failure here really does mean the deletion was
-            # attempted and the bond is still there.
+            # Since #378 this is an answer about the bond: the reply waits for
+            # `ble_store_util_delete_peer()`, and the two answers that knew
+            # nothing about the bond -- busy, and a conflict record that had
+            # already gone -- have their own codes above and below. So the bond
+            # really is still there.
+            #
+            # What this does NOT say is why, and it must not guess. Two things
+            # reach here: the store refused the deletion, and the watch could
+            # not queue the request for the worker at all (`ESP_ERR_NO_MEM`).
+            # Both leave the bond in place; only the first is a bond-store
+            # fault, and naming it sends the operator to open a store that was
+            # never opened. The watch's log distinguishes them and this does not.
             raise WatchError(
                 "the MeshCore bond was not deleted and is still on the watch; "
-                "mesh stays down until it goes, so run this again -- if it "
-                "keeps failing the bond store itself is the fault") from exc
+                "mesh stays down until it goes, so run this again. If it keeps "
+                "failing, the watch's log says which end is at fault -- it "
+                "could not queue the request, or the store refused the "
+                "deletion") from exc
         if exc.code is not p.ErrorCode.BAD_INPUT:
             raise
         raise WatchError(

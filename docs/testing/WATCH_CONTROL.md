@@ -143,16 +143,16 @@ real transport; this host-only change deliberately invents neither.
 **`0` is a host convention and not a device declaration, and the two do not
 agree.** A device that advertises `0` has given the tool no bound to enforce,
 so the tool does not invent one and lets the gesture through. The bridge reads
-the same `0` as *expire immediately*: `debug/src/bridge.cpp:841` —
+the same `0` as *expire immediately*: `debug/src/bridge.cpp:846` —
 "now_ms - pointer_down_at_ > limits_.max_hold_ms" — releases when that is true,
 which it already is one millisecond after the `PointerDown`, and
-`debug/src/bridge.cpp:827` — "now_ms - button_down_at_[i] > limits_.max_hold_ms"
+`debug/src/bridge.cpp:832` — "now_ms - button_down_at_[i] > limits_.max_hold_ms"
 — does the same for buttons.
 `info` says so out loud — it prints `hold released after 0 ms`. So `0` is not a
 way to ask for an unbounded hold; a firmware that wants one has to raise the
 limit, not zero it. The default is `30000`
 (`debug/include/attadipa/debug/bridge.h:148` — "max_hold_ms = 30000"), and
-`bridge.cpp:423` — "caps.max_hold_ms" — copies the enforced limit into the
+`bridge.cpp:428` — "caps.max_hold_ms" — copies the enforced limit into the
 capabilities verbatim, so what is advertised and what
 is enforced are one number.
 

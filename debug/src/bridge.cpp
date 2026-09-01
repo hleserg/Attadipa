@@ -12,10 +12,15 @@ constexpr std::size_t kChunkBytes = kMaxBody - 4;
 // What a forget-bond that is not `Accepted` and not `Pending` answers with.
 //
 // One function because the request path and `tick` must not disagree, and
-// three codes because three unrelated things used to share `OperationFailed`:
-// an operation already running, a bond that was never recorded, and a store
-// that refused the deletion. Only the last is a failed deletion, and only the
-// last may tell the operator the bond is still on the watch.
+// three codes because things that are not failures used to share
+// `OperationFailed`: an operation already running, and a bond that was never
+// recorded. Neither had asked the bond store anything, and both were reported
+// as a deletion that failed.
+//
+// What is left under `OperationFailed` is "the bond is still there", which is
+// more than one cause: the store refused the deletion, and the worker's queue
+// refused the request. The host may say the bond survived; it may not say
+// which end is at fault, because this code does not carry that.
 ErrorCode forget_bond_error(MeshSinkResult result)
 {
     switch (result) {
