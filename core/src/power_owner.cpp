@@ -233,8 +233,8 @@ bool PowerOwner::recover(SleepReport& report)
     }
 
     if ((failed_disarm_ | failed_rail_ | failed_resume_) != 0) {
-        report.blocked_by = static_cast<std::uint16_t>(
-            failed_disarm_ | failed_rail_ | failed_resume_);
+        report.blocked_by      = static_cast<std::uint16_t>(failed_rail_ | failed_resume_);
+        report.blocked_sources = failed_disarm_;
         return false;
     }
     // Everything that was owed has been re-issued and read back. The state
@@ -303,13 +303,15 @@ bool PowerOwner::unwind_wake(std::uint16_t armed, SleepReport& report)
             // This is finding 2 of POWER_OWNERSHIP.md, and it is the one that
             // must never be silent: a source the SoC still holds while the
             // software believes it does not is a wake nobody can explain. So
-            // it is named in `blocked_by` like the other two unwinds, and not
-            // only counted -- "the board is unknown" without which source is a
-            // report nobody can act on.
-            ok                    = false;
-            report.hardware_known = false;
-            report.blocked_by     = static_cast<std::uint16_t>(
-                report.blocked_by | wake_bit(source));
+            // it is named like the other two unwinds name their domains,
+            // and not only counted -- "the board is unknown" without which
+            // source is a report nobody can act on. It goes in
+            // `blocked_sources` because this unwind runs alongside the other
+            // two, and a domain and a source can be `0x0001` at once.
+            ok                     = false;
+            report.hardware_known  = false;
+            report.blocked_sources = static_cast<std::uint16_t>(
+                report.blocked_sources | wake_bit(source));
             failed_disarm_        = static_cast<std::uint16_t>(
                 failed_disarm_ | wake_bit(source));
         }
@@ -349,8 +351,8 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
         return report;
     }
     if (!wake_plan_is_legal(plan.state, plan.wake_sources)) {
-        report.outcome    = SleepOutcome::RefusedWakePlan;
-        report.blocked_by = static_cast<std::uint16_t>(
+        report.outcome         = SleepOutcome::RefusedWakePlan;
+        report.blocked_sources = static_cast<std::uint16_t>(
             plan.wake_sources & ~legal_wake_sources(plan.state));
         return report;
     }
@@ -416,8 +418,8 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
             continue;
         }
         if (!hardware_.arm_wake(source)) {
-            report.outcome    = SleepOutcome::FailedArm;
-            report.blocked_by = wake_bit(source);
+            report.outcome         = SleepOutcome::FailedArm;
+            report.blocked_sources = wake_bit(source);
             (void)unwind_wake(armed, report);
             (void)unwind_rails(cut, report);
             (void)unwind_suspend(suspended, report);

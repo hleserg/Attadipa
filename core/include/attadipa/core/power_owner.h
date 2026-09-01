@@ -233,7 +233,13 @@ struct SleepReport {
     SleepOutcome  outcome        = SleepOutcome::RefusedTransition;
     std::uint16_t wake_causes    = 0;  // WakeSource bits; may be more than one
     std::uint16_t overdue_leases = 0;  // PowerDomain bits held past a deadline
-    std::uint16_t blocked_by     = 0;  // the domains or sources that refused it
+    // What refused the transition, in two words rather than one because the
+    // two bit spaces overlap exactly -- `domain_bit(Display)` and
+    // `wake_bit(Timer)` are both `0x0001` -- and because an unwind can fail on
+    // a domain and on a source in the same call, so `outcome` cannot say which
+    // kind a single word held.
+    std::uint16_t blocked_by      = 0;  // PowerDomain bits
+    std::uint16_t blocked_sources = 0;  // WakeSource bits
 
     // Causes the hardware reported that this transaction did not arm.
     //

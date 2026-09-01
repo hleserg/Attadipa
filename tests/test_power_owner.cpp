@@ -392,7 +392,8 @@ void test_an_illegal_wake_plan_never_reaches_hardware()
 
     const SleepReport report = owner.sleep(plan, kNow);
     CHECK(report.outcome == SleepOutcome::RefusedWakePlan);
-    CHECK(report.blocked_by == wake_bit(WakeSource::Touch));
+    CHECK(report.blocked_sources == wake_bit(WakeSource::Touch));
+    CHECK(report.blocked_by == 0);
     CHECK(hw.calls.empty());
     CHECK(owner.cycles() == 0);
     CHECK(owner.state() == PowerState::Active);
@@ -518,7 +519,8 @@ void test_a_partly_armed_wake_plan_disarms_exactly_what_it_armed()
 
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
     CHECK(report.outcome == SleepOutcome::FailedArm);
-    CHECK(report.blocked_by == wake_bit(WakeSource::Touch));
+    CHECK(report.blocked_sources == wake_bit(WakeSource::Touch));
+    CHECK(report.blocked_by == 0);
     CHECK(report.hardware_known);
 
     CHECK(hw.logged("disarm:Timer"));
@@ -625,6 +627,7 @@ void test_a_recovery_that_fails_again_refuses_and_touches_no_wake_source()
     // Refused, and it says what is still broken rather than only that
     // something is.
     CHECK(second.blocked_by == domain_bit(PowerDomain::Display));
+    CHECK(second.blocked_sources == 0);
     CHECK(hw.sleeps == 1);
     // It retried the one owed step and then stopped. Arming a wake source on a
     // board whose state is unknown is the thing the latch exists to prevent.
@@ -644,13 +647,42 @@ void test_a_failed_disarm_names_the_source_and_is_retried()
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
     CHECK(report.outcome == SleepOutcome::Woken);
     CHECK(!report.hardware_known);
-    CHECK((report.blocked_by & wake_bit(WakeSource::Timer)) != 0);
+    CHECK(report.blocked_sources == wake_bit(WakeSource::Timer));
+    CHECK(report.blocked_by == 0);
 
     hw.fail_on = "";
     hw.calls.clear();
     const SleepReport second = owner.sleep(light_sleep_plan(), kNow);
     CHECK(second.outcome == SleepOutcome::Woken);
     CHECK(hw.index_of("disarm:Timer") < hw.index_of("suspend:Display"));
+}
+
+void test_a_stuck_domain_and_a_stuck_source_are_two_words()
+{
+    // `domain_bit(Display)` and `wake_bit(Timer)` are both `0x0001`. In one
+    // word a dark panel and a timer wake the SoC still holds report the same
+    // hex, `outcome` is `Woken` on both, and they are different repairs: one is
+    // a screen that needs re-initialising, the other is a device that will wake
+    // itself for no reason nobody can trace. Failing both unwinds in one sleep
+    // is the case that separates them, and it is why this cannot be one word
+    // with a comment.
+    FakeHardware hw;
+    hw.fail_on     = "disarm:Timer";
+    hw.fail_on_too = "resume:Display";
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::Woken);
+    CHECK(!report.hardware_known);
+    CHECK(report.blocked_sources == wake_bit(WakeSource::Timer));
+    CHECK(report.blocked_by == domain_bit(PowerDomain::Display));
+
+    // And the refusal that follows keeps them apart, because `recover()`
+    // rebuilds both words from the journal rather than from one merged mask.
+    const SleepReport second = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(second.outcome == SleepOutcome::RefusedHardwareFailed);
+    CHECK(second.blocked_sources == wake_bit(WakeSource::Timer));
+    CHECK(second.blocked_by == domain_bit(PowerDomain::Display));
 }
 
 void test_a_cause_the_board_cannot_name_is_carried_raw()
@@ -796,6 +828,7 @@ int main()
     test_a_failed_resume_is_retried_by_the_next_sleep();
     test_a_recovery_that_fails_again_refuses_and_touches_no_wake_source();
     test_a_failed_disarm_names_the_source_and_is_retried();
+    test_a_stuck_domain_and_a_stuck_source_are_two_words();
     test_a_cause_the_board_cannot_name_is_carried_raw();
     test_a_release_is_accepted_even_when_the_hardware_is_unknown();
     test_two_cycles_leave_no_residue();
