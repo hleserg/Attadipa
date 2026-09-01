@@ -1623,6 +1623,54 @@ secrets, or destroying keys still each require an explicit owner request.
 
 ---
 
+## OD-26 — Owner consent for provisioning is a finger on the watch's own screen
+
+**Decided:** 2026-09-02, by the owner, in conversation, after
+[ADR-0018](../adr/0018-owner-consent-for-provisioning.md) put three priced
+mechanisms in front of him.
+
+**What he decided:** a production image establishes owner consent by the holder
+**entering the value on the watch itself**. The wall clock and the MeshCore
+passkey are both provisioned that way. The two alternatives — a BLE peripheral
+showing a code on the watch's screen, and a USB channel narrowed to
+provisioning opcodes inside a gesture-opened window — are not taken.
+
+**What prompted it:** #346 removed the unauthenticated USB control plane and
+established that a cable is not consent. #356 recorded the consequence: a
+product image could then neither set its clock nor receive a passkey. He was
+asked for the mechanism before any of it was built, and answered after reading
+the ADR rather than before it — he had asked for the analysis first and the
+implementation second.
+
+**What it obliges:** #356's implementation adds an on-device entry screen — a
+second LVGL face beside `ui/lvgl/clock_face.cpp`, with its application half in
+`apps/` — in both languages ([OD-24](#od-24--language-follows-the-reader),
+[ADR-0010](../adr/0010-localization.md)), and storage for what was entered. That
+storage is two different things and neither is the largest item. The passkey's
+storage is one entry in the `attadipa_mesh` namespace #304 already created; what
+it has no part of is a seam a product image compiles. The shape is already
+written — `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" —
+but the layer it lives in is added only under
+`firmware/main/CMakeLists.txt:31` — "if(CONFIG_ATTADIPA_WATCH_CONTROL)", the
+same symbol that keeps the debug bridge out. So the passkey half is that
+interface brought out from behind the gate, or a `core::` method with a
+firmware provider behind it; what it may not be is `apps/` reaching into
+`firmware/main/`, which this repository does not allow. The
+clock half means moving `write_rtc()`'s caller and `save_time_metadata()` out
+from behind `CONFIG_ATTADIPA_WATCH_CONTROL` — the same symbol that gates the
+debug bridge — and showing `firmware_elf_check.py` still keeps
+`attadipa::debug::Bridge::handle` out of a product image.
+It does **not** add a listener of any kind to a product image: no BLE peripheral
+role, no provisioning endpoint, no bounded window, and nothing to authenticate,
+because nothing accepts input except the panel.
+
+**What it invalidates:** ADR-0014's sentence naming
+`watch_control.py sync-time` as the first real time input. That sentence stopped
+being true of the product image at #346, not at this decision —
+`firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n" — so
+ADR-0014 now points here for what replaces it. The sentence itself is rewritten
+when the entry screen ships, so it and the code change together.
+
 ## OD-25 — The independent review gets five rounds, then it files rather than holds
 
 **Decided:** 2026-08-31, by the owner, in conversation.
