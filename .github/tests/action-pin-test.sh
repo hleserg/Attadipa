@@ -102,7 +102,12 @@ fi
 #
 # The trailing `# vX` is provenance and deliberately NOT the anchor: the digest
 # is, exactly as with an action pin.
-containers=$(workflow_body .github/workflows/ | grep -oP '^\s*container:\s*\K[^\s#]+' | sort -u)
+#
+# One function, so the regression cases at the bottom of this file go through
+# the parser that scans the shipping workflows rather than a second copy of the
+# same regex written to agree with it.
+container_refs() { workflow_body "$@" | grep -oP '^\s*container:\s*\K[^\s#]+'; }
+container_keys() { workflow_body "$@" | grep -cP '^\s*container:' || true; }
 
 # AN EMPTY SCAN IS NOT THE SAME ANSWER AS "NOTHING TO CHECK", and the pattern
 # above cannot tell them apart on its own. `container:` also takes a MAP --
@@ -112,8 +117,33 @@ containers=$(workflow_body .github/workflows/ | grep -oP '^\s*container:\s*\K[^\
 # The same vacuous-pass shape that made the deny-list pairing rule in
 # bot-actor-test.sh silently stop asserting. So the parsed count is checked
 # against the raw count of `container:` keys, and a disagreement is the failure.
-declared=$(workflow_body .github/workflows/ | grep -cP '^\s*container:' || true)
-parsed=$(printf '%s\n' "$containers" | grep -c . || true)
+#
+# TWO JOBS ON ONE IMAGE IS NOT A PARSE FAILURE, and counting the deduplicated
+# list said it was. `sort -u` answers a different question -- which distinct
+# images to check a digest on -- and when its output fed this count, a second
+# job on the same correctly pinned `espressif/idf@sha256:...` gave
+# `declared=2, parsed=1` and failed a workflow with nothing wrong in it. The
+# completeness check counts OCCURRENCES; deduplication happens after it, for
+# the digest check, where repeating an identical ref proves nothing.
+#
+# ONE FUNCTION FOR THE THREE ASSIGNMENTS, because the defect was in neither
+# regex: it was the ORDER of these statements, with the deduplicated list
+# feeding the completeness count. A regression case that calls the two helpers
+# and writes the comparison out a second time exercises the parser and leaves
+# that order untested -- put `sort -u` back on `found` here and such a case
+# stays green while the workflow it stands for goes red. The cases at the
+# bottom of this file therefore run THIS. It sets three globals, exactly as
+# the shipping scan does, so after a fixture call they describe the FIXTURE:
+# anything appended below scans again before it asserts.
+container_scan() {
+  local found
+  found=$(container_refs "$@")
+  declared=$(container_keys "$@")
+  parsed=$(printf '%s\n' "$found" | grep -c . || true)
+  containers=$(printf '%s\n' "$found" | sort -u)
+}
+
+container_scan .github/workflows/
 if [ "$declared" -ne "$parsed" ]; then
   no "the container scan sees every container key" \
      "$declared 'container:' keys, $parsed parsed -- the map form (container:/image:) parses to nothing and would report 'no container image runs'"
@@ -139,6 +169,54 @@ else
     no "the firmware job still checks the image against the documented commit" \
        "no commit assertion found in ci.yml -- a digest proves the image is unchanged, not that it was ever right"
   fi
+fi
+
+# THE PARSER, AGAINST THE TWO SHAPES THE REAL TREE DOES NOT CURRENTLY HAVE.
+# Both go through `container_refs`/`container_keys` above, so a change to the
+# regex that breaks either is a red test rather than a silent one.
+fixture=$(mktemp -d) || exit 1
+trap 'rm -rf "$fixture"' EXIT
+
+# Two jobs, one correctly pinned image -- production and HIL on the same
+# toolchain. Nothing is wrong here and the count must say so.
+cat >"$fixture/duplicate.yml" <<'YAML'
+jobs:
+  firmware:
+    container: espressif/idf@sha256:a9231d0697ab8f7517cc072e93b7c83e04907bfbfba80b6440d7dbbf90665cf2  # v5.5.5
+  hil:
+    container: espressif/idf@sha256:a9231d0697ab8f7517cc072e93b7c83e04907bfbfba80b6440d7dbbf90665cf2  # v5.5.5
+YAML
+container_scan "$fixture"
+unique=$(printf '%s\n' "$containers" | grep -c .)
+# Two keys, two parsed, ONE image to check a digest on. The third conjunct is
+# the invariant #364 is actually about, and no assertion in this file stated it
+# before: deduplication belongs to the digest check and not to the count.
+if [ "$declared" -eq 2 ] && [ "$parsed" -eq 2 ] && [ "$unique" -eq 1 ]; then
+  ok "two jobs on one pinned image are both parsed"
+else
+  no "two jobs on one pinned image are both parsed" \
+     "$declared 'container:' keys, $parsed parsed, $unique distinct -- a correct workflow is being rejected"
+fi
+
+# The map form, which this parser does NOT support. It must stay a disagreement
+# between the two counts -- the arm above turns that into a red test -- and not
+# become an empty list reported as "no container image runs".
+cat >"$fixture/map-form.yml" <<'YAML'
+jobs:
+  firmware:
+    container:
+      image: espressif/idf@sha256:a9231d0697ab8f7517cc072e93b7c83e04907bfbfba80b6440d7dbbf90665cf2
+YAML
+rm "$fixture/duplicate.yml"
+container_scan "$fixture"
+# The exact counts, not merely that they disagree: "disagree" also holds when
+# the fixture is empty for an unrelated reason -- if a third case added later
+# leaves a file behind, or the `rm` above stops matching.
+if [ "$declared" -eq 1 ] && [ "$parsed" -eq 0 ]; then
+  ok "the map form is a parse failure, not a vacuous pass"
+else
+  no "the map form is a parse failure, not a vacuous pass" \
+     "$declared 'container:' keys, $parsed parsed -- container:/image: parsed to nothing and the counts still agreed"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
