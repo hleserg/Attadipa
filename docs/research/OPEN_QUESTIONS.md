@@ -354,7 +354,9 @@ says of it "Any host that can open the port can use all of it; there is no
 authentication". And a provisioning command must report terminal success, not
 enqueued success: [ADR-0015](../adr/0015-transport-session-ownership.md) already
 draws that line for the transport, and `meshcore_ble_forget_bond()` is the
-existing example of a request whose answer is a queue post.
+existing example of a request whose answer is a queue post — the defect
+[#378](https://github.com/hleserg/Attadipa/issues/378) is open against, so read
+this as naming the shape rather than as a claim about today's code.
 
 **This is not a blocker for power, radio or bring-up work**, and it was not
 treated as one: nothing below the application layer needs the answer. It blocks
@@ -363,7 +365,7 @@ shipping a watch to a person who is not holding a build environment.
 ### Q5 — a lease taken on one task, read by another, and a sleep decision in between
 
 `PowerOwner` is single-task by contract
-([`core/include/attadipa/core/power_owner.h:251`](../../core/include/attadipa/core/power_owner.h) —
+([`core/include/attadipa/core/power_owner.h:266`](../../core/include/attadipa/core/power_owner.h) —
 "// **Not thread-safe, and deliberately so.** Every `acquire()`, `release()` and").
 Issue [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 asks the BLE
 transport to declare a lease, and the transport does not run on the task that
@@ -384,7 +386,7 @@ nothing else
 ([`firmware/main/physical_input.cpp:171`](../../firmware/main/physical_input.cpp) —
 "plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
 trip is an intersection
-([`core/src/power_owner.cpp:298`](../../core/src/power_owner.cpp) —
+([`core/src/power_owner.cpp:367`](../../core/src/power_owner.cpp) —
 "static_cast<std::uint16_t>(leases_.held() & (plan.suspend | plan.rails_off));").
 A `NodeLink` lease does not intersect `Display`, so the check that could be
 raced cannot fire whichever way the race lands. The gap is real and its
