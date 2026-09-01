@@ -206,7 +206,14 @@ Beyond B and C:
 
 ## Consequences
 
-- Commits to an entry screen in `apps/`, in English and Russian.
+- Commits to the **second LVGL face this project has**. `ui/lvgl/` holds exactly
+  one today — `clock_face.cpp` — with the application half beside it in `apps/`
+  (`clock.cpp`, and an `AppManifest` declaring what it requires). Both halves
+  are new work: in English and Russian ([ADR-0010](0010-localization.md)), built
+  from theme tokens rather than literal colours because
+  `tools/ui/check_raw_values.py` refuses the latter, and checked against a
+  rendered image rather than by compiling, which is what this repository's UI
+  rule asks for.
 - Commits to an NVS seam for what was provisioned — shared with every future
   mechanism, so it is not a cost of this choice alone.
 - Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
