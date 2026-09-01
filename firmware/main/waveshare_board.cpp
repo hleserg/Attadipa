@@ -282,6 +282,19 @@ esp_err_t roll_back_time_metadata(const TimeMetadata &previous) {
   return err;
 }
 
+// Rolls back, and says so when even that fails. Two callers -- a refused
+// metadata write and a refused chip write -- and a second copy of this log
+// line is how they end up saying different things about the same state.
+void roll_back_or_log(const TimeMetadata &previous) {
+  const esp_err_t rollback = roll_back_time_metadata(previous);
+  if (rollback != ESP_OK) {
+    ESP_LOGE(kTag,
+             "could not roll back time metadata: %s -- NVS may hold a UTC "
+             "offset for a synchronization that did not happen",
+             esp_err_to_name(rollback));
+  }
+}
+
 // The PCF85063 half of a synchronization: write, read back, and check that
 // what came back is the UTC that was asked for. Its three failures are one
 // answer to the caller because the caller does the same thing for each --
@@ -411,6 +424,19 @@ public:
     // `previous`: the metadata is restored on every path out of here that does
     // not reach `state.time_service = candidate`, which is what makes the
     // sequence all-or-nothing rather than differently partial.
+    //
+    // That includes a refused metadata write, which round 2 of the review left
+    // out and this comment then claimed it had covered. It is not only a wrong
+    // sentence. `save_time_metadata()` has four exits and two of them -- the
+    // second set and the commit -- happen after the first set has already
+    // returned ESP_OK, so the question is whether an uncommitted set survives.
+    // On the version this repository pins it does: in ESP-IDF v5.5.5,
+    // nvs_commit() in components/nvs_flash/src/nvs_api.cpp carries the comment
+    // "no-op for now, to be used when intermediate cache is added" and hands
+    // off to NVSHandleSimple::commit(), which checks the handle and returns
+    // ESP_OK without touching storage. The set is already on flash and the
+    // missing commit undoes nothing, so that path leaves a `tz_min` the wearer
+    // never accepted exactly as the RTC path did.
     TimeMetadata previous{};
     const esp_err_t previous_result = read_time_metadata(&previous);
     if (previous_result != ESP_OK) {
@@ -424,17 +450,12 @@ public:
     if (metadata_result != ESP_OK) {
       ESP_LOGW(kTag, "persist time metadata failed: %s",
                esp_err_to_name(metadata_result));
+      roll_back_or_log(previous);
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
     if (!write_and_verify_rtc(rtc, request.utc_seconds)) {
-      const esp_err_t rollback = roll_back_time_metadata(previous);
-      if (rollback != ESP_OK) {
-        ESP_LOGE(kTag,
-                 "could not roll back time metadata: %s -- NVS holds a UTC "
-                 "offset for a synchronization the PCF85063 refused",
-                 esp_err_to_name(rollback));
-      }
+      roll_back_or_log(previous);
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
