@@ -1,0 +1,222 @@
+# 0018 — What counts as owner consent when a product image is provisioned
+
+Status: **accepted** — the owner chose A on 2026-09-02, recorded as
+[OD-26](../research/OWNER_DECISIONS.md#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen). This ADR was written while the choice was still open, and its
+Alternatives section is what was put in front of him.
+Date: 2026-09-02
+
+## Context
+
+[#346](https://github.com/hleserg/Attadipa/issues/346) took the unauthenticated
+USB control plane out of the product image, and established the rule this
+decision has to live under: **a cable is not consent.** A product image may not
+carry an endpoint that does what it is told because something was plugged in.
+
+What that left is [#356](https://github.com/hleserg/Attadipa/issues/356): a
+product image can no longer set its wall clock or receive a MeshCore passkey,
+and for the passkey there is not even a flash-and-flash-back workaround, because
+what `configure_meshcore_ble()` sets is per-boot RAM. The issue states that
+state and does not pick the mechanism. This ADR prices the three candidates.
+
+The question is not which wire. It is **what act, performed by a person, can a
+product image observe and treat as consent** — an act nothing on the other end
+of a cable or a radio can perform for itself.
+
+### What is already true, and is therefore not a discriminator
+
+Four facts are the same under every option. They are shared cost, and they are
+recorded here so that no option is credited with paying them.
+
+1. **The RTC write path exists and is compiled out, not missing.**
+   `firmware/main/waveshare_board.cpp:268` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   gates `:269` — "class BoardTimeSink final : public attadipa::debug::TimeSink {",
+   and `:213` — "esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {".
+   The restore side is already unconditional: `:190` —
+   "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
+   existing code and reaching it*, never *writing an RTC driver*.
+
+2. **The passkey is RAM-only today, and the storage it needs is one key in a
+   namespace that already exists.** Nothing persists the passkey:
+   `firmware/main/meshcore_ble.cpp:1721` —
+   "bool configure_meshcore_ble(std::uint32_t passkey)" reaches `:1384` —
+   "secure_pairing.store(event.passkey != 0);" and nothing else, and the two
+   flags a scan waits on are plain atomics: `:152` —
+   "std::atomic_bool configured{false};" and `:154` —
+   "std::atomic_bool reconnect_allowed{false};". But the seam that would hold it
+   is already in this translation unit, put there by #304: `:219` —
+   "constexpr const char* kMeshNvsNamespace = \"attadipa_mesh\";", read at
+   `:305` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey," and
+   written at `:326`, behind an `nvs_flash_init()` at `:1669` whose failure path
+   is already handled. So this is one key added to a live namespace, not a
+   storage layer to design — and it is the same key under every option, because
+   persisting what was provisioned is orthogonal to the channel that delivered
+   it.
+
+3. **Touch already works, as an LVGL pointer device.**
+   `firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);".
+   No `lv_keyboard`, `lv_textarea` or `lv_buttonmatrix` exists anywhere in the
+   tree, and `apps/src/` holds only `clock.cpp` and `app_manifest.cpp`. On-screen
+   entry is therefore **new UI on a working input path**, not a new input path.
+
+4. **Both sink interfaces live in the same header as the forbidden symbol.**
+   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {" and `:191` —
+   "class MeshSink {", while `tools/flash/firmware_elf_check.py:47` — "# Bridge::handle is the single function every privileged opcode is dispatched"
+   names what a product image may not contain. The interfaces are pure virtual
+   and a header is not a symbol, so reuse is probably fine — but any option that
+   reuses them **shows** the elf check still passes rather than assuming it.
+
+### What is not established, and constrains two of the three options
+
+Options B and C both need a **gesture** to open a bounded window, because a
+window that opens by itself is the endpoint #346 removed wearing a different
+transport. The only physical control that is not the touch panel is the power
+key, and it does not reach the SoC:
+
+> `docs/research/VERIFIED_FACTS.md` — "button presses arrive as PMU interrupts
+> over I2C, not as GPIO edges. Press duration, long-press and power-off
+> behaviour are PMU register policy."
+
+and the consequence is already written down in the testing guide:
+`docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
+
+**UNKNOWN:** whether the AXP2101 can be configured to report a long press to
+firmware as an event instead of acting on it. That is traceable — it is a
+register-policy question in the AXP2101 datasheet — and it is not traced. Until
+it is, **no option may rest its consent gesture on a held power key.** A touch
+gesture is the only gesture whose availability is established
+(`firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);").
+
+## The three mechanisms
+
+### A — the holder enters it on the watch
+
+Consent is that a person is holding this watch and touching its screen. Nothing
+on a cable or a radio can do that.
+
+The decisive fact is one the firmware already asserts to its peer:
+`firmware/main/meshcore_ble.cpp:1614` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
+The watch tells the node it has a keyboard. Today that claim is satisfied by a
+USB cable and a laptop. **Option A makes it true.** The node displays, the watch
+types — which is BLE passkey pairing exactly as specified, and the passkey is
+six digits, not a key: `firmware/main/meshcore_ble.cpp:1721` —
+"bool configure_meshcore_ble(std::uint32_t passkey)".
+
+The clock half is likewise already anticipated by the ADR that owns time.
+`docs/adr/0014-time-source-and-synchronization.md` ranks sources "GNSS, network,
+companion, mesh, manual, RTC, simulated" — `manual` is in that list, above
+`RTC`, and nobody has built it. A hand-typed UTC is minutes-accurate at best,
+which is precisely the quality `manual` denotes.
+
+Cost: a numeric entry screen, in two languages
+([ADR-0010](0010-localization.md)), on a 2.06-inch panel. That is the whole cost.
+
+What it does **not** cost: no new BLE role, no bond decision, no GATT service,
+no second USB dispatcher, no window, no timeout, no rate limit, and nothing to
+authenticate — because nothing is listening.
+
+### B — BLE peripheral, with a code shown on the watch
+
+Consent is that the code on the watch's own screen is entered on the phone; only
+someone looking at the watch has it.
+
+Priced against the current build, B is **A plus a radio**:
+
+- The role is not compiled in. `firmware/sdkconfig.defaults:102` —
+  "CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n". Turning it on costs flash and RAM in
+  every product image, including the images that never provision.
+- There is one bond slot, and it is spoken for.
+  `firmware/sdkconfig.defaults:116` — "CONFIG_BT_NIMBLE_MAX_BONDS=1", and the
+  watch's one bond is the MeshCore node's. A provisioning phone that bonds
+  evicts it — NimBLE drops the oldest peer to make room:
+  `docs/research/VERIFIED_FACTS.md:238` — "### A wrong MeshCore node's bond evicts the pinned node's",
+  which traces it to the upstream source and marks the boundary honestly as
+  source-traced rather than measured. So B either raises `MAX_BONDS` (more NVS
+  and RAM in every image) or pairs without bonding, which means re-entering the
+  code every single time and never recognising the phone again.
+
+  One qualifier, because the cost lands later than it looks: the watch only
+  reaches the SMP path once a passkey has been armed —
+  `firmware/main/meshcore_ble.cpp:156` — "std::atomic_bool secure_pairing{false};",
+  set at `:1384` — "secure_pairing.store(event.passkey != 0);" and read at
+  `:772` — "if (secure_pairing.load()) {". An image nobody has provisioned
+  writes no bond at all, so the eviction is a cost of the *second* provisioning
+  and of bench images, not of every build. It is still B's cost, because B's
+  whole purpose is to provision a second peer.
+- The I/O capability is one host-wide global, not a per-connection property:
+  `components/bt/host/nimble/nimble/nimble/host/include/host/ble_hs.h:421`
+  declares `extern struct ble_hs_cfg ble_hs_cfg;`. Showing a code needs a
+  DISPLAY capability, so a provisioning window has to flip a global that the
+  MeshCore path also reads, and flip it back.
+- And there is one connection slot —
+  `firmware/sdkconfig.defaults:115` — "CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1" — so
+  provisioning and mesh can never be up together.
+- It still needs the gesture, and it still needs the on-screen UI, because it
+  has to *display* the code.
+
+B loses on price because it pays A's UI cost and then adds a radio role, a bond
+decision, a global mode flip and a mutually exclusive connection slot on top.
+
+### C — USB, restricted to provisioning opcodes inside a window
+
+Consent is the gesture that opens the window; the cable is only the wire.
+
+C is the smallest diff and the largest reversal:
+
+- It is not "keep `watch_control.py` and add a window". #356's Definition of Done
+  keeps `attadipa::debug::Bridge::handle` out of a product image, so C means a
+  **second, provisioning-only dispatcher** that
+  `tools/flash/firmware_elf_check.py` can tell apart from the debug bridge. Two
+  dispatchers on one wire, and the check has to distinguish them for the life of
+  the product.
+- It still needs the gesture — so all the consent is in the gesture, and the
+  cable contributes only convenience.
+- And what it buys with that convenience is exactly the property #346 removed: a
+  product image with an endpoint a host can talk to. Bounded, but present.
+
+C loses on price because the consent it establishes is the gesture's, and it pays
+for a second endpoint to deliver what the gesture already authorised.
+
+## Decision
+
+**A.** Written as a recommendation, chosen by the owner
+([OD-26](../research/OWNER_DECISIONS.md#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen)):
+a production image is provisioned by the holder entering the value on the watch
+itself, and carries no provisioning listener of any kind.
+
+It is the only candidate that adds no listener to the product image, the
+one ADR-0014 already named, and the one that makes the firmware's existing
+`KEYBOARD_ONLY` claim honest. B and C both need A's screen anyway, so choosing A
+first makes either of them cheaper later rather than foreclosing them.
+
+The weakness of A is repetition: six digits is nothing, but typing a full UTC is
+tedious. That is a one-time act — the RTC holds the time once set and the offset
+persists (`firmware/main/waveshare_board.cpp:190` — "esp_err_t restore_time_metadata() {") — and GNSS, which
+ADR-0014 ranks first, removes it entirely when the radio work lands.
+
+## Alternatives considered
+
+Beyond B and C:
+
+- **Keep the flash-HIL-provision-reflash round trip.** Rejected because #356
+  established it never existed: what `configure_meshcore_ble()` sets is RAM, so
+  provisioning does not survive a power cycle of the HIL image either.
+- **A third, provisioning-only firmware variant.** Rejected: three images to
+  build and check instead of two, and the passkey still does not survive the
+  reflash, because the thing that does not persist is the state, not the image.
+
+## Consequences
+
+- Commits to an entry screen in `apps/`, in English and Russian.
+- Commits to an NVS seam for what was provisioned — shared with every future
+  mechanism, so it is not a cost of this choice alone.
+- Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
+  no gesture. B or C would first have to close it.
+- Does not decide the timezone-offset UI, only that the offset is entered on the
+  device like everything else.
+- Does **not** change what a product image pays for the BLE stack:
+  `firmware/main/attadipa_main.cpp:310` — "const esp_err_t mesh_err = start_meshcore_ble();"
+  is unconditional, so a product image still brings the controller up. #356
+  records that; it stays open here.
+- ADR-0014's "first real input is the existing physical USB debug connection"
+  sentence becomes true only of the HIL image. It is amended by the
+  implementation, not by this ADR, so the sentence and the code change together.

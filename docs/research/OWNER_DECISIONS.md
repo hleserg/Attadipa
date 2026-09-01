@@ -1623,6 +1623,37 @@ secrets, or destroying keys still each require an explicit owner request.
 
 ---
 
+## OD-26 — Owner consent for provisioning is a finger on the watch's own screen
+
+**Decided:** 2026-09-02, by the owner, in conversation, after
+[ADR-0018](../adr/0018-owner-consent-for-provisioning.md) put three priced
+mechanisms in front of him.
+
+**What he decided:** a production image establishes owner consent by the holder
+**entering the value on the watch itself**. The wall clock and the MeshCore
+passkey are both provisioned that way. The two alternatives — a BLE peripheral
+showing a code on the watch's screen, and a USB channel narrowed to
+provisioning opcodes inside a gesture-opened window — are not taken.
+
+**What prompted it:** #346 removed the unauthenticated USB control plane and
+established that a cable is not consent. #356 recorded the consequence: a
+product image could then neither set its clock nor receive a passkey. He was
+asked for the mechanism before any of it was built, and answered after reading
+the ADR rather than before it — he had asked for the analysis first and the
+implementation second.
+
+**What it obliges:** #356's implementation adds an on-device entry screen in
+`apps/`, in both languages ([OD-24](#od-24--language-follows-the-reader),
+[ADR-0010](../adr/0010-localization.md)), and the storage for what was entered.
+It does **not** add a listener of any kind to a product image: no BLE peripheral
+role, no provisioning endpoint, no bounded window, and nothing to authenticate,
+because nothing accepts input except the panel.
+
+**What it invalidates:** ADR-0014's sentence naming
+`watch_control.py sync-time` as the first real time input. That sentence
+describes the HIL image and is amended when the entry screen ships, so the
+sentence and the code change together.
+
 ## OD-25 — The independent review gets five rounds, then it files rather than holds
 
 **Decided:** 2026-08-31, by the owner, in conversation.
