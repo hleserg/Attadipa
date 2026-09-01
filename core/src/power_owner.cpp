@@ -361,8 +361,8 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
 
     const PowerState resting = plan.state;
     state_                   = resting;
-    std::uint16_t causes     = 0;
-    const bool     slept     = hardware_.sleep(resting, causes);
+    WakeCauses causes{};
+    const bool slept = hardware_.sleep(resting, causes);
 
     // Waking returns to Idle, never straight to Active: whether this wake is
     // worth lighting the screen for is decided above this file.
@@ -384,9 +384,13 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
         report.outcome = SleepOutcome::FailedSleep;
         return report;
     }
-    report.outcome           = SleepOutcome::Woken;
-    report.wake_causes       = causes;
-    report.unexpected_causes = static_cast<std::uint16_t>(causes & ~armed);
+    report.outcome     = SleepOutcome::Woken;
+    report.wake_causes = static_cast<std::uint16_t>(causes.from_soc | causes.derived);
+    // Only the SoC's own half is reconciled. A derived cause is a board's
+    // conclusion about a register it read, and it was never armed as a wake
+    // source, so measuring it against `armed` would report every button press
+    // as an unreconciled source.
+    report.unexpected_causes = static_cast<std::uint16_t>(causes.from_soc & ~armed);
     ++cycles_;
     return report;
 }

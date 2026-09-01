@@ -147,6 +147,22 @@ private:
 // (ADR-0016 §3): `uhrwerk-rs` `1986e3f` on this same board family shipped a
 // teardown whose postcondition was never read back, and `11437824e0` is the
 // correction.
+// What woke the device, in two halves that must not be added together.
+//
+// ADR-0016 §6 replaced the single-cause API with the bitmap, and the reason
+// generalises past ESP-IDF: what the SoC reports and what the board concludes
+// are different claims. Only `from_soc` can be checked against what this
+// transaction armed, so only `from_soc` can show a source nobody armed.
+//
+// On the Waveshare board the power button is the case in point. It is not an
+// SoC wake source at all: the AXP2101 latches an edge, and the firmware reads
+// that register during a timer wake. Reporting it in `from_soc` would make
+// every button press look like an unreconciled wake source.
+struct WakeCauses {
+    std::uint16_t from_soc = 0;  // what the silicon said woke it
+    std::uint16_t derived  = 0;  // what the board concluded, from a register or a pin
+};
+
 class PowerHardware {
 public:
     virtual ~PowerHardware() = default;
@@ -160,17 +176,22 @@ public:
     // not by this interface existing — ADR-0016's Consequences.
     virtual bool set_rail(PowerDomain domain, bool on) = 0;
 
+    // Arm one wake source, or report that this board cannot.
+    //
+    // "Cannot" is the important half. A board that returns true for a source it
+    // did not actually arm has manufactured exactly the state ADR-0016 exists to
+    // prevent — software believing the hardware holds something it does not —
+    // and it has done it in the one place nothing downstream can detect.
     virtual bool arm_wake(WakeSource source) = 0;
     virtual bool disarm_wake(WakeSource source) = 0;
 
     // Stop the CPU, and report every source that brought it back.
     //
-    // `causes` is a `WakeSource` bitmask because a bitmap is what the SoC has:
-    // `esp_sleep_get_wakeup_causes()` at ESP-IDF v5.5.5. An implementation that
-    // can only name one cause sets one bit, and one that woke for two sets two.
-    // Zero causes with a `true` return is legal and means the hardware could not
-    // say — the report carries it rather than inventing a Timer.
-    virtual bool sleep(PowerState state, std::uint16_t& causes) = 0;
+    // Both halves are `WakeSource` bitmasks, and they are separate because only
+    // one of them can be reconciled against what was armed. Zero causes with a
+    // `true` return is legal and means the hardware could not say — the report
+    // carries that rather than inventing a Timer.
+    virtual bool sleep(PowerState state, WakeCauses& causes) = 0;
 };
 
 // ---------------------------------------------------------------------------

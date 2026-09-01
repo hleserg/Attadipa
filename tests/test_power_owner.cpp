@@ -48,9 +48,10 @@ public:
     // A second, so a failing unwind can be tested alongside a failing step.
     std::string fail_on_too;
 
-    std::uint16_t causes_to_report = 0;
-    bool          sleep_succeeds   = true;
-    int           sleeps           = 0;
+    std::uint16_t soc_causes     = 0;
+    std::uint16_t derived_causes  = 0;
+    bool          sleep_succeeds  = true;
+    int           sleeps          = 0;
 
     bool suspend(PowerDomain domain) override { return record("suspend", to_string(domain)); }
     bool resume(PowerDomain domain) override { return record("resume", to_string(domain)); }
@@ -63,10 +64,11 @@ public:
     bool arm_wake(WakeSource source) override { return record("arm", to_string(source)); }
     bool disarm_wake(WakeSource source) override { return record("disarm", to_string(source)); }
 
-    bool sleep(PowerState state, std::uint16_t& causes) override
+    bool sleep(PowerState state, WakeCauses& causes) override
     {
         ++sleeps;
-        causes = causes_to_report;
+        causes.from_soc = soc_causes;
+        causes.derived  = derived_causes;
         return record("sleep", to_string(state)) && sleep_succeeds;
     }
 
@@ -284,7 +286,7 @@ void test_an_overdue_lease_is_reported_and_not_reclaimed()
 void test_a_clean_cycle_suspends_arms_sleeps_and_unwinds_in_reverse()
 {
     FakeHardware hw;
-    hw.causes_to_report = wake_bit(WakeSource::Touch);
+    hw.soc_causes = wake_bit(WakeSource::Touch);
     PowerOwner owner(hw);
 
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
@@ -319,7 +321,7 @@ void test_two_wake_causes_at_once_both_survive()
     // value, its own header warns simultaneous sources are lost, and the old
     // path then re-read a pin to guess which. A bitmap keeps both.
     FakeHardware hw;
-    hw.causes_to_report = wake_bit(WakeSource::Timer) | wake_bit(WakeSource::Button);
+    hw.soc_causes = wake_bit(WakeSource::Timer) | wake_bit(WakeSource::Button);
     PowerOwner owner(hw);
 
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
@@ -335,7 +337,7 @@ void test_a_cause_nobody_armed_is_reported_rather_than_masked()
     // of POWER_OWNERSHIP.md. Masking it would hide exactly the state the owner
     // exists to make visible.
     FakeHardware hw;
-    hw.causes_to_report = wake_bit(WakeSource::Touch) | wake_bit(WakeSource::Pmu);
+    hw.soc_causes = wake_bit(WakeSource::Touch) | wake_bit(WakeSource::Pmu);
     PowerOwner owner(hw);
 
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
@@ -344,10 +346,28 @@ void test_a_cause_nobody_armed_is_reported_rather_than_masked()
     CHECK((report.wake_causes & wake_bit(WakeSource::Pmu)) != 0);
 }
 
+void test_a_derived_cause_is_reported_and_is_never_unexpected()
+{
+    // The Waveshare power button. The AXP2101 latches an edge and the firmware
+    // reads that register during a timer wake, so the button is never an armed
+    // SoC source — and measuring it against what was armed would report every
+    // press as an unreconciled wake source.
+    FakeHardware hw;
+    hw.soc_causes     = wake_bit(WakeSource::Timer);
+    hw.derived_causes = wake_bit(WakeSource::Button);
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::Woken);
+    CHECK((report.wake_causes & wake_bit(WakeSource::Button)) != 0);
+    CHECK((report.wake_causes & wake_bit(WakeSource::Timer)) != 0);
+    CHECK(report.unexpected_causes == 0);
+}
+
 void test_no_cause_at_all_is_not_invented()
 {
     FakeHardware hw;
-    hw.causes_to_report = 0;
+    hw.soc_causes = 0;
     PowerOwner owner(hw);
 
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
@@ -577,7 +597,7 @@ void test_a_release_is_accepted_even_when_the_hardware_is_unknown()
 void test_two_cycles_leave_no_residue()
 {
     FakeHardware hw;
-    hw.causes_to_report = wake_bit(WakeSource::Button);
+    hw.soc_causes = wake_bit(WakeSource::Button);
     PowerOwner owner(hw);
 
     CHECK(owner.sleep(light_sleep_plan(), kNow).outcome == SleepOutcome::Woken);
@@ -666,6 +686,7 @@ int main()
     test_a_clean_cycle_suspends_arms_sleeps_and_unwinds_in_reverse();
     test_two_wake_causes_at_once_both_survive();
     test_a_cause_nobody_armed_is_reported_rather_than_masked();
+    test_a_derived_cause_is_reported_and_is_never_unexpected();
     test_no_cause_at_all_is_not_invented();
     test_an_illegal_wake_plan_never_reaches_hardware();
     test_a_rail_cut_under_a_consumer_nobody_suspended_is_refused();
