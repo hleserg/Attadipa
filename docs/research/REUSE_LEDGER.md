@@ -2412,29 +2412,41 @@ direction; BSD-3-Clause likewise, and it applies to `src/bosch/` if SensorLib is
 ever taken. If the vendor command table is adopted, the MIT notice travels with
 it. Mechanics are [#284](https://github.com/hleserg/Attadipa/issues/284)'s
 subject.
+
 ---
 
 ### Recovering a MeshCore link when the node's keys are gone
 
 **Problem:** the watch keeps a persistent NimBLE bond
 (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`, MITM, Secure Connections). A MeshCore node
-that is factory-reset or reflashed loses its half of that bond and asks to pair
-again, which reaches the application as `BLE_GAP_EVENT_REPEAT_PAIRING`. The
-shipping handler answered `BLE_GAP_REPEAT_PAIRING_IGNORE` and left nothing
-behind, so the link could never come back without erasing the watch's NVS
+that is factory-reset or reflashed loses its half of that bond. The shipping
+handler answered `BLE_GAP_REPEAT_PAIRING_IGNORE` and left nothing behind, so
+the link could never come back without erasing the watch's NVS
 ([#325](https://github.com/hleserg/Attadipa/issues/325)).
 
 **Candidates:**
 
-1. **Apache NimBLE, the event contract itself** — Apache-2.0, already a
-   dependency through pinned ESP-IDF v5.5.5. `host/ble_gap.h:211-212` assigns
+1. **Apache NimBLE, where the stack raises the event** — Apache-2.0, already a
+   dependency through pinned ESP-IDF v5.5.5. `BLE_GAP_EVENT_REPEAT_PAIRING` is
+   raised by `ble_sm_chk_repeat_pairing()` (`host/src/ble_sm.c:990`), and its
+   only call site is `ble_sm_pair_req_rx()` (`:1956`, call at `:2079`) — the
+   handler for an *inbound* Pairing Request. `TRACED, AND IT DECIDES THE
+   DESIGN`: the watch is the central, so it sends that request and receives a
+   Pairing Response; a peripheral that has lost its keys sends a Security
+   Request, which makes the central originate pairing rather than receive a
+   request. The event therefore never fires on this device, and a fix built on
+   it alone would not run. The trigger this firmware records on is the refused
+   encryption — `BLE_GAP_EVENT_ENC_CHANGE` with `PIN or Key Missing`
+   (`BLE_ERR_PINKEY_MISSING = 0x06`, `nimble/include/nimble/ble.h:202`).
+2. **Apache NimBLE, the event contract itself** — same dependency.
+   `host/ble_gap.h:211-212` assigns
    `BLE_GAP_REPEAT_PAIRING_RETRY = 1` and `..._IGNORE = 2`; the contract at
    `:1069-1077` says RETRY is returned *"after deleting the conflicting bond"*
    and that the stack *"will verify the bond has been deleted and continue the
    pairing procedure"*, while IGNORE means the stack *"will silently ignore the
    pairing request"*. `USE AS-IS` — this is the authority for what the two
    answers mean, and the reason the recovery cannot be a RETRY.
-2. **ESP-IDF v5.5.5 `examples/bluetooth/nimble/blecent`** — Apache-2.0, the
+3. **ESP-IDF v5.5.5 `examples/bluetooth/nimble/blecent`** — Apache-2.0, the
    mature official central example. Its handler
    (`main/main.c`, `BLE_GAP_EVENT_REPEAT_PAIRING`) calls `ble_gap_conn_find`,
    then `ble_store_util_delete_peer`, then returns RETRY, and says of itself:
@@ -2443,15 +2455,16 @@ behind, so the link could never come back without erasing the watch's NVS
    `ble_gap_conn_find` → `desc.peer_id_addr` → `ble_store_util_delete_peer`
    sequence is exactly right and is what this firmware uses; the ordering is
    not.
-3. **NimBLE's own internal handling**, `CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION`
+4. **NimBLE's own internal handling**, `CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION`
    (`components/bt/host/nimble/Kconfig.in:197`, `default n`). With it on,
    `ble_gap.c:9679-9685` deletes the bond and returns RETRY without posting any
    event to the application. `REJECT` — it is the example's policy moved into
    the stack, and it would silently retire this firmware's handler.
 
 **Decision:** `USE AS-IS` for the contract, `ADAPT` the peer lookup, `REJECT`
-both automatic policies. The recovery is an owner action, taken outside the
-callback.
+both automatic policies, and take the trigger from the traced call site rather
+than from the event's name: the recovery arms on the refused encryption, and it
+is an owner action, taken outside the callback.
 
 **Reason:** [Apache NimBLE issue #2206](https://github.com/apache/mynewt-nimble/issues/2206),
 open as of 2026-08-28, is that the automatic deletion happens **before Phase 2

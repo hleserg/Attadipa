@@ -36,6 +36,7 @@ from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from watch import protocol as p  # noqa: E402
 import watch_control as wc  # noqa: E402
 
 PASS = 0
@@ -161,6 +162,13 @@ class Recorder:
     def mesh_configure(self, passkey):
         self.calls.append(("mesh_configure", passkey))
 
+    forget_bond_error = None
+
+    def mesh_forget_bond(self):
+        self.calls.append(("mesh_forget_bond",))
+        if Recorder.forget_bond_error is not None:
+            raise Recorder.forget_bond_error
+
     def input_reset(self):
         return (None, 0)
 
@@ -266,6 +274,43 @@ if code == 0 and ("mesh_configure", 0) in calls:
     ok("the unpaired probe stays scriptable and reads no secret")
 else:
     no("the unpaired probe stays scriptable and reads no secret",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+
+# mesh-forget-bond's expected answer is a refusal: the firmware sends BAD_INPUT
+# whenever no stale bond is recorded, which is the ordinary state. The generic
+# text for that code is written for the touch and button opcodes and names a
+# button this board does not have -- for a zero-argument command it says nothing
+# true, and the operator cannot tell "nothing to forget" from "malformed
+# request".
+Recorder.forget_bond_error = p.ProtocolError("refused", p.ErrorCode.BAD_INPUT)
+code, calls, err = run(["mesh-forget-bond"])
+if code != 0 and "nothing to forget" in err and "button" not in err:
+    ok("a refused forget-bond says no bond is recorded, not that a button is wrong")
+else:
+    no("a refused forget-bond says no bond is recorded, not that a button is wrong",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+# Every other typed error still travels as itself. Swallowing BAD_INPUT must not
+# turn into swallowing the transport failing, which is the answer the same
+# command gives when the firmware's event queue is full.
+Recorder.forget_bond_error = p.ProtocolError(
+    "the device could not complete the operation", p.ErrorCode.OPERATION_FAILED)
+code, calls, err = run(["mesh-forget-bond"])
+if code != 0 and "nothing to forget" not in err:
+    ok("a forget-bond that failed in the transport is not reported as no bond")
+else:
+    no("a forget-bond that failed in the transport is not reported as no bond",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+# And the accepted path still reaches the client, so the guards above are not
+# simply refusing everything.
+Recorder.forget_bond_error = None
+code, calls, err = run(["mesh-forget-bond"])
+if code == 0 and ("mesh_forget_bond",) in calls:
+    ok("an accepted forget-bond reaches the client")
+else:
+    no("an accepted forget-bond reaches the client",
        f"exit {code}, calls {calls}, err {err!r}")
 
 

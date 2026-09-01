@@ -493,6 +493,46 @@ int write_done(std::uint16_t, const ble_gatt_error* error,
     return 0;
 }
 
+// A bond the node no longer honours, recorded so the owner can forget it.
+//
+// `ble_gap_conn_find` runs before the guard: nothing calls into NimBLE under
+// `session_lock`. False means the peer could not be identified, which is
+// recorded as nothing at all -- fail-closed, so the owner is never offered a
+// deletion aimed at a bond this firmware cannot name.
+bool record_stale_bond(std::uint16_t connection, const char* cause)
+{
+    ble_gap_conn_desc desc{};
+    attadipa::firmware::BondIdentity peer{};
+    if (ble_gap_conn_find(connection, &desc) == 0) {
+        peer.type = desc.peer_id_addr.type;
+        std::memcpy(peer.address.data(), desc.peer_id_addr.val,
+                    peer.address.size());
+        peer.valid = true;
+    }
+    bool recorded = false;
+    {
+        SessionGuard guard;
+        recovery.record(peer);
+        recorded = recovery.recovery_required();
+    }
+    // The last three octets only. A resolvable private address is not a
+    // credential, but it is the peer's identity and a log is an artefact that
+    // leaves the bench.
+    ESP_LOGE(kTag,
+             "MeshCore bond is stale (%s): type=%u addr=xx:xx:xx:%02X:%02X:%02X."
+             " The bond is kept. Mesh stays down until the owner forgets it"
+             " (mesh-forget-bond).",
+             cause, static_cast<unsigned>(peer.type),
+             static_cast<unsigned>(peer.address[2]),
+             static_cast<unsigned>(peer.address[1]),
+             static_cast<unsigned>(peer.address[0]));
+    if (!recorded) {
+        ESP_LOGE(kTag, "the conflicting peer could not be identified; "
+                       "no bond can be offered for recovery");
+    }
+    return recorded;
+}
+
 int gap_event(ble_gap_event* event, void* arg)
 {
     switch (event->type) {
@@ -567,6 +607,17 @@ int gap_event(ble_gap_event* event, void* arg)
     case BLE_GAP_EVENT_ENC_CHANGE: {
         const std::uint32_t generation = generation_of(arg);
         if (event->enc_change.status != 0) {
+            // `PIN or Key Missing`, and nothing else. This is the node saying
+            // it holds no key for the LTK this watch just encrypted with --
+            // #325's factory-reset node, seen from the central side, and the
+            // only failure that indicts the bond itself rather than the
+            // attempt. Every other pairing failure keeps the old path: a
+            // fault, no record, nothing offered for deletion.
+            if (event->enc_change.status ==
+                BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING)) {
+                (void)record_stale_bond(event->enc_change.conn_handle,
+                                        "the node has no key for it");
+            }
             disconnect_fault(generation, "pairing", event->enc_change.status);
             return 0;
         }
@@ -658,38 +709,14 @@ int gap_event(ble_gap_event* event, void* arg)
         // deletion lands before Phase 2 authentication, so a peer that merely
         // sent a Pairing Request would have evicted the bond.
         //
-        // `ble_gap_conn_find` runs before the guard: nothing calls into NimBLE
-        // under `session_lock`.
-        ble_gap_conn_desc desc{};
-        attadipa::firmware::BondIdentity peer{};
-        if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) {
-            peer.type = desc.peer_id_addr.type;
-            std::memcpy(peer.address.data(), desc.peer_id_addr.val,
-                        peer.address.size());
-            peer.valid = true;
-        }
-        int answer = attadipa::firmware::kRepeatPairingIgnore;
-        bool recorded = false;
-        {
-            SessionGuard guard;
-            answer = recovery.repeat_pairing(peer);
-            recorded = recovery.recovery_required();
-        }
-        // The last three octets only. A resolvable private address is not a
-        // credential, but it is the peer's identity and a log is an artefact
-        // that leaves the bench.
-        ESP_LOGE(kTag,
-                 "MeshCore peer asked to pair again while a bond exists: "
-                 "type=%u addr=xx:xx:xx:%02X:%02X:%02X. The bond is kept. "
-                 "Mesh stays down until the owner forgets it (mesh-forget-bond).",
-                 static_cast<unsigned>(peer.type),
-                 static_cast<unsigned>(peer.address[2]),
-                 static_cast<unsigned>(peer.address[1]),
-                 static_cast<unsigned>(peer.address[0]));
-        if (!recorded) {
-            ESP_LOGE(kTag, "the conflicting peer could not be identified; "
-                           "no bond can be offered for recovery");
-        }
+        // Unreachable on this device: `ble_sm_chk_repeat_pairing()`
+        // (`host/src/ble_sm.c:990`) is called from `ble_sm_pair_req_rx()` alone
+        // (`:1956`, call at `:2079`), and a central never receives a Pairing
+        // Request. Kept because the callback still owes NimBLE an answer, and
+        // because falling through would give the default one. The trigger this
+        // firmware actually runs on is in BLE_GAP_EVENT_ENC_CHANGE below.
+        (void)record_stale_bond(event->repeat_pairing.conn_handle,
+                                "the peer asked to pair again");
         // Fail closed and say so. Without this the stack silently drops the
         // request and the link hangs until something else times out, which is
         // exactly the silent permanent failure #325 reports. disconnect_fault
@@ -697,7 +724,7 @@ int gap_event(ble_gap_event* event, void* arg)
         // does not happen either; forget_bond re-arms it.
         disconnect_fault(generation_of(arg), "pairing with an existing bond",
                          BLE_HS_EAUTHEN);
-        return answer;
+        return attadipa::firmware::kRepeatPairingIgnore;
     }
     default:
         return 0;
@@ -1087,12 +1114,31 @@ void mesh_task(void*)
                 std::memcpy(address.val, peer.address.data(),
                             peer.address.size());
                 const int deleted = ble_store_util_delete_peer(&address);
+                if (deleted != 0) {
+                    // The store refused. The wire answer went out when the
+                    // request was accepted, so the operator has already been
+                    // told the bond is gone; the only thing that makes that
+                    // true is running the command again, and it can only be
+                    // run again if the record goes back. Nothing is re-armed:
+                    // the bond is still there, so the reconnect this would
+                    // enable would fail on the same conflict.
+                    ESP_LOGE(kTag,
+                             "forget-bond: the store refused to delete the bond"
+                             " for xx:xx:xx:%02X:%02X:%02X (rc=%d); it is still"
+                             " there -- run mesh-forget-bond again",
+                             static_cast<unsigned>(peer.address[2]),
+                             static_cast<unsigned>(peer.address[1]),
+                             static_cast<unsigned>(peer.address[0]), deleted);
+                    SessionGuard guard;
+                    recovery.record(peer);
+                    break;
+                }
                 ESP_LOGW(kTag,
-                         "forget-bond: deleted the bond for xx:xx:xx:%02X:%02X:%02X"
-                         " (rc=%d); pairing afresh on the next connection",
+                         "forget-bond: deleted the bond for xx:xx:xx:%02X:%02X:%02X;"
+                         " pairing afresh on the next connection",
                          static_cast<unsigned>(peer.address[2]),
                          static_cast<unsigned>(peer.address[1]),
-                         static_cast<unsigned>(peer.address[0]), deleted);
+                         static_cast<unsigned>(peer.address[0]));
                 // Exactly one attempt is armed, and it is armed by the owner:
                 // the conflict record is consumed above, so a second
                 // forget-bond with no new conflict is refused. This mirrors the
@@ -1265,17 +1311,22 @@ bool meshcore_ble_send_room(
     return accepted;
 }
 
-bool meshcore_ble_forget_bond()
+esp_err_t meshcore_ble_forget_bond()
 {
     // Refused where the caller can still be told. The worker checks again
     // because it is the only task that may consume the record, but a refusal
     // discovered there could only be logged -- and "there is no bond to
     // forget" is the answer the owner actually needs.
+    //
+    // The two refusals are different answers and are kept apart: an empty
+    // record is a statement about the request, a full queue is a statement
+    // about the transport, and telling the operator the first when the second
+    // happened sends them looking for a conflict that is recorded.
     {
         SessionGuard guard;
-        if (!recovery.recovery_required()) return false;
+        if (!recovery.recovery_required()) return ESP_ERR_INVALID_STATE;
     }
-    return post(Event{EventKind::ForgetBond});
+    return post(Event{EventKind::ForgetBond}) ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
 attadipa::core::MeshStatus meshcore_ble_status()

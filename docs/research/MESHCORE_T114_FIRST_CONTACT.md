@@ -625,7 +625,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1 |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1210`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1031`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1256`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1058`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
@@ -636,25 +636,56 @@ state.
 
 The node in this report was factory-reset once, and it came back with a
 different self name and public key. A node that is reset or reflashed after a
-bond exists loses its half of that bond and asks to pair again; NimBLE reports
-that to the application as `BLE_GAP_EVENT_REPEAT_PAIRING`.
+bond exists loses its half of that bond.
 
-The watch does not delete the bond. Returning `BLE_GAP_REPEAT_PAIRING_RETRY`
-would mean deleting it first, before Phase 2 authentication — [Apache NimBLE
+**How that reaches the watch depends on which side asks.** NimBLE raises
+`BLE_GAP_EVENT_REPEAT_PAIRING` from `ble_sm_chk_repeat_pairing()`
+([`ble_sm.c:990`](https://github.com/apache/mynewt-nimble/blob/master/nimble/host/src/ble_sm.c)),
+whose only call site is `ble_sm_pair_req_rx()` — the handler for an *inbound*
+Pairing Request (`ble_sm.c:1956`, call at `:2079`; read in the ESP-IDF v5.5.5
+tree at `components/bt/host/nimble/nimble/nimble/host/src/ble_sm.c`). The watch
+is the central: it originates pairing and receives a Pairing *Response*, and a
+peripheral cannot make it receive a request — a peripheral sends a Security
+Request, which makes the central originate. So on this device that event does
+not fire.
+
+What the watch sees instead is its own encryption attempt refused. It connects
+with a bond in the store, calls `ble_gap_security_initiate()`, the node has no
+key for the LTK, and the failure arrives as `BLE_GAP_EVENT_ENC_CHANGE` with
+status `PIN or Key Missing` (HCI `0x06`). That is the trigger this firmware
+records on. The repeat-pairing handler is kept — the callback owes NimBLE an
+answer, and a role that does receive a Pairing Request must not fall through to
+the default — but it is not the path the watch takes.
+
+The watch does not delete the bond on either path. Returning
+`BLE_GAP_REPEAT_PAIRING_RETRY` would mean deleting it first, before Phase 2
+authentication — [Apache NimBLE
 issue #2206](https://github.com/apache/mynewt-nimble/issues/2206), open as of
 2026-08-28 — so any peer in radio range could evict the bond with one Pairing
 Request. Instead the watch records which peer conflicted, faults the transport
-and stops reconnecting, and says so on the console. Recovery is an operator
-action:
+and stops reconnecting, and says so on the console:
+
+```
+MeshCore bond is stale (the node has no key for it): type=0
+addr=xx:xx:xx:AA:BB:CC. The bond is kept. Mesh stays down until the owner
+forgets it (mesh-forget-bond).
+```
+
+Recovery is an operator action:
 
 ```
 tools/watch_control.py mesh-forget-bond
 ```
 
 It deletes only the bond that the conflict recorded — it takes no peer to name
-— and arms one fresh pairing. With no conflict recorded it refuses, so it is
-not a way to walk the bond store. `mesh-configure` is still needed afterwards
-if the watch has been reset since, because the passkey lives only in RAM.
+— and arms one fresh pairing. With no conflict recorded it refuses, and says
+so in those words rather than as a malformed-request error, so the ordinary
+state is distinguishable from a fault; it is not a way to walk the bond store.
+If the store refuses the deletion the record goes back and nothing is re-armed:
+the operator is told to run the command again, because the reply that said the
+bond was gone had already been sent when the request was accepted.
+`mesh-configure` is still needed afterwards if the watch has been reset since,
+because the passkey lives only in RAM.
 
 Everything in this subsection is `SIMULATED` on a host
 ([`../../tests/test_session_owner.cpp`](../../tests/test_session_owner.cpp),

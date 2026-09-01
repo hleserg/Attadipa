@@ -388,12 +388,18 @@ public:
   }
 
   attadipa::debug::MeshSinkResult forget_bond() override {
-    // Rejected, not Failed: the only reason this returns false is that no
-    // repeat-pairing conflict was recorded, and that is a statement about the
-    // request rather than about the transport.
-    return meshcore_ble_forget_bond()
-               ? attadipa::debug::MeshSinkResult::Accepted
-               : attadipa::debug::MeshSinkResult::Rejected;
+    // Rejected only for the empty record -- that is a statement about the
+    // request. A full event queue is the transport failing, and reporting it
+    // as an invalid request would send the operator looking for a conflict
+    // that is recorded.
+    switch (meshcore_ble_forget_bond()) {
+    case ESP_OK:
+      return attadipa::debug::MeshSinkResult::Accepted;
+    case ESP_ERR_INVALID_STATE:
+      return attadipa::debug::MeshSinkResult::Rejected;
+    default:
+      return attadipa::debug::MeshSinkResult::Failed;
+    }
   }
 
   attadipa::debug::MeshSinkResult

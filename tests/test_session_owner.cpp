@@ -869,6 +869,59 @@ void encryption_coming_up_retires_the_conflict()
     CHECK(!recovery.take_forget(taken));
 }
 
+void a_key_missing_failure_records_the_bond_and_shares_the_one_slot()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity node{};
+    node.address = {3, 3, 3, 3, 3, 3};
+    node.valid = true;
+
+    // This is the trigger the watch actually reaches. It is a central, and
+    // NimBLE raises BLE_GAP_EVENT_REPEAT_PAIRING only from ble_sm_pair_req_rx()
+    // -- the inbound Pairing Request. What a central sees when the node has
+    // been reflashed is the encryption refused with `PIN or Key Missing`.
+    recovery.record(node);
+    CHECK(recovery.recovery_required());
+
+    // Both entry points write the same single slot, so a peer that can provoke
+    // the other event cannot add a second nomination beside this one.
+    BondIdentity intruder{};
+    intruder.address = {9, 9, 9, 9, 9, 9};
+    intruder.valid = true;
+    (void)recovery.repeat_pairing(intruder);
+
+    BondIdentity taken{};
+    CHECK(recovery.take_forget(taken));
+    CHECK(taken.address == node.address);
+}
+
+void a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity peer{};
+    peer.address = {4, 4, 4, 4, 4, 4};
+    peer.valid = true;
+    recovery.record(peer);
+
+    BondIdentity taken{};
+    CHECK(recovery.take_forget(taken));
+    CHECK(!recovery.recovery_required());
+
+    // ble_store_util_delete_peer() answered non-zero -- a damaged or full NVS,
+    // which is exactly the state #325's erase-the-NVS workaround implies. The
+    // operator was already told the bond was gone, because the wire answer went
+    // out when the request was accepted. Putting the record back is what makes
+    // running the command again the fix rather than a refusal.
+    recovery.record(taken);
+    BondIdentity retried{};
+    CHECK(recovery.take_forget(retried));
+    CHECK(retried.address == peer.address);
+}
+
 }  // namespace
 
 int main()
@@ -899,6 +952,8 @@ int main()
     a_second_peer_cannot_displace_the_bond_the_owner_was_told_about();
     an_unidentifiable_peer_offers_no_bond_to_forget();
     encryption_coming_up_retires_the_conflict();
+    a_key_missing_failure_records_the_bond_and_shares_the_one_slot();
+    a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

@@ -19,7 +19,9 @@
 namespace attadipa::firmware {
 
 // NimBLE's two answers to `BLE_GAP_EVENT_REPEAT_PAIRING` (`host/ble_gap.h`
-// lines 211-212, contract at 1069-1077).
+// lines 211-212, contract at 1069-1077). That event is not how a stale bond
+// reaches this device -- see `record()` -- but the handler still has to answer,
+// and this is the answer it gives.
 //
 // RETRY is named here only to record that this firmware never returns it. The
 // stack "will verify the bond has been deleted and continue the pairing
@@ -52,17 +54,44 @@ struct BondIdentity {
 class BondRecovery {
 public:
     // Called from the NimBLE host callback with whatever `ble_gap_conn_find()`
-    // could tell us about the peer. Records at most one conflict and answers.
+    // could tell us about the peer. Records at most one conflict.
+    //
+    // Two events reach it, and only one of them can happen to this device.
+    // `BLE_GAP_EVENT_REPEAT_PAIRING` is raised from
+    // `ble_sm_chk_repeat_pairing()` (`host/src/ble_sm.c:990`), whose single
+    // call site is `ble_sm_pair_req_rx()` (`:1956`, call at `:2079`) -- the
+    // handler for an *inbound* Pairing Request. The watch is the central: it
+    // sends that request and receives a Pairing Response, so it never receives
+    // one, and a peripheral cannot make it: a peripheral sends a Security
+    // Request, which makes the central originate the pairing. What the watch
+    // sees instead when the node has lost its keys is the encryption attempt
+    // being refused -- `PIN or Key Missing` -- which is the trigger this
+    // firmware actually runs on.
     //
     // The first conflict is the one the owner will be told about, and a later
-    // peer does not displace it. Any peer in radio range can provoke this
+    // peer does not displace it. Any peer in radio range can provoke either
     // event; if the newest one won, a peer could aim the owner's next forget at
     // a bond of its choosing. A conflict from an unidentifiable peer is
     // recorded as nothing at all, which leaves the transport faulted and
     // recoverable only by configuring it again -- fail-closed, deliberately.
-    int repeat_pairing(const BondIdentity& peer)
+    //
+    // Recording is not deleting, and that is the whole threat argument. A peer
+    // spoofing the node's address and refusing the encryption can already fault
+    // this transport today; all it additionally gains here is that the owner is
+    // offered a forget it has to run itself, over USB, on a bond whose address
+    // it can read in the log.
+    void record(const BondIdentity& peer)
     {
         if (!conflicted_.valid && peer.valid) conflicted_ = peer;
+    }
+
+    // The repeat-pairing answer. Unreachable in the central role (see
+    // `record()`); kept because it is the callback's contract, and because a
+    // role that does receive a Pairing Request must not fall through to
+    // NimBLE's default.
+    int repeat_pairing(const BondIdentity& peer)
+    {
+        record(peer);
         return kRepeatPairingIgnore;
     }
 
@@ -71,7 +100,7 @@ public:
     // The owner action, and the only path that yields an address to delete.
     //
     // It takes no address from its caller: the only bond that can ever be
-    // deleted is the one a repeat-pairing event recorded. That is what bounds
+    // deleted is the one `record()` was given. That is what bounds
     // the operation -- a second forget with no new conflict is refused, so an
     // owner cannot walk the bond store, and neither can anything that reaches
     // this through the debug bridge.

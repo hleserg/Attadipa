@@ -447,6 +447,7 @@ void the_two_numbering_tables_are_spelled_out()
     CHECK(static_cast<std::uint16_t>(Opcode::MeshSend) == 0x0051);
     CHECK(static_cast<std::uint16_t>(Opcode::MeshRoomSend) == 0x0052);
     CHECK(static_cast<std::uint16_t>(Opcode::MeshDisconnect) == 0x0053);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshForgetBond) == 0x0054);
     CHECK(static_cast<std::uint16_t>(Opcode::HelloOk) == 0x8001);
     CHECK(static_cast<std::uint16_t>(Opcode::CapabilitiesOk) == 0x8002);
     CHECK(static_cast<std::uint16_t>(Opcode::ScreenInfo) == 0x8010);
