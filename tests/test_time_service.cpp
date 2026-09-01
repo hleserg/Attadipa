@@ -19,9 +19,11 @@ int failures = 0;
 attadipa::core::TimeObservation sample(
     attadipa::core::WallTime utc, attadipa::core::MonotonicTime observed_at,
     attadipa::core::TimeSource source, attadipa::core::TimeQuality quality,
-    attadipa::core::Millis fresh_for = {})
+    attadipa::core::Millis fresh_for = {},
+    std::uint32_t age_at_source_ms = 0)
 {
-    return {utc, observed_at, fresh_for, 0, source, quality, false};
+    return {utc, observed_at, fresh_for, age_at_source_ms, source, quality,
+            false};
 }
 
 }  // namespace
@@ -194,6 +196,43 @@ int main()
     CHECK(lower_bound.set_timezone(-60, {10000}, {0}));
     CHECK(lower_bound.state({0}).local.value ==
           WallTime{std::numeric_limits<std::int64_t>::min()});
+
+    // #264, ledger of 2026-08-26. GNSS outranks Manual, so the priority guard
+    // admits this candidate; it is Stale the moment it arrives, because
+    // age_at_source_ms has already spent fresh_for. Fresh trusted time is not
+    // given up for it. The correction is zero, so the large-correction guard
+    // is not what does the rejecting here.
+    TimeService stale_candidate;
+    CHECK(stale_candidate.observe(sample({10000}, {1000}, TimeSource::Manual,
+                                         TimeQuality::Trusted, Millis{5000})));
+    CHECK(!stale_candidate.observe(sample({10001}, {2000}, TimeSource::Gnss,
+                                          TimeQuality::Trusted, Millis{1000},
+                                          1000)));
+    CHECK(stale_candidate.state({2000}).source == TimeSource::Manual);
+    CHECK(stale_candidate.state({2000}).utc.validity == Validity::Valid);
+    // One millisecond younger is Valid, and priority decides as it always did.
+    CHECK(stale_candidate.observe(sample({10001}, {2000}, TimeSource::Gnss,
+                                         TimeQuality::Trusted, Millis{1000},
+                                         999)));
+    CHECK(stale_candidate.state({2000}).source == TimeSource::Gnss);
+
+    // Nothing is held, so a stale sample is still better than no time at all.
+    TimeService from_nothing;
+    CHECK(from_nothing.observe(sample({10000}, {1000}, TimeSource::Gnss,
+                                      TimeQuality::Trusted, Millis{1000},
+                                      1000)));
+    CHECK(from_nothing.state({1000}).utc.validity == Validity::Stale);
+
+    // The guard protects time that is currently Valid and nothing else: a
+    // stale candidate still replaces an observation that has gone stale.
+    TimeService stale_current;
+    CHECK(stale_current.observe(sample({10000}, {1000}, TimeSource::Manual,
+                                       TimeQuality::Trusted, Millis{500})));
+    CHECK(stale_current.state({2000}).utc.validity == Validity::Stale);
+    CHECK(stale_current.observe(sample({10001}, {2000}, TimeSource::Gnss,
+                                       TimeQuality::Trusted, Millis{1000},
+                                       1000)));
+    CHECK(stale_current.state({2000}).source == TimeSource::Gnss);
 
     return failures == 0 ? 0 : 1;
 }

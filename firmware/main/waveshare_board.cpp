@@ -303,6 +303,31 @@ public:
       return attadipa::debug::TimeSinkResult::Rejected;
     }
 
+    // The metadata write goes first, and it IS the fail-closed check ahead of
+    // the RTC write. #264's ledger names the shape: boot may already know the
+    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:755` --
+    // "time metadata unavailable; continuing without it" logs it and carries
+    // on -- and this function used to write and verify the PCF85063 anyway,
+    // discovering only afterwards that nvs_open() could not succeed. That is a
+    // repeatable partial update of physical hardware, with state.time_service
+    // left holding the old observation and no recovery path. Ordering the
+    // metadata first also covers a write failure boot cannot predict, which a
+    // boot-time readiness flag would not.
+    //
+    // The cost, stated rather than discovered in review: if the RTC write then
+    // fails, NVS carries a last-sync stamp for a synchronization that did not
+    // happen. `firmware/main/waveshare_board.cpp:220` --
+    // "err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);" is the only
+    // write of that key and nothing in the tree reads it, so it is inert
+    // today. Removing it is a stored-format decision, not this fix.
+    const esp_err_t metadata_result = save_time_metadata(
+        request.timezone_offset_minutes, request.utc_seconds);
+    if (metadata_result != ESP_OK) {
+      ESP_LOGW(kTag, "persist time metadata failed: %s",
+               esp_err_to_name(metadata_result));
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+
     const esp_err_t write_result = write_rtc(rtc);
     if (write_result != ESP_OK) {
       ESP_LOGW(kTag, "write PCF85063 time: %s",
@@ -323,14 +348,6 @@ public:
         attadipa::core::seconds_between(
             attadipa::core::WallTime{request.utc_seconds}, verified_utc) > 1) {
       ESP_LOGW(kTag, "PCF85063 readback did not match synchronized UTC");
-      return attadipa::debug::TimeSinkResult::Failed;
-    }
-
-    const esp_err_t metadata_result = save_time_metadata(
-        request.timezone_offset_minutes, request.utc_seconds);
-    if (metadata_result != ESP_OK) {
-      ESP_LOGW(kTag, "persist time metadata failed: %s",
-               esp_err_to_name(metadata_result));
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
