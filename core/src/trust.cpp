@@ -645,7 +645,9 @@ void TrustEvaluator::refresh(PositionValidity validity, MonotonicTime now)
     engine_.update(now);
 }
 
-void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTime now)
+void TrustEvaluator::compare_provider(const GnssObservation& other,
+                                      PositionValidity other_validity,
+                                      MonotonicTime now)
 {
     // Only a comparison of two roughly simultaneous answers means anything. If
     // either side is older than the window, this is not evidence of
@@ -688,7 +690,23 @@ void TrustEvaluator::compare_provider(const GnssObservation& other, MonotonicTim
     // second source stops being one — left the bit pinned exactly as before.
     // The fix keyed on "an uncomparable frame arrived" where it had to key on
     // "the other side stopped being comparable". Found in review of #153.
-    const bool other_can_answer_now = other.position.has_value() &&
+    //
+    // AND THE SAME SENTENCE WAS STILL TRUE OF THE REMOTE SIDE, which #178 did
+    // not reach: this predicate asked whether a coordinate was PRESENT, and a
+    // node that has lost its fix presents the last one it solved. Two
+    // deterministic wrongs followed. A retained coordinate far from ours raised
+    // `ProviderDisagreement` although the node had reported no fix — and that
+    // reason alone scores 30, which reaches the default `degrade_at`. A
+    // retained coordinate that happened to match ours cleared a live
+    // allegation the node had never withdrawn. Repeating `NoFix` frames also
+    // re-stamped `other_last_comparable_at_`, so the other side could never go
+    // quiet and `provider_departure_grace` never elapsed. #343, and it is why
+    // `other_validity` is a parameter rather than something read off the frame.
+    const bool other_measured_something =
+        other_validity == PositionValidity::Valid ||
+        other_validity == PositionValidity::Degraded;
+    const bool other_can_answer_now = other_measured_something &&
+                                      other.position.has_value() &&
                                       in_range(*other.position) &&
                                       elapsed(other.observed_at, now) <= window;
     if (other_can_answer_now) {

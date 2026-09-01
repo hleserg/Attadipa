@@ -369,7 +369,17 @@ a coordinate the receiver solved for, and the instant it solved it. It is not
 under a roof.** A
 GNSS frame's position field is not emptied when the solution goes away — the
 receiver keeps sending the coordinate it last solved for, with a fix type of
-`NoFix` in the same frame saying there is no position at all. §2 above is the
+`NoFix` in the same frame saying there is no position at all.
+
+That last sentence is `UNKNOWN` as a hardware fact and this decision does not
+rest on it being true. NMEA `GGA`/`RMC` behaviour on fix loss is
+receiver-dependent and no bench run in this repository has established it for
+the receiver this project ships with; it has no entry in
+[`VERIFIED_FACTS.md`](../research/VERIFIED_FACTS.md). The rules below are
+written to be correct either way: a receiver that *does* empty the field
+produces no position at all, which every path here already reads as silence,
+so the retained coordinate is the harder case and the only one that needs a
+rule. Establishing it is part of T-152. §2 above is the
 rule that lets this be seen: the states do not collapse, so `PositionValidity`
 is beside the coordinate rather than folded into it. The evaluator then held
 **two models of the same observation's fitness**. The rate baselines read the
@@ -408,12 +418,19 @@ coordinate*, which is the same failure as the one §5.1 records: a document
 describing the intended behaviour beside an implementation that had only half of
 it.
 
-**What this does not close, so that it is a task rather than a silence.** The
-second provider's frame arrives as a bare `GnssObservation`, which carries no
+**And the other side is now told the same way, which closes T-154.** The second
+provider's frame is still a bare `GnssObservation` carrying no
 `PositionValidity` — that is a `classify()` verdict a caller reaches with a
-policy — so a *node* relaying its own retained coordinate is still comparable,
-and the fix above is one-sided until the call learns the other side's verdict.
-`fix_type` is present in the frame and is not the same question. **T-154.**
+policy, and `fix_type` is present in the frame and is not the same question — so
+the verdict is passed in:
+`compare_provider(other, other_validity, now)` has no overload without it. A
+remote `NoFix` or `Stale` is silence: it neither raises `ProviderDisagreement`
+nor clears a live one, and it does not re-stamp the anchor
+`provider_departure_grace` is measured from, so a node relaying fix-less frames
+at 1 Hz can still go quiet. `Valid` and `Degraded` report and clear as before.
+Left one-sided, a node under canopy accused this device with a coordinate it
+had already disowned — 30 points, which reaches the default `degrade_at` on its
+own — and could retract a live allegation by happening to retain ours. #343.
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 
