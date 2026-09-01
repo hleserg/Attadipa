@@ -511,7 +511,8 @@ searches for and which no current topic covers.
   head-drift defects in §2 (*"The head lives in two files"*) recurring.
 - `python3 tools/docs/check_docs.py .` — link and structure checks, already in
   CI, and worth knowing the limit of: it filters on `.md`
-  (`tools/docs/check_docs.py:89-96`) and never opens `index.html`, `site.js`,
+  (`tools/docs/check_docs.py:95-102` — "name.endswith") and never opens
+  `index.html`, `site.js`,
   the manifest or the sitemap. It passed green while the `og:description` defect
   above was in the tree. It guards the prose in this document, not the head it
   describes.

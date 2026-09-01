@@ -40,18 +40,25 @@ exists. No window between choosing a path and owning it.
 
 ## Dismissed
 
-### A path from `argv` reaching `std::ifstream` in the replay tooling
+### A constructed path reaching `std::ifstream` in the replay tooling
 
-`cpp/path-injection`, five instances: `tests/replay/replay_main.cpp:33` and
-`tests/test_replay_rig.cpp` at 36, 61, 127 and 150.
+`cpp/path-injection`, five instances across `tests/replay/replay_main.cpp` and
+`tests/test_replay_rig.cpp`. The lines the scan named are deliberately not
+recorded: they were a snapshot of a tree that has moved since, and a bare line
+number into code we edit is the thing this repository stopped writing.
 
-Both of these binaries take a path to a trace file and open it. That is not an
-oversight in the interface — it *is* the interface. `replay` is a developer
-tool run by hand against a scenario file; `test_replay_rig` receives the
-scenario directory from CMake and appends known fixture names to it. Neither is
-a service, neither crosses a privilege boundary, and neither runs as anybody
-but the developer or the CI runner who invoked it. The "attacker" the query
-models is the person already typing the command.
+**Neither binary reads `argv`.** `replay_main` is `int main()` with no
+parameters, and the directory it walks is a compile-time constant CMake defines
+(`tests/replay/replay_main.cpp:21` —
+"const std::filesystem::path fixture_dir = ATTADIPA_REPLAY_FIXTURE_DIR;").
+`test_replay_rig` writes the fixtures it opens, into a directory it creates for
+itself (`tests/test_replay_rig.cpp:55` — "::mkdtemp(&path_[0])"). Nothing
+outside the build reaches either path.
+
+So the query is not modelling an attacker here; it is modelling a caller that
+does not exist. Neither binary is a service, neither crosses a privilege
+boundary, and neither runs as anybody but the developer or the CI runner who
+invoked it.
 
 The remediation the query wants — canonicalise the path and check it against an
 allowed root — would mean a replay tool that refuses to replay a trace stored
@@ -59,12 +66,25 @@ somewhere the tool did not choose, and a test that validates a path CMake
 handed it. That is code written to satisfy a scanner rather than to do
 anything, and it would make the tooling worse.
 
-Dismissed as *used in tests*. The dismissal is per-alert rather than a
-`paths-ignore` for `tests/`, deliberately: excluding the test tree would also
-stop the scan seeing genuine defects in code that links against `core`, and
-those are worth seeing. The cost is that a future test which opens an `argv`
-path raises a new alert to triage — which is the correct default, because the
-next one might not be a test tool.
+Dismissed as *used in tests*, one alert at a time. This note used to say that
+the per-alert form was deliberate — that a `paths-ignore` for `tests/` would
+also stop the scan seeing genuine defects in code that links against `core`.
+
+**That is no longer what runs.** `.github/codeql/codeql-config.yml:2` —
+"- tests/**" excludes the test tree, and the scan is given that config by
+`.github/workflows/codeql.yml:47` — "config-file: ./.github/codeql". The five
+dismissals above are history rather than the mechanism in force.
+
+What that exclusion does and does not do is worth being exact about. The tests
+are still **built and analysed**
+(`.github/workflows/codeql.yml:5` — "Tests are built in this job"), so the
+compilation path stays covered and the database is complete. What the exclusion
+removes is the *alerts*: nothing in `tests/` is ever reported. So the cost the
+old note named is being paid in full — a genuine defect in test code raises
+nothing to triage — and it is paid silently, because a clean scan looks the
+same either way. Whether that is the right scope is a
+decision for whoever changes it; what this file records is which one is
+running.
 
 ## If you are about to dismiss something
 

@@ -310,10 +310,12 @@ Consequences only. Designs go in ADRs and tasks.
    of this section said it was. `kMaxPayload = 192` is derived **from
    `MAX_FRAME_SIZE`**. The source now explicitly records that ADR-0005 §4 is
    read here as a **10-byte** envelope and that this reading remains owner-owned
-   (`link/include/attadipa/link/frame_codec.h:57-71`). The conclusion does not
+   (`link/include/attadipa/link/frame_codec.h:57-71` — "Derived, not copied").
+   The conclusion does not
    depend on settling that reading: 184 + 10 = 194 still exceeds 192.
 
-   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-71`). At a negotiated
+   So `kMaxFrame` is 192 + 7 = **199** (`frame_codec.h:51-71` —
+   "kOverheadBytes = kHeaderBytes + kTrailerBytes"). At a negotiated
    MTU of 176 a BLE notification carries 173, so a 199-byte frame does not fit
    that link. **The Attadipa node link's MTU is not established and must not be
    inferred from MeshCore's configuration.** ADR-0005 §8 already calls fragmentation mandatory and names BLE
