@@ -2,6 +2,7 @@
 #include "meshcore_bond_recovery.h"
 #include "meshcore_forget_outcome.h"
 #include "meshcore_boot.h"
+#include "meshcore_node_pin.h"
 #include "meshcore_write_outcome.h"
 
 #include <algorithm>
@@ -182,18 +183,39 @@ std::atomic_bool send_claimed{false};
 //
 // The identity is the node's public key, which arrives in RESP_CODE_SELF_INFO
 // and which `MeshCoreCompanion` now reads. Neither identifier available here is
-// permanent -- the node's BLE address is random type 1 (`:47`) and a factory
-// reset on the node regenerates the key (`:50`) -- so the key is chosen not
-// because it lasts forever but because it survives an address rotation, which
-// is the only one of the two failures that happens without anybody touching the
-// node.
+// permanent, and the key is chosen because it is the only one this repository
+// has *measured* to outlive a connection
+// (`docs/research/OWNER_DECISIONS.md:1182` -- "identity that outlives a
+// connection"). A factory reset on the node
+// regenerates it (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:50` "a factory
+// reset regenerates it"), which is a new identity by design.
 //
-// The rule is first-seen-then-pinned: an unprovisioned watch adopts the first
-// node it completes a handshake with and writes it to NVS; after that a node
-// whose key does not match is identified, refused and left alone. Choosing the
-// node *up front* is a provisioning question and it is #356's, not this file's:
-// there is no path in the production image for the passkey either, and inventing
-// a second one here would be the mechanism this repository asks not to add.
+// It is deliberately *not* chosen because the BLE address rotates. This file
+// said that until #388's review, and no source in this repository carries it:
+// the one address measured is random type 1
+// (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:47` "random"), read once and
+// never read again, so whether it stays put or rotates is `UNKNOWN`
+// (`docs/research/OWNER_DECISIONS.md:1177` -- "kind that rotates is therefore
+// `UNKNOWN`").
+// Nothing below depends on the answer; see `kRefusedNodeCooldownMs` in
+// `firmware/main/meshcore_node_pin.h` for why the cooldown does not either.
+//
+// The rule is first-answer-then-pinned: an unprovisioned watch adopts the first
+// node that answers RESP_CODE_SELF_INFO and writes it to NVS. That is the
+// *first* Companion response, before CMD_DEVICE_QUERY and before any contact
+// sync -- not the end of a handshake -- because that frame is where the key is
+// and a watch that waited would already have talked to the node. After that a
+// node whose key does not match is identified, refused and left alone.
+//
+// Choosing the node *up front* is a provisioning question and it is #356's, not
+// this file's: there is no path in the production image for the passkey either,
+// and inventing a second one here would be the mechanism this repository asks
+// not to add. Until #356 exists there is therefore **no in-image way to
+// re-pin**: nothing erases the `attadipa_mesh` namespace, so a watch whose
+// pinned node was factory-reset, or which is moved to another node, needs
+// `idf.py erase-flash` (which also takes the bonds and the time metadata) or
+// #356. The screen says which node is refused and which one is wanted, so that
+// state is visible without a serial cable.
 constexpr const char* kMeshNvsNamespace = "attadipa_mesh";
 constexpr const char* kNodeKeyNvsKey    = "node";
 
@@ -206,11 +228,6 @@ std::atomic<std::uint64_t> connecting_addr{0};
 std::atomic<std::uint64_t> refused_addr{0};
 std::atomic<std::uint32_t> refused_until_ms{0};
 
-// Long enough that a scan does not walk straight back into the node it just
-// refused, short enough that a genuine re-pin (the owner factory-resets the
-// pinned node, or moves the watch to another) is a wait rather than a
-// reflash. Chosen, not derived, and nothing depends on the value.
-constexpr std::uint32_t kRefusedNodeCooldownMs = 60000;
 
 std::uint64_t packed_addr(const ble_addr_t& addr)
 {
@@ -227,9 +244,7 @@ bool addr_is_refused(const ble_addr_t& addr)
     if (refused == 0 || refused != packed_addr(addr)) return false;
     const std::uint32_t until = refused_until_ms.load();
     const std::uint32_t ms = static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
-    // Unsigned difference, so a wrap of the 32-bit millisecond counter reads as
-    // "expired" rather than as another 49 days of refusal.
-    if (static_cast<std::int32_t>(until - ms) <= 0) {
+    if (!attadipa::firmware::refusal_active(until, ms)) {
         refused_addr.store(0);
         return false;
     }
@@ -251,15 +266,44 @@ void node_key_prefix(const attadipa::core::MeshPeerId& id, char (&out)[9])
 
 // The pin is read once, before the worker starts, and written only by the
 // worker. Nothing else touches NVS in this file, so no lock is involved.
-bool load_node_pin(attadipa::core::MeshPeerId& out)
+//
+// THREE ANSWERS, NOT TWO. "Nothing is stored" is the ordinary state of a watch
+// out of the box and it is not a fault; "NVS would not answer" is a fault, and
+// a watch that reported it as the first one would silently adopt the next node
+// it met -- which is the defect #304 exists to remove, reappearing through the
+// storage layer.
+enum class PinRead : std::uint8_t {
+    Pinned,
+    Unpinned,
+    Unreadable,
+};
+
+PinRead load_node_pin(attadipa::core::MeshPeerId& out)
 {
     nvs_handle_t handle{};
-    if (nvs_open(kMeshNvsNamespace, NVS_READONLY, &handle) != ESP_OK) return false;
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READONLY, &handle);
+    // A namespace nothing has written to yet does not exist.
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return PinRead::Unpinned;
+    if (opened != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore pin: nvs_open: %s", esp_err_to_name(opened));
+        return PinRead::Unreadable;
+    }
     std::size_t size = out.public_key.size();
     const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,
                                        out.public_key.data(), &size);
     nvs_close(handle);
-    return err == ESP_OK && size == out.public_key.size();
+    if (err == ESP_ERR_NVS_NOT_FOUND) return PinRead::Unpinned;
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore pin: nvs_get_blob: %s", esp_err_to_name(err));
+        return PinRead::Unreadable;
+    }
+    if (size != out.public_key.size()) {
+        ESP_LOGE(kTag, "MeshCore pin is %u bytes, not %u; ignored",
+                 static_cast<unsigned>(size),
+                 static_cast<unsigned>(out.public_key.size()));
+        return PinRead::Unreadable;
+    }
+    return PinRead::Pinned;
 }
 
 bool store_node_pin(const attadipa::core::MeshPeerId& id)
@@ -830,7 +874,8 @@ int gap_event(ble_gap_event* event, void* arg)
         //
         // Unreachable on this device: `ble_sm_chk_repeat_pairing()`
         // (`host/src/ble_sm.c:990`) is called from `ble_sm_pair_req_rx()` alone
-        // (`:1956`, call at `:2079`), and a central never receives a Pairing
+        // (`host/src/ble_sm.c:1956`, call at `:2079`), and a central never
+        // receives a Pairing
         // Request. Kept because the callback still owes NimBLE an answer, and
         // because falling through would give the default one. The trigger this
         // firmware actually runs on is in BLE_GAP_EVENT_ENC_CHANGE below.
@@ -1135,7 +1180,7 @@ bool handle_send_room(Event& event)
 
 // Defined below handle_frame, which is its only caller: the identity settles
 // on a frame, so it reads as part of the frame path rather than ahead of it.
-void settle_node_identity();
+void settle_node_identity(std::uint32_t generation);
 
 void handle_frame(const Event& event)
 {
@@ -1156,65 +1201,114 @@ void handle_frame(const Event& event)
                  attadipa::core::to_string(provider.status().delivery));
     }
     if (!had_id && provider.status().has_node_id) {
-        settle_node_identity();
+        settle_node_identity(event.generation);
     }
 }
 
-// Called once per session, on the frame that first carries an identity. Three
-// outcomes and each one says which node it is on, because "it changed and
-// nothing said so" is the whole of #304.
-void settle_node_identity()
-{
-    attadipa::core::MeshPeerId node{};
-    if (!provider.node_id(node)) return;
-    char seen[9];
-    node_key_prefix(node, seen);
+// The production instantiation of `settle_node_pin()`. The other one is in
+// tests/test_session_owner.cpp, and there is one rule between them.
+struct RealPinOps {
+    // The session the identifying frame arrived on. Only the refuse path asks
+    // about it; see the header for why adoption does not.
+    std::uint32_t generation;
 
-    attadipa::core::MeshPeerId expected{};
-    if (!provider.pinned(expected)) {
-        // First node this watch has completed a handshake with. Adopting it is
-        // what makes every later session comparable to something; a write that
-        // fails is logged and not retried, so the next session adopts again
-        // rather than the watch pretending it has a pin it could not store.
-        if (store_node_pin(node)) {
-            provider.pin(node);
-            ESP_LOGW(kTag, "MeshCore node %s adopted as this watch's node", seen);
-        } else {
-            ESP_LOGE(kTag,
-                     "MeshCore node %s could not be stored; this watch stays "
-                     "unpinned and will attach to whichever node answers first",
-                     seen);
+    bool node_id(attadipa::core::MeshPeerId& out) const
+    {
+        return provider.node_id(out);
+    }
+    bool pinned(attadipa::core::MeshPeerId& out) const
+    {
+        return provider.pinned(out);
+    }
+    bool wrong_node() const { return provider.wrong_node(); }
+    bool store(const attadipa::core::MeshPeerId& id) { return store_node_pin(id); }
+    void adopt(const attadipa::core::MeshPeerId& id) { provider.pin(id); }
+
+    // Liveness, handle and peer address in ONE critical section. Read
+    // separately, the address could be the *replacement's*: the wrong node
+    // drops right after its SELF_INFO, the pinned node connects, and a refusal
+    // that read `connecting_addr` a moment later would cool down the pinned
+    // node and terminate its connection. `disconnect_fault()` above takes the
+    // same three under the same guard for the same reason.
+    attadipa::firmware::PinnedSession session() const
+    {
+        attadipa::firmware::PinnedSession live{};
+        SessionGuard guard;
+        live.live = owner.live(generation);
+        if (live.live) {
+            const std::uint16_t connection = owner.connection();
+            live.has_connection = connection != attadipa::link::kNoSessionHandle;
+            live.connection = connection;
+            live.peer_addr = connecting_addr.load();
         }
-        return;
+        return live;
     }
 
-    char want[9];
-    node_key_prefix(expected, want);
-    if (!provider.wrong_node()) {
-        ESP_LOGI(kTag, "MeshCore node %s, the pinned one", seen);
-        return;
-    }
-
-    // Identified and left alone. The bond is not deleted, nothing is written,
-    // and the node is not told anything -- the watch simply does not talk to
-    // it. `provider` has already stopped the handshake, so no contact sync and
-    // no send ever reached this node.
-    ESP_LOGW(kTag, "MeshCore node %s is not this watch's node %s; disconnecting",
-             seen, want);
-    const std::uint64_t addr = connecting_addr.load();
-    if (addr != 0) {
+    // Outside the guard, because `session_lock`'s rule is that nothing under it
+    // calls into NimBLE.
+    void cool_down(std::uint64_t addr)
+    {
         refused_addr.store(addr);
         refused_until_ms.store(
             static_cast<std::uint32_t>(esp_timer_get_time() / 1000) +
-            kRefusedNodeCooldownMs);
+            attadipa::firmware::kRefusedNodeCooldownMs);
     }
-    std::uint16_t connection = attadipa::link::kNoSessionHandle;
+    void disconnect(std::uint16_t connection)
     {
-        SessionGuard guard;
-        connection = owner.connection();
-    }
-    if (connection != attadipa::link::kNoSessionHandle) {
         (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+    }
+};
+
+// Called once per session, on the frame that first carries an identity. Every
+// outcome says which node it is on, because "it changed and nothing said so" is
+// the whole of #304. The decision itself is in meshcore_node_pin.h so that a
+// host test can reach it; what is here is the logging and the real Ops.
+void settle_node_identity(std::uint32_t generation)
+{
+    RealPinOps ops{generation};
+    attadipa::core::MeshPeerId node{};
+    attadipa::core::MeshPeerId expected{};
+    const attadipa::firmware::PinOutcome outcome =
+        attadipa::firmware::settle_node_pin(ops, node, expected);
+
+    char seen[9];
+    node_key_prefix(node, seen);
+    char want[9];
+    node_key_prefix(expected, want);
+
+    switch (outcome) {
+    case attadipa::firmware::PinOutcome::NoIdentity:
+        break;
+    case attadipa::firmware::PinOutcome::Adopted:
+        // What makes every later session comparable to something.
+        ESP_LOGW(kTag, "MeshCore node %s adopted as this watch's node", seen);
+        break;
+    case attadipa::firmware::PinOutcome::AdoptFailed:
+        // Logged and not retried, so the next session adopts again rather than
+        // the watch pretending it has a pin it could not store.
+        ESP_LOGE(kTag,
+                 "MeshCore node %s could not be stored; this watch stays "
+                 "unpinned and will attach to whichever node answers first",
+                 seen);
+        break;
+    case attadipa::firmware::PinOutcome::Pinned:
+        ESP_LOGI(kTag, "MeshCore node %s, the pinned one", seen);
+        break;
+    case attadipa::firmware::PinOutcome::Refused:
+        // Identified and left alone. The bond is not deleted, nothing is
+        // written, and the node is not told anything -- the watch simply does
+        // not talk to it. `provider` has already stopped the handshake, so no
+        // contact sync and no send ever reached this node.
+        ESP_LOGW(kTag,
+                 "MeshCore node %s is not this watch's node %s; disconnecting",
+                 seen, want);
+        break;
+    case attadipa::firmware::PinOutcome::SessionOver:
+        ESP_LOGD(kTag,
+                 "MeshCore node %s is not this watch's node %s, and the "
+                 "connection it arrived on is already over",
+                 seen, want);
+        break;
     }
 }
 
@@ -1503,20 +1597,59 @@ esp_err_t start_meshcore_ble()
     // unsynchronised.
     snapshot.availability = attadipa::core::Availability::Unprovisioned;
 
+    // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
+    // done. The only other call in the image is inside the UI --
+    // `firmware/main/waveshare_board.cpp:217` --
+    // "ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, \"initialize time metadata\");"
+    // -- and `firmware/main/attadipa_main.cpp:307` logs a UI failure and starts
+    // the mesh anyway, so on that path the pin would be read out of an
+    // uninitialised partition.
+    //
+    // Calling it twice is safe, VERIFIED against the pinned toolchain: the
+    // partition manager returns early for a partition it has already
+    // initialised (ESP-IDF v5.5.5,
+    // `components/nvs_flash/src/nvs_partition_manager.cpp:41-44` --
+    // "mStorage = lookup_storage_from_name(partition_label);" then
+    // "if (mStorage) { return ESP_OK; }").
+    //
+    // NO ERASE-AND-RETRY ON ESP_ERR_NVS_NO_FREE_PAGES HERE. That erase takes
+    // the BLE bonds and the time metadata with the pin; it is one policy for
+    // the whole image, and this file is not where it is decided. What this file
+    // owes is to say which of the two failures happened instead of reporting
+    // both as "unpinned".
+    const esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err != ESP_OK) {
+        ESP_LOGE(kTag,
+                 "NVS unavailable (%s): this watch can neither read nor store a "
+                 "MeshCore pin",
+                 esp_err_to_name(nvs_err));
+    }
+
     // Also before the worker exists, and for the same reason: `provider` is
     // worker-owned from the moment the task starts, and a pin written from
-    // here afterwards would be a second writer. A watch with nothing stored
-    // stays unpinned and adopts the first node it finishes a handshake with.
+    // here afterwards would be a second writer.
     attadipa::core::MeshPeerId pinned{};
-    if (load_node_pin(pinned)) {
+    switch (load_node_pin(pinned)) {
+    case PinRead::Pinned: {
         provider.pin(pinned);
         char want[9];
         node_key_prefix(pinned, want);
         ESP_LOGI(kTag, "MeshCore node pinned to %s", want);
-    } else {
+        break;
+    }
+    case PinRead::Unpinned:
         ESP_LOGI(kTag,
                  "no MeshCore node pinned; the first node that answers will be "
                  "adopted as this watch's node");
+        break;
+    case PinRead::Unreadable:
+        // Left unpinned, and said so as its own line: this watch will adopt,
+        // and the adoption will not stick either, because the same storage has
+        // to take the write.
+        ESP_LOGE(kTag,
+                 "MeshCore pin could not be read; this watch stays unpinned and "
+                 "will attach to whichever node answers first");
+        break;
     }
 
     RealBootOps ops;

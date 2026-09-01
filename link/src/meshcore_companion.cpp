@@ -103,6 +103,10 @@ void MeshCoreCompanion::reset_session()
     status_.node_id = core::MeshPeerId{};
     status_.has_node_id = false;
     wrong_node_ = false;
+    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared
+    // here. They are the two things on the mesh screen that have to survive the
+    // disconnect a refusal causes, or the screen goes blank at the moment it is
+    // the only report of why.
     status_.last_sender.fill('\0');
     status_.last_message.fill('\0');
     status_.delivery = core::MeshDelivery::None;
@@ -390,7 +394,17 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             // for contacts and nothing is sent through it -- and the transport
             // reads `wrong_node()` and decides.
             wrong_node_ = true;
+            // ...and this outlives the session, unlike `wrong_node_`. See
+            // MeshStatus in core/include/attadipa/core/mesh_service.h.
+            status_.refused_id = status_.node_id;
+            status_.has_refused = true;
             break;
+        }
+        if (pinned_set_) {
+            // The pinned node answered, so whatever was refused before is no
+            // longer what stands between this watch and its mesh.
+            status_.refused_id = core::MeshPeerId{};
+            status_.has_refused = false;
         }
         if (self_info_seen_) break;
         self_info_seen_ = true;
@@ -545,6 +559,8 @@ void MeshCoreCompanion::pin(const core::MeshPeerId& node)
 {
     pinned_ = node;
     pinned_set_ = true;
+    status_.pinned_id = node;
+    status_.has_pinned = true;
 }
 
 bool MeshCoreCompanion::pinned(core::MeshPeerId& out) const

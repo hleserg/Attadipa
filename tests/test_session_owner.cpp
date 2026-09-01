@@ -31,6 +31,7 @@
 #include "attadipa/link/meshcore_companion.h"
 #include "attadipa/link/session_owner.h"
 #include "meshcore_boot.h"
+#include "meshcore_node_pin.h"
 #include "meshcore_bond_recovery.h"
 #include "meshcore_forget_outcome.h"
 #include "meshcore_write_outcome.h"
@@ -48,6 +49,11 @@ using attadipa::link::SessionSnapshot;
 using attadipa::link::SessionPhase;
 using attadipa::link::SessionStep;
 using attadipa::firmware::classify_write_failure;
+using attadipa::firmware::kRefusedNodeCooldownMs;
+using attadipa::firmware::PinnedSession;
+using attadipa::firmware::PinOutcome;
+using attadipa::firmware::refusal_active;
+using attadipa::firmware::settle_node_pin;
 using attadipa::firmware::WriteOutcome;
 
 int failures = 0;
@@ -1225,6 +1231,188 @@ void resetting_the_provider_under_a_live_session_is_what_wedged_it()
     CHECK(!took_app_start(provider));
 }
 
+// ---------------------------------------------------------------------------
+// Which node this watch talks to (#304).
+//
+// The rule lives in firmware/main/meshcore_node_pin.h for the reason the boot
+// sequence above does: `settle_node_identity()` is ESP-IDF-only, so the four
+// outcomes, the cooldown and the millisecond wrap are unreachable from a host
+// unless the decision itself is compiled here. These cases drive the shipping
+// header, not a copy of it.
+//
+// What is *not* proven here is that a real node is refused on a real radio.
+// That is NOT EXECUTED — HARDWARE REQUIRED.
+
+struct FakePin {
+    // What the provider would answer.
+    bool has_node = true;
+    bool has_pin = false;
+    bool wrong = false;
+    attadipa::core::MeshPeerId node{};
+    attadipa::core::MeshPeerId pin{};
+    // What the transport would answer, and what it recorded.
+    PinnedSession live{};
+    bool store_ok = true;
+    bool stored = false;
+    bool adopted = false;
+    std::uint64_t cooled = 0;
+    int disconnected = -1;
+    int session_reads = 0;
+
+    bool node_id(attadipa::core::MeshPeerId& out) const
+    {
+        if (!has_node) return false;
+        out = node;
+        return true;
+    }
+    bool pinned(attadipa::core::MeshPeerId& out) const
+    {
+        if (!has_pin) return false;
+        out = pin;
+        return true;
+    }
+    bool wrong_node() const { return wrong; }
+    bool store(const attadipa::core::MeshPeerId&)
+    {
+        stored = store_ok;
+        return store_ok;
+    }
+    void adopt(const attadipa::core::MeshPeerId&) { adopted = true; }
+    PinnedSession session()
+    {
+        ++session_reads;
+        return live;
+    }
+    void cool_down(std::uint64_t addr) { cooled = addr; }
+    void disconnect(std::uint16_t connection)
+    {
+        disconnected = static_cast<int>(connection);
+    }
+};
+
+attadipa::core::MeshPeerId node_key_of(std::uint8_t first)
+{
+    attadipa::core::MeshPeerId id{};
+    id.public_key[0] = first;
+    return id;
+}
+
+void an_unpinned_watch_adopts_the_node_that_identified_itself()
+{
+    FakePin ops;
+    ops.node = node_key_of(0x5C);
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::Adopted);
+    CHECK(ops.stored);
+    CHECK(ops.adopted);
+    // Adoption asks nothing about the connection: the key was genuinely read,
+    // and a watch that forgot it because the link dropped afterwards would be
+    // unpinned for no reason.
+    CHECK(ops.session_reads == 0);
+    CHECK(ops.cooled == 0);
+    CHECK(ops.disconnected == -1);
+    CHECK(seen == ops.node);
+}
+
+void a_pin_that_could_not_be_written_leaves_the_watch_unpinned()
+{
+    FakePin ops;
+    ops.node = node_key_of(0x5C);
+    ops.store_ok = false;
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::AdoptFailed);
+    CHECK(!ops.stored);
+    // Not handed to the provider either. A watch that took the pin in RAM only
+    // would report a pin it loses on the next boot, and would stop adopting.
+    CHECK(!ops.adopted);
+}
+
+void the_pinned_node_is_left_alone()
+{
+    FakePin ops;
+    ops.node = node_key_of(0x5C);
+    ops.has_pin = true;
+    ops.pin = node_key_of(0x5C);
+    ops.wrong = false;
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::Pinned);
+    CHECK(!ops.stored);
+    CHECK(!ops.adopted);
+    CHECK(ops.disconnected == -1);
+    CHECK(expected == ops.pin);
+}
+
+void another_node_is_cooled_down_and_disconnected_and_nothing_is_written()
+{
+    FakePin ops;
+    ops.node = node_key_of(0x04);
+    ops.has_pin = true;
+    ops.pin = node_key_of(0x5C);
+    ops.wrong = true;
+    ops.live = {true, 0x0100F7F3336B9B61ULL, 42, true};
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::Refused);
+    CHECK(ops.cooled == 0x0100F7F3336B9B61ULL);
+    CHECK(ops.disconnected == 42);
+    // No pin is written and no bond is deleted: the wrong node is identified
+    // and left alone, which is the whole of #304's second half.
+    CHECK(!ops.stored);
+    CHECK(!ops.adopted);
+}
+
+void a_refusal_for_a_session_that_is_over_touches_nothing()
+{
+    // The defect this exists to keep out: the wrong node drops right after its
+    // SELF_INFO, the pinned node connects, and the worker then cools down the
+    // *pinned* node's address and terminates its connection.
+    FakePin ops;
+    ops.node = node_key_of(0x04);
+    ops.has_pin = true;
+    ops.pin = node_key_of(0x5C);
+    ops.wrong = true;
+    ops.live = {false, 0x0100AAAAAAAAAAAAULL, 7, true};
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::SessionOver);
+    CHECK(ops.cooled == 0);
+    CHECK(ops.disconnected == -1);
+}
+
+void a_handshake_with_no_key_settles_nothing()
+{
+    FakePin ops;
+    ops.has_node = false;
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::NoIdentity);
+    CHECK(!ops.stored);
+    CHECK(ops.session_reads == 0);
+}
+
+void a_refusal_outlives_a_millisecond_wrap_by_expiring_rather_than_by_lasting()
+{
+    // esp_timer's millisecond count wraps every 49 days. A refusal recorded
+    // just before the wrap must expire just after it, not run for another 49.
+    const std::uint32_t before_wrap = 0xFFFFFFF0U;
+    const std::uint32_t until = before_wrap + kRefusedNodeCooldownMs;  // wraps
+    CHECK(until < before_wrap);
+    CHECK(refusal_active(until, before_wrap));
+    CHECK(refusal_active(until, 0x00000005U));
+    CHECK(!refusal_active(until, until));
+    CHECK(!refusal_active(until, until + 1U));
+    // And the ordinary case, away from the boundary, both ways.
+    CHECK(refusal_active(60000U, 1U));
+    CHECK(!refusal_active(60000U, 60001U));
+    // A counter that has run for 25 days is not "before" a refusal recorded at
+    // 5 seconds: half the range apart is the one distance the sign cannot tell
+    // apart, and the rule is that a stale refusal expires rather than sticks.
+    CHECK(!refusal_active(5000U, 5000U + 0x80000000U));
+}
+
 }  // namespace
 
 int main()
@@ -1268,6 +1456,13 @@ int main()
     a_failed_worker_releases_in_reverse_acquisition_order();
     a_reconfigure_over_a_live_session_recycles_it_rather_than_stranding_the_provider();
     resetting_the_provider_under_a_live_session_is_what_wedged_it();
+    an_unpinned_watch_adopts_the_node_that_identified_itself();
+    a_pin_that_could_not_be_written_leaves_the_watch_unpinned();
+    the_pinned_node_is_left_alone();
+    another_node_is_cooled_down_and_disconnected_and_nothing_is_written();
+    a_refusal_for_a_session_that_is_over_touches_nothing();
+    a_handshake_with_no_key_settles_nothing();
+    a_refusal_outlives_a_millisecond_wrap_by_expiring_rather_than_by_lasting();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

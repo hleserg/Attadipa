@@ -176,6 +176,13 @@ void test_the_pin_outlives_the_session_and_the_identity_does_not()
     handshake_to_self_info(client, key_of(0x91));
     CHECK(client.wrong_node());
 
+    // Both halves of what the mesh screen shows: which node was turned away and
+    // which one this watch wants.
+    CHECK(client.status().has_refused);
+    CHECK(client.status().refused_id == key_of(0x91));
+    CHECK(client.status().has_pinned);
+    CHECK(client.status().pinned_id == id);
+
     client.disconnected(at(10));
     client.begin(at(11));
     client.peer_arriving(at(12));
@@ -186,6 +193,14 @@ void test_the_pin_outlives_the_session_and_the_identity_does_not()
     // node's verdict as this one's.
     CHECK(!client.status().has_node_id);
     CHECK(!client.wrong_node());
+
+    // ...and the refusal does NOT reset with it. A refused watch has no session
+    // at all, so every session-scoped field on the mesh screen is empty exactly
+    // when the refusal is the only thing that explains the screen.
+    CHECK(client.status().has_refused);
+    CHECK(client.status().refused_id == key_of(0x91));
+    CHECK(client.status().has_pinned);
+
     core::MeshPeerId still{};
     CHECK(client.pinned(still));
     CHECK(still == id);
@@ -200,6 +215,10 @@ void test_the_pin_outlives_the_session_and_the_identity_does_not()
     std::memcpy(&self[58], "Node", 4);
     CHECK(client.receive(self, sizeof(self), at(14)));
     CHECK(!client.wrong_node());
+    // The pinned node answered, so the refusal is no longer what stands between
+    // this watch and its mesh, and the screen stops saying it does.
+    CHECK(!client.status().has_refused);
+    CHECK(client.status().has_pinned);
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 2 && frame.bytes[0] == 22);
 }
