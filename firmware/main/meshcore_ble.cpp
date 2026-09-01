@@ -134,6 +134,26 @@ std::atomic_bool secure_pairing{false};
 std::atomic_bool reconnect_allowed{false};
 std::atomic_bool scan_report_seen{false};
 
+// One outstanding mesh send, claimed where the caller can still be told.
+//
+// `mesh-send` used to answer MeshOk for anything xQueueSend accepted, and #315
+// measured what that is worth: two requests, two successes, one ACK slot, and
+// the second RESP_CODE_SENT counted as a malformed frame. The queue cannot
+// answer the question the caller is actually asking -- whether *this* request
+// is the operation the node and the provider are now tracking -- because the
+// provider is worker-owned and the request runs on the USB task. So the slot is
+// claimed here, before the post, and released by the worker once the provider
+// says the operation reached a terminal outcome. A second request finds it
+// taken and is refused synchronously, which is the whole of the fix as far as
+// any caller can see.
+std::atomic_bool send_claimed{false};
+
+bool claim_send()
+{
+    bool free_slot = false;
+    return send_claimed.compare_exchange_strong(free_slot, true);
+}
+
 attadipa::core::MonotonicTime now()
 {
     return {static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
@@ -852,7 +872,10 @@ SessionCatchUp apply_lifecycle(SessionMark& applied)
     return catch_up;
 }
 
-void handle_send(const Event& event)
+// Both return whether the provider took ownership of the request. The worker
+// releases the send claim itself when they say no, because nothing downstream
+// will: the operation never became one.
+bool handle_send(const Event& event)
 {
     attadipa::core::MeshPeer peer{};
     for (std::size_t i = 0; i < service.peer_count(); ++i) {
@@ -863,16 +886,24 @@ void handle_send(const Event& event)
                 static_cast<std::size_t>(std::find(event.text.begin(),
                                                    event.text.end(), '\0') -
                                          event.text.begin());
-            (void)service.send_private(peer.id,
-                                       std::string_view(event.text.data(), length),
-                                       event.timestamp);
-            return;
+            if (service.send_private(peer.id,
+                                     std::string_view(event.text.data(), length),
+                                     event.timestamp)) {
+                return true;
+            }
+            // The provider refused: the link is not ready, or a send it has not
+            // finished is still in flight. Either way this request is over.
+            ESP_LOGW(kTag, "the provider refused the send; it is not in flight");
+            provider.send_abandoned();
+            return false;
         }
     }
     ESP_LOGW(kTag, "requested contact prefix is not in retained chat contacts");
+    provider.send_abandoned();
+    return false;
 }
 
-void handle_send_room(Event& event)
+bool handle_send_room(Event& event)
 {
     const std::size_t text_length = static_cast<std::size_t>(
         std::find(event.text.begin(), event.text.end(), '\0') - event.text.begin());
@@ -880,7 +911,11 @@ void handle_send_room(Event& event)
         event.room, std::string_view(event.password.data(), event.password_length),
         std::string_view(event.text.data(), text_length), event.timestamp);
     std::fill(event.password.begin(), event.password.end(), '\0');
-    if (!accepted) ESP_LOGW(kTag, "Room Server message rejected by provider");
+    if (!accepted) {
+        ESP_LOGW(kTag, "Room Server message rejected by provider");
+        provider.send_abandoned();
+    }
+    return accepted;
 }
 
 void handle_frame(const Event& event)
@@ -906,6 +941,11 @@ void mesh_task(void*)
 {
     Event event{};
     SessionMark applied{};
+    // Worker-local, like `applied`: the request task claims the slot, but only
+    // this task may release it, and only after it has seen the provider take
+    // the operation. A claim released on any earlier pass would let a second
+    // request in while the first was still sitting in the queue.
+    bool send_owned = false;
     for (;;) {
         const bool received =
             xQueueReceive(event_queue, &event, kPollTicks) == pdTRUE;
@@ -951,14 +991,31 @@ void mesh_task(void*)
                          provider.malformed_frames());
                 break;
             case EventKind::Send:
-                handle_send(event);
+                if (handle_send(event)) send_owned = true;
+                else send_claimed.store(false);
                 break;
             case EventKind::SendRoom:
-                handle_send_room(event);
+                if (handle_send_room(event)) send_owned = true;
+                else send_claimed.store(false);
                 break;
             }
-        } else {
-            provider.tick(now());
+        }
+        // Every pass, not only an idle one. A node that posts anything at all
+        // more often than kPollTicks -- adverts, LOG_RX_DATA, or a frame this
+        // build counts as malformed -- keeps the branch above taken, and a
+        // tick() that ran only in the `else` would never expire the ack budget
+        // while that lasted. The node's output is a peer's output
+        // (MESHCORE_PARSER_BOUNDS.md §5), so that input is not privileged.
+        // It costs nothing: liveness is disabled on this link, so link_.tick()
+        // has no work.
+        provider.tick(now());
+        // A terminal outcome -- confirmed, an explicit error, the ack budget
+        // running out, or the session resetting -- releases the slot for the
+        // next request. Read once per pass rather than signalled, for the same
+        // reason the lifecycle is: a signal can be missed, a state cannot.
+        if (send_owned && !provider.send_busy()) {
+            send_owned = false;
+            send_claimed.store(false);
         }
         if (catch_up.write_completed) {
             handle_write_result(catch_up.write_result, catch_up.write_generation);
@@ -1061,12 +1118,15 @@ bool meshcore_ble_send(const std::array<std::uint8_t, 6>& peer_prefix,
     if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
+    if (!claim_send()) return false;
     Event event{EventKind::Send};
     event.peer_prefix = peer_prefix;
     event.timestamp = timestamp;
     std::memcpy(event.text.data(), text.data(), text.size());
     event.text[text.size()] = '\0';
-    return post(event);
+    const bool posted = post(event);
+    if (!posted) send_claimed.store(false);
+    return posted;
 }
 
 bool meshcore_ble_send_room(
@@ -1078,6 +1138,7 @@ bool meshcore_ble_send_room(
         text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
+    if (!claim_send()) return false;
     Event event{EventKind::SendRoom};
     event.room = room;
     event.password_length = static_cast<std::uint8_t>(password.size());
@@ -1087,6 +1148,7 @@ bool meshcore_ble_send_room(
     event.text[text.size()] = '\0';
     const bool accepted = post(event);
     std::fill(event.password.begin(), event.password.end(), '\0');
+    if (!accepted) send_claimed.store(false);
     return accepted;
 }
 
