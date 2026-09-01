@@ -383,29 +383,29 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:727` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:736` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because `BoardTimeSink` and
 `save_time_metadata` are inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
 in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1539` "bool configure_meshcore_ble") has exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:378`
+(`meshcore_ble.cpp:1672` "bool configure_meshcore_ble") has exactly one caller,
+`BoardMeshSink::configure` (`waveshare_board.cpp:352`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM rather than
 storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
-(`meshcore_ble.cpp:154` "std::atomic_bool configured", `meshcore_ble.cpp:156`
+(`meshcore_ble.cpp:155` "std::atomic_bool configured", `meshcore_ble.cpp:157`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
-that sets `configured` **true** (`meshcore_ble.cpp:1247`
-"configured.store(true)", `meshcore_ble.cpp:1248`
+that sets `configured` **true** (`meshcore_ble.cpp:1341`
+"configured.store(true)", `meshcore_ble.cpp:1342`
 "reconnect_allowed.store(true)" — every other write clears them), and
-`start_scan()` returns unless both are true (`meshcore_ble.cpp:359`
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:403`
 "void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
 bond buys nothing without a scan.
 
 One other event re-arms `reconnect_allowed`: `ForgetBond`
-(`meshcore_ble.cpp:1366` "reconnect_allowed.store(true)"), which is #325's
+(`meshcore_ble.cpp:1460` "reconnect_allowed.store(true)"), which is #325's
 recovery from a stale bond. It changes nothing here — it is reached only
 through `MeshForgetBond`, inside the same `#if`, and it re-arms a scan that
 `configured` still gates. A product image cannot reach it and would gain
@@ -423,9 +423,9 @@ never appears.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:1463` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:1557` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:1484` "xTaskCreate(mesh_task") for a subsystem that can never
+(`meshcore_ble.cpp:1578` "xTaskCreate(mesh_task") for a subsystem that can never
 scan. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is
