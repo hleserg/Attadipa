@@ -2048,6 +2048,50 @@ void an_uncollected_outcome_does_not_answer_the_request_after_it()
     CHECK(last_req_id(rig.sink) == 22);
 }
 
+void a_new_hello_drops_the_previous_hosts_forget_correlation()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    // Host A asks and times out. It exits with the cable still in, so
+    // `usb_serial_jtag_is_connected()` never falls and `on_disconnect` is NOT
+    // called -- which is exactly why the correlation is still here.
+    rig.send(request(Opcode::MeshForgetBond, 3), 1000);
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+
+    // Host B opens the port. Its ids restart at 1, so its forget-bond will be
+    // req_id 3 as well: the number host A's answer is addressed to.
+    HelloBody hello;
+    hello.protocol_version = kDebugProtocolVersion;
+    std::uint8_t body[kHelloBodyBytes] = {};
+    encode_hello(hello, body, sizeof(body));
+    rig.send(request(Opcode::Hello, 1, body, sizeof(body)), 2000);
+    CHECK(rig.sink.last_is(Opcode::HelloOk));
+    const std::size_t after_hello = rig.sink.messages.size();
+
+    // The worker finishes here -- in the poll between `HelloOk` and host B's
+    // request arriving, which is the window the host-side eviction cannot see.
+    mesh.outcome = MeshSinkResult::Failed;
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == after_hello);
+
+    // Host B's own request is served normally, and answered with its own
+    // outcome rather than with host A's `Refused`.
+    mesh.forget_result = MeshSinkResult::Pending;
+    rig.send(request(Opcode::MeshForgetBond, 3), 3000);
+    CHECK(mesh.forget_calls == 2);
+    rig.bridge.tick(3100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == after_hello);
+
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(3200, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == after_hello + 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 3);
+}
+
 int main()
 {
     an_envelope_survives_a_round_trip();
@@ -2072,6 +2116,7 @@ int main()
     a_forget_bond_with_no_outcome_is_not_answered_by_a_guess();
     a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one();
     an_uncollected_outcome_does_not_answer_the_request_after_it();
+    a_new_hello_drops_the_previous_hosts_forget_correlation();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
     a_handshake_at_the_wrong_version_still_says_what_this_device_is();

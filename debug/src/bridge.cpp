@@ -383,6 +383,28 @@ void Bridge::handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::s
         send_error(req_id, ErrorCode::BadBody, emit, ctx);
         return;
     }
+    // A HELLO IS A NEW HOST, so the forget-bond correlation from the old one is
+    // dropped here for the same reason `on_disconnect` drops it: the stored
+    // req_id belongs to somebody who is gone.
+    //
+    // `on_disconnect` alone was not enough. It runs off
+    // `usb_serial_jtag_is_connected()`, which is a bus condition rather than
+    // "the process closed the tty", so a host that times out and exits with the
+    // cable in never triggers it. The next invocation then restarts its request
+    // ids at 1 and sends `mesh-forget-bond` as req_id 3, exactly as its
+    // predecessor did -- and a reply `tick` writes against the *old* 3, in the
+    // poll between this `HelloOk` and that request arriving, is matched by the
+    // new host as its own answer. `{"forgotten": true}` before the bond store
+    // was touched, which is #378 with the whole of the fix in place.
+    //
+    // The host-side eviction in `_allocate_req_id` closes the frame that
+    // arrived before the id was issued; this closes the one that arrives after.
+    // Not cancelling anything: the deletion is on the worker and the bond is
+    // the owner's, not the connection's. Clearing the correlation only says
+    // nobody is waiting for that answer -- and if one genuinely is still
+    // running, the sink still knows, because `reserve()` refuses and the next
+    // request is answered `Busy` rather than silently accepted.
+    forget_.active = false;
     // The version is reported, not enforced to be equal: ADR-0005 section 5
     // keeps version and capability set orthogonal, and a host one minor behind
     // should learn what it is talking to rather than be hung up on. This is
