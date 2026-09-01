@@ -276,13 +276,50 @@ simulator driving timed frames, or a board.
   from the ESP Component Registry. Covers display, touch, audio and SD only;
   declares `BSP_CAPS_IMU 0` and does **not** drive the QMI8658, AXP2101 or
   PCF85063 that are on the board.
-- **LilyGO** `Xinyuan-LilyGO/LilyGoLib` — MIT. Arduino-oriented, covers the
-  T-Watch family broadly, and carries the schematics and the authoritative pin
-  documentation.
-- **Open question T6:** depend on these, or take only the pin facts and write
-  Attadipa's own BSP? Apache-2.0 is compatible with GPLv3 but carries
-  notice and patent terms that must be preserved if code is vendored. This is a
-  reuse-ledger decision, not a default.
+- **LilyGO** `Xinyuan-LilyGO/LilyGoLib` — MIT, pinned for reading at
+  `38e6f8dee3ba78b340512af9a013365ef248a7d0`, v0.2.0. Arduino-oriented, covers
+  the T-Watch family broadly, and carries the schematics and the authoritative
+  pin documentation.
+- **T6 — RESOLVED 2026-09-01: take the facts, not the dependency.**
+  [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md). A board
+  backend composes official ESP-IDF components and hands the runtime an
+  `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t` — the seam
+  `waveshare_board.cpp:106-107` already exposes. **Neither vendor BSP becomes a
+  link-time dependency**, and the answer is the same for both because the reason
+  is the same: each carries product policy this project has decided differently,
+  and each is worth far more as evidence than as code. Evidence in
+  [TWATCH_S3_PLUS_BSP_REUSE](TWATCH_S3_PLUS_BSP_REUSE.md), researched under
+  [#328](https://github.com/hleserg/Attadipa/issues/328).
+
+  **No dependency is added by this resolution.** `LilyGoLib` is read, not
+  pinned; the components the decision relies on —
+  `espressif/esp_lcd_touch_ft5x06 1.1.1` and ESP-IDF's own
+  `esp_lcd_panel_st7789` — are already in
+  [`firmware/main/idf_component.yml`](../../firmware/main/idf_component.yml) and
+  already shipping on the Waveshare path. Apache-2.0 is compatible with GPLv3
+  but carries notice and patent terms that must be preserved if code is
+  vendored; the mechanics belong to
+  [#284](https://github.com/hleserg/Attadipa/issues/284).
+
+### SensorLib — evaluated, not adopted
+
+- **Source:** `lewisxhe/SensorLib@2b9e591f245e447d3d00ec8798c3f49b897882d9`,
+  version `0.4.1`, MIT, `idf: ">=4.4"` — a real ESP-IDF component rather than an
+  Arduino library with a manifest attached. Covers `PCF8563`, `BMA423` and
+  `DRV2605`, the three T-Watch parts Attadipa has no driver for.
+- **Licence boundary that the root `LICENSE` does not describe:**
+  `src/bosch/bma4xx/bma4.h` at that revision opens *"Copyright (c) 2023 Bosch
+  Sensortec GmbH … BSD-3-Clause"*, and the component manifest's `exclude` list
+  does **not** exclude `src/bosch/`, so those files ship with the component.
+  Notices must be retained for both licences.
+- **Status: `EVALUATE`, and deliberately not adopted for the first T-Watch
+  slice**, which is display and touch — neither of which SensorLib supplies
+  better than the components already pinned. Adding it to the slice that cannot
+  exercise it is how a dependency arrives unexamined. The audit it needs — size
+  delta after per-driver exclusion, error propagation, IRQ semantics, and the
+  BMA423 feature blob — belongs to the slice that adds the RTC and the IMU.
+- **Do not inherit LilyGoLib's pin:** its `library.json` pins SensorLib `0.3.1`,
+  which predates the FT6X36 interrupt and BMA423 fixes released in `0.3.3`.
 
 ### XPowersLib (AXP2101 driver)
 
