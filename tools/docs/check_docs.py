@@ -275,6 +275,14 @@ PLACEHOLDER = "EXAMPLE.md"
 # than a hardcoded list, and only when exactly one file answers to the name.
 BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:[-\u2013](\d+))?\b")
 
+# A CONTINUATION: `:271` with no path, meaning "the file the citation before it
+# named". The empty group(1) keeps the group numbering every other citation form
+# here uses -- group(2) first line, group(3) last -- so one reporter serves all
+# three. The closing backtick is a lookahead rather than part of the match, so
+# `match.end()` lands where it does for a backticked citation and the shared
+# fingerprint rule reads the same tail.
+CONTINUATION = re.compile(r"`():(\d+)(?:[-\u2013](\d+))?(?=`)")
+
 
 def bare_document_index(root: str) -> dict[str, str]:
     index: dict[str, list[str]] = {}
@@ -339,7 +347,8 @@ def tracked_files(root: str) -> set[str]:
 def check_citation_lines(root: str) -> list[str]:
     """A `file:line` citation points at a line that exists, is not blank, and --
     where the citation carries a fingerprint -- still says what it was cited
-    for."""
+    for. A bare `:line` gets the same treatment when, and only when, the
+    citation it continues is on the same line and resolved."""
     problems = []
     cache: dict[str, list[str] | None] = {}
 
@@ -399,14 +408,53 @@ def check_citation_lines(root: str) -> list[str]:
         following = text.splitlines()[1:] + [""]
         for lineno, line, _fenced in scan_lines(text):
             nxt = following[lineno - 1]
-            for match in list(CITATION.finditer(line)) + list(
-                BARE_CITATION.finditer(line)
+            # Sorted, because a continuation is checked against whatever citation
+            # precedes it and "precedes" is a position on the line, not the order
+            # two regexes happened to run in.
+            #
+            # ON THE SAME LINE, AND RESOLVED. Both halves of that are load-
+            # bearing, and the tree says why. Of 138 bare `:NN` forms in these
+            # documents, 77 have no citation within five lines of them at all and
+            # 55 continue a path into a tree this repository does not contain; a
+            # rule that scans backwards for a path binds by proximity, and
+            # proximity is not reference. Five lines above the `:134` in
+            # CLOCK_STATE_AND_CADENCE.md sits a citation to our `availability.h`,
+            # while the sentence carrying the `:134` says "InfiniTime's" -- a
+            # backward rule would verify a line of OUR file against a claim about
+            # somebody else's, and report the mismatch as a defect in the
+            # document. Binding to the anchor's RESOLVED target rather than to
+            # its path text is the other half: a citation this tree cannot
+            # resolve leaves no anchor at all, and a continuation of nothing is
+            # nothing. It does not second-guess the anchor either -- a
+            # continuation is exactly as trustworthy as the citation it
+            # follows, and never more.
+            anchor = ""
+            for match in sorted(
+                list(CITATION.finditer(line))
+                + list(BARE_CITATION.finditer(line))
+                + list(CONTINUATION.finditer(line)),
+                key=lambda found: found.start(),
             ):
+                if match.re is CONTINUATION:
+                    if anchor:
+                        body = lines_of(anchor)
+                        if body is not None:
+                            _report(
+                                problems, rel_self, lineno,
+                                os.path.relpath(anchor, root), match, body,
+                                line, nxt, source_target(anchor)
+                            )
+                    continue
                 cited, first, last = match.group(1), int(match.group(2)), match.group(3)
+                # A citation that fails to resolve clears the anchor rather than
+                # leaving the previous one standing: `:7` after it continues the
+                # file it follows, not the one before that.
+                anchor = ""
                 if cited in bare_index:
                     resolved = bare_index[cited]
                     body = lines_of(resolved)
                     if body is not None:
+                        anchor = resolved
                         _report(
                             problems, rel_self, lineno, cited, match, body,
                             line, nxt, source_target(resolved)
@@ -445,6 +493,7 @@ def check_citation_lines(root: str) -> list[str]:
                         if os.path.isfile(via):
                             body = lines_of(via)
                             if body is not None:
+                                anchor = via
                                 _report(problems, rel_self, lineno, cited,
                                         match, body, line, nxt,
                                         source_target(via))
@@ -510,6 +559,7 @@ def check_citation_lines(root: str) -> list[str]:
                 body = lines_of(resolved)
                 if body is None:
                     continue
+                anchor = resolved
                 _report(problems, rel_self, lineno, cited, match, body, line,
                         nxt, source_target(resolved))
     return problems

@@ -77,6 +77,9 @@ not enter the queue automatically.
   rots silently, because the line it lands on is real. `check_docs.py` requires
   the quote for a source target and then keeps it — that example is itself a
   live citation, checked like any other. For a `.md` target it stays optional.
+- A line number with no path — `:265` — continues the citation before it **on
+  the same line**, and nowhere else. Further off it is checked by nothing and a
+  reader has to guess which file it meant, so spell the path out there.
 - A blocker comment states reason, evidence, impact and one recommended next
   action; add `needs-owner` or `needs-hardware` only when that dependency is real.
 - Run the smallest meaningful checks that exercise the shipping seam. A test
