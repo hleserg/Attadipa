@@ -1,0 +1,405 @@
+#include "board_power.h"
+
+#include "power_button_edges.h"
+
+#include <new>
+
+#include "esp_check.h"
+#include "esp_lcd_co5300.h"
+#include "esp_log.h"
+#include "esp_sleep.h"
+
+namespace attadipa::firmware {
+namespace {
+
+constexpr char kTag[] = "board-power";
+
+// The PMU has no wake line to this SoC, so a button press is found by waking on
+// a timer and reading the AXP2101's latched edge. 100 ms is what the shipping
+// firmware used and this change does not re-tune it.
+constexpr std::uint64_t kPmuSleepPollUs = 100'000;
+constexpr std::uint64_t kDebugWakeDelayUs = 750'000;
+constexpr std::uint8_t kAxpInterruptStatus2 = 0x49;
+
+// The rail map of POWER_OWNERSHIP.md §6.1, as data.
+//
+// It is data because the research says so in the row that matters: "The ⚠️ row
+// is the single most important line in this document for anyone writing the
+// executable change. It belongs in a board-side table where a wrong call fails
+// a build or a test, not in prose."
+//
+// The distinction the table exists to keep is between the two reasons a rail is
+// not switched today. `NotAuthorised` is a rail that could be gated once a
+// measurement justifies it; `Never` is a rail that must not be gated whatever
+// any measurement says. `set_rail()` refuses both, so the day gating is
+// authorised is the day somebody relaxes that refusal — and without the table
+// the cheapest way to relax it is to delete it, which takes ALDO2 with it.
+enum class RailPolicy : std::uint8_t {
+  Never,          // no measurement can authorise this one
+  NotAuthorised,  // gateable in principle; nothing has measured the gain
+};
+
+struct Rail {
+  std::uint8_t voltage_register;  // 0 where the rail has no voltage of its own
+  const char *name;
+  RailPolicy policy;
+  const char *why;
+};
+
+constexpr Rail kRails[] = {
+    {0x82, "DC1", RailPolicy::Never,
+     "the main 3.3 V supply the board is brought up on"},
+    {0x92, "ALDO1", RailPolicy::NotAuthorised,
+     "analogue audio supply on net A3V3; gateable when audio holds no lease"},
+    {0x93, "ALDO2", RailPolicy::Never,
+     "not a supply: the R10 10 K pull-up that holds DSI_PWR_EN high. No GPIO "
+     "drives that pin and the panel is fed from VCC3V3, so switching this off "
+     "blanks the display by a route that reads as a wiring fault"},
+    {0x94, "ALDO3", RailPolicy::NotAuthorised,
+     "vibration motor, already gated at Q1 from GPIO18; a second-order saving"},
+    {0x95, "ALDO4", RailPolicy::NotAuthorised, "1.8 V, feeds nothing"},
+    {0, "BLDO1/BLDO2/CPUSLDO/DLDO1/DLDO2", RailPolicy::NotAuthorised,
+     "on from the factory, feed nothing; what they cost is UNKNOWN"},
+};
+
+// ALDO2 is the reason this table is not prose. If the row is ever edited to
+// something a measurement could unlock, the build stops here.
+static_assert(kRails[2].voltage_register == 0x93 &&
+                  kRails[2].policy == RailPolicy::Never,
+              "ALDO2 is the DSI_PWR_EN pull-up, not a supply: it may never be "
+              "gated (POWER_OWNERSHIP.md §6.1)");
+
+// What a domain would reach for if rail gating were authorised.
+//
+// Only Display maps, and it maps to the trap rather than to a supply: a reader
+// who asks this owner to cut display power is asking for ALDO2, and the answer
+// they need is why that is the wrong rail. The other domains have no rail on
+// this board — Radio and NodeLink live on the SoC, Gnss and Imu are not fitted
+// — and an invented mapping would be a hardware claim with no source.
+const Rail *rail_for(attadipa::core::PowerDomain domain) {
+  return domain == attadipa::core::PowerDomain::Display ? &kRails[2] : nullptr;
+}
+
+esp_err_t write_reg(i2c_master_dev_handle_t device, std::uint8_t reg,
+                    std::uint8_t value) {
+  const std::uint8_t bytes[] = {reg, value};
+  return i2c_master_transmit(device, bytes, sizeof(bytes), 100);
+}
+
+esp_err_t read_reg(i2c_master_dev_handle_t device, std::uint8_t reg,
+                   std::uint8_t *value) {
+  return i2c_master_transmit_receive(device, &reg, 1, value, 1, 100);
+}
+
+// The SoC's own bitmap, in this project's vocabulary.
+//
+// ESP-IDF returns `BIT(esp_sleep_wakeup_cause_t)`, so several bits can be set
+// at once — which is the whole reason ADR-0016 §6 replaced
+// `esp_sleep_get_wakeup_cause()`, whose own header says "This API will only
+// return one wakeup source. If multiple wakeup sources wake up at the same
+// time, the wakeup source information may be lost."
+//
+// GPIO maps to Touch because this owner arms the GPIO source for exactly one
+// pin. That is a claim about this file, and it is only true while this file is
+// the only one arming wake sources — which is what ADR-0016 §1 and its CI check
+// are for.
+std::uint16_t soc_causes_to_wake_sources(std::uint32_t causes) {
+  std::uint16_t sources = 0;
+  if ((causes & (1U << ESP_SLEEP_WAKEUP_TIMER)) != 0) {
+    sources |= attadipa::core::wake_bit(attadipa::core::WakeSource::Timer);
+  }
+  if ((causes & (1U << ESP_SLEEP_WAKEUP_GPIO)) != 0) {
+    sources |= attadipa::core::wake_bit(attadipa::core::WakeSource::Touch);
+  }
+  if ((causes & (1U << ESP_SLEEP_WAKEUP_UART)) != 0) {
+    sources |= attadipa::core::wake_bit(attadipa::core::WakeSource::Usb);
+  }
+  return sources;
+}
+
+class WaveshareHardware final : public attadipa::core::PowerHardware {
+public:
+  esp_err_t attach(i2c_master_dev_handle_t pmu, esp_lcd_panel_handle_t panel,
+                   gpio_num_t touch_interrupt, std::uint8_t awake_brightness) {
+    if (pmu == nullptr || panel == nullptr) {
+      return ESP_ERR_INVALID_ARG;
+    }
+    pmu_ = pmu;
+    panel_ = panel;
+    touch_interrupt_ = touch_interrupt;
+    awake_brightness_ = awake_brightness;
+    return ESP_OK;
+  }
+
+  void request_debug_timer_wake() { debug_timer_wake_ = true; }
+
+  bool suspend(attadipa::core::PowerDomain domain) override {
+    if (panel_ == nullptr) {
+      return false;
+    }
+    if (domain != attadipa::core::PowerDomain::Display) {
+      // No other consumer has a suspend path on this board yet, and saying yes
+      // to one that does not exist is how a plan starts believing it quiesced
+      // something.
+      ESP_LOGE(kTag, "no suspend path for %s",
+               attadipa::core::to_string(domain));
+      return false;
+    }
+    esp_err_t result = esp_lcd_panel_co5300_set_brightness(panel_, 0);
+    if (result == ESP_OK) {
+      result = esp_lcd_panel_disp_on_off(panel_, false);
+      if (result != ESP_OK) {
+        // Half-done is not done. The brightness went to zero and the panel is
+        // still on, so put the brightness back before reporting the failure:
+        // the owner will not call resume() for a suspend that never succeeded.
+        (void)esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+      }
+    }
+    if (result != ESP_OK) {
+      ESP_LOGE(kTag, "suspend display: %s", esp_err_to_name(result));
+      return false;
+    }
+    return true;
+  }
+
+  bool resume(attadipa::core::PowerDomain domain) override {
+    if (domain != attadipa::core::PowerDomain::Display || panel_ == nullptr) {
+      return false;
+    }
+    esp_err_t result = esp_lcd_panel_disp_on_off(panel_, true);
+    if (result == ESP_OK) {
+      result = esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+    }
+    if (result != ESP_OK) {
+      // This is the path that publishes Failed. The panel is on or off and
+      // nobody knows which, and a watch that reports Ready here is one showing
+      // a stale screen while answering nothing.
+      ESP_LOGE(kTag, "resume display: %s", esp_err_to_name(result));
+      return false;
+    }
+    return true;
+  }
+
+  bool set_rail(attadipa::core::PowerDomain domain, bool on) override {
+    // ADR-0016's Consequences: gating a rail to save power is not authorised by
+    // the ADR. It is authorised by a measurement, applied through this owner,
+    // and every measurement it would need is UNKNOWN or NOT EXECUTED. So every
+    // request is refused — but the table says which refusal this is, because
+    // "no measurement yet" and "never, whatever the measurement" are different
+    // answers and only one of them expires.
+    const Rail *rail = rail_for(domain);
+    if (rail == nullptr) {
+      ESP_LOGE(kTag, "refused to switch the %s rail %s: no rail on this board "
+                     "feeds that domain",
+               attadipa::core::to_string(domain), on ? "on" : "off");
+      return false;
+    }
+    ESP_LOGE(kTag, "refused to switch %s %s for %s: %s (%s)", rail->name,
+             on ? "on" : "off", attadipa::core::to_string(domain), rail->why,
+             rail->policy == RailPolicy::Never
+                 ? "never gateable"
+                 : "no measurement authorises gating it");
+    return false;
+  }
+
+  bool arm_wake(attadipa::core::WakeSource source) override {
+    switch (source) {
+    case attadipa::core::WakeSource::Timer: {
+      const std::uint64_t us =
+          debug_timer_wake_ ? kDebugWakeDelayUs : kPmuSleepPollUs;
+      const esp_err_t result = esp_sleep_enable_timer_wakeup(us);
+      if (result != ESP_OK) {
+        ESP_LOGE(kTag, "arm timer wake: %s", esp_err_to_name(result));
+        return false;
+      }
+      return true;
+    }
+    case attadipa::core::WakeSource::Touch: {
+      esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);
+      if (result == ESP_OK) {
+        result = esp_sleep_enable_gpio_wakeup();
+        if (result != ESP_OK) {
+          (void)gpio_wakeup_disable(touch_interrupt_);
+        }
+      }
+      if (result != ESP_OK) {
+        ESP_LOGE(kTag, "arm touch wake: %s", esp_err_to_name(result));
+        return false;
+      }
+      return true;
+    }
+    default:
+      break;
+    }
+    // Everything else, and Button above all. The AXP2101 has no wake line to
+    // this SoC: a press is found by reading register 0x49 during a timer wake,
+    // which is a poll and not an armed source. Returning true here would put
+    // the software's wake plan and the hardware's out of agreement in the one
+    // place nothing downstream can detect.
+    ESP_LOGE(kTag, "this board cannot arm %s as a wake source",
+             attadipa::core::to_string(source));
+    return false;
+  }
+
+  bool disarm_wake(attadipa::core::WakeSource source) override {
+    esp_err_t result = ESP_ERR_NOT_SUPPORTED;
+    switch (source) {
+    case attadipa::core::WakeSource::Timer:
+      result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+      break;
+    case attadipa::core::WakeSource::Touch:
+      result = gpio_wakeup_disable(touch_interrupt_);
+      if (result == ESP_OK) {
+        result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+      }
+      break;
+    default:
+      break;
+    }
+    if (result != ESP_OK) {
+      ESP_LOGE(kTag, "disarm %s: %s", attadipa::core::to_string(source),
+               esp_err_to_name(result));
+      return false;
+    }
+    return true;
+  }
+
+  bool sleep(attadipa::core::PowerState state,
+             attadipa::core::WakeCauses &causes) override {
+    // Consumed here rather than when the timer was armed, so that a
+    // transaction refused or rolled back before this point keeps it: the flag
+    // says "the next sleep that actually happens wakes on a debug timer", and
+    // a sleep that never happened has not spent it.
+    const bool debug_wake = debug_timer_wake_;
+    debug_timer_wake_ = false;
+
+    ESP_LOGI(kTag, "entering %s (touch + %s)",
+             attadipa::core::to_string(state),
+             debug_wake ? "debug timer" : "PMU polling");
+
+    for (;;) {
+      const esp_err_t result = esp_light_sleep_start();
+      if (result != ESP_OK) {
+        ESP_LOGE(kTag, "light sleep: %s", esp_err_to_name(result));
+        return false;
+      }
+
+      // Assigned, not accumulated. The PMU poll wakes on the timer every
+      // 100 ms and goes straight back down, so an episode that ends on a touch
+      // five minutes later has seen three thousand timer wakes -- and OR-ing
+      // them in would mean no wake this firmware ever reports is without
+      // Timer in it. What the report answers is why the sleep *ended*, and
+      // that read is itself a bitmap, so two sources arriving together still
+      // both survive.
+      const std::uint32_t soc = esp_sleep_get_wakeup_causes();
+      causes.from_soc = soc_causes_to_wake_sources(soc);
+      const bool by_gpio = (soc & (1U << ESP_SLEEP_WAKEUP_GPIO)) != 0;
+      const bool by_timer = (soc & (1U << ESP_SLEEP_WAKEUP_TIMER)) != 0;
+
+      if (by_gpio) {
+        // ADR-0016 §6: the pin is a corroborating signal, never the classifier.
+        // It used to *be* the classifier, and a GPIO wake with the line already
+        // released then fell through to "cause unknown".
+        if (gpio_get_level(touch_interrupt_) != 0) {
+          ESP_LOGW(kTag, "GPIO wake with the touch line already high");
+        }
+        (void)consume_power_edge();
+        return true;
+      }
+      if (!by_timer) {
+        // Something woke this that we did not arm. The owner reports it as an
+        // unexpected cause rather than swallowing it, which is the point.
+        return true;
+      }
+      if (debug_wake) {
+        return true;
+      }
+      if (consume_power_edge()) {
+        causes.derived |=
+            attadipa::core::wake_bit(attadipa::core::WakeSource::Button);
+        return true;
+      }
+
+      // Nothing to report. Re-arm the poll and go back down. The debug delay is
+      // deliberately not re-used: it applies to the first descent only.
+      const esp_err_t rearm = esp_sleep_enable_timer_wakeup(kPmuSleepPollUs);
+      if (rearm != ESP_OK) {
+        ESP_LOGE(kTag, "re-arm PMU poll: %s", esp_err_to_name(rearm));
+        return false;
+      }
+    }
+  }
+
+private:
+  // Read and clear the AXP2101's latched power-key edges. True means one was
+  // there, which on this board is the whole of "the button woke us".
+  bool consume_power_edge() const {
+    if (pmu_ == nullptr) {
+      return false;
+    }
+    std::uint8_t status = 0;
+    const esp_err_t read_result = read_reg(pmu_, kAxpInterruptStatus2, &status);
+    if (read_result != ESP_OK) {
+      ESP_LOGW(kTag, "read PMU while asleep: %s", esp_err_to_name(read_result));
+      return false;
+    }
+    const std::uint8_t edges = status & kAxpPowerEdges;
+    if (edges == 0) {
+      return false;
+    }
+    const esp_err_t clear_result = write_reg(pmu_, kAxpInterruptStatus2, edges);
+    if (clear_result != ESP_OK) {
+      ESP_LOGW(kTag, "clear PMU power edge: %s", esp_err_to_name(clear_result));
+      return false;
+    }
+    return true;
+  }
+
+  i2c_master_dev_handle_t pmu_ = nullptr;
+  esp_lcd_panel_handle_t panel_ = nullptr;
+  gpio_num_t touch_interrupt_ = GPIO_NUM_NC;
+  std::uint8_t awake_brightness_ = 0;
+  bool debug_timer_wake_ = false;
+};
+
+WaveshareHardware hardware;
+attadipa::core::PowerOwner owner(hardware);
+
+} // namespace
+
+esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
+  ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
+
+  // Preserve unrelated rails. The known-working board implementation needs
+  // DC1 plus ALDO1/2, so own only those outputs instead of blanking the PMU.
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x82, 0x12), kTag, "DC1 3.3 V");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x92, 0x1C), kTag, "ALDO1 3.3 V");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, "ALDO2 3.3 V");
+
+  std::uint8_t dcdc = 0;
+  std::uint8_t aldo = 0;
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "read LDO enables");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x80, dcdc | 0x01), kTag, "enable DC1");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,
+                      "enable ALDO1/2");
+
+  ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x, LDO enable 0x%02x", dcdc | 0x01,
+           aldo | 0x03);
+  return ESP_OK;
+}
+
+esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
+                            esp_lcd_panel_handle_t panel,
+                            gpio_num_t touch_interrupt,
+                            std::uint8_t awake_brightness) {
+  return hardware.attach(pmu, panel, touch_interrupt, awake_brightness);
+}
+
+attadipa::core::PowerOwner &board_power_owner() { return owner; }
+
+void board_power_request_debug_timer_wake() {
+  hardware.request_debug_timer_wake();
+}
+
+} // namespace attadipa::firmware

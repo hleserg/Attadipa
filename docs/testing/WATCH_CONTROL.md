@@ -415,8 +415,8 @@ So provisioning over the HIL image does not
 survive being flashed away — it does not survive a power cycle of the HIL image
 either, which is what shows the round trip never existed. A product image stays
 `Unprovisioned` for its whole life and nothing on the watch can change that:
-`mesh_screen_requested` (`waveshare_board.cpp:120`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:381`
+`mesh_screen_requested` (`waveshare_board.cpp:121`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:355`
 "mesh_screen_requested.store(true)", inside the same `#if`, so the mesh screen
 never appears.
 

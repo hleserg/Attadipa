@@ -1,5 +1,5 @@
 set(ATTADIPA_MAIN_SOURCES "attadipa_main.cpp" "waveshare_board.cpp"
-                          "physical_input.cpp")
+                          "physical_input.cpp" "board_power.cpp")
 if(CONFIG_BT_NIMBLE_ENABLED)
     list(APPEND ATTADIPA_MAIN_SOURCES "meshcore_ble.cpp")
 endif()

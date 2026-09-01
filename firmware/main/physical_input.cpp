@@ -1,22 +1,24 @@
 #include "physical_input.h"
 
+#include "board_power.h"
 #include "power_button_edges.h"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <new>
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_lcd_co5300.h"
 #include "esp_log.h"
-#include "esp_sleep.h"
 #include "esp_timer.h"
 #include "lvgl.h"
 
 #include "attadipa/core/input.h"
+#include "attadipa/core/power_owner.h"
 #include "attadipa/core/power_state.h"
 #include "attadipa/platform/board_profile.h"
 
@@ -29,8 +31,6 @@ constexpr std::uint32_t kPollMs = 5;
 constexpr std::uint8_t kButtonDebounceSamples = 2;
 constexpr std::uint32_t kPmuPollMs = 20;
 constexpr gpio_num_t kTouchInterrupt = GPIO_NUM_38;
-constexpr std::uint64_t kPmuSleepPollUs = 100'000;
-constexpr std::uint64_t kDebugWakeDelayUs = 750'000;
 constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;
 constexpr std::uint8_t kAxpInterruptStatus2 = 0x49;
 
@@ -44,7 +44,9 @@ public:
         awake_brightness_(awake_brightness), refresh_ui_(refresh_ui) {}
 
   attadipa::core::InputQueue &queue() { return input_queue_; }
-  std::uint32_t sleep_cycles() const { return sleep_cycles_; }
+  std::uint32_t sleep_cycles() const {
+    return attadipa::firmware::board_power_owner().cycles();
+  }
 
   attadipa::core::InputState &state() { return input_state_; }
 
@@ -118,24 +120,28 @@ private:
     return i2c_master_transmit(pmu_, bytes, sizeof(bytes), 100);
   }
 
-  bool consume_sleep_power_edge() const {
-    std::uint8_t status = 0;
-    const esp_err_t read_result = read_pmu(kAxpInterruptStatus2, status);
-    if (read_result != ESP_OK) {
-      ESP_LOGW(kTag, "read PMU while asleep: %s", esp_err_to_name(read_result));
-      return false;
+  // A name for a wake-source bitmask, for the one log line that explains a
+  // wake. "0x0005" is not an explanation, and a wake nobody can explain is a
+  // battery complaint nobody can debug.
+  static void describe_wake(char *out, std::size_t size, std::uint16_t mask) {
+    std::size_t used = 0;
+    out[0] = '\0';
+    for (std::uint8_t i = 0; i < attadipa::core::kWakeSourceCount; ++i) {
+      if ((mask & (1U << i)) == 0) {
+        continue;
+      }
+      const char *name =
+          attadipa::core::to_string(static_cast<attadipa::core::WakeSource>(i));
+      const int written = std::snprintf(out + used, size - used, "%s%s",
+                                        used == 0 ? "" : "+", name);
+      if (written <= 0 || static_cast<std::size_t>(written) >= size - used) {
+        return;
+      }
+      used += static_cast<std::size_t>(written);
     }
-    const std::uint8_t edges =
-        status & attadipa::firmware::kAxpPowerEdges;
-    if (edges == 0) {
-      return false;
+    if (used == 0) {
+      (void)std::snprintf(out, size, "UNKNOWN");
     }
-    const esp_err_t clear_result = write_pmu(kAxpInterruptStatus2, edges);
-    if (clear_result != ESP_OK) {
-      ESP_LOGW(kTag, "clear PMU power edge: %s", esp_err_to_name(clear_result));
-      return false;
-    }
-    return true;
   }
 
   void maybe_sleep() {
@@ -145,126 +151,70 @@ private:
         pointer_pressed_ || gpio_get_level(kTouchInterrupt) == 0) {
       return;
     }
-
     sleep_requested_ = false;
-    const std::uint16_t wake_plan =
-        attadipa::core::wake_bit(attadipa::core::WakeSource::Button) |
-        attadipa::core::wake_bit(attadipa::core::WakeSource::Touch) |
-        attadipa::core::wake_bit(attadipa::core::WakeSource::Timer);
-    if (!attadipa::core::wake_plan_is_legal(
-            attadipa::core::PowerState::LightSleep, wake_plan)) {
-      ESP_LOGE(kTag, "refused illegal LightSleep wake plan 0x%04x", wake_plan);
-      return;
-    }
 
-    esp_err_t result = gpio_wakeup_enable(kTouchInterrupt, GPIO_INTR_LOW_LEVEL);
-    if (result == ESP_OK) {
-      result = esp_sleep_enable_gpio_wakeup();
-    }
-    if (result == ESP_OK) {
-      result = esp_sleep_enable_timer_wakeup(
-          debug_timer_wake_ ? kDebugWakeDelayUs : kPmuSleepPollUs);
-    }
-    if (result != ESP_OK) {
-      ESP_LOGE(kTag, "arm LightSleep wake sources: %s",
-               esp_err_to_name(result));
-      return;
-    }
+    // The decision stays here -- whether the watch is quiet enough to sleep is
+    // a question about input, and this is where input lives. The *episode* is
+    // the power owner's: arming, suspending, sleeping, classifying and the
+    // unwind all happen in board_power.cpp, which is the only translation unit
+    // allowed to touch any of it (ADR-0016 §1).
+    attadipa::core::SleepPlan plan;
+    plan.state = attadipa::core::PowerState::LightSleep;
+    // Two sources, because two is what this board can arm. The power button is
+    // not a third: the AXP2101 has no wake line to this SoC, so a press is
+    // found by reading its latched edge during a timer wake and comes back as
+    // a derived cause. Naming it here would be a wake plan the hardware never
+    // agreed to.
+    plan.wake_sources =
+        attadipa::core::wake_bit(attadipa::core::WakeSource::Timer) |
+        attadipa::core::wake_bit(attadipa::core::WakeSource::Touch);
+    plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);
 
-    result = esp_lcd_panel_co5300_set_brightness(panel_, 0);
-    if (result == ESP_OK) {
-      result = esp_lcd_panel_disp_on_off(panel_, false);
-    }
-    if (result != ESP_OK) {
-      (void)esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
-      ESP_LOGE(kTag, "turn AMOLED off before LightSleep: %s",
-               esp_err_to_name(result));
-      return;
-    }
+    const attadipa::core::MonotonicTime now{
+        static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+    const attadipa::core::SleepReport report =
+        attadipa::firmware::board_power_owner().sleep(plan, now);
 
-    ESP_LOGI(kTag,
-             "display off; Active -> Idle -> LightSleep "
-             "(touch + %s)",
-             debug_timer_wake_ ? "debug timer" : "PMU polling");
-    esp_err_t sleep_result = ESP_OK;
-    esp_sleep_wakeup_cause_t cause = ESP_SLEEP_WAKEUP_UNDEFINED;
-    bool by_button = false;
-    bool by_touch = false;
-    bool by_timer = false;
-    for (;;) {
-      sleep_result = esp_light_sleep_start();
-      if (sleep_result != ESP_OK) {
-        break;
-      }
-      cause = esp_sleep_get_wakeup_cause();
-      by_touch = cause == ESP_SLEEP_WAKEUP_GPIO &&
-                 gpio_get_level(kTouchInterrupt) == 0;
-      if (by_touch) {
-        (void)consume_sleep_power_edge();
-        break;
-      }
-      if (cause != ESP_SLEEP_WAKEUP_TIMER) {
-        break;
-      }
-      if (debug_timer_wake_) {
-        by_timer = true;
-        break;
-      }
-      if (consume_sleep_power_edge()) {
-        by_button = true;
-        break;
-      }
-      sleep_result = esp_sleep_enable_timer_wakeup(kPmuSleepPollUs);
-      if (sleep_result != ESP_OK) {
-        break;
-      }
-    }
-    (void)esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-    debug_timer_wake_ = false;
-
-    const std::uint64_t pins = by_touch ? 1ULL << kTouchInterrupt : 0;
-
-    esp_err_t restore_result = esp_lcd_panel_disp_on_off(panel_, true);
-    if (restore_result == ESP_OK) {
-      restore_result =
-          esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
-    }
+    // The screen is back, or the owner never took it away. Either way LVGL has
+    // to be told, and on the refused paths it costs one redraw of a screen that
+    // was never dark.
     if (refresh_ui_ != nullptr) {
       refresh_ui_();
     }
     lv_obj_invalidate(lv_screen_active());
     lv_refr_now(nullptr);
 
-    if (sleep_result != ESP_OK) {
-      ESP_LOGE(kTag, "LightSleep failed: %s", esp_err_to_name(sleep_result));
-      if (restore_result != ESP_OK) {
-        ESP_LOGE(kTag, "restore AMOLED after failed LightSleep: %s",
-                 esp_err_to_name(restore_result));
-      }
+    if (report.overdue_leases != 0) {
+      // Reported, never reclaimed. A consumer holding a domain past its
+      // deadline is a bug in that consumer, and taking it away would turn it
+      // into a bug nobody can find.
+      ESP_LOGW(kTag, "power lease past its deadline on domains 0x%04x",
+               static_cast<unsigned>(report.overdue_leases));
+    }
+    if (report.unexpected_causes != 0) {
+      char named[96];
+      describe_wake(named, sizeof(named), report.unexpected_causes);
+      ESP_LOGE(kTag, "woke on a source nobody armed: %s", named);
+    }
+    if (!report.hardware_known) {
+      ESP_LOGE(kTag,
+               "power hardware state is unknown after a failed unwind; "
+               "availability is Failed until re-initialisation");
+    }
+
+    if (!report.slept()) {
+      ESP_LOGE(kTag, "LightSleep %s (blocked 0x%04x)",
+               attadipa::core::to_string(report.outcome),
+               static_cast<unsigned>(report.blocked_by));
       return;
     }
 
-    const std::uint32_t now_ms =
-        static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
-    ++sleep_cycles_;
-    const attadipa::core::WakeSource wake_source =
-        by_button  ? attadipa::core::WakeSource::Button
-        : by_touch ? attadipa::core::WakeSource::Touch
-                   : attadipa::core::WakeSource::Timer;
-    const bool wake_known = by_button || by_touch || by_timer;
-    const attadipa::core::WakeRecord wake{
-        attadipa::core::PowerState::LightSleep, wake_source,
-        attadipa::core::MonotonicTime{now_ms}};
-    ESP_LOGI(kTag,
-             "wake cycle %u: LightSleep -> Idle -> Active by %s "
-             "(cause=%d gpio=0x%llx)",
-             static_cast<unsigned>(sleep_cycles_),
-             wake_known ? attadipa::core::to_string(wake.by) : "UNKNOWN",
-             static_cast<int>(cause), static_cast<unsigned long long>(pins));
-    if (restore_result != ESP_OK) {
-      ESP_LOGE(kTag, "restore AMOLED after LightSleep: %s",
-               esp_err_to_name(restore_result));
-    }
+    char named[96];
+    describe_wake(named, sizeof(named), report.wake_causes);
+    ESP_LOGI(kTag, "wake cycle %u: LightSleep -> Idle -> Active by %s",
+             static_cast<unsigned>(
+                 attadipa::firmware::board_power_owner().cycles()),
+             named);
   }
 
   void poll_physical_touch() {
@@ -434,8 +384,11 @@ private:
         if (event.button == 0 &&
             event.type == attadipa::core::InputEventType::ButtonUp) {
           sleep_requested_ = true;
-          debug_timer_wake_ =
-              event.origin == attadipa::core::InputOrigin::Remote;
+          if (event.origin == attadipa::core::InputOrigin::Remote) {
+            // A remote button-up cannot be followed by a real finger, so the
+            // next sleep wakes on a timer instead of waiting for one.
+            attadipa::firmware::board_power_request_debug_timer_wake();
+          }
         }
         break;
       }
@@ -470,9 +423,7 @@ private:
   std::int16_t pointer_y_ = 0;
   std::size_t input_read_burst_ = 0;
   std::uint32_t last_pmu_poll_ms_ = 0;
-  std::uint32_t sleep_cycles_ = 0;
   bool sleep_requested_ = false;
-  bool debug_timer_wake_ = false;
   PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};
 };
 
@@ -493,6 +444,14 @@ esp_err_t start_physical_input(esp_lcd_touch_handle_t touch,
   if (board == nullptr || touch == nullptr || pmu == nullptr ||
       panel == nullptr || awake_brightness > 100 || refresh_ui == nullptr) {
     return ESP_ERR_INVALID_ARG;
+  }
+  // Bind the power owner before anything can ask it to sleep. This is the
+  // composition point: the touch interrupt pin is known here and nowhere else,
+  // and board_power.cpp is the only file that may act on it.
+  const esp_err_t power_result = attadipa::firmware::board_power_attach(
+      pmu, panel, kTouchInterrupt, awake_brightness);
+  if (power_result != ESP_OK) {
+    return power_result;
   }
   auto *candidate = new (std::nothrow)
       PhysicalInput(*board, touch, pmu, panel, awake_brightness, refresh_ui);

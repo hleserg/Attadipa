@@ -76,20 +76,31 @@ recursiveness and per-handle thread-safety caveat (§3.1), and the XPowersLib
 
 ## 2. What the shipping path actually does
 
+> **Sections 2 and 3 read the tree as it was at `144459f`, before the owner
+> this research produced existed.** [ADR-0016](../adr/0016-one-power-owner.md)
+> was accepted from it and then implemented, which moved most of the code cited
+> below into `firmware/main/board_power.cpp`. The citations follow the text to
+> where it lives now, so that they stay checkable rather than rotting into a
+> line number that lands on something real and unrelated; where the finding no
+> longer describes the current code, the paragraph says so. What the sections
+> record is why the owner was built, and that does not change.
+
 ### 2.1 One sleep transaction, in the input loop
 
 `maybe_sleep()` is the whole of it:
-[`firmware/main/physical_input.cpp:141`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:147`](../../firmware/main/physical_input.cpp) —
 "void maybe_sleep() {". It is the only caller of `esp_light_sleep_start()` in
-the tree — [`firmware/main/physical_input.cpp:195`](../../firmware/main/physical_input.cpp) —
-"esp_light_sleep_start()" — and the only caller of any `esp_sleep_enable_*`.
+the tree — now
+[`firmware/main/board_power.cpp:281`](../../firmware/main/board_power.cpp) —
+"const esp_err_t result = esp_light_sleep_start();" — and the only caller of any
+`esp_sleep_enable_*`.
 
 Its shape is already close to the transaction the issue asks for, and saying so
 matters: this is not a codebase that needs to be told what a power transaction
 is. It refuses on a busy input queue or a held button; it builds a wake plan and
 validates it against the product model before touching hardware —
-[`firmware/main/physical_input.cpp:155`](../../firmware/main/physical_input.cpp) —
-"attadipa::core::PowerState::LightSleep, wake_plan)) {"; it arms wake sources;
+[`firmware/main/physical_input.cpp:162`](../../firmware/main/physical_input.cpp) —
+"plan.state = attadipa::core::PowerState::LightSleep;"; it arms wake sources;
 it takes the AMOLED down; it sleeps in a loop that re-arms the PMU poll timer;
 it restores the panel and republishes the UI.
 
@@ -98,15 +109,17 @@ What it does not have is a way for anyone else to take part.
 ### 2.2 One rail writer, which is accidentally right
 
 `initialize_pmu()` programs three rails and enables two:
-[`firmware/main/waveshare_board.cpp:161`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/board_power.cpp:375`](../../firmware/main/board_power.cpp) —
 "DC1 3.3 V", then ALDO1 and
-[`firmware/main/waveshare_board.cpp:163`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/board_power.cpp:377`](../../firmware/main/board_power.cpp) —
 "ALDO2 3.3 V", enabling them read-modify-write at
-[`firmware/main/waveshare_board.cpp:173`](../../firmware/main/waveshare_board.cpp) —
-"ESP_RETURN_ON_ERROR(write_reg(state.pmu, 0x90, aldo | 0x03), kTag,". Its comment
+[`firmware/main/board_power.cpp:384`](../../firmware/main/board_power.cpp) —
+"ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,". Its comment
 states the discipline it is keeping —
-[`firmware/main/waveshare_board.cpp:159`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/board_power.cpp:373`](../../firmware/main/board_power.cpp) —
 "// Preserve unrelated rails. The known-working board implementation needs".
+The three writes moved into the owner unchanged; `initialize_pmu()` now calls
+`board_power_bring_up_rails()` and the boot sequence is byte-identical.
 
 Two things follow from D13 that this code could not have known when it was
 written.
@@ -158,13 +171,15 @@ Neither is a live defect. Both are the seam failing quietly, and both are the
 strongest available argument for the contract in §4 — because they are what
 "one owner, informally" degrades into on its own.
 
-**The armed wake plan is never reconciled with hardware.** Before sleeping, the
-code arms a GPIO wake:
-[`firmware/main/physical_input.cpp:160`](../../firmware/main/physical_input.cpp) —
-"esp_err_t result = gpio_wakeup_enable(kTouchInterrupt, GPIO_INTR_LOW_LEVEL);".
-On the way out it disarms exactly one source —
-[`firmware/main/physical_input.cpp:222`](../../firmware/main/physical_input.cpp) —
-"(void)esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);" — and
+**The armed wake plan is never reconciled with hardware.** *Fixed by the owner;
+this is what it was.* Before sleeping, the code armed a GPIO wake — the call is
+now [`firmware/main/board_power.cpp:218`](../../firmware/main/board_power.cpp) —
+"esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);",
+reached only from `arm_wake()` and journaled. On the way out it disarmed exactly
+one source — [`firmware/main/board_power.cpp:248`](../../firmware/main/board_power.cpp) —
+"result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);", which is now
+one arm of a `disarm_wake()` that the transaction calls for each source it
+recorded — and
 `esp_sleep_disable_wakeup_source` appears nowhere else in the tree. The GPIO
 wake configuration therefore persists across every cycle. It is harmless while
 every sleep entry arms the same plan, and it stops being harmless the moment a
@@ -181,11 +196,14 @@ and `sleep_requested_` already cleared. Nothing entered sleep and nothing
 disarmed. That is a partial transaction with no rollback, in the one place the
 firmware already treats as a transaction.
 
-**One wake cause is read where a bitmap is available.** The code reads
-[`firmware/main/physical_input.cpp:199`](../../firmware/main/physical_input.cpp) —
-"cause = esp_sleep_get_wakeup_cause();" and then decides touch by re-reading the
-pin: [`firmware/main/physical_input.cpp:201`](../../firmware/main/physical_input.cpp) —
-"gpio_get_level(kTouchInterrupt) == 0;". ESP-IDF's own header says of the
+**One wake cause is read where a bitmap is available.** *Fixed by the owner.*
+The code read `esp_sleep_get_wakeup_cause()` and then decided touch by
+re-reading the pin. It now reads the bitmap —
+[`firmware/main/board_power.cpp:294`](../../firmware/main/board_power.cpp) —
+"const std::uint32_t soc = esp_sleep_get_wakeup_causes();" — and the pin is a
+corroborating signal that only logs a warning:
+[`firmware/main/board_power.cpp:303`](../../firmware/main/board_power.cpp) —
+"if (gpio_get_level(touch_interrupt_) != 0) {". ESP-IDF's own header says of the
 single-cause API: *"This API will only return one wakeup source. If multiple
 wakeup sources wake up at the same time, the wakeup source information may be
 lost."* (`components/esp_hw_support/include/esp_sleep.h` at v5.5.5, lines
@@ -309,8 +327,8 @@ actually used, not the file.
 `getIrqStatus()` assembles three status bytes into one word (lines 2590–2596),
 and earlier revisions got the order wrong. Attadipa never assembles that word:
 it reads register `0x49` as a single byte and masks it —
-[`firmware/main/physical_input.cpp:123`](../../firmware/main/physical_input.cpp) —
-"const esp_err_t read_result = read_pmu(kAxpInterruptStatus2, status);" against
+[`firmware/main/board_power.cpp:341`](../../firmware/main/board_power.cpp) —
+"const esp_err_t read_result = read_reg(pmu_, kAxpInterruptStatus2, &status);" against
 the mask in `firmware/main/power_button_edges.h`. The known bug is real and the
 pin is right, and neither is currently load-bearing here.
 

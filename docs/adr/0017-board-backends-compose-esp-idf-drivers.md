@@ -18,9 +18,9 @@ The evidence is in
 under [#328](https://github.com/hleserg/Attadipa/issues/328). Four findings
 drive this decision, all read at a pinned revision or in a datasheet:
 
-1. **The shipping tree already has the seam.** `waveshare_board.cpp:106-107` —
+1. **The shipping tree already has the seam.** `waveshare_board.cpp:107-108` —
    "esp_lcd_panel_handle_t panel" — holds an `esp_lcd_panel_handle_t` and an
-   `esp_lcd_touch_handle_t` and hands them on; `physical_input.cpp:483-486` —
+   `esp_lcd_touch_handle_t` and hands them on; `physical_input.cpp:434-437` —
    "start_physical_input(esp_lcd_touch_handle_t touch" — takes exactly those
    two types. Nothing above that line knows which board it is. A second backend
    either reuses that
