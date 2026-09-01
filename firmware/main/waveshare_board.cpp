@@ -210,6 +210,40 @@ esp_err_t restore_time_metadata() {
 }
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
+// What `attadipa_time` held before a synchronization started. `present` is one
+// flag rather than one per key because `save_time_metadata()` is the only
+// writer of either and commits both together, so they are both there or
+// neither is -- and "neither" has to be restorable as *neither*: a watch that
+// has never been synchronized must not come back from a refused RTC write
+// holding a UTC offset it never accepted.
+struct TimeMetadata {
+  std::int16_t offset;
+  std::int64_t last_sync_utc;
+  bool present;
+};
+
+esp_err_t read_time_metadata(TimeMetadata *out) {
+  *out = TimeMetadata{};
+  nvs_handle_t handle{};
+  const esp_err_t open_err =
+      nvs_open(kTimeNvsNamespace, NVS_READONLY, &handle);
+  if (open_err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(open_err, kTag, "open time metadata to read");
+  esp_err_t err = nvs_get_i16(handle, kTimezoneNvsKey, &out->offset);
+  if (err == ESP_OK) {
+    err = nvs_get_i64(handle, kLastSyncNvsKey, &out->last_sync_utc);
+  }
+  nvs_close(handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(err, kTag, "read time metadata to read");
+  out->present = true;
+  return ESP_OK;
+}
+
 esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
   nvs_handle_t handle{};
   ESP_RETURN_ON_ERROR(
@@ -224,6 +258,58 @@ esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
   }
   nvs_close(handle);
   return err;
+}
+
+// Puts `previous` back after a refused RTC write. Erasing rather than writing
+// when nothing was there is the whole reason `TimeMetadata` carries a flag;
+// both keys were written by the call this is undoing, so neither erase can
+// report ESP_ERR_NVS_NOT_FOUND.
+esp_err_t roll_back_time_metadata(const TimeMetadata &previous) {
+  if (previous.present) {
+    return save_time_metadata(previous.offset, previous.last_sync_utc);
+  }
+  nvs_handle_t handle{};
+  ESP_RETURN_ON_ERROR(nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle),
+                      kTag, "open time metadata to roll back");
+  esp_err_t err = nvs_erase_key(handle, kTimezoneNvsKey);
+  if (err == ESP_OK) {
+    err = nvs_erase_key(handle, kLastSyncNvsKey);
+  }
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  return err;
+}
+
+// The PCF85063 half of a synchronization: write, read back, and check that
+// what came back is the UTC that was asked for. Its three failures are one
+// answer to the caller because the caller does the same thing for each --
+// roll the metadata back and report Failed.
+bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
+                          std::int64_t utc_seconds) {
+  const esp_err_t write_result = write_rtc(rtc);
+  if (write_result != ESP_OK) {
+    ESP_LOGW(kTag, "write PCF85063 time: %s", esp_err_to_name(write_result));
+    return false;
+  }
+  attadipa::firmware::RtcDateTime verified{};
+  attadipa::firmware::RtcDecodeStatus status{};
+  const esp_err_t read_result = read_rtc(&verified, &status);
+  if (read_result != ESP_OK) {
+    ESP_LOGW(kTag, "read PCF85063 after write failed: %s",
+             esp_err_to_name(read_result));
+    return false;
+  }
+  attadipa::core::WallTime verified_utc;
+  if (status != attadipa::firmware::RtcDecodeStatus::Valid ||
+      !wall_time_from_rtc(verified, verified_utc) ||
+      attadipa::core::seconds_between(attadipa::core::WallTime{utc_seconds},
+                                      verified_utc) > 1) {
+    ESP_LOGW(kTag, "PCF85063 readback did not match synchronized UTC");
+    return false;
+  }
+  return true;
 }
 #endif
 
@@ -305,7 +391,7 @@ public:
 
     // The metadata write goes first, and it IS the fail-closed check ahead of
     // the RTC write. #264's ledger names the shape: boot may already know the
-    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:755` --
+    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:842` --
     // "time metadata unavailable; continuing without it" logs it and carries
     // on -- and this function used to write and verify the PCF85063 anyway,
     // discovering only afterwards that nvs_open() could not succeed. That is a
@@ -314,12 +400,25 @@ public:
     // metadata first also covers a write failure boot cannot predict, which a
     // boot-time readiness flag would not.
     //
-    // The cost, stated rather than discovered in review: if the RTC write then
-    // fails, NVS carries a last-sync stamp for a synchronization that did not
-    // happen. `firmware/main/waveshare_board.cpp:220` --
-    // "err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);" is the only
-    // write of that key and nothing in the tree reads it, so it is inert
-    // today. Removing it is a stored-format decision, not this fix.
+    // Ordering alone only moves the partial update, which is what round 1 of
+    // this pull request's review said and the first version of this comment
+    // got wrong. It called the residue inert because nothing reads the
+    // last-sync stamp. That is true of `last_utc` and false of `tz_min`:
+    // `firmware/main/waveshare_board.cpp:199` --
+    // "err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);" -- puts it back
+    // into the time service on every boot, so a refused RTC write would have
+    // left the watch displaying an offset it never accepted, for good. Hence
+    // `previous`: the metadata is restored on every path out of here that does
+    // not reach `state.time_service = candidate`, which is what makes the
+    // sequence all-or-nothing rather than differently partial.
+    TimeMetadata previous{};
+    const esp_err_t previous_result = read_time_metadata(&previous);
+    if (previous_result != ESP_OK) {
+      ESP_LOGW(kTag, "read time metadata before write failed: %s",
+               esp_err_to_name(previous_result));
+      return attadipa::debug::TimeSinkResult::Failed;
+    }
+
     const esp_err_t metadata_result = save_time_metadata(
         request.timezone_offset_minutes, request.utc_seconds);
     if (metadata_result != ESP_OK) {
@@ -328,26 +427,14 @@ public:
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
-    const esp_err_t write_result = write_rtc(rtc);
-    if (write_result != ESP_OK) {
-      ESP_LOGW(kTag, "write PCF85063 time: %s",
-               esp_err_to_name(write_result));
-      return attadipa::debug::TimeSinkResult::Failed;
-    }
-    attadipa::firmware::RtcDateTime verified{};
-    attadipa::firmware::RtcDecodeStatus status{};
-    const esp_err_t read_result = read_rtc(&verified, &status);
-    attadipa::core::WallTime verified_utc;
-    if (read_result != ESP_OK) {
-      ESP_LOGW(kTag, "read PCF85063 after write failed: %s",
-               esp_err_to_name(read_result));
-      return attadipa::debug::TimeSinkResult::Failed;
-    }
-    if (status != attadipa::firmware::RtcDecodeStatus::Valid ||
-        !wall_time_from_rtc(verified, verified_utc) ||
-        attadipa::core::seconds_between(
-            attadipa::core::WallTime{request.utc_seconds}, verified_utc) > 1) {
-      ESP_LOGW(kTag, "PCF85063 readback did not match synchronized UTC");
+    if (!write_and_verify_rtc(rtc, request.utc_seconds)) {
+      const esp_err_t rollback = roll_back_time_metadata(previous);
+      if (rollback != ESP_OK) {
+        ESP_LOGE(kTag,
+                 "could not roll back time metadata: %s -- NVS holds a UTC "
+                 "offset for a synchronization the PCF85063 refused",
+                 esp_err_to_name(rollback));
+      }
       return attadipa::debug::TimeSinkResult::Failed;
     }
 
