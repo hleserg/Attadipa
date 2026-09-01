@@ -287,7 +287,7 @@ of the two answers is not known.**
 | Board | RTC | Interrupt | Status |
 |---|---|---|---|
 | T-Watch S3 | PCF8563 | **INT → GPIO 17** | VERIFIED — [HARDWARE_MATRIX](HARDWARE_MATRIX.md):98 |
-| Waveshare 2.06 | PCF85063ATL, `0x51` | **not recorded** — the row carries bus, address and rail, and no INT | **UNKNOWN** — HARDWARE_MATRIX:393 |
+| Waveshare 2.06 | PCF85063ATL, `0x51` | **not recorded** — the row carries bus, address and rail, and no INT | **UNKNOWN** — HARDWARE_MATRIX:393 "PCF85063ATL" |
 
 So on the T-Watch a per-minute RTC alarm has a routed line; on the Waveshare
 nobody has traced one. Neither has been exercised. Until then the boundary wake
@@ -595,12 +595,16 @@ case TypeRole::Title:
 ```
 
 So on the T-Watch **`type.display` — the token DESIGN_SYSTEM §4 defines as
-"watchface time" — resolves to 16 px.** A 16 px time on this face — 1.544"
-measured, [D15](VERIFIED_FACTS.md) — is not a watchface; it is a status bar.
-The argument held at the placeholder 1.3" too, and it holds harder here: the
-face is larger than the premise this paragraph used to carry, so the same 16 px
-covers less of it. On the Waveshare it resolves to 28 px, which on a
-410 × 502 panel is small for the same reason.
+"watchface time" — resolves to 16 px.** A 16 px time is 16 of the face's
+240 px — 6.7 % of it — and that is a status bar rather than a watchface. The
+diagonal never entered this argument and D15 does not change it: the
+measurement corrected the panel's physical size, not its pixel count, so the
+fraction is 6.7 % at the withdrawn 1.3" premise and 6.7 % at the measured
+1.544" ([D15](OPEN_QUESTIONS.md)). In millimetres the correction runs the other
+way — 240 px across 27.72 mm makes each pixel *larger* than the 1.3" premise
+implied, so the same 16 px covers 19 % more millimetres, not fewer — which is
+why §7.3 measures in the fraction and this paragraph does too. On the Waveshare
+it resolves to 28 px, which on a 410 × 502 panel is small for the same reason.
 
 That function is honestly labelled scaffolding in its own comment, and the
 comment gives the reason: `TypeRole` carries no sizes because final §51's four
@@ -788,8 +792,8 @@ panel, driver and duty cycle is **UNKNOWN** here, not "roughly the same".
 | the date format, per locale — long, medium or short, weekday or not | **Q5**. §7.3 shows the 240 px face cannot take a long one; the *choice* is the design's |
 | time zones and DST | **Q6**. Nothing in `core/` models a zone. A device that only ever shows local time can carry an offset; one that receives a node's timestamp cannot avoid the question |
 | whether Russian needs nominative month names as well as genitive | **Q7**, an ADR-0010 question (§7.2) |
-| whether the Waveshare's PCF85063 interrupt is routed at all | **D19**. HARDWARE_MATRIX:393 has bus, address and rail, and no INT, while the T-Watch's row has one — §4 |
-| whether GPIO 17 (T-Watch RTC INT) is usable as a wake source in each sleep state | **D19**, second half. It is *plausibly* inside the ESP32-S3's RTC-capable GPIO range; **not traced to the datasheet by this work**, and code must not depend on it until it is |
+| whether the Waveshare's PCF85063 interrupt is routed at all | **Not in the register**, and not D19 — that number is the Waveshare display-FPC part marking. HARDWARE_MATRIX:393 "PCF85063ATL" has bus, address and rail, and no INT, while the T-Watch's row has one — §4 |
+| whether GPIO 17 (T-Watch RTC INT) is usable as a wake source in each sleep state | **Not in the register** either, and the other half of the row above. It is *plausibly* inside the ESP32-S3's RTC-capable GPIO range; **not traced to the datasheet by this work**, and code must not depend on it until it is |
 | ~~which typeface, and therefore every number in §7~~ | **Resolved 2026-08-26:** Nunito Sans Regular 400; the Montserrat numbers in §7 remain historical measurements |
 
 **NOT EXECUTED — HARDWARE REQUIRED:**
