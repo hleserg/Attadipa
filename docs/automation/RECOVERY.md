@@ -45,10 +45,14 @@ gh run cancel <run-id>
 ```
 
 Cancelling a *writer* mid-run can leave a branch half-pushed and a repository
-claim behind. The watchdog releases a claim after two hours using the annotated
-tag's timestamp (or the historical label event for a legacy claim). Do not
-remove only `agent:working`: that would hide a live lock. Inspect or deliberately
-break it with the shared rule:
+claim behind. The watchdog releases a claim two hours after the annotated tag's
+timestamp **and only once the run behind the holder id has finished** — a holder
+is `agent-<run_id>-<attempt>`, and that run's status is the only evidence this
+repository has that the writer stopped. A **local** lease (`writer-start.sh`,
+holder `agent-i254-r1` and the like) has no such run and is never reaped: end it
+with `writer-start.sh finish`, or break it by hand. Do not remove only
+`agent:working`: that would hide a live lock. Inspect or deliberately break it
+with the shared rule:
 
 ```bash
 bash .github/scripts/claim.sh owner OWNER/REPO <n>
@@ -62,8 +66,12 @@ bash .github/scripts/claim.sh break OWNER/REPO <n>
 ### An issue is stuck on `agent:working`
 
 The run died, was cancelled, or is still live. The watchdog clears only a claim
-whose evidence is at least two hours old. `/ci-repair reset` also breaks the PR
-claim after its existing collaborator/whole-command checks. The agent's branch,
+that is at least two hours old *and* whose Actions run has completed; a local
+lease stays until someone runs `claim.sh break`, and the watchdog log names that
+command. A break that could not delete the ref reports failure and leaves
+`agent:working` on, so a stuck queue always has a visible owner.
+`/ci-repair reset` also breaks the PR claim after its existing
+collaborator/whole-command checks. The agent's branch,
 if it made one, remains — `git branch -r | grep claude/`.
 
 ### The queue is full or in incident mode

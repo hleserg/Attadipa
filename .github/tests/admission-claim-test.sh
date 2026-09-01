@@ -134,18 +134,29 @@ case "$method:$path" in
     else
       echo 'Reference already exists' >&2; exit 1
     fi ;;
-  GET:repos/o/r/git/ref/tags/attadipa-claims/7)
-    [ -d "$state/ref.lock" ] || exit 1
-    printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/ref.sha")" ;;
-  GET:repos/o/r/git/ref/tags/attadipa-claims/writer)
-    [ -d "$state/writer.lock" ] || exit 1
-    printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/writer.sha")" ;;
+  GET:repos/o/r/git/ref/tags/attadipa-claims/7 | GET:repos/o/r/git/ref/tags/attadipa-claims/writer)
+    # A ref that is not there and a ref that cannot be read are different
+    # answers, and claim.sh now only accepts the first as proof of absence.
+    # Real gh writes "gh: Not Found (HTTP 404)" and exits 1; reproduced here
+    # because a stub that exits silently would let the swallowing version pass.
+    if [ -n "${ATTADIPA_STUB_REF_GET_FAIL-}" ]; then
+      echo 'gh: Server Error (HTTP 500)' >&2; exit 1
+    fi
+    lock=ref; [ "${path##*/}" = writer ] && lock=writer
+    if [ ! -d "$state/$lock.lock" ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
+    printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/$lock.sha")" ;;
+  GET:repos/o/r/actions/runs/*)
+    # The completion evidence behind a hosted holder. No file: no readable run.
+    if [ ! -f "$state/run-status" ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
+    jq -nc --arg s "$(cat "$state/run-status")" '{status:$s}' ;;
   GET:repos/o/r/git/tags/*)
     cat "$state/tag.${path##*/}" ;;
-  DELETE:repos/o/r/git/refs/tags/attadipa-claims/7)
-    rm -rf "$state/ref.lock"; rm -f "$state/ref.sha" ;;
-  DELETE:repos/o/r/git/refs/tags/attadipa-claims/writer)
-    rm -rf "$state/writer.lock"; rm -f "$state/writer.sha" ;;
+  DELETE:repos/o/r/git/refs/tags/attadipa-claims/7 | DELETE:repos/o/r/git/refs/tags/attadipa-claims/writer)
+    if [ -n "${ATTADIPA_STUB_DELETE_REFUSED-}" ]; then
+      echo 'gh: Resource not accessible by integration (HTTP 403)' >&2; exit 1
+    fi
+    lock=ref; [ "${path##*/}" = writer ] && lock=writer
+    rm -rf "$state/$lock.lock"; rm -f "$state/$lock.sha" ;;
   *) echo "unexpected api call: $method $path" >&2; exit 64 ;;
 esac
 STUB
@@ -234,11 +245,116 @@ PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o
 [ ! -d "$work/state/ref.lock" ] && ! grep -Fxq agent:working "$work/state/labels" \
   && ok 'the winner releases ref and visible label' || bad 'the winner releases ref and visible label' 'claim remains'
 
-reset_state
-PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 crashed >/dev/null
-tag=$(cat "$work/state/ref.sha"); jq '.tagger.date="2000-01-01T00:00:00Z"' "$work/state/tag.$tag" > "$work/state/old"; mv "$work/state/old" "$work/state/tag.$tag"
+# A claim is only stale once its holder is proven finished. A hosted holder is
+# `agent-<run_id>-<attempt>`, and the run behind it answers that question.
+age_tag() {
+  local tag; tag=$(cat "$work/state/ref.sha")
+  jq '.tagger.date="2000-01-01T00:00:00Z"' "$work/state/tag.$tag" > "$work/state/old"
+  mv "$work/state/old" "$work/state/tag.$tag"
+}
+claimed() { PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "${1:-$CLAIM}" acquire o/r 7 "${2:-agent-4242-1}" >/dev/null 2>&1; age_tag; }
+
+reset_state; printf 'completed\n' > "$work/state/run-status"; claimed
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
-[ ! -d "$work/state/ref.lock" ] && ok 'a crashed writer is reaped after the stale bound' || bad 'a crashed writer is reaped after the stale bound' 'lock remains'
+[ ! -d "$work/state/ref.lock" ] && ok 'a crashed writer whose run has finished is reaped after the stale bound' \
+  || bad 'a crashed writer whose run has finished is reaped after the stale bound' 'lock remains'
+
+# #254, root cause 2: age was the whole test, so a local writer still typing was
+# indistinguishable from a dead one. It has no Actions run and never will.
+reset_state; claimed "$CLAIM" agent-i254-r1
+set +e
+local_reap_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+  bash "$CLAIM" reap o/r 7 7200 2>&1 >/dev/null)"; local_reap_rc=$?
+set -e
+[ "$local_reap_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'an ancient local lease is not reaped by age alone' \
+  || bad 'an ancient local lease is not reaped by age alone' "rc=$local_reap_rc, lock gone=$([ -d "$work/state/ref.lock" ] || echo yes)"
+case "$local_reap_err" in
+  *'claim.sh break o/r 7'*) ok 'refusing to reap names the command that releases it by hand' ;;
+  *) bad 'refusing to reap names the command that releases it by hand' "stderr was: $(printf '%s' "$local_reap_err" | tr '\n' ' ')" ;;
+esac
+
+# The same refusal for a hosted holder whose run is still going: an agent that
+# is slow is not an agent that died.
+reset_state; printf 'in_progress\n' > "$work/state/run-status"; claimed
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null 2>&1
+live_reap_rc=$?
+set -e
+[ "$live_reap_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'a hosted claim whose run is still going is not reaped' \
+  || bad 'a hosted claim whose run is still going is not reaped' "rc=$live_reap_rc"
+
+# ...and for a hosted-shaped holder whose run cannot be read at all. Unknown is
+# not finished.
+reset_state; claimed
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null 2>&1
+norun_reap_rc=$?
+set -e
+[ "$norun_reap_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'a run that cannot be read is not proof the writer stopped' \
+  || bad 'a run that cannot be read is not proof the writer stopped' "rc=$norun_reap_rc"
+
+# #254, root cause 1: recovery reported success while the ref survived, and took
+# the visible label off first, so the queue was held by a claim nobody could see.
+reset_state; claimed
+set +e
+break_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_DELETE_REFUSED=1 \
+  bash "$CLAIM" break o/r 7 2>"$work/break.err")"; break_rc=$?
+set -e
+[ "$break_rc" -ne 0 ] && [ "$break_out" != 'claim cleared' ] \
+  && ok 'a DELETE the token may not make is not a cleared claim' \
+  || bad 'a DELETE the token may not make is not a cleared claim' "rc=$break_rc, stdout=$break_out"
+[ -d "$work/state/ref.lock" ] && grep -Fxq agent:working "$work/state/labels" \
+  && ok 'a refused break leaves the claim visible instead of hiding it' \
+  || bad 'a refused break leaves the claim visible instead of hiding it' 'the label went but the lock stayed'
+grep -q 'refs/tags/attadipa-claims/7' "$work/break.err" \
+  && ok 'the refusal names the ref that still holds the queue' \
+  || bad 'the refusal names the ref that still holds the queue' "stderr was: $(tr '\n' ' ' < "$work/break.err")"
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4243-1 >/dev/null 2>&1
+after_break_rc=$?
+set -e
+[ "$after_break_rc" -eq 3 ] && ok 'no second writer follows a break that did not clear' \
+  || bad 'no second writer follows a break that did not clear' "rc=$after_break_rc"
+
+# A 500 is not a 404. The version this replaced treated any unreadable ref as an
+# absent one, which is the same bug wearing a different failure.
+reset_state; claimed
+set +e
+transient_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+  ATTADIPA_STUB_DELETE_REFUSED=1 ATTADIPA_STUB_REF_GET_FAIL=1 bash "$CLAIM" break o/r 7 2>/dev/null)"
+transient_rc=$?
+set -e
+[ "$transient_rc" -ne 0 ] && [ "$transient_out" != 'claim cleared' ] && [ -d "$work/state/ref.lock" ] \
+  && ok 'an unreadable ref is never read as an absent one' \
+  || bad 'an unreadable ref is never read as an absent one' "rc=$transient_rc, stdout=$transient_out"
+
+# #254, root cause 3: a claim that failed after its ref existed left that ref
+# behind, and nothing carried the holder id, so no later release could match it.
+# `issuefail` makes the label edit fail exactly where production's would.
+reset_state
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+  bash "$CLAIM" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+orphan_rc=$?
+set -e
+[ "$orphan_rc" -eq 2 ] && [ ! -d "$work/state/ref.lock" ] \
+  && ok 'a claim that fails after its ref exists takes the ref with it' \
+  || bad 'a claim that fails after its ref exists takes the ref with it' "rc=$orphan_rc, orphan=$([ -d "$work/state/ref.lock" ] && echo yes)"
+
+reset_state
+set +e
+orphan_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+  ATTADIPA_STUB_DELETE_REFUSED=1 bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+set -e
+case "$orphan_err" in
+  *'left behind'*'refs/tags/attadipa-claims/7'*)
+    ok 'an orphan it cannot remove is named rather than left silent' ;;
+  *) bad 'an orphan it cannot remove is named rather than left silent' \
+         "stderr was: $(printf '%s' "$orphan_err" | tr '\n' ' ')" ;;
+esac
 
 reset_state; printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
@@ -414,6 +530,80 @@ PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$mutant" acquire 
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$mutant" acquire o/r 7 mutant-b >/dev/null 2>&1 & mb=$!
 wait "$ma"; rma=$?; wait "$mb"; rmb=$?
 if [ "$rma" -eq 0 ] && [ "$rmb" -eq 0 ]; then ok 'removing the atomic create makes the race mutation red'; else bad 'removing the atomic create makes the race mutation red' "mutation did not recreate race ($rma,$rmb)"; fi
+
+# The three fixes, each deleted on its own, must turn one of the cases above red.
+echo 'Deleting each #254 fix makes its case red'
+
+swallow="$work/swallow-delete.sh"
+sed 's#err="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>&1 >/dev/null)"#err="gh: Not Found (HTTP 404)"#' \
+  "$CLAIM" > "$swallow"
+if grep -q 'err="$(gh api' "$swallow"; then
+  bad 'a delete_ref that assumes success makes the mutation red' \
+      'the mutation did not replace the confirmation -- the line moved, repoint this sed'
+else
+  reset_state; claimed
+  set +e
+  mutant_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_DELETE_REFUSED=1 \
+    bash "$swallow" break o/r 7 2>/dev/null)"
+  set -e
+  [ "$mutant_out" = 'claim cleared' ] && [ -d "$work/state/ref.lock" ] \
+    && ok 'a delete_ref that assumes success makes the mutation red' \
+    || bad 'a delete_ref that assumes success makes the mutation red' \
+          "expected the mutant to report a claim it did not clear, got: $mutant_out"
+fi
+
+byage="$work/reap-by-age.sh"
+sed 's/if ! holder_finished "$repo" "$holder"; then/if false; then/' "$CLAIM" > "$byage"
+if grep -q 'if ! holder_finished' "$byage"; then
+  bad 'a reap that trusts the clock makes the mutation red' \
+      'the mutation did not remove the completion check -- repoint this sed'
+else
+  reset_state; claimed "$CLAIM" agent-i254-r1
+  set +e
+  PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$byage" reap o/r 7 7200 >/dev/null 2>&1
+  set -e
+  [ ! -d "$work/state/ref.lock" ] && ok 'a reap that trusts the clock makes the mutation red' \
+    || bad 'a reap that trusts the clock makes the mutation red' 'the mutant left the live local lease alone'
+fi
+
+keeper="$work/keep-orphan.sh"
+sed 's/    discard_own_ref "$repo" "$number" "$tag_sha"/    :/' "$CLAIM" > "$keeper"
+if grep -q '^    discard_own_ref' "$keeper"; then
+  bad 'an acquire that keeps its failed ref makes the mutation red' \
+      'the mutation did not remove the cleanup -- repoint this sed'
+else
+  reset_state
+  set +e
+  PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+    bash "$keeper" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+  set -e
+  [ -d "$work/state/ref.lock" ] && ok 'an acquire that keeps its failed ref makes the mutation red' \
+    || bad 'an acquire that keeps its failed ref makes the mutation red' 'the mutant left no orphan'
+fi
+
+# A claim is a git ref and a run status is Actions data. The recovery jobs asked
+# for neither, so every DELETE they made was refused -- and reported cleared.
+job_permissions() {
+  awk -v job="  $2:" '
+    $0 == job { seen = 1; next }
+    seen && /^  [a-z0-9_-]+:$/ { exit }
+    seen && /^    permissions:$/ { perms = 1; next }
+    perms && /^    [a-z]/ { exit }
+    perms { print }
+  ' "$1"
+}
+case "$(job_permissions "$WATCHDOG" stuck)" in
+  *'contents: write'*) ok 'the watchdog job that reaps claims may write refs' ;;
+  *) bad 'the watchdog job that reaps claims may write refs' 'contents is still read-only' ;;
+esac
+case "$(job_permissions "$WATCHDOG" stuck)" in
+  *'actions: read'*) ok 'the watchdog job that reaps claims may read the run behind a holder' ;;
+  *) bad 'the watchdog job that reaps claims may read the run behind a holder' 'no actions permission' ;;
+esac
+case "$(job_permissions "$REPAIR" reset)" in
+  *'contents: write'*) ok 'the CI repair reset may actually break the claim it reports' ;;
+  *) bad 'the CI repair reset may actually break the claim it reports' 'contents is still read-only' ;;
+esac
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
