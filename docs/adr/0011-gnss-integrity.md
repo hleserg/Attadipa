@@ -408,12 +408,19 @@ coordinate*, which is the same failure as the one §5.1 records: a document
 describing the intended behaviour beside an implementation that had only half of
 it.
 
-**What this does not close, so that it is a task rather than a silence.** The
-second provider's frame arrives as a bare `GnssObservation`, which carries no
+**And the other side is now told the same way, which closes T-154.** The second
+provider's frame is still a bare `GnssObservation` carrying no
 `PositionValidity` — that is a `classify()` verdict a caller reaches with a
-policy — so a *node* relaying its own retained coordinate is still comparable,
-and the fix above is one-sided until the call learns the other side's verdict.
-`fix_type` is present in the frame and is not the same question. **T-154.**
+policy, and `fix_type` is present in the frame and is not the same question — so
+the verdict is passed in:
+`compare_provider(other, other_validity, now)` has no overload without it. A
+remote `NoFix` or `Stale` is silence: it neither raises `ProviderDisagreement`
+nor clears a live one, and it does not re-stamp the anchor
+`provider_departure_grace` is measured from, so a node relaying fix-less frames
+at 1 Hz can still go quiet. `Valid` and `Degraded` report and clear as before.
+Left one-sided, a node under canopy accused this device with a coordinate it
+had already disowned — 30 points, which reaches the default `degrade_at` on its
+own — and could retract a live allegation by happening to retain ours. #343.
 
 ### 6. The receiver's verdict is the strongest single input, and it is not the truth
 

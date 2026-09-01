@@ -457,7 +457,12 @@ Result run(const Scenario& scenario, const TrustPolicy& policy,
             // A second provider's answer for the same moment. It is compared,
             // never adopted: disagreement is evidence about both of them and
             // belongs to neither.
-            evaluator.compare_provider(step.observation, step.at);
+            // Classified the same way the local half is, and by the same
+            // policy: a node that has lost its fix still carries the last
+            // coordinate it solved, and reading that as an answer is #343.
+            evaluator.compare_provider(
+                step.observation,
+                classify(step.observation, step.at, validity_policy), step.at);
             evaluator.engine().update(step.at);
         } else if (step.is_hold) {
             // The reader rejects a hold with nothing to hold, but run() also

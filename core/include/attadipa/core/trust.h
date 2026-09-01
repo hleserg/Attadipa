@@ -455,7 +455,20 @@ public:
 
     // A second provider's position for the same moment. Kept separate because
     // disagreement is evidence about both of them and belongs to neither.
-    void compare_provider(const GnssObservation& other, MonotonicTime now);
+    //
+    // `other_validity` is not optional and there is no overload without it, on
+    // purpose. It used to be absent, and the second source's comparability was
+    // then inferred from the shape of its frame: a coordinate, in range, young
+    // enough. That is exactly the inference #178 removed from the LOCAL side
+    // and it was wrong here for the same reason — a receiver that has lost its
+    // fix keeps the last coordinate it solved in the position field, so a node
+    // relaying `NoFix` frames was read as a provider answering, and its
+    // disowned coordinate could both raise `ProviderDisagreement` and, if it
+    // happened to match, clear a live one. The caller classifies the remote
+    // observation the same way it classifies the local one, and this function
+    // treats `NoFix` and `Stale` as silence. #343.
+    void compare_provider(const GnssObservation& other,
+                          PositionValidity other_validity, MonotonicTime now);
 
     // The second source is gone — the node detached, the link dropped, the
     // capability was withdrawn. Whoever owns the provider knows this; nothing
