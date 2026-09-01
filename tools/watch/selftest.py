@@ -1371,7 +1371,75 @@ def a_connection_out_of_ids_refuses_rather_than_reusing_one() -> None:
           "a later request never lands on a blacklisted id")
 
 
+def a_previous_invocations_reply_is_not_this_ones_answer() -> None:
+    """The id space restarts at 1 in every process, so ids collide across them.
+
+    `Watch`'s docstring promises that "a stale answer to a timed-out request
+    cannot be read as the answer to the next one". That held while it was only
+    ever true within a connection: until #378 the bridge emitted nothing from
+    `tick`, so a terminal forget-bond reply could only be written while the
+    host that asked was still there.
+
+    Now it can be written after that host has timed out and exited -- the cable
+    is still in, so nothing calls `on_disconnect` -- and the frame is read by
+    whoever opens the port next. The sequence is deterministic, HELLO 1 and
+    CAPABILITIES 2, so `mesh-forget-bond` is req_id 3 in every invocation and
+    the collision is not a coincidence but the ordinary case.
+
+    Read as the new request's answer, a stale `MESH_OK` prints
+    `{"forgotten": true}` before the bond store has been touched for the second
+    conflict, which is #378 with the whole of the fix in place. Reversed, a
+    stale `ERROR` says a bond survived a deletion the watch has just accepted.
+    """
+    from watch.client import Watch  # noqa: PLC0415
+
+    # The previous process's late `MESH_OK(3)` lands while this one is shaking
+    # hands -- ahead of the request it will be mistaken for, which is what
+    # makes `_await` find it first.
+    def answer(envelope):
+        out = [_reply_to(envelope, {
+            p.Op.HELLO: p.Op.HELLO_OK,
+            p.Op.CAPABILITIES: p.Op.CAPABILITIES_OK,
+        }.get(envelope.op, p.Op.MESH_OK))]
+        if envelope.op is p.Op.HELLO:
+            out.append(p.envelope_encode(p.Envelope(
+                op=p.Op.MESH_OK, req_id=3, body=b"")))
+        if envelope.op is p.Op.MESH_FORGET_BOND:
+            out = [p.envelope_encode(p.Envelope(
+                op=p.Op.ERROR, req_id=envelope.req_id,
+                body=bytes((p.ErrorCode.OPERATION_FAILED, 0))))]
+        return out
+
+    device = ScriptedDevice(answer)
+    watch = Watch(device, timeout=0.5)
+    watch.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
+    watch.request(p.Op.CAPABILITIES, b"", (p.Op.CAPABILITIES_OK,))
+
+    stale = [e for e in watch._pending if e.req_id == 3]  # noqa: SLF001
+    check(len(stale) == 1 and stale[0].op is p.Op.MESH_OK,
+          "the previous invocation's reply is sitting there under the next id")
+
+    # The real request goes out as 3 and the device refuses it. Without the
+    # eviction the stale `MESH_OK` is earlier in `_pending`, so `_await`
+    # returns it and the refusal is never seen.
+    check_raises(p.ProtocolError,
+                 "a stale reply under the same id is not this request's answer",
+                 lambda: watch.request(p.Op.MESH_FORGET_BOND, b"", (p.Op.MESH_OK,),
+                                       retries=0))
+    check(any(op is p.Op.MESH_FORGET_BOND for op, _ in device.asked),
+          "and the request did reach the device rather than being answered from the queue")
+
+    # Not a blanket flush: a reply under a *different* id is somebody else's
+    # and stays queued. The screenshot path depends on that -- its chunks are
+    # pumped in while other ids are being allocated.
+    watch._pending.append(p.Envelope(op=p.Op.MESH_OK, req_id=9, body=b""))  # noqa: SLF001
+    watch._allocate_req_id()  # noqa: SLF001
+    check(any(e.req_id == 9 for e in watch._pending),  # noqa: SLF001
+          "and a reply under another id is left alone")
+
+
 CASES = (
+    a_previous_invocations_reply_is_not_this_ones_answer,
     fixed_vectors,
     framing_round_trip,
     framing_survives_any_fragmentation,

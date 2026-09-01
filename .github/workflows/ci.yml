@@ -481,6 +481,19 @@ jobs:
       - name: An explicitly named watch stays named
         run: python3 tools/test_watch_control.py
 
+      # The step above drives the command line with a recorder behind it. This
+      # one drives `Watch` against a scripted device: framing, the envelope,
+      # the pixel paths and the request-id rules, 41 groups and no socket.
+      #
+      # It was not run here at all until #378 needed it. Every host-side defect
+      # in this file's history -- a poll that never polled, a blacklist that
+      # outlived what it protected, an id space that wrapped -- was caught by
+      # that suite and by nothing else, on a laptop. Nine more Python suites
+      # under `tools/` are still in that state; that is #387, because several
+      # of them need setup this job does not have and it is not one line.
+      - name: The host's own protocol logic, without a device
+        run: python3 tools/watch/selftest.py
+
   simulator:
     name: Simulator build and headless run
     runs-on: ubuntu-latest
