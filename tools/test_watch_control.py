@@ -169,7 +169,14 @@ class Recorder:
         if Recorder.forget_bond_error is not None:
             raise Recorder.forget_bond_error
 
+    def describe(self):
+        return "a recorder"
+
+    input_reset_error = None
+
     def input_reset(self):
+        if Recorder.input_reset_error is not None:
+            raise Recorder.input_reset_error
         return (None, 0)
 
     def close(self):
@@ -191,6 +198,38 @@ def run(argv, stdin_text=""):
     finally:
         wc.connect, sys.stdin = real_connect, real_stdin
     return code, calls, err.getvalue() + out.getvalue()
+
+
+# #348 -- a connection that has run out of request ids ends the `live` session
+# instead of printing the same sentence for every command after it. `live` is
+# "one connection, many commands" with no upper bound, which is the only place
+# the 16-bit space can actually run out, and it is also the only loop that
+# swallows a WatchError and asks for the next line.
+def live_exit_code(exc):
+    Recorder.input_reset_error = exc
+    try:
+        return run(["live"], stdin_text="reset\nreset\nquit\n")
+    finally:
+        Recorder.input_reset_error = None
+
+
+# Two `reset`s are typed, and the count of times the error is printed is what
+# separates the two behaviours: once means the loop stopped at the first.
+code, calls, err = live_exit_code(wc.WatchIdsExhausted("all 65535 request ids"))
+if code == 1 and err.count("all 65535 request ids") == 1 and "start `live` again" in err:
+    ok("live leaves on a spent id space rather than looping on it")
+else:
+    no("live leaves on a spent id space rather than looping on it",
+       f"exit {code}, err {err!r}")
+
+# And an ordinary refusal still leaves the session running, so the branch above
+# is a distinction rather than a new way to drop the operator's connection.
+code, calls, err = live_exit_code(wc.WatchError("the interface is busy"))
+if code == 0 and err.count("the interface is busy") == 2:
+    ok("an ordinary error in live is reported and the session continues")
+else:
+    no("an ordinary error in live is reported and the session continues",
+       f"exit {code}, err {err!r}")
 
 
 print("MeshCore credentials stay out of argv")

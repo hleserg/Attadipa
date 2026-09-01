@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from watch import protocol as p            # noqa: E402
 from watch import scenario as scenario_mod  # noqa: E402
-from watch.client import Watch, WatchError, connect  # noqa: E402
+from watch.client import Watch, WatchError, WatchIdsExhausted, connect  # noqa: E402
 from flash.ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = os.path.join("artifacts", "watch")
@@ -546,6 +546,15 @@ def cmd_live(watch: Watch, args) -> int:
                 time.sleep(delay)
                 absolute, shot = watch.save_screenshot(default_shot_path(verb))
                 print(f"{absolute}  ({shot.width}x{shot.height})")
+        except WatchIdsExhausted as exc:
+            # The one error here that ends the session rather than being printed
+            # again for every command after it. This connection cannot answer
+            # anything ever again, so looping on it would repeat the same
+            # sentence until the operator worked out that "reconnect" meant
+            # leaving this prompt.
+            print(f"error: {exc}")
+            print("leaving; start `live` again for a fresh connection.")
+            return 1
         except (WatchError, p.ProtocolError) as exc:
             print(f"error: {exc}")
         except (IndexError, ValueError):

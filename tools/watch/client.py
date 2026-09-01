@@ -48,6 +48,16 @@ class WatchError(RuntimeError):
     """Anything that stopped the tool from doing what was asked."""
 
 
+class WatchIdsExhausted(WatchError):
+    """This connection has no request ids left, and no later one will help.
+
+    Its own type because it is the one failure here that a retry cannot fix and
+    the caller has to act on differently: every command on this `Watch` from now
+    on raises it, so a loop that catches `WatchError` and carries on -- `live`
+    mode -- prints the same sentence for ever unless it can tell this apart.
+    """
+
+
 class Transport:
     def send(self, data: bytes) -> None: raise NotImplementedError
     def recv(self, timeout: float) -> bytes: raise NotImplementedError
@@ -228,6 +238,8 @@ class Watch:
 
     Requests carry a `req_id` and replies are matched against it, so a stale
     answer to a timed-out request cannot be read as the answer to the next one.
+    That holds because an id is issued once per connection and never again --
+    the space is not a ring, and `_allocate_req_id` says why.
     MeshCore's companion protocol has no correlation at all, which ADR-0005
     section 4 records as the reason this field exists.
     """
@@ -236,7 +248,9 @@ class Watch:
         self._transport = transport
         self._decoder = p.FrameDecoder()
         self._timeout = timeout
-        self._next_req_id = 1
+        # `None` once the space is spent. Not a counter that wraps: see
+        # `_allocate_req_id`.
+        self._next_req_id: int | None = 1
         self._pending: list[p.Envelope] = []
         self._orphaned = 0
         # The req_id `_await` is currently blocked on, so the eviction above can
@@ -260,9 +274,33 @@ class Watch:
         return self._transport.describe()
 
     def _allocate_req_id(self) -> int:
+        """One id, once, and then this connection has no more.
+
+        The wire field is 16 bits and this used to wrap. Wrapping is only safe
+        if every earlier use of the id is provably over, and nothing here can
+        prove that: a late reply sits in `_pending` until 256 others crowd it
+        out, and a given-up screenshot's id sits in `_abandoned` until 64
+        further transfers are abandoned. Both are bounded by *other traffic*,
+        not by time -- and `live` mode is one connection for as many commands as
+        the operator types, so the traffic that would evict them may never come.
+        Past the wrap the second use of an id could be answered by the first
+        use's reply, and a reused abandoned id would drop the new screenshot's
+        chunks as the old transfer's tail.
+
+        The envelope carries no session generation, so the device cannot reject
+        an old-generation reply and the host cannot tell one from a fresh one.
+        That leaves the id space as the session: it runs out, and a new
+        connection is the only way to get another.
+        """
+        if self._next_req_id is None:
+            raise WatchIdsExhausted(
+                "this connection has used all 65535 request ids, and reusing "
+                "one could let a late reply to its first use answer the "
+                "second. Reconnect: a new connection starts a new id space")
         req_id = self._next_req_id
-        # 0 is reserved for an unsolicited message; wrapping skips it.
-        self._next_req_id = (self._next_req_id + 1) & 0xFFFF or 1
+        # 0 is reserved for an unsolicited message, so the space starts at 1 and
+        # ends rather than returning to it.
+        self._next_req_id = req_id + 1 if req_id < 0xFFFF else None
         return req_id
 
     def _pump(self, timeout: float) -> None:
@@ -447,11 +485,13 @@ class Watch:
     def _abandon(self, req_id: int) -> None:
         self._abandoned.pop(req_id, None)   # re-insert, so it is the newest
         self._abandoned[req_id] = None
-        # req_id wraps at 16 bits, so this is bounded to well under one cycle:
-        # an id that old cannot still be in flight, and keeping every one
-        # forever would be the leak this method exists to prevent. `dict`
-        # preserves insertion order, so the 32 kept really are the 32 newest --
-        # which is what "an id that old" needs in order to mean anything.
+        # Bounded because this is memory, not correctness. An id is issued once
+        # per connection, so forgetting an old one cannot let a later transfer
+        # collide with it -- there is no later transfer with that number. All
+        # that is lost is the drop of chunks still trickling in for a transfer
+        # nobody is waiting for, and `_evict_orphan` already covers those.
+        # `dict` preserves insertion order, so the 32 kept are the 32 newest,
+        # which is where anything still in flight actually is.
         if len(self._abandoned) > 64:
             self._abandoned = dict.fromkeys(list(self._abandoned)[-32:])
 
