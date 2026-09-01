@@ -29,10 +29,10 @@ recorded here so that no option is credited with paying them.
 
 1. **The RTC write path exists and is compiled out, not missing.**
    `firmware/main/waveshare_board.cpp:268` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
-   gates `:269` — "class BoardTimeSink final : public attadipa::debug::TimeSink {",
-   and `:213` — "esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {".
-   The restore side is already unconditional: `:190` —
-   "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
+   gates `firmware/main/waveshare_board.cpp:269` — "class BoardTimeSink final : public attadipa::debug::TimeSink {",
+   and `firmware/main/waveshare_board.cpp:213` — "esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {".
+   The restore side is already unconditional:
+   `firmware/main/waveshare_board.cpp:190` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
 2. **The passkey is RAM-only today, and the storage it needs is one key in a
@@ -69,26 +69,40 @@ recorded here so that no option is credited with paying them.
    and a header is not a symbol, so reuse is probably fine — but any option that
    reuses them **shows** the elf check still passes rather than assuming it.
 
-### What is not established, and constrains two of the three options
+### What a gesture would cost, and the one thing about it that is not established
 
 Options B and C both need a **gesture** to open a bounded window, because a
 window that opens by itself is the endpoint #346 removed wearing a different
-transport. The only physical control that is not the touch panel is the power
-key, and it does not reach the SoC:
+transport. There are **two case keys**, not one, and they are not
+interchangeable: `docs/research/HARDWARE_MATRIX.md:399` — "| Buttons | **two case keys: PWR and BOOT.**".
+
+**BOOT is available and measured.** It is a plain GPIO, its edges were observed
+through this project's own input queue, and it is in the product image today
+with nothing gating it: `firmware/main/physical_input.cpp:52` —
+"    buttons.pin_bit_mask = 1ULL << GPIO_NUM_0;",
+`firmware/main/physical_input.cpp:461` —
+"  PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};", and
+`firmware/main/physical_input.cpp:501` — "  ESP_LOGI(kTag, ".
+So a gesture is not something B or C would have to invent. It costs two things
+instead: BOOT is a reset strap, so it cannot be injected remotely and a
+provisioning gesture built on it is not testable the way touch is; and on the
+T-Watch it leaves with the GNSS module —
+`docs/research/HARDWARE_MATRIX.md:266` — "1. **Unplugging the GNSS module also unplugs BOOT and RESET.** A board running".
+
+**PWR is the one that is not established**, and it does not reach the SoC:
 
 > `docs/research/VERIFIED_FACTS.md` — "button presses arrive as PMU interrupts
 > over I2C, not as GPIO edges. Press duration, long-press and power-off
 > behaviour are PMU register policy."
 
-and the consequence is already written down in the testing guide:
+with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 **UNKNOWN:** whether the AXP2101 can be configured to report a long press to
-firmware as an event instead of acting on it. That is traceable — it is a
+firmware as an event instead of acting on it. That is traceable — a
 register-policy question in the AXP2101 datasheet — and it is not traced. Until
-it is, **no option may rest its consent gesture on a held power key.** A touch
-gesture is the only gesture whose availability is established
-(`firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);").
+it is, **no option may rest its consent gesture on a held power key.** That is a
+constraint on which key a gesture uses, not on whether one exists.
 
 ## The three mechanisms
 
@@ -141,8 +155,8 @@ Priced against the current build, B is **A plus a radio**:
   One qualifier, because the cost lands later than it looks: the watch only
   reaches the SMP path once a passkey has been armed —
   `firmware/main/meshcore_ble.cpp:156` — "std::atomic_bool secure_pairing{false};",
-  set at `:1384` — "secure_pairing.store(event.passkey != 0);" and read at
-  `:772` — "if (secure_pairing.load()) {". An image nobody has provisioned
+  set at `firmware/main/meshcore_ble.cpp:1384` — "secure_pairing.store(event.passkey != 0);"
+  and read at `firmware/main/meshcore_ble.cpp:772` — "if (secure_pairing.load()) {". An image nobody has provisioned
   writes no bond at all, so the eviction is a cost of the *second* provisioning
   and of bench images, not of every build. It is still B's cost, because B's
   whole purpose is to provision a second peer.
@@ -197,9 +211,9 @@ first makes either of them cheaper later rather than foreclosing them.
 
 The weakness of A is repetition: six digits is nothing, but typing a full UTC is
 tedious. **How often it has to be typed is UNKNOWN, and that is a hardware fact
-this ADR is not entitled to assume.** What is MEASURED is retention across a
-*software* reset — `docs/hardware/TIME_SYNC_2026-08-26.md:31` — "$ python -m esptool --chip esp32s3 -p /dev/ttyACM1 run",
-where the RTC never lost its rail. Retention across power-off and battery
+this ADR is not entitled to assume.** What is MEASURED is retention across an
+esptool-driven reset — `docs/hardware/TIME_SYNC_2026-08-26.md:33` — "Hard resetting via RTS pin..." —
+where the RTC never lost its rail, which is the case that proves the least. Retention across power-off and battery
 removal is listed as unknown in the same report: `docs/hardware/TIME_SYNC_2026-08-26.md:68` —
 "- **UNKNOWN:**" and `docs/hardware/TIME_SYNC_2026-08-26.md:69` —
 "  PCF85063 long-term drift, behavior across battery removal, DST/zone-rule".
@@ -250,7 +264,9 @@ Beyond B and C:
   possession is what stands between a stranger and that eviction. Child Mode on
   the roadmap is where a second factor would belong if one is ever wanted.
 - Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
-  no gesture. B or C would first have to close it.
+  no gesture at all. B or C would not have to close it either — they would use
+  BOOT, and pay for a reset strap that cannot be injected remotely and that on
+  the T-Watch is fitted to the GNSS daughterboard.
 - Does not decide the timezone-offset UI, only that the offset is entered on the
   device like everything else.
 - Does **not** change what a product image pays for the BLE stack:
@@ -258,5 +274,12 @@ Beyond B and C:
   is unconditional, so a product image still brings the controller up. #356
   records that; it stays open here.
 - ADR-0014's "first real input is the existing physical USB debug connection"
-  sentence becomes true only of the HIL image. It is amended by the
-  implementation, not by this ADR, so the sentence and the code change together.
+  bullet stopped being true of a product image at #346, not here, and this
+  branch adds the note saying so and pointing at this ADR. The bullet itself is
+  rewritten by the implementation, so the sentence and the code change together.
+- Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
+  rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
+  `firmware`, which is why `build_mesh_screen()` in
+  `firmware/main/waveshare_board.cpp:478` — "void build_mesh_screen() {" — is
+  full of literal colours. Building the entry screen where the mesh screen was
+  built would silently opt it out of the check.

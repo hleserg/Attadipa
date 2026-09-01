@@ -278,7 +278,7 @@ one. This project has no Heltec V4 and independently confirming it is
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
-| Q4 | How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node? | **UNKNOWN** | owner decision. Verified 2026-09-01 against `144459f`: a production image can do none of it, and the options are below |
+| ~~Q4~~ | ~~How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node?~~ | **RESOLVED 2026-09-02** | the owner chose on-device entry: [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-26 and [ADR-0018](../adr/0018-owner-consent-for-provisioning.md), with [#356](https://github.com/hleserg/Attadipa/issues/356) carrying the implementation. The answer is **not** one of the options below — every one of them assumes a provisioning channel and the decision was to have none. The section keeps them for the two corrections noted there |
 | Q5 | How does a power lease taken on one task take part in a sleep decision made on another? | **UNKNOWN** | engineering decision, deferred. Blocks [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 only; consequence is zero until a plan suspends a domain a cross-task lease holds |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
@@ -364,8 +364,15 @@ into provisioning mode**, and that is a product decision, not an engineering
 one: every option below is implementable, and they differ in what a stranger
 holding your watch — or a cable — can do to it. The rule chosen makes the
 question narrower than any of them: there is no mode to put the watch into, and
-a stranger with a cable can do nothing, while a stranger holding the watch can
-do everything — possession is the whole factor, which ADR-0018 records.
+a stranger with a cable can reach no endpoint, while a stranger holding the
+watch can do everything — possession is the whole factor, which ADR-0018
+records. One clause of that is weaker than it sounds and belongs here rather
+than in a review: what is provisioned is stored in plain NVS, this project
+builds with no flash or NVS encryption and will not, since `AGENTS.md` forbids
+burning eFuses, and a full flash read over that same cable is documented on this
+unit. So the factor is possession of the watch **or** of a cable and esptool.
+Every option stores the same secret, so this separates none of them; it bounds
+all of them.
 
 | Option | Security | UX | Implementation |
 |---|---|---|---|

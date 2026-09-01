@@ -1645,8 +1645,13 @@ implementation second.
 **What it obliges:** #356's implementation adds an on-device entry screen — a
 second LVGL face beside `ui/lvgl/clock_face.cpp`, with its application half in
 `apps/` — in both languages ([OD-24](#od-24--language-follows-the-reader),
-[ADR-0010](../adr/0010-localization.md)), and one NVS key for what was entered,
-in the `attadipa_mesh` namespace #304 already created.
+[ADR-0010](../adr/0010-localization.md)), and storage for what was entered. That
+storage is two different things, and the larger one is not the key: the passkey
+is one entry in the `attadipa_mesh` namespace #304 already created, while the
+clock half means moving `write_rtc()`'s caller and `save_time_metadata()` out
+from behind `CONFIG_ATTADIPA_WATCH_CONTROL` — the same symbol that gates the
+debug bridge — and showing `firmware_elf_check.py` still keeps
+`attadipa::debug::Bridge::handle` out of a product image.
 It does **not** add a listener of any kind to a product image: no BLE peripheral
 role, no provisioning endpoint, no bounded window, and nothing to authenticate,
 because nothing accepts input except the panel.
