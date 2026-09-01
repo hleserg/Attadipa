@@ -1294,6 +1294,83 @@ def an_error_code_this_build_does_not_know_is_still_a_sentence() -> None:
               f"an error with no code says so: {exc}")
 
 
+def an_id_is_never_issued_twice_on_one_connection() -> None:
+    """The whole id space, through the allocator that ships.
+
+    The wrap is the thing under test, so a rig that sets the counter near it
+    would be testing the rig. 65535 pure-Python allocations cost a few
+    milliseconds and touch no wire at all.
+    """
+    from watch.client import Watch, WatchIdsExhausted  # noqa: PLC0415
+
+    watch = Watch(ScriptedDevice(lambda envelope: []), timeout=0.01)
+    issued: list[int] = []
+    while len(issued) <= 0x10000:
+        try:
+            issued.append(watch._allocate_req_id())  # noqa: SLF001 - the point of the test
+        except WatchIdsExhausted as exc:
+            check("Reconnect" in str(exc), f"the refusal says what to do: {exc}")
+            break
+    else:
+        check(False, "the allocator never ran out")
+        return
+
+    check(len(issued) == len(set(issued)), "no request id is issued twice")
+    check(len(issued) == 0xFFFF, f"the space is 1..0xffff, not {len(issued)} ids")
+    check(0 not in issued, "0 stays reserved for an unsolicited message")
+    check(issued[0] == 1 and issued[-1] == 0xFFFF, "and it is spent end to end")
+    check_raises(WatchIdsExhausted, "a connection that ran out stays out",
+                 watch._allocate_req_id)  # noqa: SLF001
+
+
+def a_connection_out_of_ids_refuses_rather_than_reusing_one() -> None:
+    """Fail closed, before the duplicate goes out -- not after it is answered.
+
+    Both old failures needed the reuse to reach the wire: a stale reply in
+    `_pending` was matched by `_await` before `_pump` ever read the fresh one,
+    and a reused abandoned id had its `SCREEN_DATA` dropped as the tail of the
+    transfer that was given up. Refusing at the allocator is upstream of both.
+    """
+    from watch.client import Watch, WatchError, WatchIdsExhausted  # noqa: PLC0415
+
+    # Its own type, not a bare `WatchError`: `live` mode has to tell this one
+    # failure from every other, because every command after it raises the same
+    # thing and a loop that cannot tell prints the sentence for ever.
+    check(issubclass(WatchIdsExhausted, WatchError),
+          "the exhaustion error is still a WatchError for callers that catch one")
+
+    def answer(envelope):
+        return [_reply_to(envelope, p.Op.HELLO_OK, b"")]
+
+    device = ScriptedDevice(answer)
+    watch = Watch(device, timeout=0.5)
+    watch._next_req_id = 0xFFFF  # noqa: SLF001 - one id left in the space
+
+    reply = watch.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
+    check(reply.req_id == 0xFFFF, "the last id in the space is used like any other")
+
+    sent = len(device.asked)
+    check_raises(WatchIdsExhausted, "the request past the end of the space is refused",
+                 lambda: watch.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,)))
+    check(len(device.asked) == sent,
+          "and refused before a duplicate id reaches the wire")
+    check_raises(WatchIdsExhausted, "a screenshot past the end is refused too",
+                 watch.screenshot)
+    check(len(device.asked) == sent, "also without sending anything")
+
+    # The blacklist is pruned by how many other transfers were abandoned
+    # since, never by time, so a single given-up screenshot outlived the whole
+    # 16-bit cycle and ate the chunks of the next transfer to land on its
+    # number. There is no next transfer on that number now.
+    watch = Watch(ScriptedDevice(answer), timeout=0.5)
+    watch._next_req_id = 0xFFFE  # noqa: SLF001
+    given_up = watch._allocate_req_id()  # noqa: SLF001
+    watch._abandon(given_up)  # noqa: SLF001
+    reply = watch.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
+    check(reply.req_id != given_up and reply.req_id not in watch._abandoned,  # noqa: SLF001
+          "a later request never lands on a blacklisted id")
+
+
 CASES = (
     fixed_vectors,
     framing_round_trip,
@@ -1333,6 +1410,8 @@ CASES = (
     a_gesture_that_cannot_be_timed_is_refused_before_the_finger_lands,
     the_shipped_gesture_keeps_its_timing_on_both_panels,
     an_error_code_this_build_does_not_know_is_still_a_sentence,
+    an_id_is_never_issued_twice_on_one_connection,
+    a_connection_out_of_ids_refuses_rather_than_reusing_one,
 )
 
 

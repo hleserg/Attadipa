@@ -295,6 +295,7 @@ the expectation would move together.
 | `the frame is incomplete: N bytes never arrived` | a torn transfer | **not retried automatically** — run the command again. The retry in `request()` covers a lost request, not a torn stream, and a screenshot does not go through it |
 | `the assembled frame does not match its checksum` | chunks assembled wrongly | same — the framing already proved each chunk was intact, so this is an assembly bug |
 | `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; `boot` is intentionally not injectable |
+| `this connection has used all 65535 request ids` | one connection — a long `live` session, or a very long scenario — asked for more requests than the correlation space holds | reconnect. The `req_id` is the only thing tying a reply to its request and the envelope carries no session generation, so reusing one could let a late reply to its first use answer the second, or let a given-up screenshot's id swallow a new transfer's chunks. The tool refuses **before** anything goes on the wire rather than risk it |
 | the screen is stuck mid-gesture | a crashed run left a finger down | `input-reset` |
 
 `input-reset` lifts only what the **remote** is holding, never what a person is
