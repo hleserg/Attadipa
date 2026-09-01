@@ -278,7 +278,7 @@ one. This project has no Heltec V4 and independently confirming it is
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
-| Q4 | How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node? | **UNKNOWN** | owner decision. Verified 2026-09-01 against `144459f`: a production image can do none of it, and the options are below |
+| ~~Q4~~ | ~~How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node?~~ | **RESOLVED 2026-09-02** | the owner chose on-device entry: [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-26 and [ADR-0018](../adr/0018-owner-consent-for-provisioning.md), with [#356](https://github.com/hleserg/Attadipa/issues/356) carrying the implementation. The answer is **not** one of the options below — every one of them assumes a provisioning channel and the decision was to have none. The section keeps them for the two corrections noted there |
 | Q5 | How does a power lease taken on one task take part in a sleep decision made on another? | **UNKNOWN** | engineering decision, deferred. Blocks [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 only; consequence is zero until a plan suspends a domain a cross-task lease holds |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
@@ -311,6 +311,29 @@ the retrofit does not make it.
 
 ### Q4 — a production watch cannot be provisioned at all, and the missing piece is a consent rule
 
+**ANSWERED 2026-09-02 by the owner — and the answer was not in the table below.**
+He chose **on-device entry**: the holder types the value on the watch itself.
+[OD-26](OWNER_DECISIONS.md#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen)
+records the decision, [ADR-0018](../adr/0018-owner-consent-for-provisioning.md)
+the reasoning. #356 carries the implementation; this entry stays for the
+reasoning it holds and is no longer a question.
+
+Two things in what follows are worth reading against that, rather than deleted:
+
+- **Every row below assumes a provisioning channel exists** and asks who may
+  open it. The decision was to have none — nothing in a product image accepts
+  provisioning input except the panel — so the answer sits outside the table
+  rather than in it. The letters also collide: this table's **A** is roughly
+  ADR-0018's **C**, and neither of its A/B/C means the other's.
+- **Row A prices its gesture as already paid, and that is true of one of the two
+  keys.** "The button path and its debounce already exist in
+  `physical_input.cpp`" is true of BOOT, which is a GPIO. It is not true of the
+  power key: PWR reaches
+  the AXP2101 `PWRON` pin and never a GPIO, so press *duration* is PMU register
+  policy and whether a long press can be reported to firmware at all is
+  **UNKNOWN** — `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
+  Any future option resting on a held-key gesture has to close that first.
+
 Verified in this tree at `144459f`, not inferred from the issue that predicted
 it. The production image is the one built from `sdkconfig.defaults` alone, and
 that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n".
@@ -333,13 +356,26 @@ Everything that provisions a watch sits behind that symbol:
   the same single gated caller.
 
 So the gap #346 opened when the unauthenticated USB control plane left the
-product image is **still open**, and it is wider than "time is not settable":
-the mesh half of the product does not run at all without it.
+product image was wider than "time is not settable": the mesh half of the
+product does not run at all without it. That gap is what OD-26 answers; it is
+closed as a question and open as work, in #356.
 
-What is missing is not a mechanism. It is a rule about **who may put a watch
+What was missing was not a mechanism. It was a rule about **who may put a watch
 into provisioning mode**, and that is a product decision, not an engineering
 one: every option below is implementable, and they differ in what a stranger
-holding your watch — or a cable — can do to it.
+holding your watch — or a cable — can do to it. The rule chosen makes the
+question narrower than any of them: there is no mode to put the watch into, and
+a stranger with a cable can reach no endpoint, while a stranger holding the
+watch can do everything — possession is the whole factor, which ADR-0018
+records. One clause of that is weaker than it sounds and belongs here rather
+than in a review: what is provisioned is stored in plain NVS, this project
+builds with no flash or NVS encryption and will not, since `AGENTS.md` forbids
+burning eFuses, and a full flash read over that same cable is documented on this
+unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:314` —
+"esptool.py --port <port> --baud 921600 read_flash 0 0x2000000 waveshare-2.06-factory.bin".
+So the factor is possession of the watch **or** of a cable and esptool.
+Every option stores the same secret, so this separates none of them; it bounds
+all of them.
 
 | Option | Security | UX | Implementation |
 |---|---|---|---|

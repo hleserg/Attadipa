@@ -52,6 +52,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0015](0015-transport-session-ownership.md) | A transport session has one owner, a generation, and no lifecycle queue | **accepted** |
 | [0016](0016-one-power-owner.md) | Power, PMU rails and sleep have one owner, and consumers hold leases | **accepted** |
 | [0017](0017-board-backends-compose-esp-idf-drivers.md) | A board backend composes ESP-IDF drivers; a vendor BSP is read, not linked | **accepted** |
+| [0018](0018-owner-consent-for-provisioning.md) | What counts as owner consent when a product image is provisioned | **accepted** — the owner chose on-device entry, OD-26 |
 
 ### What the statuses mean here
 
