@@ -58,6 +58,11 @@ attadipa::core::PowerOwner &board_power_owner();
 // The debug wake the USB control plane uses to prove a sleep/wake cycle
 // happened without a finger on the panel. It is a property of the next sleep,
 // not of the owner, and it clears itself.
-void board_power_request_debug_timer_wake();
+//
+// It takes the value rather than raising the flag, because the caller knows
+// both answers: a button-up from a real finger says `false`, and it has to say
+// it, or a remote press followed by a local one still sleeps on the debug
+// timer and the local press waits out the debug delay before it is noticed.
+void board_power_set_debug_timer_wake(bool on);
 
 } // namespace attadipa::firmware

@@ -191,10 +191,14 @@ private:
       ESP_LOGW(kTag, "power lease past its deadline on domains 0x%04x",
                static_cast<unsigned>(report.overdue_leases));
     }
-    if (report.unexpected_causes != 0) {
+    if (report.unexpected_causes != 0 || report.unmapped_causes != 0) {
       char named[96];
       describe_wake(named, sizeof(named), report.unexpected_causes);
-      ESP_LOGE(kTag, "woke on a source nobody armed: %s", named);
+      // The raw SoC word is printed unconditionally: for an unmapped cause it
+      // is the only evidence there is, and for a named one it is what the
+      // single-cause log this replaced used to carry.
+      ESP_LOGE(kTag, "woke on a source nobody armed: %s (unmapped 0x%08x)",
+               named, static_cast<unsigned>(report.unmapped_causes));
     }
     if (!report.hardware_known) {
       ESP_LOGE(kTag,
@@ -384,11 +388,13 @@ private:
         if (event.button == 0 &&
             event.type == attadipa::core::InputEventType::ButtonUp) {
           sleep_requested_ = true;
-          if (event.origin == attadipa::core::InputOrigin::Remote) {
-            // A remote button-up cannot be followed by a real finger, so the
-            // next sleep wakes on a timer instead of waiting for one.
-            attadipa::firmware::board_power_request_debug_timer_wake();
-          }
+          // A remote button-up has no finger behind it, so the next sleep wakes
+          // on a timer instead of waiting for one -- and a local one does, so it
+          // says so. Assigned rather than raised: setting it only for Remote
+          // leaves a stale debug wake armed after a remote press is followed by
+          // a real one.
+          attadipa::firmware::board_power_set_debug_timer_wake(
+              event.origin == attadipa::core::InputOrigin::Remote);
         }
         break;
       }

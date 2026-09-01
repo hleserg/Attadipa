@@ -103,7 +103,16 @@ esp_err_t read_reg(i2c_master_dev_handle_t device, std::uint8_t reg,
 // pin. That is a claim about this file, and it is only true while this file is
 // the only one arming wake sources — which is what ADR-0016 §1 and its CI check
 // are for.
-std::uint16_t soc_causes_to_wake_sources(std::uint32_t causes) {
+//
+// Three causes have a name here and the SoC can report a dozen. The rest are
+// **not** dropped: they go back as `unmapped_from_soc`, because dropping them
+// is what makes `SleepReport::unexpected_causes` read zero both when nothing is
+// wrong and when the one thing this owner watches for has happened.
+void soc_causes_to_wake_sources(std::uint32_t causes,
+                                attadipa::core::WakeCauses &out) {
+  constexpr std::uint32_t kNamed = (1U << ESP_SLEEP_WAKEUP_TIMER) |
+                                   (1U << ESP_SLEEP_WAKEUP_GPIO) |
+                                   (1U << ESP_SLEEP_WAKEUP_UART);
   std::uint16_t sources = 0;
   if ((causes & (1U << ESP_SLEEP_WAKEUP_TIMER)) != 0) {
     sources |= attadipa::core::wake_bit(attadipa::core::WakeSource::Timer);
@@ -114,7 +123,8 @@ std::uint16_t soc_causes_to_wake_sources(std::uint32_t causes) {
   if ((causes & (1U << ESP_SLEEP_WAKEUP_UART)) != 0) {
     sources |= attadipa::core::wake_bit(attadipa::core::WakeSource::Usb);
   }
-  return sources;
+  out.from_soc = sources;
+  out.unmapped_from_soc = causes & ~kNamed;
 }
 
 class WaveshareHardware final : public attadipa::core::PowerHardware {
@@ -131,7 +141,7 @@ public:
     return ESP_OK;
   }
 
-  void request_debug_timer_wake() { debug_timer_wake_ = true; }
+  void set_debug_timer_wake(bool on) { debug_timer_wake_ = on; }
 
   bool suspend(attadipa::core::PowerDomain domain) override {
     if (panel_ == nullptr) {
@@ -256,6 +266,20 @@ public:
     default:
       break;
     }
+    if (result == ESP_ERR_INVALID_STATE) {
+      // Already not armed, which is this call's postcondition. ESP-IDF v5.5.5
+      // reaches its `else` and returns `ESP_ERR_INVALID_STATE` when the
+      // trigger bit is clear -- `esp_sleep_disable_wakeup_source` guards every
+      // branch with `CHECK_SOURCE(source, value, mask)`, defined as
+      // `((s_config.wakeup_triggers & mask) && (source == value))`. Light
+      // sleep never clears those bits, so the first disarm after a sleep is a
+      // real one; it is the owner's recovery retry that arrives second, and
+      // reporting it as a failure would make a board that is provably in the
+      // requested state unrecoverable.
+      ESP_LOGW(kTag, "disarm %s: already disarmed",
+               attadipa::core::to_string(source));
+      return true;
+    }
     if (result != ESP_OK) {
       ESP_LOGE(kTag, "disarm %s: %s", attadipa::core::to_string(source),
                esp_err_to_name(result));
@@ -292,7 +316,7 @@ public:
       // that read is itself a bitmap, so two sources arriving together still
       // both survive.
       const std::uint32_t soc = esp_sleep_get_wakeup_causes();
-      causes.from_soc = soc_causes_to_wake_sources(soc);
+      soc_causes_to_wake_sources(soc, causes);
       const bool by_gpio = (soc & (1U << ESP_SLEEP_WAKEUP_GPIO)) != 0;
       const bool by_timer = (soc & (1U << ESP_SLEEP_WAKEUP_TIMER)) != 0;
 
@@ -398,8 +422,8 @@ esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
 
 attadipa::core::PowerOwner &board_power_owner() { return owner; }
 
-void board_power_request_debug_timer_wake() {
-  hardware.request_debug_timer_wake();
+void board_power_set_debug_timer_wake(bool on) {
+  hardware.set_debug_timer_wake(on);
 }
 
 } // namespace attadipa::firmware
