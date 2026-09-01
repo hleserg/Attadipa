@@ -625,7 +625,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1 |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1328`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1059`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1345`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1065`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
@@ -681,9 +681,27 @@ It deletes only the bond that the conflict recorded — it takes no peer to name
 — and arms one fresh pairing. With no conflict recorded it refuses, and says
 so in those words rather than as a malformed-request error, so the ordinary
 state is distinguishable from a fault; it is not a way to walk the bond store.
-If the store refuses the deletion the record goes back and nothing is re-armed:
-the operator is told to run the command again, because the reply that said the
-bond was gone had already been sent when the request was accepted.
+
+**The reply waits for the deletion.** Until #378 it did not: the request was
+answered when it reached the event queue, so the operator was told the bond was
+gone before `ble_store_util_delete_peer()` had been called, and the answer
+stayed a success when the store then refused. Now the accepted request goes into
+one reserved slot
+([`../../firmware/main/meshcore_forget_outcome.h:59`](../../firmware/main/meshcore_forget_outcome.h) —
+"class ForgetBondOperation {"), the worker records what the store answered, and
+the bridge sends one terminal response against the original request id. A
+second forget-bond arriving while the first is in flight is refused as `Busy`
+rather than answered from the same deletion — and `Busy` rather than a failure,
+because that branch has not asked the bond store anything and telling the
+operator the bond survived sent them to run the command again, into "there is
+nothing to forget" as soon as the first deletion landed. A conflict record that
+had already gone answers "nothing to forget", the same sentence the synchronous
+refusal gives. What is left under the failure code is "the bond is still there",
+which the store refusing and a worker queue that could not take the request both
+produce — the wire does not separate them, so the host says the bond survived
+and sends the reader to the watch's log rather than naming the bond store. When
+the operator is told the bond survived, the record has gone back, nothing has
+been re-armed, and running the command again is the fix.
 `mesh-configure` is still needed afterwards if the watch has been reset since,
 because the passkey lives only in RAM.
 

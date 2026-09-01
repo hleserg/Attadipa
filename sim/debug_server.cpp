@@ -384,12 +384,15 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
             out_.clear();
             out_sent_  = 0;
             // The one piece of per-client state `accept` used to leave behind.
-            // Unreachable only while `Bridge::tick` emits nothing -- and the
-            // no-client branch calls it every poll with a live `emit`, so the
-            // day `tick` gains a reply, `queue` can pass `kOutputMax` with
-            // nobody reading and the *next* client is dropped on its first poll
-            // for "the client stopped reading", having been given nothing to
-            // read. Reset beside the buffer it describes.
+            // The day it warned about arrived with #378: `Bridge::tick` now
+            // sends the MeshForgetBond reply, and the no-client branch below
+            // calls it every poll with a live `emit`, so `queue` can pass
+            // `kOutputMax` with nobody reading and the *next* client would be
+            // dropped on its first poll for "the client stopped reading",
+            // having been given nothing to read. This reset is what stops it;
+            // it stays beside the buffer it describes. The simulator passes no
+            // mesh sink, so nothing is queued here today -- that is the reason
+            // it is harmless, not a reason it cannot happen.
             overflowed_ = false;
             std::printf("debug: client connected\n");
             std::fflush(stdout);
@@ -409,8 +412,11 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
         //
         // The two `drop_client` paths below still return without ticking, and
         // may: this branch is reached on every subsequent poll, so the retry
-        // continues for as long as the hold does. No `flush` -- `tick` only
-        // pushes into the input queue and ignores its `emit`.
+        // continues for as long as the hold does. No `flush`, because there is
+        // no client to flush to: since #378 `tick` can emit -- a MeshForgetBond
+        // whose deletion finished after the host left -- and that write lands
+        // in `out_` behind the `overflowed_` reset above rather than going
+        // anywhere.
         bridge.tick(now_ms, &DebugServer::emit, this);
         return;
     }

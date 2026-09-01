@@ -301,6 +301,32 @@ class Watch:
         # 0 is reserved for an unsolicited message, so the space starts at 1 and
         # ends rather than returning to it.
         self._next_req_id = req_id + 1 if req_id < 0xFFFF else None
+        # AND A REPLY ALREADY CARRYING THIS ID IS NOT AN ANSWER TO IT. Within
+        # one connection an id is issued once, so an entry in `_pending`
+        # bearing the number we are about to send arrived *before* the request
+        # -- it belongs to the previous process, whose id space started at 1
+        # exactly as this one does. The command sequence is deterministic
+        # (HELLO 1, CAPABILITIES 2), so `mesh-forget-bond` is req_id 3 in every
+        # invocation.
+        #
+        # That became reachable with #378 and not before: until this change
+        # `tick` emitted nothing, so a terminal forget-bond reply could only be
+        # written while the host that asked was still connected. Now the worker
+        # finishes after the host has timed out and exited, `on_disconnect` has
+        # not fired because the cable is still in, and the frame reaches
+        # whoever opens the port next. Read as the new request's answer it
+        # prints `{"forgotten": true}` before `ble_store_util_delete_peer()`
+        # has run for the second conflict -- which is #378 itself, with the
+        # whole of the fix in place.
+        #
+        # What this closes is the frame that had already arrived; the handshake
+        # pumps it in, so that is the one the reproduction turns on. It does
+        # **not** close a frame still sitting in the watch's output queue when
+        # we send: nothing in the envelope distinguishes it from a fresh reply,
+        # and the field that would is the session generation the paragraph
+        # above records as absent. Narrower than the docstring's promise, and
+        # said here rather than left to be discovered.
+        self._pending = [e for e in self._pending if e.req_id != req_id]
         return req_id
 
     def _pump(self, timeout: float) -> None:

@@ -1,5 +1,6 @@
 #include "meshcore_ble.h"
 #include "meshcore_bond_recovery.h"
+#include "meshcore_forget_outcome.h"
 #include "meshcore_boot.h"
 #include "meshcore_write_outcome.h"
 
@@ -172,6 +173,11 @@ bool claim_send()
     bool free_slot = false;
     return send_claimed.compare_exchange_strong(free_slot, true);
 }
+
+// The forget-bond in flight, and its answer once the worker has one. The
+// request task reserves it and the worker completes it; the rules are in
+// meshcore_forget_outcome.h, which the host tests compile.
+attadipa::firmware::ForgetBondOperation forget_op;
 
 attadipa::core::MonotonicTime now()
 {
@@ -1124,8 +1130,12 @@ void mesh_task(void*)
                     // Nothing conflicted, so there is no bond this operation
                     // is allowed to touch. The request task already refused on
                     // the same question; this is the second half of the same
-                    // check, because the record can be cleared between them.
+                    // check, because the record can be cleared between them --
+                    // and it answers with the same sentence, which is why the
+                    // outcome is `Nothing` rather than the `Refused` that means
+                    // a store said no.
                     ESP_LOGW(kTag, "forget-bond: no conflicting bond recorded");
+                    forget_op.complete(attadipa::firmware::ForgetOutcome::Nothing);
                     break;
                 }
                 // End the link first. NimBLE does not defend a bond being
@@ -1142,13 +1152,14 @@ void mesh_task(void*)
                             peer.address.size());
                 const int deleted = ble_store_util_delete_peer(&address);
                 if (deleted != 0) {
-                    // The store refused. The wire answer went out when the
-                    // request was accepted, so the operator has already been
-                    // told the bond is gone; the only thing that makes that
-                    // true is running the command again, and it can only be
-                    // run again if the record goes back. Nothing is re-armed:
-                    // the bond is still there, so the reconnect this would
-                    // enable would fail on the same conflict.
+                    // The store refused. Nothing has been sent to the host
+                    // yet -- since #378 the answer waits for this line -- so
+                    // it is told the failure rather than a success it would
+                    // have to be talked out of. Running the command again is
+                    // still the fix, and it can only be run again if the
+                    // record goes back. Nothing is re-armed: the bond is still
+                    // there, so the reconnect this would enable would fail on
+                    // the same conflict.
                     ESP_LOGE(kTag,
                              "forget-bond: the store refused to delete the bond"
                              " for xx:xx:xx:%02X:%02X:%02X (rc=%d); it is still"
@@ -1156,8 +1167,11 @@ void mesh_task(void*)
                              static_cast<unsigned>(peer.address[2]),
                              static_cast<unsigned>(peer.address[1]),
                              static_cast<unsigned>(peer.address[0]), deleted);
-                    SessionGuard guard;
-                    recovery.record(peer);
+                    {
+                        SessionGuard guard;
+                        recovery.record(peer);
+                    }
+                    forget_op.complete(attadipa::firmware::ForgetOutcome::Refused);
                     break;
                 }
                 ESP_LOGW(kTag,
@@ -1174,6 +1188,9 @@ void mesh_task(void*)
                 reconnect_allowed.store(true);
                 provider.begin(now());
                 if (session_snapshot().stack_readies != 0) start_scan();
+                // Last, and only here: the bond is gone and the store said so.
+                // This is the one path that may become a terminal MeshOk.
+                forget_op.complete(attadipa::firmware::ForgetOutcome::Deleted);
                 break;
             }
             case EventKind::Send:
@@ -1408,7 +1425,33 @@ esp_err_t meshcore_ble_forget_bond()
         SessionGuard guard;
         if (!recovery.recovery_required()) return ESP_ERR_INVALID_STATE;
     }
-    return post(Event{EventKind::ForgetBond}) ? ESP_OK : ESP_ERR_NO_MEM;
+    // Reserved before the event is queued, and one at a time. Two requests
+    // arriving back to back used to be two `ESP_OK`s over one deletion; the
+    // second is now refused here, where the caller can still be told, rather
+    // than discovered by the worker with nowhere to say it. `ESP_OK` from here
+    // no longer means the bond is gone -- it means the request was taken, and
+    // meshcore_ble_forget_bond_outcome() is where the answer arrives.
+    if (!forget_op.reserve()) return ESP_ERR_NOT_FINISHED;
+    if (!post(Event{EventKind::ForgetBond})) {
+        // SAID OUT LOUD, because the failure text this returns to the host
+        // sends the operator to this log. `post()` is a zero-wait
+        // `xQueueSend` and writes nothing of its own, so without this line a
+        // request the watch threw away and a request that never arrived are
+        // the same evidence -- on a recovery path where the log is the only
+        // second signal there is.
+        ESP_LOGE(kTag,
+                 "forget-bond: the worker queue was full, so the request was"
+                 " dropped before the bond store saw it; the bond is still"
+                 " there -- run mesh-forget-bond again");
+        forget_op.release();
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
+attadipa::firmware::ForgetOutcome meshcore_ble_forget_bond_outcome()
+{
+    return forget_op.take();
 }
 
 attadipa::core::MeshStatus meshcore_ble_status()

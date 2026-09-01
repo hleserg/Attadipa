@@ -333,13 +333,33 @@ else:
 # Every other typed error still travels as itself. Swallowing BAD_INPUT must not
 # turn into swallowing the transport failing, which is the answer the same
 # command gives when the firmware's event queue is full.
+#
+# Since #378 that answer also carries a fact the operator has to act on: the
+# reply waits for the deletion now, so OPERATION_FAILED means the bond is still
+# on the watch. "The hardware operation failed" alone does not say whether
+# running it again is the fix.
 Recorder.forget_bond_error = p.ProtocolError(
     "the device could not complete the operation", p.ErrorCode.OPERATION_FAILED)
 code, calls, err = run(["mesh-forget-bond"])
-if code != 0 and "nothing to forget" not in err:
+if code != 0 and "nothing to forget" not in err and "still on the watch" in err:
     ok("a forget-bond that failed in the transport is not reported as no bond")
 else:
     no("a forget-bond that failed in the transport is not reported as no bond",
+       f"exit {code}, calls {calls}, err {err!r}")
+
+# BUSY is the third answer, and it exists because the sentence above was being
+# printed for it. A forget-bond arriving over one already running knows nothing
+# about the bond; telling the operator it was not deleted sent them to run the
+# command again, which answered "there is nothing to forget" as soon as the
+# first one succeeded -- two contradictory sentences about a deletion that
+# worked (#381, `forget-failure-claims-bond-state`).
+Recorder.forget_bond_error = p.ProtocolError(
+    "the device is already doing one of those", p.ErrorCode.BUSY)
+code, calls, err = run(["mesh-forget-bond"])
+if code != 0 and "already running" in err and "still on the watch" not in err:
+    ok("a forget-bond over one in flight does not claim the bond was not deleted")
+else:
+    no("a forget-bond over one in flight does not claim the bond was not deleted",
        f"exit {code}, calls {calls}, err {err!r}")
 
 # And the accepted path still reaches the client, so the guards above are not

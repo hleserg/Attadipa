@@ -9,6 +9,27 @@ namespace {
 // the four-byte offset that says where it belongs.
 constexpr std::size_t kChunkBytes = kMaxBody - 4;
 
+// What a forget-bond that is not `Accepted` and not `Pending` answers with.
+//
+// One function because the request path and `tick` must not disagree, and
+// three codes because things that are not failures used to share
+// `OperationFailed`: an operation already running, and a bond that was never
+// recorded. Neither had asked the bond store anything, and both were reported
+// as a deletion that failed.
+//
+// What is left under `OperationFailed` is "the bond is still there", which is
+// more than one cause: the store refused the deletion, and the worker's queue
+// refused the request. The host may say the bond survived; it may not say
+// which end is at fault, because this code does not carry that.
+ErrorCode forget_bond_error(MeshSinkResult result)
+{
+    switch (result) {
+    case MeshSinkResult::Busy:     return ErrorCode::Busy;
+    case MeshSinkResult::Rejected: return ErrorCode::BadInput;
+    default:                       return ErrorCode::OperationFailed;
+    }
+}
+
 void put_u32(std::uint8_t* p, std::uint32_t v)
 {
     p[0] = static_cast<std::uint8_t>(v & 0xFFu);
@@ -237,13 +258,37 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
             send_error(envelope.req_id, ErrorCode::BadBody, emit, ctx);
             return;
         }
+        // Refused before the sink is called, not after. There is one slot on
+        // each side of this, and a second request the bridge could not
+        // correlate is exactly how #378's two back-to-back forget-bonds would
+        // both be told they succeeded off one deletion.
+        if (forget_.active) {
+            // `Busy`, not `OperationFailed`. This branch knows nothing about
+            // the bond -- only that an earlier request has not been answered
+            // yet -- and `OperationFailed` sent the operator a sentence about
+            // a deletion that had not been attempted here.
+            send_error(envelope.req_id, ErrorCode::Busy, emit, ctx);
+            return;
+        }
         const MeshSinkResult result = mesh_sink_->forget_bond();
+        if (result == MeshSinkResult::Pending) {
+            // Nothing goes out here. The answer is sent from `tick` when the
+            // deletion has actually happened, against this req_id.
+            //
+            // No deadline. Every accepted request reaches an outcome: the mesh
+            // worker is `for (;;)` and is never deleted, and
+            // `stop_meshcore_ble()` posts `Deconfigure` rather than tearing the
+            // task down, so "no outcome ever arrives" has no route. A timer
+            // here would only turn a slow deletion into a failure that did not
+            // happen. The bounds that do exist are real ones: the host's own
+            // read timeout, and `on_disconnect`, which frees the slot with the
+            // connection that was waiting on it.
+            forget_.active = true;
+            forget_.req_id = envelope.req_id;
+            return;
+        }
         if (result != MeshSinkResult::Accepted) {
-            send_error(envelope.req_id,
-                       result == MeshSinkResult::Rejected
-                           ? ErrorCode::BadInput
-                           : ErrorCode::OperationFailed,
-                       emit, ctx);
+            send_error(envelope.req_id, forget_bond_error(result), emit, ctx);
             return;
         }
         Envelope reply;
@@ -338,6 +383,28 @@ void Bridge::handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::s
         send_error(req_id, ErrorCode::BadBody, emit, ctx);
         return;
     }
+    // A HELLO IS A NEW HOST, so the forget-bond correlation from the old one is
+    // dropped here for the same reason `on_disconnect` drops it: the stored
+    // req_id belongs to somebody who is gone.
+    //
+    // `on_disconnect` alone was not enough. It runs off
+    // `usb_serial_jtag_is_connected()`, which is a bus condition rather than
+    // "the process closed the tty", so a host that times out and exits with the
+    // cable in never triggers it. The next invocation then restarts its request
+    // ids at 1 and sends `mesh-forget-bond` as req_id 3, exactly as its
+    // predecessor did -- and a reply `tick` writes against the *old* 3, in the
+    // poll between this `HelloOk` and that request arriving, is matched by the
+    // new host as its own answer. `{"forgotten": true}` before the bond store
+    // was touched, which is #378 with the whole of the fix in place.
+    //
+    // The host-side eviction in `_allocate_req_id` closes the frame that
+    // arrived before the id was issued; this closes the one that arrives after.
+    // Not cancelling anything: the deletion is on the worker and the bond is
+    // the owner's, not the connection's. Clearing the correlation only says
+    // nobody is waiting for that answer -- and if one genuinely is still
+    // running, the sink still knows, because `reserve()` refuses and the next
+    // request is answered `Busy` rather than silently accepted.
+    forget_.active = false;
     // The version is reported, not enforced to be equal: ADR-0005 section 5
     // keeps version and capability set orthogonal, and a host one minor behind
     // should learn what it is talking to rather than be hung up on. This is
@@ -744,8 +811,31 @@ void Bridge::handle_input_reset(std::uint16_t req_id, std::uint32_t now_ms, Emit
 
 void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
 {
-    (void)emit;
-    (void)ctx;
+    // The late half of a forget-bond. `handle` runs on whichever task services
+    // the transport and the deletion runs on the mesh worker, so this is the
+    // only place the answer can be picked up -- and `tick` already runs from
+    // both hosts' loops (firmware/main/watch_control.cpp, sim/debug_server.cpp),
+    // which is why there is no new hook for it.
+    if (forget_.active && mesh_sink_ != nullptr) {
+        const MeshSinkResult outcome = mesh_sink_->forget_bond_outcome();
+        if (outcome != MeshSinkResult::Pending) {
+            forget_.active = false;
+            if (outcome == MeshSinkResult::Accepted) {
+                Envelope reply;
+                reply.req_id = forget_.req_id;
+                reply.op     = Opcode::MeshOk;
+                send(reply, nullptr, 0, emit, ctx);
+            } else {
+                // The two ways of not deleting are told apart, because the
+                // sentence the host prints for them is different. A store that
+                // refused leaves the bond on the watch; a conflict record that
+                // was already gone leaves nothing to forget, which is the same
+                // answer the synchronous refusal above gives and so carries the
+                // same code.
+                send_error(forget_.req_id, forget_bond_error(outcome), emit, ctx);
+            }
+        }
+    }
 
     // Push first, mutate second -- the order `core::InputState::release_all`
     // establishes and argues for at length. `apply()` runs first in an `&&`,
@@ -807,6 +897,11 @@ void Bridge::on_disconnect(std::uint32_t now_ms)
 {
     (void)state_.release_all(core::InputOrigin::Remote, now_ms, queue_);
     transfer_.active = false;
+    // There is nobody left to answer, and the req_id belongs to a host that is
+    // gone. The deletion itself is not cancelled -- it is already queued on the
+    // worker and the bond is the owner's, not the connection's; the sink's slot
+    // is reclaimed by the next request rather than held by this dead one.
+    forget_.active = false;
 }
 
 }  // namespace attadipa::debug

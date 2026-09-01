@@ -599,7 +599,26 @@ public:
     MeshSinkResult forget_bond() override
     {
         ++forget_calls;
+        // A NEW REQUEST CLEARS THE OLD ANSWER, which is what the firmware slot
+        // does: `reserve()` CAS-es any non-`InFlight` state to `InFlight`
+        // (firmware/main/meshcore_forget_outcome.h). Leaving this field alone
+        // let an uncollected outcome from the previous request be handed to
+        // the next one, and no bridge test could tell that apart from a fresh
+        // answer.
+        if (forget_result == MeshSinkResult::Pending) outcome = MeshSinkResult::Pending;
         return forget_result;
+    }
+
+    MeshSinkResult forget_bond_outcome() override
+    {
+        ++outcome_polls;
+        const MeshSinkResult answer = outcome;
+        // Consumed, exactly as the firmware slot consumes it
+        // (firmware/main/meshcore_forget_outcome.h). A fake that kept handing
+        // the same answer out would hide a bridge that polled twice and
+        // answered twice.
+        if (answer != MeshSinkResult::Pending) outcome = MeshSinkResult::Pending;
+        return answer;
     }
 
     MeshSinkResult send(const std::uint8_t incoming_prefix[6],
@@ -632,6 +651,8 @@ public:
     unsigned disconnect_calls = 0;
     unsigned forget_calls = 0;
     MeshSinkResult forget_result = MeshSinkResult::Accepted;
+    MeshSinkResult outcome = MeshSinkResult::Pending;
+    unsigned outcome_polls = 0;
     unsigned send_calls = 0;
     unsigned room_calls = 0;
     std::uint8_t prefix[6]{};
@@ -1814,6 +1835,263 @@ void a_hold_the_client_left_behind_is_still_released_once_it_is_gone()
 }
 
 
+// #378 -- a forget-bond is answered when the bond is gone, not when the request
+// was taken.
+//
+// The bug was the whole path saying success in the wrong order: the sink
+// returned `Accepted` on the enqueue, the bridge turned that into a terminal
+// `MeshOk`, and the CLI printed `{"forgotten": true}` while
+// `ble_store_util_delete_peer()` had not been called yet -- so a store that
+// then refused left an operator who had been told the bond was gone.
+std::uint16_t last_req_id(const Collector& sink)
+{
+    if (sink.messages.empty()) return 0xFFFF;
+    Envelope e;
+    const std::uint8_t* body = nullptr;
+    if (!decode_message(sink.messages.back().data(), sink.messages.back().size(), e, body)) {
+        return 0xFFFF;
+    }
+    return e.req_id;
+}
+
+void a_pending_forget_bond_is_not_answered_until_the_bond_is_gone()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 11), 1000);
+    CHECK(mesh.forget_calls == 1);
+    // The assertion the old code failed: nothing at all has gone out yet.
+    CHECK(rig.sink.messages.empty());
+
+    // Still working. A tick is not an answer.
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(mesh.outcome_polls == 1);
+    CHECK(rig.sink.messages.empty());
+
+    // The store returned 0.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(1200, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    // Against the req_id that asked, not a new one -- the host is waiting on
+    // that number and nothing else.
+    CHECK(last_req_id(rig.sink) == 11);
+
+    // Exactly one terminal response: the slot is closed, and a later tick with
+    // another outcome in it belongs to nobody.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(1300, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+}
+
+void a_store_that_refused_the_deletion_is_reported_as_a_failure()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 12), 1000);
+    CHECK(rig.sink.messages.empty());
+
+    mesh.outcome = MeshSinkResult::Failed;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
+    CHECK(last_req_id(rig.sink) == 12);
+}
+
+void a_second_forget_bond_over_one_in_flight_is_refused_not_correlated()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 13), 1000);
+    CHECK(rig.sink.messages.empty());
+
+    // Back to back, which is what a retrying operator does. The sink is not
+    // even asked: two requests over one deletion is the thing that must not
+    // produce two successes.
+    rig.send(request(Opcode::MeshForgetBond, 14), 1010);
+    CHECK(mesh.forget_calls == 1);
+    CHECK(rig.sink.messages.size() == 1);
+    // `Busy`, and the code matters as much as the refusal. This branch has not
+    // touched the bond store, so `OperationFailed` -- which the host prints as
+    // "the bond was not deleted and is still on the watch" -- told the operator
+    // to run it again, and the run again answered "there is nothing to forget"
+    // the moment req 13's deletion succeeded (#381).
+    CHECK(rig.sink.last_error() == ErrorCode::Busy);
+    CHECK(last_req_id(rig.sink) == 14);
+
+    // The first request is still the one the outcome belongs to.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 2);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 13);
+}
+
+void a_conflict_record_that_was_already_gone_is_not_a_refused_deletion()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 15), 1000);
+    CHECK(rig.sink.messages.empty());
+
+    // The worker looked and there was no record left to act on. Nothing was
+    // deleted and nothing is left behind, so this is the "nothing to forget"
+    // the synchronous refusal gives -- the same code, because the host prints
+    // the same sentence for it. Reported as a failure it read as "the bond is
+    // still on the watch", about a bond that had never been recorded.
+    mesh.outcome = MeshSinkResult::Rejected;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+    CHECK(last_req_id(rig.sink) == 15);
+}
+
+void a_forget_bond_with_no_outcome_is_not_answered_by_a_guess()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 17), 1000);
+
+    // There is no deadline, and this is what that means. A tick invents
+    // nothing: the deletion is either slow or done, and the bridge cannot tell
+    // which, so a timer here could only report a working deletion as a failure.
+    // What bounds this is the host's own read timeout -- and `on_disconnect`,
+    // which is the case below.
+    for (unsigned minute = 1; minute <= 60; ++minute) {
+        rig.bridge.tick(1000 + minute * 1000, &Collector::emit, &rig.sink);
+    }
+    CHECK(rig.sink.messages.empty());
+    CHECK(mesh.outcome_polls == 60);
+
+    // A second request while the first is unanswered is refused as busy, not
+    // correlated onto the first, and still nothing invents an answer for 17.
+    rig.send(request(Opcode::MeshForgetBond, 18), 61000);
+    CHECK(mesh.forget_calls == 1);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_error() == ErrorCode::Busy);
+    CHECK(last_req_id(rig.sink) == 18);
+
+    // And when it does arrive it goes to 17, however late.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(62000, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 2);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 17);
+}
+
+void a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 16), 1000);
+    rig.bridge.on_disconnect(1050);
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+
+    // The next host asks again and is served. A dropped correlation that kept
+    // the slot would make forget-bond dead until the watch rebooted.
+    rig.send(request(Opcode::MeshForgetBond, 17), 2000);
+    CHECK(mesh.forget_calls == 2);
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 17);
+}
+
+// The slot's rule at the bridge: an outcome nobody collected belongs to the
+// request that produced it, and the request AFTER it must not be answered with
+// it. `reserve()` is what enforces that in firmware, by CAS-ing whatever the
+// slot holds to `InFlight` (firmware/main/meshcore_forget_outcome.h), and
+// `FakeMeshSink::forget_bond` mirrors it. Without both, a host that left with
+// its answer uncollected hands the next host a `MeshOk` for a bond that is
+// still there -- which is #378, with the whole of this change in place.
+void an_uncollected_outcome_does_not_answer_the_request_after_it()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 21), 1000);
+    rig.bridge.on_disconnect(1050);
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+    // The worker finishes after the host is gone, so the answer sits in the
+    // slot with nobody to send it to.
+    mesh.outcome = MeshSinkResult::Accepted;
+
+    // A second conflict, a second request. The `Accepted` above belongs to the
+    // deletion that already happened; this bond has not been touched yet.
+    rig.send(request(Opcode::MeshForgetBond, 22), 2000);
+    CHECK(mesh.forget_calls == 2);
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+
+    // ...and this request's own outcome is answered once, against its req_id.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(2200, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 22);
+}
+
+void a_new_hello_drops_the_previous_hosts_forget_correlation()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    // Host A asks and times out. It exits with the cable still in, so
+    // `usb_serial_jtag_is_connected()` never falls and `on_disconnect` is NOT
+    // called -- which is exactly why the correlation is still here.
+    rig.send(request(Opcode::MeshForgetBond, 3), 1000);
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+
+    // Host B opens the port. Its ids restart at 1, so its forget-bond will be
+    // req_id 3 as well: the number host A's answer is addressed to.
+    HelloBody hello;
+    hello.protocol_version = kDebugProtocolVersion;
+    std::uint8_t body[kHelloBodyBytes] = {};
+    encode_hello(hello, body, sizeof(body));
+    rig.send(request(Opcode::Hello, 1, body, sizeof(body)), 2000);
+    CHECK(rig.sink.last_is(Opcode::HelloOk));
+    const std::size_t after_hello = rig.sink.messages.size();
+
+    // The worker finishes here -- in the poll between `HelloOk` and host B's
+    // request arriving, which is the window the host-side eviction cannot see.
+    mesh.outcome = MeshSinkResult::Failed;
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == after_hello);
+
+    // Host B's own request is served normally, and answered with its own
+    // outcome rather than with host A's `Refused`.
+    mesh.forget_result = MeshSinkResult::Pending;
+    rig.send(request(Opcode::MeshForgetBond, 3), 3000);
+    CHECK(mesh.forget_calls == 2);
+    rig.bridge.tick(3100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == after_hello);
+
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(3200, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == after_hello + 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 3);
+}
+
 int main()
 {
     an_envelope_survives_a_round_trip();
@@ -1831,6 +2109,14 @@ int main()
 
     time_sync_is_typed_and_requires_a_sink();
     mesh_commands_are_typed_and_require_a_sink();
+    a_pending_forget_bond_is_not_answered_until_the_bond_is_gone();
+    a_store_that_refused_the_deletion_is_reported_as_a_failure();
+    a_second_forget_bond_over_one_in_flight_is_refused_not_correlated();
+    a_conflict_record_that_was_already_gone_is_not_a_refused_deletion();
+    a_forget_bond_with_no_outcome_is_not_answered_by_a_guess();
+    a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one();
+    an_uncollected_outcome_does_not_answer_the_request_after_it();
+    a_new_hello_drops_the_previous_hosts_forget_correlation();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
     a_handshake_at_the_wrong_version_still_says_what_this_device_is();
