@@ -734,6 +734,83 @@ check "and reports round zero" 0 "$(key round)"
 out=$(gate "$(_ceiling_ledger 6)" 5 0)
 check "a zero count cannot un-cap a ledger past the ceiling" no "$(key run)"
 
+# ---------------------------------------------------------------------------
+# What the paid count counts, asserted against the live query
+#
+# The number above arrives from a `gh --jq` pipeline in the workflow, so none of
+# the cases above touch the thing that produces it. Over-counting is the failure
+# that matters here and it is the one nobody can see from outside: an early cap
+# just looks like a pull request that merged. Two ways it could happen were
+# raised in review -- one review comment that publishes several findings, and a
+# findings block pasted into a human's comment to answer it, both of which have
+# really occurred on this repository.
+#
+# So this runs the workflow's OWN filter, lifted out of the YAML rather than
+# copied, over comment streams shaped like those two cases.
+
+echo
+echo "What the paid count counts, asserted against the live query"
+
+workflow="$here/../workflows/claude-pr-review.yml"
+# The `paid=` line, minus everything but its --jq argument. Deliberately brittle:
+# if the query stops looking like this, the extraction fails loudly rather than
+# testing a filter that is no longer shipped.
+paid_filter=$(sed -n "s/^ *paid=.*--jq '\(.*\)' | wc -l.*$/\1/p" "$workflow")
+converge_filter=$(sed -n "s/^ *finding_id=.*--jq '\(.*\)' | tail -1)$/\1/p" "$workflow")
+
+if [ -z "$paid_filter" ]; then
+  echo "  FAIL: no paid= query found in $workflow -- the extraction is stale"
+  fail=$((fail + 1))
+fi
+
+# The two queries must agree by construction: the cap counts exactly the
+# comments the converge step would recognise as a published findings block. If
+# they ever diverge, one of them is counting something the other does not.
+check "the cap counts what converge identifies, character for character" \
+  "$paid_filter" "$converge_filter"
+
+count() {
+  ATTADIPA_REVIEW_ACTOR='claude[bot]' jq -r "$paid_filter" <<< "$1" | grep -c . || true
+}
+
+FIND='<!-- attadipa-review-findings round=1 -->'
+LEDGER='<!-- attadipa-review-ledger -->'
+
+check "no comments is no rounds" 0 \
+  "$(count '[]')"
+
+check "one findings comment is one round" 1 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND x\"}]")"
+
+# The case that would cap a round-3 pull request as though it were round 5.
+check "five findings in one comment is still one round" 1 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND a $FIND b $FIND c $FIND d $FIND e\"}]")"
+
+check "three separate findings comments are three rounds" 3 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":2,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":3,\"body\":\"$FIND\"}]")"
+
+# The second case raised in review: a person quoting the block back to answer it.
+# This repository is public, so this is also the whole subversion story -- anyone
+# may post, and a count with no author condition would let them end the review.
+check "a person quoting a findings block does not buy a round" 0 \
+  "$(count "[{\"user\":{\"login\":\"hleserg\"},\"id\":1,\"body\":\"> $FIND\"}]")"
+
+check "and neither does the bot that writes the ledger" 0 \
+  "$(count "[{\"user\":{\"login\":\"github-actions[bot]\"},\"id\":1,\"body\":\"$FIND\"}]")"
+
+# The ledger comment carries the marker inside it and is not a round.
+check "the ledger comment is not a findings block" 0 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$LEDGER\n$FIND\"}]")"
+
+check "a mixed stream counts only the reviewer's own blocks" 2 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"hleserg\"},\"id\":2,\"body\":\"quoting $FIND\"},
+             {\"user\":{\"login\":\"github-actions[bot]\"},\"id\":3,\"body\":\"$LEDGER\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":4,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":5,\"body\":\"no marker here\"}]")"
+
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
