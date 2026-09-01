@@ -191,14 +191,19 @@ bool wall_time_from_rtc(const attadipa::firmware::RtcDateTime &rtc,
 // CONFIG_ATTADIPA_WATCH_CONTROL and runs in the product image, which is the
 // whole reason the key it reads is the one that matters.
 //
-// It requires *both* keys. `last_sync_utc` is read and thrown away -- nothing
-// in the tree consumes it -- and it is read anyway because its presence is the
-// only evidence a `save_time_metadata()` ran to completion. A write can be
-// interrupted between the two sets with nothing reported to anybody: on power
-// loss the caller never returns, so no roll-back can run, and the timezone key
-// is already on flash. Requiring the second key is the only place that case
-// can be caught, and catching it here also gives a watch left holding a bad
-// key by a bench image a way back that does not need another bench image.
+// An interrupted write is **not** caught here. It is prevented by the write
+// order below: the timezone key is written last and erased first, so whatever
+// this reads is a value somebody accepted, whole. Requiring both keys cannot
+// catch a torn write and never could -- a watch that has synchronized once
+// already has `last_sync_utc` on flash, so both keys are present no matter
+// where the interruption landed. That was round 3's finding.
+//
+// It requires both keys anyway, for the one store the ordering does not cover:
+// a bench image from before this fix wrote the timezone first, so a first-ever
+// synchronization cut between the two sets left a timezone with no stamp behind
+// it. Rejecting that pair is what gets such a watch back without another bench
+// image. `last_sync_utc` is read and thrown away -- nothing in the tree
+// consumes it -- and its presence is the whole of what is being asked.
 esp_err_t restore_time_metadata() {
   ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, "initialize time metadata");
   nvs_handle_t handle{};
@@ -279,14 +284,27 @@ esp_err_t erase_if_present(nvs_handle_t handle, const char *key) {
   return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
 }
 
+// **The order of the two writes is the mechanism, not a detail.** The timezone
+// key is the one the product image reads, so it is written **last** here and
+// erased **first** in the roll-back below. A power loss cannot be reported, the
+// caller never returns and no roll-back can run, so the only thing that
+// protects the product image is that at every instant the key it reads holds
+// the last value anybody accepted. Writing it first -- which this did until
+// round 3 of #396 -- left a watch that had synchronized before with the new
+// offset beside the old stamp: two present keys, a read that accepts them, and
+// an offset from a synchronization that never reached the PCF85063.
+//
+// `nvs_commit()` does not make the pair a transaction and nothing here pretends
+// it does: it is a no-op on ESP-IDF v5.5.5 and a successful `nvs_set_*` is
+// already on flash. See the note on `TimeMetadata` above.
 esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
   nvs_handle_t handle{};
   ESP_RETURN_ON_ERROR(
       nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle), kTag,
       "open time metadata for write");
-  esp_err_t err = nvs_set_i16(handle, kTimezoneNvsKey, offset);
+  esp_err_t err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);
   if (err == ESP_OK) {
-    err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);
+    err = nvs_set_i16(handle, kTimezoneNvsKey, offset);
   }
   if (err == ESP_OK) {
     err = nvs_commit(handle);
@@ -442,7 +460,7 @@ public:
 
     // The metadata write goes first, and it IS the fail-closed check ahead of
     // the RTC write. #264's ledger names the shape: boot may already know the
-    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:842` --
+    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:914` --
     // "time metadata unavailable; continuing without it" logs it and carries
     // on -- and this function used to write and verify the PCF85063 anyway,
     // discovering only afterwards that nvs_open() could not succeed. That is a
@@ -455,7 +473,7 @@ public:
     // this pull request's review said and the first version of this comment
     // got wrong. It called the residue inert because nothing reads the
     // last-sync stamp. That is true of `last_utc` and false of `tz_min`:
-    // `firmware/main/waveshare_board.cpp:199` --
+    // `firmware/main/waveshare_board.cpp:217` --
     // "err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);" -- puts it back
     // into the time service on every boot, so a refused RTC write would have
     // left the watch displaying an offset it never accepted, for good. Hence

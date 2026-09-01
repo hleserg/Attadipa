@@ -383,7 +383,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:894` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:912` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because `BoardTimeSink` and
 `save_time_metadata` are inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
@@ -391,7 +391,7 @@ in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:1721` "bool configure_meshcore_ble") has exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:510`
+`BoardMeshSink::configure` (`waveshare_board.cpp:528`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM rather than
 storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
@@ -416,7 +416,7 @@ survive being flashed away — it does not survive a power cycle of the HIL imag
 either, which is what shows the round trip never existed. A product image stays
 `Unprovisioned` for its whole life and nothing on the watch can change that:
 `mesh_screen_requested` (`waveshare_board.cpp:121`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:513`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:531`
 "mesh_screen_requested.store(true)", inside the same `#if`, so the mesh screen
 never appears.
 

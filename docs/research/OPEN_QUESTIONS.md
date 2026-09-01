@@ -340,10 +340,10 @@ that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CO
 Everything that provisions a watch sits behind that symbol:
 
 - **The clock cannot be set.** `write_rtc()` has exactly one caller, inside the
-  `firmware/main/waveshare_board.cpp:228` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+  `firmware/main/waveshare_board.cpp:233` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
   block. A production watch reads the PCF85063 and never
   writes it, so a board off the shelf shows whatever its RTC powered up with.
-- **The timezone cannot be kept.** `firmware/main/waveshare_board.cpp:228` —
+- **The timezone cannot be kept.** `firmware/main/waveshare_board.cpp:233` —
   "#if CONFIG_ATTADIPA_WATCH_CONTROL" guards `save_time_metadata()`.
   `restore_time_metadata()` is unguarded, so production can read a stored offset
   it has no way to have stored.
