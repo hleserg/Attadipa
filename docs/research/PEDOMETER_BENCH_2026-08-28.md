@@ -37,7 +37,8 @@ lower bound, which makes the negative result stronger, not weaker.
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
 `(hi - lo) * 1000 / ACCEL_LSB_PER_G` (`probe/pedo.c:402`), and no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
-prints `+/-8 g` — but that label is itself one of the stale four (`probe/pedo.c:399-401`):
+prints `+/-8 g` — but that label is itself one of the stale four, listed below in
+this same report ([`PEDOMETER_BENCH_2026-08-28.md:400-402`](PEDOMETER_BENCH_2026-08-28.md) "62.5 Hz accel-only"):
 the register it names means ±4 g. It is therefore the *reason to doubt* the
 divisor, not a value for it. The label drifted from its constant when the full
 scale changed, and nothing in the capture shows the divisor did not drift with

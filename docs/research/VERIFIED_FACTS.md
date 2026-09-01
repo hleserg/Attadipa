@@ -637,10 +637,10 @@ to every unit of the same model.
   that *"the two variants differ on precisely the feature OD-6 makes
   mandatory"*, and that is **false**: they do not differ on it at all, as the
   twin-document entry above shows. Two things remain true.
-  [HARDWARE_MATRIX](HARDWARE_MATRIX.md) still records the board's IMU as
-  *"QMI8658 / QMI8658C"* and the vendor BSP does not touch the IMU, so no code
-  reads the variant back — but the schematic prints `QMI8658C`, and no register
-  would settle it anyway. And OD-6's feasibility is still open, but for a
+  [`HARDWARE_MATRIX.md:30`](HARDWARE_MATRIX.md) names the part without a variant
+  letter at all — *"QMI8658 — 6-axis"* — and the vendor BSP does not touch the
+  IMU, so no code reads the variant back. The schematic prints `QMI8658C`, and
+  no register would settle it anyway. And OD-6's feasibility is still open, but for a
   reason that has nothing to do with which of the two Rev A documents applies:
   the part answers `REVISION_ID = 0x7C`, the value both of them give, and the
   step register still did not move under sixteen seconds of deliberate shaking —
