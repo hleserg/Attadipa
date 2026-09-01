@@ -179,7 +179,7 @@ public:
 // answered by the sink synchronously, so `Accepted` still means what it says
 // for them -- and for a forget-bond sink that really is synchronous, which is
 // why this is a fourth value rather than a redefinition of `Accepted`.
-enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed, Pending };
+enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed, Pending, Busy };
 
 // The array extents below are a contract, not a constraint: an array parameter
 // decays to a pointer, so nothing makes the compiler check that 6 or 32 bytes
@@ -205,11 +205,19 @@ public:
     // before `ble_store_util_delete_peer()` had been called, and stayed a
     // success when the store then refused. A sink that answers `Pending` owes
     // exactly one `forget_bond_outcome()` other than `Pending` afterwards.
+    //
+    // `Busy` means the sink's own slot is still held by an earlier request. The
+    // bridge refuses a second forget-bond before reaching the sink at all, so
+    // this is the case where the bridge's half of the correlation went away --
+    // the host disconnected -- while the worker was still deleting.
     virtual MeshSinkResult forget_bond() = 0;
 
     // The answer to the `Pending` forget-bond, or `Pending` while the operation
     // is still running. `Accepted` here -- and nowhere else -- means the bond is
-    // actually gone.
+    // actually gone. `Rejected` means there was no conflict record left to act
+    // on, which is "nothing to forget" and not a failed deletion; `Failed` is
+    // the store refusing, which is the one answer that leaves the bond in
+    // place.
     //
     // Consuming: an outcome is reported once. The bridge sends one terminal
     // response per request, so a second reader would either send a second one
@@ -248,9 +256,11 @@ public:
     //
     // One request sends its response from `tick` instead of from here:
     // MeshForgetBond, whose answer is not known until another task has deleted
-    // the bond (#378). It is still exactly one, against the same req_id, and
-    // still bounded -- see `kForgetBondDeadlineMs` in bridge.cpp. A host that
-    // calls `handle` and never calls `tick` will wait forever for that one
+    // the bond (#378). It is still exactly one, and against the same req_id.
+    // What it is not is bounded here: the bridge invents no answer on a timer,
+    // because a timer could only report a slow deletion as a failure that did
+    // not happen. The host's own read timeout is the bound, and a host that
+    // calls `handle` and never calls `tick` will wait it out for that one
     // opcode and no other.
     void handle(const std::uint8_t* payload, std::size_t length, std::uint32_t now_ms, Emit emit,
                 void* ctx);
@@ -277,7 +287,14 @@ public:
     // prevent. T-114 owns making that choice; this comment exists so it is a
     // choice rather than a discovery.
     //
-    // Periodic housekeeping: expires anything held past `max_hold_ms`.
+    // Periodic housekeeping: expires anything held past `max_hold_ms`, and
+    // sends the one reply that is not sent from `handle`.
+    //
+    // **`emit` is used.** It was ignored until #378, and both hosts and the
+    // simulator's own comments were written around that. A MeshForgetBond is
+    // answered here because the deletion runs on another task and finishes
+    // long after the request returned, so a caller that passes a dead `ctx`
+    // or one that only ticks while a client is attached will lose that reply.
     void tick(std::uint32_t now_ms, Emit emit, void* ctx);
 
     // The transport dropped. Lifts everything the remote was holding, and
@@ -330,9 +347,8 @@ private:
     // make. #344's rule against a lifecycle framework for one bootstrap reads
     // the same way for one operation.
     struct PendingForget {
-        bool          active     = false;
-        std::uint16_t req_id     = 0;
-        std::uint32_t started_ms = 0;
+        bool          active = false;
+        std::uint16_t req_id = 0;
     } forget_{};
 
     struct Transfer {

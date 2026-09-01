@@ -39,9 +39,16 @@ enum class ForgetOutcome : std::uint8_t {
     // `ble_store_util_delete_peer()` returned 0. This is the *only* value that
     // may become a terminal `MeshOk`.
     Deleted,
-    // The worker finished and the bond is still there: the store refused, or
-    // the conflict record was gone by the time the worker looked.
+    // The worker finished and the bond is still there: the store refused to
+    // delete it.
     Refused,
+    // The worker found no conflict record to act on, so no bond was touched
+    // and none is left behind. Its own value, not a `Refused`: the honest
+    // sentence for the operator is "there is nothing to forget" -- the same one
+    // the synchronous refusal already prints -- and calling it a refused
+    // deletion sent them to look for a bond-store fault that does not exist
+    // (#381, `forget-failure-claims-bond-state`).
+    Nothing,
 };
 
 // One operation at a time, with its answer.
@@ -55,11 +62,10 @@ public:
     // in flight.
     //
     // An answer nobody collected does NOT refuse: the bridge drops its half of
-    // the correlation when the host disconnects or its deadline expires, and if
-    // an uncollected `Deleted` sitting here kept refusing, forget-bond would be
-    // dead until the watch rebooted. That is a worse failure than the bug this
-    // file fixes, so the stale answer is overwritten by the request that
-    // replaces it.
+    // the correlation when the host disconnects, and if an uncollected
+    // `Deleted` sitting here kept refusing, forget-bond would be dead until the
+    // watch rebooted. That is a worse failure than the bug this file fixes, so
+    // the stale answer is overwritten by the request that replaces it.
     bool reserve()
     {
         for (;;) {
@@ -77,12 +83,14 @@ public:
     // in flight forever behind a request that does not exist.
     void release() { state_.store(ForgetOutcome::Idle, std::memory_order_release); }
 
-    // The worker is done. `deleted` is `ble_store_util_delete_peer() == 0` and
-    // nothing else -- not "the event was handled", not "the record was taken".
-    void complete(bool deleted)
+    // The worker is done, and says which of the three ways it finished.
+    // `Deleted` means `ble_store_util_delete_peer() == 0` and nothing else --
+    // not "the event was handled", not "the record was taken". Only a terminal
+    // value belongs here; `Idle` would strand the host on a slot that says
+    // nothing happened and `InFlight` would never resolve.
+    void complete(ForgetOutcome outcome)
     {
-        state_.store(deleted ? ForgetOutcome::Deleted : ForgetOutcome::Refused,
-                     std::memory_order_release);
+        state_.store(outcome, std::memory_order_release);
     }
 
     // Reads an answer once. A finished outcome is consumed, so the caller that
@@ -91,7 +99,7 @@ public:
     ForgetOutcome take()
     {
         ForgetOutcome seen = state_.load(std::memory_order_acquire);
-        if (seen != ForgetOutcome::Deleted && seen != ForgetOutcome::Refused) {
+        if (seen == ForgetOutcome::Idle || seen == ForgetOutcome::InFlight) {
             return seen;
         }
         if (state_.compare_exchange_strong(seen, ForgetOutcome::Idle,

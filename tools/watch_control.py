@@ -264,13 +264,25 @@ def cmd_mesh_forget_bond(watch: Watch, args) -> int:
         # The generic text is written for the touch and button opcodes and
         # names a button this board does not have -- for a command that takes
         # no arguments at all it says nothing true.
+        if exc.code is p.ErrorCode.BUSY:
+            # Not a failed deletion, and this distinction is the whole of #381's
+            # first finding: one forget-bond is already running, and telling the
+            # operator "the bond is still on the watch" here sent them to run it
+            # again -- straight into "there is nothing to forget", once the
+            # first one had succeeded. Two contradictory sentences about a
+            # deletion that worked.
+            raise WatchError(
+                "a MeshCore forget-bond is already running on the watch. Wait "
+                "for it to answer rather than sending another; nothing here "
+                "says whether the bond is still there") from exc
         if exc.code is p.ErrorCode.OPERATION_FAILED:
-            # Since #378 this is an answer about the bond, not about the
-            # request reaching the watch: the reply now waits for
-            # `ble_store_util_delete_peer()`, so a failure here means the
-            # deletion was attempted and the bond is still there. The generic
-            # text says the hardware operation failed and stops, which leaves
-            # the operator not knowing whether to run it again.
+            # Since #378 this is an answer about the bond, and since #381 it is
+            # the *only* answer that is: the reply waits for
+            # `ble_store_util_delete_peer()`, and the two ways of not reaching
+            # it -- a request that found the operation busy, and a conflict
+            # record that had already gone -- have their own codes above and
+            # below. So a failure here really does mean the deletion was
+            # attempted and the bond is still there.
             raise WatchError(
                 "the MeshCore bond was not deleted and is still on the watch; "
                 "mesh stays down until it goes, so run this again -- if it "

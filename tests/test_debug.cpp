@@ -1910,7 +1910,12 @@ void a_second_forget_bond_over_one_in_flight_is_refused_not_correlated()
     rig.send(request(Opcode::MeshForgetBond, 14), 1010);
     CHECK(mesh.forget_calls == 1);
     CHECK(rig.sink.messages.size() == 1);
-    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
+    // `Busy`, and the code matters as much as the refusal. This branch has not
+    // touched the bond store, so `OperationFailed` -- which the host prints as
+    // "the bond was not deleted and is still on the watch" -- told the operator
+    // to run it again, and the run again answered "there is nothing to forget"
+    // the moment req 13's deletion succeeded (#381).
+    CHECK(rig.sink.last_error() == ErrorCode::Busy);
     CHECK(last_req_id(rig.sink) == 14);
 
     // The first request is still the one the outcome belongs to.
@@ -1921,28 +1926,60 @@ void a_second_forget_bond_over_one_in_flight_is_refused_not_correlated()
     CHECK(last_req_id(rig.sink) == 13);
 }
 
-void a_forget_bond_whose_outcome_never_arrives_is_still_answered_once()
+void a_conflict_record_that_was_already_gone_is_not_a_refused_deletion()
 {
     FakeMeshSink mesh;
     mesh.forget_result = MeshSinkResult::Pending;
     Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
 
     rig.send(request(Opcode::MeshForgetBond, 15), 1000);
-    // A mesh-disconnect after this point tears the worker down and no outcome
-    // ever comes. Zero terminal responses breaks the contract as surely as two.
-    rig.bridge.tick(1000 + 6000, &Collector::emit, &rig.sink);
     CHECK(rig.sink.messages.empty());
-    rig.bridge.tick(1000 + 6001, &Collector::emit, &rig.sink);
-    CHECK(rig.sink.messages.size() == 1);
-    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
-    CHECK(last_req_id(rig.sink) == 15);
 
-    // And the outcome that turns up late is nobody's: the host was already
-    // told this failed, so sending a success now would be the #378 bug with a
-    // longer fuse.
-    mesh.outcome = MeshSinkResult::Accepted;
-    rig.bridge.tick(1000 + 7000, &Collector::emit, &rig.sink);
+    // The worker looked and there was no record left to act on. Nothing was
+    // deleted and nothing is left behind, so this is the "nothing to forget"
+    // the synchronous refusal gives -- the same code, because the host prints
+    // the same sentence for it. Reported as a failure it read as "the bond is
+    // still on the watch", about a bond that had never been recorded.
+    mesh.outcome = MeshSinkResult::Rejected;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
     CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+    CHECK(last_req_id(rig.sink) == 15);
+}
+
+void a_forget_bond_with_no_outcome_is_not_answered_by_a_guess()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 17), 1000);
+
+    // There is no deadline, and this is what that means. A tick invents
+    // nothing: the deletion is either slow or done, and the bridge cannot tell
+    // which, so a timer here could only report a working deletion as a failure.
+    // What bounds this is the host's own read timeout -- and `on_disconnect`,
+    // which is the case below.
+    for (unsigned minute = 1; minute <= 60; ++minute) {
+        rig.bridge.tick(1000 + minute * 1000, &Collector::emit, &rig.sink);
+    }
+    CHECK(rig.sink.messages.empty());
+    CHECK(mesh.outcome_polls == 60);
+
+    // A second request while the first is unanswered is refused as busy, not
+    // correlated onto the first, and still nothing invents an answer for 17.
+    rig.send(request(Opcode::MeshForgetBond, 18), 61000);
+    CHECK(mesh.forget_calls == 1);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_error() == ErrorCode::Busy);
+    CHECK(last_req_id(rig.sink) == 18);
+
+    // And when it does arrive it goes to 17, however late.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(62000, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 2);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 17);
 }
 
 void a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one()
@@ -1988,7 +2025,8 @@ int main()
     a_pending_forget_bond_is_not_answered_until_the_bond_is_gone();
     a_store_that_refused_the_deletion_is_reported_as_a_failure();
     a_second_forget_bond_over_one_in_flight_is_refused_not_correlated();
-    a_forget_bond_whose_outcome_never_arrives_is_still_answered_once();
+    a_conflict_record_that_was_already_gone_is_not_a_refused_deletion();
+    a_forget_bond_with_no_outcome_is_not_answered_by_a_guess();
     a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();

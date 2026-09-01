@@ -228,7 +228,7 @@ ERROR_TEXT = {
                          "(a release with nothing held, a button this board does not have)",
     ErrorCode.TOO_MANY_TOUCHES: "this stack is single-touch",
     ErrorCode.NO_SCREEN: "nothing has been rendered yet",
-    ErrorCode.BUSY: "a screenshot is already in progress",
+    ErrorCode.BUSY: "the device is already doing one of those",
     ErrorCode.QUEUE_FULL: "the device's input queue is full, so the event was dropped "
                           "(the interface may be stalled)",
     ErrorCode.RATE_LIMITED: "too many input events per second",

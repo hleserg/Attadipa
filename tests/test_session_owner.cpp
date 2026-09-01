@@ -935,7 +935,7 @@ void a_forget_bond_is_answered_only_after_the_store_says_the_bond_is_gone()
     // had already told the operator the bond was gone.
     CHECK(op.take() == ForgetOutcome::InFlight);
 
-    op.complete(true);
+    op.complete(ForgetOutcome::Deleted);
     CHECK(op.take() == ForgetOutcome::Deleted);
     // Read once. A second reader would either send a second terminal response
     // or hand this answer to the request after it.
@@ -949,9 +949,29 @@ void a_deletion_the_store_refused_is_not_a_success_and_never_becomes_one()
     ForgetBondOperation op;
 
     CHECK(op.reserve());
-    op.complete(false);
+    op.complete(ForgetOutcome::Refused);
     CHECK(op.take() == ForgetOutcome::Refused);
     CHECK(op.take() == ForgetOutcome::Idle);
+}
+
+void a_record_that_was_already_gone_is_not_a_refused_deletion()
+{
+    using attadipa::firmware::ForgetBondOperation;
+    using attadipa::firmware::ForgetOutcome;
+    ForgetBondOperation op;
+
+    CHECK(op.reserve());
+    // The worker found no conflict record. Nothing was deleted and no bond is
+    // left behind, which is a different sentence for the operator than a store
+    // that refused -- and it shared `Refused`'s value until #381, so
+    // `mesh-forget-bond` answered "the bond is still on the watch" about a bond
+    // that had never been recorded.
+    op.complete(ForgetOutcome::Nothing);
+    CHECK(op.take() == ForgetOutcome::Nothing);
+    CHECK(op.take() == ForgetOutcome::Idle);
+
+    // Consumed like any other terminal answer, so the slot is free again.
+    CHECK(op.reserve());
 }
 
 void two_forget_bonds_cannot_both_be_answered_by_one_deletion()
@@ -988,13 +1008,13 @@ void an_answer_nobody_collected_does_not_wedge_the_next_request()
     ForgetBondOperation op;
 
     CHECK(op.reserve());
-    op.complete(true);
-    // The host disconnected, or the bridge's deadline expired: the answer is
-    // sitting here and the request it belonged to is gone. If that refused the
-    // next reservation, forget-bond would be dead until the watch rebooted --
-    // a worse failure than the one this file fixes.
+    op.complete(ForgetOutcome::Deleted);
+    // The host disconnected: the answer is sitting here and the request it
+    // belonged to is gone. If that refused the next reservation, forget-bond
+    // would be dead until the watch rebooted -- a worse failure than the one
+    // this file fixes.
     CHECK(op.reserve());
-    op.complete(false);
+    op.complete(ForgetOutcome::Refused);
     CHECK(op.take() == ForgetOutcome::Refused);
 }
 
@@ -1230,6 +1250,7 @@ int main()
     a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry();
     a_forget_bond_is_answered_only_after_the_store_says_the_bond_is_gone();
     a_deletion_the_store_refused_is_not_a_success_and_never_becomes_one();
+    a_record_that_was_already_gone_is_not_a_refused_deletion();
     two_forget_bonds_cannot_both_be_answered_by_one_deletion();
     a_request_that_was_never_queued_gives_the_slot_back();
     an_answer_nobody_collected_does_not_wedge_the_next_request();

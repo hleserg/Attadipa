@@ -347,6 +347,21 @@ else:
     no("a forget-bond that failed in the transport is not reported as no bond",
        f"exit {code}, calls {calls}, err {err!r}")
 
+# BUSY is the third answer, and it exists because the sentence above was being
+# printed for it. A forget-bond arriving over one already running knows nothing
+# about the bond; telling the operator it was not deleted sent them to run the
+# command again, which answered "there is nothing to forget" as soon as the
+# first one succeeded -- two contradictory sentences about a deletion that
+# worked (#381, `forget-failure-claims-bond-state`).
+Recorder.forget_bond_error = p.ProtocolError(
+    "the device is already doing one of those", p.ErrorCode.BUSY)
+code, calls, err = run(["mesh-forget-bond"])
+if code != 0 and "already running" in err and "still on the watch" not in err:
+    ok("a forget-bond over one in flight does not claim the bond was not deleted")
+else:
+    no("a forget-bond over one in flight does not claim the bond was not deleted",
+       f"exit {code}, calls {calls}, err {err!r}")
+
 # And the accepted path still reaches the client, so the guards above are not
 # simply refusing everything.
 Recorder.forget_bond_error = None

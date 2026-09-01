@@ -34,7 +34,10 @@ bool meshcore_ble_send_room(
 esp_err_t meshcore_ble_forget_bond();
 
 // The answer to the accepted forget-bond, consumed once. `InFlight` while the
-// worker still has it; `Deleted` only after the store returned 0.
+// worker still has it; `Deleted` only after the store returned 0; `Refused`
+// when the store said no and the bond is still there; `Nothing` when the
+// conflict record had already gone, which leaves no bond behind and is not a
+// failed deletion.
 attadipa::firmware::ForgetOutcome meshcore_ble_forget_bond_outcome();
 
 attadipa::core::MeshStatus meshcore_ble_status();

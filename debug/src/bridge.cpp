@@ -9,19 +9,21 @@ namespace {
 // the four-byte offset that says where it belongs.
 constexpr std::size_t kChunkBytes = kMaxBody - 4;
 
-// How long a forget-bond may stay unanswered before the bridge answers for it.
+// What a forget-bond that is not `Accepted` and not `Pending` answers with.
 //
-// Not hypothetical robustness: `mesh-disconnect` or a `stop_meshcore_ble()`
-// after the request was accepted tears the worker down, and then no outcome
-// ever arrives. "Exactly one terminal response" is violated by zero of them
-// just as surely as by two, and the shape of the failure matters -- with no
-// deadline the host waits out its own read and reports a dead link, when what
-// happened is a deletion that did not run.
-//
-// Below the host's read timeout on purpose, so the operator sees a typed
-// OperationFailed rather than a timeout: `tools/watch/client.py:31` --
-// "DEFAULT_TIMEOUT = 10.0".
-constexpr std::uint32_t kForgetBondDeadlineMs = 6000;
+// One function because the request path and `tick` must not disagree, and
+// three codes because three unrelated things used to share `OperationFailed`:
+// an operation already running, a bond that was never recorded, and a store
+// that refused the deletion. Only the last is a failed deletion, and only the
+// last may tell the operator the bond is still on the watch.
+ErrorCode forget_bond_error(MeshSinkResult result)
+{
+    switch (result) {
+    case MeshSinkResult::Busy:     return ErrorCode::Busy;
+    case MeshSinkResult::Rejected: return ErrorCode::BadInput;
+    default:                       return ErrorCode::OperationFailed;
+    }
+}
 
 void put_u32(std::uint8_t* p, std::uint32_t v)
 {
@@ -256,24 +258,32 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         // correlate is exactly how #378's two back-to-back forget-bonds would
         // both be told they succeeded off one deletion.
         if (forget_.active) {
-            send_error(envelope.req_id, ErrorCode::OperationFailed, emit, ctx);
+            // `Busy`, not `OperationFailed`. This branch knows nothing about
+            // the bond -- only that an earlier request has not been answered
+            // yet -- and `OperationFailed` sent the operator a sentence about
+            // a deletion that had not been attempted here.
+            send_error(envelope.req_id, ErrorCode::Busy, emit, ctx);
             return;
         }
         const MeshSinkResult result = mesh_sink_->forget_bond();
         if (result == MeshSinkResult::Pending) {
             // Nothing goes out here. The answer is sent from `tick` when the
             // deletion has actually happened, against this req_id.
-            forget_.active     = true;
-            forget_.req_id     = envelope.req_id;
-            forget_.started_ms = now_ms;
+            //
+            // No deadline. Every accepted request reaches an outcome: the mesh
+            // worker is `for (;;)` and is never deleted, and
+            // `stop_meshcore_ble()` posts `Deconfigure` rather than tearing the
+            // task down, so "no outcome ever arrives" has no route. A timer
+            // here would only turn a slow deletion into a failure that did not
+            // happen. The bounds that do exist are real ones: the host's own
+            // read timeout, and `on_disconnect`, which frees the slot with the
+            // connection that was waiting on it.
+            forget_.active = true;
+            forget_.req_id = envelope.req_id;
             return;
         }
         if (result != MeshSinkResult::Accepted) {
-            send_error(envelope.req_id,
-                       result == MeshSinkResult::Rejected
-                           ? ErrorCode::BadInput
-                           : ErrorCode::OperationFailed,
-                       emit, ctx);
+            send_error(envelope.req_id, forget_bond_error(result), emit, ctx);
             return;
         }
         Envelope reply;
@@ -789,19 +799,14 @@ void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
                 reply.op     = Opcode::MeshOk;
                 send(reply, nullptr, 0, emit, ctx);
             } else {
-                // The bond is still there. Both ways of failing say so with
-                // the same code: the store refused, or the record was gone by
-                // the time the worker looked, and neither is a malformed
-                // request. "Nothing conflicted" is still BadInput, answered
-                // above before anything was reserved.
-                send_error(forget_.req_id, ErrorCode::OperationFailed, emit, ctx);
+                // The two ways of not deleting are told apart, because the
+                // sentence the host prints for them is different. A store that
+                // refused leaves the bond on the watch; a conflict record that
+                // was already gone leaves nothing to forget, which is the same
+                // answer the synchronous refusal above gives and so carries the
+                // same code.
+                send_error(forget_.req_id, forget_bond_error(outcome), emit, ctx);
             }
-        } else if (now_ms - forget_.started_ms > kForgetBondDeadlineMs) {
-            // No outcome is coming. Answering is the point: a late one arriving
-            // after this finds `active` false and is never sent, so the request
-            // still gets exactly one terminal response.
-            forget_.active = false;
-            send_error(forget_.req_id, ErrorCode::OperationFailed, emit, ctx);
         }
     }
 

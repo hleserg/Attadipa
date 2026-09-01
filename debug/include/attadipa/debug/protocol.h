@@ -106,7 +106,7 @@ enum class ErrorCode : std::uint16_t {
     BadInput         = 4,   // impossible from the current input state
     TooManyTouches   = 5,   // a second finger; see core/input.h
     NoScreen         = 6,   // nothing has been rendered yet
-    Busy             = 7,   // a screen transfer is already in progress
+    Busy             = 7,   // one of that kind is already running: a screen transfer, or a bond deletion
     RateLimited      = 8,
     VersionMismatch  = 9,
     QueueFull        = 10,  // the input queue overran; the event was dropped
@@ -124,6 +124,15 @@ enum class ErrorCode : std::uint16_t {
 // second screenshot arriving mid-transfer, and a swipe point that found the
 // input queue full. A dropped gesture reporting itself as a screenshot
 // collision sends the reader to the wrong subsystem.
+//
+// A forget-bond arriving over one already running is `Busy` rather than a
+// fourteenth code, and that is the same line rather than a step back over it:
+// `Busy` means "a request of this kind is already running, wait for it", which
+// is one condition with two subjects, where the input queue overrunning was a
+// second subsystem wearing the first one's name. What `Busy` must never absorb
+// again is an operation that *failed* -- #381 found `OperationFailed` doing the
+// mirror image of this, telling the operator a deletion had been refused when
+// the request had not reached the store at all.
 //
 // `CaptureFailed` and `ScreenGeometry` exist for the same reason one layer up.
 // Every way a capture can fail used to answer `NoScreen`, "nothing has been

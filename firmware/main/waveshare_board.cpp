@@ -399,6 +399,13 @@ public:
       return attadipa::debug::MeshSinkResult::Pending;
     case ESP_ERR_INVALID_STATE:
       return attadipa::debug::MeshSinkResult::Rejected;
+    case ESP_ERR_NOT_FINISHED:
+      // The worker still holds the slot from an earlier request. The bridge
+      // refuses a second forget-bond before it reaches here, so this is the
+      // case where the host that asked for the first one went away while the
+      // deletion was still running -- busy, not failed, and the operator is
+      // told to wait rather than told a deletion was refused.
+      return attadipa::debug::MeshSinkResult::Busy;
     default:
       return attadipa::debug::MeshSinkResult::Failed;
     }
@@ -410,11 +417,16 @@ public:
       return attadipa::debug::MeshSinkResult::Accepted;
     case attadipa::firmware::ForgetOutcome::InFlight:
       return attadipa::debug::MeshSinkResult::Pending;
+    case attadipa::firmware::ForgetOutcome::Nothing:
+      // Not a failed deletion: the conflict record was gone before the worker
+      // looked, so nothing was deleted and nothing is left behind. Same code
+      // as the synchronous empty record above, because it is the same answer.
+      return attadipa::debug::MeshSinkResult::Rejected;
     default:
       // Refused, and Idle with it. Idle means the answer was already consumed
       // or the slot was given back, and there is no operation left to wait
-      // for; reporting that as Pending would hold the request open until the
-      // bridge's deadline for an answer that is never coming.
+      // for; reporting that as Pending would hold the request open for an
+      // answer that is never coming, and there is no deadline behind it.
       return attadipa::debug::MeshSinkResult::Failed;
     }
   }

@@ -1130,9 +1130,12 @@ void mesh_task(void*)
                     // Nothing conflicted, so there is no bond this operation
                     // is allowed to touch. The request task already refused on
                     // the same question; this is the second half of the same
-                    // check, because the record can be cleared between them.
+                    // check, because the record can be cleared between them --
+                    // and it answers with the same sentence, which is why the
+                    // outcome is `Nothing` rather than the `Refused` that means
+                    // a store said no.
                     ESP_LOGW(kTag, "forget-bond: no conflicting bond recorded");
-                    forget_op.complete(false);
+                    forget_op.complete(attadipa::firmware::ForgetOutcome::Nothing);
                     break;
                 }
                 // End the link first. NimBLE does not defend a bond being
@@ -1168,7 +1171,7 @@ void mesh_task(void*)
                         SessionGuard guard;
                         recovery.record(peer);
                     }
-                    forget_op.complete(false);
+                    forget_op.complete(attadipa::firmware::ForgetOutcome::Refused);
                     break;
                 }
                 ESP_LOGW(kTag,
@@ -1187,7 +1190,7 @@ void mesh_task(void*)
                 if (session_snapshot().stack_readies != 0) start_scan();
                 // Last, and only here: the bond is gone and the store said so.
                 // This is the one path that may become a terminal MeshOk.
-                forget_op.complete(true);
+                forget_op.complete(attadipa::firmware::ForgetOutcome::Deleted);
                 break;
             }
             case EventKind::Send:
