@@ -296,7 +296,7 @@ distinguishes nothing. **`REVISION_ID` does:**
 
 | Document | `REVISION_ID` §5.3 |
 |---|---|
-| `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A` (© 2022 QST) — chapter 11 documents a complete hardware pedometer | **`0x7C`** |
+| `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` (© 2022 QST, 20 June 2022) — chapter 11 documents a complete hardware pedometer | **`0x7C`** |
 | `QMI8658C` Rev 0.6, ADVANCE INFORMATION — `CTRL8` is *"Reserved: Not Used"*, no step counter | `0x79` |
 
 The silicon reports **`0x7C`**. This is [H14](OPEN_QUESTIONS.md)'s consequential
@@ -307,8 +307,13 @@ in a second subsystem exactly as that ADR predicted.
 
 Recorded precisely, because the distinction matters:
 
-- **Established:** the revision byte on this board matches the Rev A document and
-  not the Rev 0.6 one, so **Rev A is the register map to program against.**
+- **Established:** the revision byte on this board matches
+  `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and not the C Rev 0.6 draft, so
+  **`13-52-27` is the register map to program against.** Every unqualified
+  "Rev A" below means that document. The other Rev A paper,
+  `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`, has since been read too and gives the
+  same byte — see the wrinkle below — so what picks `13-52-27` here is the
+  schematic printing `QMI8658C`, not this register.
 - **Not established:** that the pedometer *works*. A matching revision byte is
   evidence about which document applies, not a functional test. Chapter 11's
   engine has to be enabled and counted against real walking, which needs a person
@@ -322,8 +327,27 @@ Recorded precisely, because the distinction matters:
   writable and reads back `0x90` on a part whose other candidate document calls
   that register *"Reserved: Not Used"*, and gravity measures 1.03 g under Rev A's
   ±8 g scaling.
-- One correction to [OPEN_QUESTIONS](OPEN_QUESTIONS.md) H14 in passing: the
-  document number of the Rev A datasheet is **13-52-25**, not 13-52-27.
+- **A correction this section used to make, withdrawn — it was wrong.** It read
+  *"the document number of the Rev A datasheet is 13-52-25, not 13-52-27"*.
+  There is no *the* Rev A datasheet: QST published **two**, both Rev A, both
+  dated 20 June 2022, and this repository already listed them side by side at
+  [`VERIFIED_FACTS.md:574`](VERIFIED_FACTS.md) "documents it fully" and
+  [`VERIFIED_FACTS.md:578`](VERIFIED_FACTS.md) "documents the identical
+  feature". Writing *"the Rev A datasheet"* unqualified is what made the two
+  collapse into one, so this tree does not write it any more.
+  **The `0x7C` above is read from `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`**, a
+  copy of which is held off-tree — 88 pages, md5
+  `e093b1cc1d1cf85097f955abbea65c08`, `REVISION_ID  0x7C` in its §5.3 detail
+  page and `0b01101000` = `0x68` in its register-map summary, which is the
+  discrepancy the bullet above names. `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`
+  is a different file with a different hash, and it has since been read too:
+  **it gives `0x7C` in its register-description section and `0x68` in its
+  register-map summary — the same byte and the same internal discrepancy.**
+  So the `0x7C` above is correctly attributed to `13-52-27`, and it would have
+  been just as correct against `13-52-25`; neither document's `REVISION_ID` can
+  identify which one you are holding —
+  [`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart".
+  See [#341](https://github.com/hleserg/Attadipa/issues/341).
 
 ### 3.3 The touch controller is held in reset until GPIO 9 is pulsed
 
