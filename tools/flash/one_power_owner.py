@@ -24,6 +24,17 @@ This reads text. It is a tripwire, not a proof:
 * It will **not** catch a call reached through a function pointer, a macro that
   hides the symbol, or a rail written by a library this project links. Those are
   the reasons the owner is also an architectural boundary and not only a grep.
+* It will **not** catch a rail write whose register and write verb are on
+  different lines -- `{0x93, 0x1C}` built into an array on one line and passed
+  to `write_reg()` on the next reads as neither. That is the price of the
+  one-line rule below, which is what keeps a UUID byte from being reported as a
+  rail write.
+* It will **not** catch a write verb that does not *begin* an identifier.
+  `WRITE_VERB` opens with a word boundary, so `i2c_master_transmit(pmu, 0x93,
+  2)` reads as no write at all even with the register on the same line -- the
+  underscore before `transmit` is a word character, so there is no boundary
+  there. What this check actually sees is the `write_reg()` wrapper this tree
+  happens to use. Both holes are real rather than theoretical.
 
 The allowed file is named here rather than inferred, because "the file with the
 most sleep calls in it" is not a rule anybody can rely on.

@@ -96,11 +96,25 @@ after register `0x49` reports a latched PWR edge. GPIO is zero for this route.
 The panel restored and the watch continued answering the debug channel.
 
 The transcript above is what that run printed and is left as it was recorded.
-A repeat prints the same two lines under the tag `physical-input`: sleep and
-wake moved to `firmware/main/physical_input.cpp` in #346 so that they survive a
-build with no debug endpoint, and the log tag moved with them. The behaviour
-did not change, and this was not re-measured — **NOT EXECUTED — HARDWARE
-REQUIRED**.
+It is no longer what a repeat prints, and in three ways rather than one. Both
+lines moved to `firmware/main/physical_input.cpp` in #346, so that they survive
+a build with no debug endpoint, and the tag moved with them. Then the sleep line
+moved again in [#367](https://github.com/hleserg/Attadipa/issues/367): it comes
+from the board's power owner now, so its tag is `board-power`, and it has lost
+the `display off;` prefix — turning the panel off became a `suspend(Display)`
+the owner records and un-does, rather than a step the log narrates
+([`firmware/main/board_power.cpp:312-314`](../../firmware/main/board_power.cpp) —
+"attadipa::core::to_string(state),"). The wake line kept `physical-input` and
+lost the `(cause=4 gpio=0x0)` suffix: causes are a bitmap now, and every one of
+them is named
+([`firmware/main/physical_input.cpp:227-231`](../../firmware/main/physical_input.cpp) —
+"describe_wake(named, sizeof(named), report.wake_causes);") instead of the
+single value the lossy `esp_sleep_get_wakeup_cause()` returned. So `cause=4` is
+in no line this firmware can print, and a repeat grepped for the text above
+finds nothing — which is the failure this paragraph exists to prevent, since it
+is the only forward-looking sentence on a page of recorded transcript. What the
+two lines report did not change, and nothing here was re-measured — **NOT
+EXECUTED — HARDWARE REQUIRED**.
 
 ## Evidence boundary
 
