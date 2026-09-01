@@ -385,22 +385,22 @@ flashing back therefore works: the PCF85063 is battery-backed and the offset is
 in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1256` "bool configure_meshcore_ble") has exactly one caller,
+(`meshcore_ble.cpp:1328` "bool configure_meshcore_ble") has exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:378`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM rather than
 storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
-(`meshcore_ble.cpp:150` "std::atomic_bool configured", `meshcore_ble.cpp:152`
+(`meshcore_ble.cpp:151` "std::atomic_bool configured", `meshcore_ble.cpp:153`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
-that sets `configured` **true** (`meshcore_ble.cpp:1061`
-"configured.store(true)", `meshcore_ble.cpp:1062`
+that sets `configured` **true** (`meshcore_ble.cpp:1063`
+"configured.store(true)", `meshcore_ble.cpp:1064`
 "reconnect_allowed.store(true)" — every other write clears them), and
-`start_scan()` returns unless both are true (`meshcore_ble.cpp:247`
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:248`
 "void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
 bond buys nothing without a scan.
 
 One other event re-arms `reconnect_allowed`: `ForgetBond`
-(`meshcore_ble.cpp:1147` "reconnect_allowed.store(true)"), which is #325's
+(`meshcore_ble.cpp:1174` "reconnect_allowed.store(true)"), which is #325's
 recovery from a stale bond. It changes nothing here — it is reached only
 through `MeshForgetBond`, inside the same `#if`, and it re-arms a scan that
 `configured` still gates. A product image cannot reach it and would gain
@@ -418,9 +418,9 @@ never appears.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:1241` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:1268` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:1236` "xTaskCreate(mesh_task") for a subsystem that can never
+(`meshcore_ble.cpp:1289` "xTaskCreate(mesh_task") for a subsystem that can never
 scan. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is

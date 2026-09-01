@@ -584,7 +584,11 @@ class Watch:
             body = p.mesh_configure_encode(passkey)
         except (TypeError, ValueError, struct.error) as exc:
             raise WatchError(str(exc)) from exc
-        self.request(p.Op.MESH_CONFIGURE, body, (p.Op.MESH_OK,))
+        # Not retried. A Configure that lands on a live session recycles it
+        # (#345), so a retry after a lost acknowledgement is a second recycle
+        # of a session the first one already replaced. The device has no
+        # request-id deduplication, so a new req_id buys nothing here.
+        self.request(p.Op.MESH_CONFIGURE, body, (p.Op.MESH_OK,), retries=0)
 
     def mesh_disconnect(self) -> None:
         self.request(p.Op.MESH_DISCONNECT, b"", (p.Op.MESH_OK,))
