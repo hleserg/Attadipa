@@ -369,7 +369,17 @@ a coordinate the receiver solved for, and the instant it solved it. It is not
 under a roof.** A
 GNSS frame's position field is not emptied when the solution goes away — the
 receiver keeps sending the coordinate it last solved for, with a fix type of
-`NoFix` in the same frame saying there is no position at all. §2 above is the
+`NoFix` in the same frame saying there is no position at all.
+
+That last sentence is `UNKNOWN` as a hardware fact and this decision does not
+rest on it being true. NMEA `GGA`/`RMC` behaviour on fix loss is
+receiver-dependent and no bench run in this repository has established it for
+the receiver this project ships with; it has no entry in
+[`VERIFIED_FACTS.md`](../research/VERIFIED_FACTS.md). The rules below are
+written to be correct either way: a receiver that *does* empty the field
+produces no position at all, which every path here already reads as silence,
+so the retained coordinate is the harder case and the only one that needs a
+rule. Establishing it is part of T-152. §2 above is the
 rule that lets this be seen: the states do not collapse, so `PositionValidity`
 is beside the coordinate rather than folded into it. The evaluator then held
 **two models of the same observation's fitness**. The rate baselines read the

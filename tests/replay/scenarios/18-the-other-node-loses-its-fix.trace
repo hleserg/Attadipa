@@ -1,0 +1,174 @@
+scenario the node that lost its fix stops being a second opinion
+describe The mirror of scenario 17, on the half this device cannot check any
+describe other way. There the receiver on the wrist lost its fix; here it is the
+describe node. A receiver that loses its solution keeps sending the coordinate it
+describe last solved for, so the relayed frame arrives looking exactly like an
+describe answer, once a second, for as long as the dropout lasts.
+describe
+describe Three things followed from reading that shape as an answer, and each is
+describe asserted below. A retained coordinate far from ours raised
+describe `provider-disagreement` although the node had reported no fix at all —
+describe and that reason alone scores 30, which is the default `degrade_at`. A
+describe retained coordinate that happened to sit near ours cleared a live
+describe allegation the node had never withdrawn. And the frames, arriving at
+describe 1 Hz, kept restamping the anchor `provider_departure_grace` is measured
+describe from, so the other side could never go quiet and the one exit this
+describe reason has short of `provider_detached()` was unreachable.
+describe
+describe T-154 of ADR-0011 §5.2, issue #343.
+
+at 0
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  jam none
+  spoof none
+  expect validity valid
+  expect trust trusted
+
+# A real disagreement first, so what follows has something to be wrong about.
+# The node has a fix of its own and puts us half a kilometre north of where our
+# own receiver does. Both sides measured; both are claiming to know.
+at 500
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect reason provider-disagreement
+  expect trust degraded
+
+# Now the node loses its fix. The coordinate does not move — a field nobody
+# rewrote keeps its old value — so this frame is byte-for-byte the accusation
+# above with `fix none` in it. It is not one. What stands here is still the
+# allegation the node made while it could answer, inside `evidence_ttl`.
+at 1500
+  fix none
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  provider other
+  expect reason provider-disagreement
+  expect trust degraded
+
+# Our own receiver is solving throughout — the dropout is the node's — and this
+# fix is here so the local half of the comparison is inside
+# `provider_comparison_window` when the next frame arrives. Without it the step
+# below would pass for the wrong reason: it is this device that could not be
+# compared, not the node that could not answer.
+at 19500
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  expect validity valid
+
+# Past `evidence_ttl`, and this is the assertion the defect fails. The only
+# frames since have been retained coordinates half a kilometre out; if one of
+# them counted as an answer it would have re-raised the reason and it would be
+# live here. A node that has reported no fix at all accuses nobody. The device
+# stays Degraded because the lapsed allegation is still awaited — nobody
+# withdrew it — which is a different statement from the node making it again.
+at 20000
+  fix none
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  provider other
+  expect no-reason provider-disagreement
+  expect trust degraded
+
+at 21000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  expect validity valid
+  expect no-reason provider-disagreement
+  expect trust degraded
+
+at 60000
+  fix none
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  provider other
+  expect no-reason provider-disagreement
+  expect trust degraded
+
+# Two minutes after the last frame the node could answer with.
+# `provider_departure_grace` has elapsed, so the allegation stops being awaited:
+# a source that has stopped answering has stopped alleging. This is the step the
+# defect could never reach — at 1 Hz every retained-coordinate frame above
+# restamped the anchor the grace is measured from, so it never elapsed and the
+# only exit short of `provider_detached()` was unreachable for the whole
+# dropout.
+at 121000
+  fix none
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  provider other
+  expect trust degraded
+
+# `recover_hold` later, and one step at a time: Degraded climbs to Trusted.
+at 127000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  expect validity valid
+  expect trust trusted
+
+# The other half. A fresh, real disagreement — the node has its fix back and is
+# still half a kilometre out.
+at 127500
+  fix 3d
+  pos 5045000 10000000
+  alt 42000
+  acc 6000
+  sats 9 12
+  provider other
+  expect reason provider-disagreement
+  expect trust degraded
+
+# And it drops out again, this time with a retained coordinate that happens to
+# sit on top of ours. This is the shape that used to exonerate: a frame saying
+# there is no position at all was read as the node agreeing with us, and the
+# live allegation was retracted on its behalf. The node has withdrawn nothing,
+# and the allegation is still live here.
+at 128000
+  fix none
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  provider other
+  expect reason provider-disagreement
+  expect trust degraded
+
+# A withdrawal has to be measured. When the node solves again and agrees, the
+# allegation goes — the gate narrows what counts as an answer, it does not stop
+# the second source from ever clearing itself.
+at 128500
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 9 12
+  provider other
+  expect no-reason provider-disagreement
+
+at 134000
+  fix 3d
+  pos 5000000 10000000
+  alt 42000
+  acc 3500
+  sats 11 14
+  expect validity valid
+  expect trust trusted

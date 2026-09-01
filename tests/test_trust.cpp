@@ -1419,7 +1419,12 @@ void test_a_node_under_cover_is_not_a_node_that_has_gone()
             GnssObservation useless = variant == 0 ? kNodeNoFix : kNodeOutOfRange;
             useless.source          = PositionSource::NodeGnss;
             useless.observed_at     = at(ms);
-            evaluator.compare_provider(useless, PositionValidity::Valid, at(ms));
+            // What `classify()` returns for both of these: `kNodeNoFix` has no
+            // position and `kNodeOutOfRange` is at 100 degrees north, so
+            // `Valid` is a verdict no caller in this tree can produce for them
+            // -- and asserting a frame shape against an impossible verdict is
+            // the contradiction the parameter exists to forbid.
+            evaluator.compare_provider(useless, PositionValidity::NoFix, at(ms));
         }
 
         // Never withdrawn: still live, or lapsed and still awaited. And the
@@ -1470,7 +1475,12 @@ void test_a_node_uncomparable_past_the_grace_stops_being_awaited()
                 GnssObservation useless = variant == 0 ? kNodeNoFix : kNodeOutOfRange;
                 useless.source          = PositionSource::NodeGnss;
                 useless.observed_at     = at(ms);
-                evaluator.compare_provider(useless, PositionValidity::Valid, at(ms));
+                // What `classify()` returns for both of these: `kNodeNoFix` has no
+            // position and `kNodeOutOfRange` is at 100 degrees north, so
+            // `Valid` is a verdict no caller in this tree can produce for them
+            // -- and asserting a frame shape against an impossible verdict is
+            // the contradiction the parameter exists to forbid.
+            evaluator.compare_provider(useless, PositionValidity::NoFix, at(ms));
             }
         }
 
