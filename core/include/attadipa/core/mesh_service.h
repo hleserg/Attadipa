@@ -41,6 +41,15 @@ struct MeshStatus {
     Availability availability = Availability::Unreachable;
     TransportPhase transport = TransportPhase::Absent;
     std::array<char, kMeshPeerNameBytes + 1> node_name{};
+    // The node's own public key, from RESP_CODE_SELF_INFO. `node_name` is not
+    // an identity: the bench ran two nodes whose names differed by an emoji and
+    // whose advertisements are interchangeable to `advertises_meshcore()`
+    // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:63 "public key"). This is
+    // what tells them apart, and it is not permanent either -- a factory reset
+    // on the node regenerates it (`:50`), which is a new identity by design and
+    // is meant to be visible as one.
+    MeshPeerId node_id{};
+    bool has_node_id = false;
     std::array<char, kMeshPeerNameBytes + 1> last_sender{};
     std::array<char, kMeshTextBytes + 1> last_message{};
     MeshDelivery delivery = MeshDelivery::None;

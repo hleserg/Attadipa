@@ -63,6 +63,32 @@ public:
     // trust (MESHCORE_PARSER_BOUNDS.md §5) out of the recovery path.
     void drop_oversize_frame() { ++malformed_frames_; }
 
+    // WHICH NODE THIS IS, AND WHETHER IT IS THE RIGHT ONE.
+    //
+    // `advertises_meshcore()` matches the Companion service UUID or the name
+    // substring, and connects to whichever advertisement arrives first. With
+    // two nodes in range that is a coin toss: the bench reached one five times
+    // and the other four across nine runs, and the two disagreed about which
+    // room was reachable, so an unannounced swap is a silently different mesh
+    // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:54 "There are two MeshCore
+    // nodes in range").
+    //
+    // The identity is the 32-byte public key at offset 4 of
+    // RESP_CODE_SELF_INFO, which this class already parses for the name at
+    // offset 58. It is read here and compared here; where the expected value
+    // is *kept* is the transport's business, because this class has no storage
+    // that outlives a session.
+    void pin(const core::MeshPeerId& node);
+    bool pinned(core::MeshPeerId& out) const;
+    bool node_id(core::MeshPeerId& out) const;
+
+    // True once the handshake has read a public key that is not the pinned one.
+    // Nothing here acts on it: the frame was well formed, the session is not
+    // faulted, and tearing a connection down is the transport's decision to
+    // make and the transport's to not repeat. It latches until the next
+    // session, so a poll that happens after `disconnected()` still sees why.
+    bool wrong_node() const { return wrong_node_; }
+
     std::uint32_t malformed_frames() const { return malformed_frames_; }
     std::uint8_t firmware_version_code() const { return firmware_version_code_; }
 
@@ -134,6 +160,12 @@ private:
     // did not exist.
     LinkState link_{{core::TransportKind::Bluetooth, core::Millis{0}, true}};
     core::MeshStatus status_{};
+    // The node this session is talking to, and the one it is supposed to be
+    // talking to. `pinned_` is handed in by the transport from storage and
+    // survives `reset_session()`; the other two belong to the session.
+    core::MeshPeerId pinned_{};
+    bool pinned_set_ = false;
+    bool wrong_node_ = false;
     std::array<core::MeshPeer, kRetainedPeers> peers_{};
     std::size_t peer_count_ = 0;
     std::array<MeshCoreFrame, kTxDepth> tx_{};

@@ -512,7 +512,25 @@ void refresh_mesh() {
                         : status.transport == attadipa::core::TransportPhase::Ready
                               ? "CONNECTED"
                               : attadipa::core::to_string(status.transport));
-  lv_label_set_text_fmt(state.mesh_node, "Node:\n%s",
+  // The key prefix shares the "Node:" line rather than taking one of its own:
+  // the label wraps, the name below it can already be two lines, and there are
+  // 90 px to the message label under it. A name is not an identity -- the two
+  // bench nodes were `Beta test companion` and a name differing by an emoji,
+  // and an operator reading a screenshot could not say which mesh a run was on
+  // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:54). Four bytes is what the
+  // bench reports already identify nodes by.
+  char node_key[11] = {};
+  if (status.has_node_id) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    node_key[0] = ' ';
+    for (std::size_t i = 0; i < 4; ++i) {
+      node_key[1 + i * 2] =
+          kHex[status.node_id.public_key[i] >> 4U];
+      node_key[2 + i * 2] =
+          kHex[status.node_id.public_key[i] & 0x0FU];
+    }
+  }
+  lv_label_set_text_fmt(state.mesh_node, "Node:%s\n%s", node_key,
                         status.node_name[0] != '\0' ? status.node_name.data()
                                                      : "—");
   // Sender, text and delivery state are the three things a screenshot has to
