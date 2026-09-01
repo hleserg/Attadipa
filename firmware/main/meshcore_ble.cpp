@@ -227,6 +227,10 @@ constexpr const char* kNodeKeyNvsKey    = "node";
 std::atomic<std::uint64_t> connecting_addr{0};
 std::atomic<std::uint64_t> refused_addr{0};
 std::atomic<std::uint32_t> refused_until_ms{0};
+// The floor `after_refusal()` raises when a second address is refused while the
+// first is still cooling down. See `firmware/main/meshcore_node_pin.h` --
+// "struct RefusalState {" for why one slot alone is not a cooldown.
+std::atomic<std::uint32_t> hold_all_until_ms{0};
 
 
 std::uint64_t packed_addr(const ble_addr_t& addr)
@@ -238,17 +242,26 @@ std::uint64_t packed_addr(const ble_addr_t& addr)
     return packed;
 }
 
+std::uint32_t uptime_ms()
+{
+    return static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
+}
+
+// The three atomics read as one value. They are read and written separately, so
+// a refusal landing between two of these loads can be seen half-applied; the
+// worst it costs is one connection attempt either way, which the next
+// advertisement corrects. A lock is not available here -- `session_lock`'s rule
+// is that nothing under it calls into NimBLE, and this runs on the host task.
+attadipa::firmware::RefusalState refusal_state()
+{
+    return {refused_addr.load(), refused_until_ms.load(),
+            hold_all_until_ms.load()};
+}
+
 bool addr_is_refused(const ble_addr_t& addr)
 {
-    const std::uint64_t refused = refused_addr.load();
-    if (refused == 0 || refused != packed_addr(addr)) return false;
-    const std::uint32_t until = refused_until_ms.load();
-    const std::uint32_t ms = static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
-    if (!attadipa::firmware::refusal_active(until, ms)) {
-        refused_addr.store(0);
-        return false;
-    }
-    return true;
+    return attadipa::firmware::connect_is_refused(
+        refusal_state(), packed_addr(addr), uptime_ms());
 }
 
 // Hex for a log line and for the screen. Not a formatter for the key itself --
@@ -1248,10 +1261,12 @@ struct RealPinOps {
     // calls into NimBLE.
     void cool_down(std::uint64_t addr)
     {
-        refused_addr.store(addr);
-        refused_until_ms.store(
-            static_cast<std::uint32_t>(esp_timer_get_time() / 1000) +
-            attadipa::firmware::kRefusedNodeCooldownMs);
+        const attadipa::firmware::RefusalState next =
+            attadipa::firmware::after_refusal(refusal_state(), addr,
+                                              uptime_ms());
+        refused_addr.store(next.addr);
+        refused_until_ms.store(next.addr_until_ms);
+        hold_all_until_ms.store(next.hold_all_until_ms);
     }
     void disconnect(std::uint16_t connection)
     {
@@ -1309,8 +1324,15 @@ void settle_node_identity(std::uint32_t generation)
         //
         // WHAT IT CANNOT UNDO IS THE BOND, and round 1 of this change claimed
         // it could. The key arrives only in RESP_CODE_SELF_INFO, which is after
-        // ENC_CHANGE -- so the watch has already paired and bonded with this
-        // node before anything here can know it is the wrong one. The store
+        // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
+        // paired and bonded with this node before anything here can know it is
+        // the wrong one. Armed is a condition, not a given: it is
+        // `firmware/main/meshcore_ble.cpp:156` -- "std::atomic_bool secure_pairing{false};",
+        // stored from the operator's passkey at
+        // `firmware/main/meshcore_ble.cpp:1384` -- "secure_pairing.store(event.passkey",
+        // and it is what selects the SMP path at
+        // `firmware/main/meshcore_ble.cpp:772` -- "if (secure_pairing.load()) {".
+        // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
         // than refuses: the `ble_store_util_status_rr` installed in

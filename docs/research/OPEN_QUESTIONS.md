@@ -326,7 +326,7 @@ Everything that provisions a watch sits behind that symbol:
   it has no way to have stored.
 - **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of the
   `configured` flag, and it too is reachable only from inside that block. The
-  worker's `firmware/main/meshcore_ble.cpp:1104` — "if (configured.load()) start_scan();"
+  worker's `firmware/main/meshcore_ble.cpp:1117` — "if (configured.load()) start_scan();"
   is therefore false forever in a production image: the transport starts, is
   never configured, and never looks for a node.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has

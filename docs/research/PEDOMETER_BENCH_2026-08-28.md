@@ -349,9 +349,9 @@ as well. Enumerating and reconciling them is #341's job, not this report's:
 | --- | --- |
 | [`WAVESHARE_RUNNING_OUR_CODE.md:329-331`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
-| [`VERIFIED_FACTS.md:573-575`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
-| [`VERIFIED_FACTS.md:577-579`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:1625`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:616-618`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
+| [`VERIFIED_FACTS.md:620-622`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
+| [`VERIFIED_FACTS.md:1668`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 | [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
@@ -388,7 +388,7 @@ label they print is wrong only about which document, not about the byte.
 Two consequences for this report. The attribution question above — *"which
 number names the Rev A part"* — has no answer to find, because no register
 distinguishes them; the schematic's `QMI8658C` is what picks `13-52-27`, and
-[`VERIFIED_FACTS.md:583`](VERIFIED_FACTS.md) "no register tells them apart"
+[`VERIFIED_FACTS.md:626`](VERIFIED_FACTS.md) "no register tells them apart"
 now carries that. And the passage where this report treated
 `PEDOMETER_PARTS.md:448` as proof that `13-52-25` had been read for chapter 11
 was right about the gap and wrong about the remedy: pp. 64–66 are indeed also

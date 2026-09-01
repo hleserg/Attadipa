@@ -1358,8 +1358,11 @@ void another_node_is_cooled_down_and_disconnected_and_nothing_is_written()
     CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::Refused);
     CHECK(ops.cooled == 0x0100F7F3336B9B61ULL);
     CHECK(ops.disconnected == 42);
-    // No pin is written and no bond is deleted: the wrong node is identified
-    // and left alone, which is the whole of #304's second half.
+    // This path writes no pin and deletes no bond; what it does is stop the
+    // traffic, which is the whole of #304's second half. It does not follow
+    // that the bond survived -- where a passkey is armed the pairing that
+    // preceded this decision has already evicted the pinned node's bond. See
+    // `firmware/main/meshcore_node_pin.h` -- "IT DOES NOT UNDO THE BOND".
     CHECK(!ops.stored);
     CHECK(!ops.adopted);
 }
@@ -1413,6 +1416,58 @@ void a_refusal_outlives_a_millisecond_wrap_by_expiring_rather_than_by_lasting()
     CHECK(!refusal_active(5000U, 5000U + 0x80000000U));
 }
 
+void two_wrong_nodes_in_range_stop_the_loop_one_slot_could_not()
+{
+    // The regression this exists to keep out. `refused_addr` was one slot,
+    // overwritten by every refusal: with two wrong nodes in range, refusing B
+    // freed A and refusing A freed B, so the scan walked A -> B -> A with no
+    // gap. Each turn is a fresh connection and a fresh pairing, and with one
+    // bond slot the pinned node's bond dies on the first turn and cannot
+    // survive the loop -- worse than the behaviour the pin replaced.
+    using attadipa::firmware::RefusalState;
+    using attadipa::firmware::after_refusal;
+    using attadipa::firmware::connect_is_refused;
+
+    constexpr std::uint64_t kA = 0x0100AAAAAAAAAAAAULL;
+    constexpr std::uint64_t kB = 0x0100BBBBBBBBBBBBULL;
+    constexpr std::uint64_t kPinned = 0x0100CCCCCCCCCCCCULL;
+
+    // One stranger: skipped by address, and the pinned node is not delayed at
+    // all. This is the case a global hold-off would have broken.
+    const RefusalState one = after_refusal(RefusalState{}, kA, 1000U);
+    CHECK(connect_is_refused(one, kA, 1000U));
+    CHECK(!connect_is_refused(one, kPinned, 1000U));
+
+    // Two: the second refusal inside the first one's window holds everything.
+    const RefusalState two = after_refusal(one, kB, 2000U);
+    CHECK(connect_is_refused(two, kA, 2000U));
+    CHECK(connect_is_refused(two, kB, 2000U));
+    CHECK(connect_is_refused(two, kPinned, 2000U));
+    // A third stranger raises nothing further: it is never connected, so it is
+    // never refused.
+    CHECK(connect_is_refused(two, 0x0100DDDDDDDDDDDDULL, 3000U));
+    // And it is a hold, not a stop: one cooldown from the second refusal.
+    CHECK(connect_is_refused(two, kPinned, 2000U + kRefusedNodeCooldownMs - 1U));
+    CHECK(!connect_is_refused(two, kPinned, 2000U + kRefusedNodeCooldownMs));
+    CHECK(!connect_is_refused(two, kA, 2000U + kRefusedNodeCooldownMs));
+
+    // Refusing the same node twice is not two nodes. It re-arms its own slot
+    // and leaves the pinned node free -- which is what happens when an address
+    // does stay put and the node keeps advertising.
+    const RefusalState again = after_refusal(one, kA, 2000U);
+    CHECK(!connect_is_refused(again, kPinned, 2000U));
+    CHECK(connect_is_refused(again, kA, 2000U + kRefusedNodeCooldownMs - 1U));
+    CHECK(!connect_is_refused(again, kA, 2000U + kRefusedNodeCooldownMs));
+
+    // Nor is a second address after the first has lapsed: the slot moves, the
+    // floor stays down. Otherwise a rotating address would hold the radio shut
+    // for good, one refusal at a time.
+    const std::uint32_t after = 1000U + kRefusedNodeCooldownMs;
+    const RefusalState later = after_refusal(one, kB, after);
+    CHECK(connect_is_refused(later, kB, after));
+    CHECK(!connect_is_refused(later, kPinned, after));
+}
+
 }  // namespace
 
 int main()
@@ -1463,6 +1518,7 @@ int main()
     a_refusal_for_a_session_that_is_over_touches_nothing();
     a_handshake_with_no_key_settles_nothing();
     a_refusal_outlives_a_millisecond_wrap_by_expiring_rather_than_by_lasting();
+    two_wrong_nodes_in_range_stop_the_loop_one_slot_could_not();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

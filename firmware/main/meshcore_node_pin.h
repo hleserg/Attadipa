@@ -32,8 +32,15 @@ enum class PinOutcome : std::uint8_t {
     // down.
     Pinned,
     // Some other node. Its address is cooled down and its connection is
-    // terminated; nothing is written, no bond is deleted and the node is told
-    // nothing.
+    // terminated; this path writes nothing and tells the node nothing.
+    //
+    // IT DOES NOT UNDO THE BOND, and where a passkey is armed it cannot. The
+    // key that identifies the node arrives only after pairing, so the watch has
+    // already bonded with it by the time this decision is reachable, and with
+    // one bond slot that bond evicted the pinned node's
+    // (`docs/research/VERIFIED_FACTS.md` -- "A wrong MeshCore node's bond
+    // evicts the pinned node's"). Refusing is what stops the traffic. It is not
+    // what restores the bond store, and nothing here is.
     Refused,
     // The handshake carried no public key after all, so there is no identity to
     // settle and no decision to make.
@@ -70,6 +77,69 @@ constexpr std::uint32_t kRefusedNodeCooldownMs = 60000;
 inline bool refusal_active(std::uint32_t until_ms, std::uint32_t now_ms)
 {
     return static_cast<std::int32_t>(until_ms - now_ms) > 0;
+}
+
+// What the transport remembers about refused nodes, and the two decisions over
+// it. Pure, so both are host-testable: the firmware holds the three fields as
+// atomics and marshals them in and out
+// (`firmware/main/meshcore_ble.cpp:261` -- "bool addr_is_refused(const ble_addr_t& addr)").
+//
+// One address, plus a floor, and it has to be both.
+//
+// The slot is what keeps the ordinary case fast: one wrong node in range is
+// skipped by address, and the pinned node is connected on its next
+// advertisement rather than a minute later.
+//
+// The floor is what makes two wrong nodes terminate. A slot that remembers only
+// the last refusal is not a cooldown at all with two of them in range: refusing
+// B frees A, refusing A frees B, and the scan walks A -> B -> A with no gap at
+// any point. Every turn is a fresh connection and a fresh pairing, so by the
+// eviction above the pinned node's bond dies on the first turn and cannot
+// survive the loop.
+//
+// Whether these addresses stay put or rotate is UNKNOWN
+// (`docs/research/OWNER_DECISIONS.md:1177` -- "kind that rotates is therefore
+// `UNKNOWN`"), and the pair is what is robust to either answer: if they rotate
+// the slot is best-effort and the floor is what still bounds the churn; if they
+// do not, the slot is what keeps one stranger from delaying the pinned node.
+struct RefusalState {
+    // The one address remembered, packed as type<<48 | the six address bytes.
+    // Zero is "none" -- the sentinel the transport has always used, and the
+    // address it cannot distinguish from none is the all-zero public address.
+    std::uint64_t addr = 0;
+    std::uint32_t addr_until_ms = 0;
+    // Every address is refused until here. Written only by a refusal that
+    // arrived while a *different* address was still cooling down.
+    std::uint32_t hold_all_until_ms = 0;
+};
+
+inline bool connect_is_refused(const RefusalState& state, std::uint64_t addr,
+                               std::uint32_t now_ms)
+{
+    if (refusal_active(state.hold_all_until_ms, now_ms)) return true;
+    return state.addr != 0 && state.addr == addr &&
+           refusal_active(state.addr_until_ms, now_ms);
+}
+
+// The state after refusing `addr`. Re-refusing the address already in the slot,
+// or one whose cooldown has lapsed, is the ordinary case and only moves the
+// slot; a second live address is what raises the floor.
+//
+// ponytail: at most two pairings per cooldown window. The second refusal stops
+// the scan outright and the radio idles until the floor lapses -- which is the
+// point, and is why the value is a minute rather than an hour.
+inline RefusalState after_refusal(RefusalState state, std::uint64_t addr,
+                                  std::uint32_t now_ms)
+{
+    const std::uint32_t until = now_ms + kRefusedNodeCooldownMs;
+    if (state.addr == 0 || state.addr == addr ||
+        !refusal_active(state.addr_until_ms, now_ms)) {
+        state.addr = addr;
+        state.addr_until_ms = until;
+        return state;
+    }
+    state.hold_all_until_ms = until;
+    return state;
 }
 
 // What the transport knows about the connection the identifying frame arrived
