@@ -133,6 +133,37 @@ check_step "Say that the review published nothing" silent "$SILENT_CTX" runs
 check_step "Say that the review published nothing" cancelled "$CANCELLED_CTX" skipped
 
 echo
+echo "  the cap: a review that was not bought must not be reported as one that failed"
+# A review the five-round cap skipped before the model was ever invoked. `Review`
+# did not run, so its outcome is `skipped` and `happened` reports `ran=no` — the
+# same shape as a review that could not reach the model, which is precisely what
+# the two steps above exist to report. They must stay quiet here. A cap is a
+# decision, and the step that made it has already said so on the pull request;
+# `the independent review did not run` beside a deliberate skip is #173 again
+# with a different cause.
+CAPPED_CTX='{"steps.auth.outputs.ok":"true","steps.cap.outputs.run":"no","steps.review.outcome":"skipped","steps.happened.outputs.ran":"no","steps.published.outputs.state":""}'
+check_step "Work out why the review did not happen" capped "$CAPPED_CTX" skipped
+check_step "Say that the review did not happen"     capped "$CAPPED_CTX" skipped
+
+# AND THE PAID STEP ITSELF, which is the only assertion here that saves anything.
+check_step "Review" capped "$CAPPED_CTX" skipped
+
+# The same context with the cap open: every step above must run again, or the
+# clause added for the cap would be skipping them for some other reason and the
+# three assertions above would be true by accident.
+UNCAPPED_CTX='{"steps.auth.outputs.ok":"true","steps.cap.outputs.run":"yes","steps.review.outcome":"failure","steps.happened.outputs.ran":"no","steps.published.outputs.state":""}'
+check_step "Work out why the review did not happen" uncapped "$UNCAPPED_CTX" runs
+check_step "Say that the review did not happen"     uncapped "$UNCAPPED_CTX" runs
+check_step "Review" uncapped "$UNCAPPED_CTX" runs
+
+# A gate that could not execute leaves the output empty, and an empty output is
+# not `no`. That is the fail-open direction the gate itself takes, asserted here
+# on the workflow side: a broken cap step buys the review, never skips it.
+BROKEN_CAP_CTX='{"steps.auth.outputs.ok":"true","steps.cap.outputs.run":"","steps.review.outcome":"failure","steps.happened.outputs.ran":"no","steps.published.outputs.state":""}'
+check_step "Review" "cap-that-failed" "$BROKEN_CAP_CTX" runs
+check_step "Say that the review did not happen" "cap-that-failed" "$BROKEN_CAP_CTX" runs
+
+echo
 echo "  the evaluator itself: an always() condition would run on a cancelled job,"
 echo "  which is what makes the two assertions above mean anything"
 say "always() runs on a cancelled job" \

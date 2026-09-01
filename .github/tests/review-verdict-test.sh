@@ -617,5 +617,200 @@ check "a ceiling under the floor is raised to the floor" 4 "$(key ceiling)"
 check "so round 2 is still inside the floor regime" ai-review:blocking "$(key label)"
 
 echo
+echo "The cap — five rounds of reviewing, not five rounds of holding"
+
+# `gate` answers before the model is invoked, from the ledger alone. The ceiling
+# tested above decides which findings hold; this decides whether there is a
+# round for it to decide about. The two must agree on where five ends, so these
+# use the same `_ceiling_ledger` and the same ceiling of 5.
+gate() {
+  bash "$script" gate "${1:-}" "${2:-}" "${3:-}"
+}
+
+# Round 5 is AT the ceiling and still holds, so it must be allowed to happen: a
+# ledger saying four rounds published means the fifth is the one being gated.
+out=$(gate "$(_ceiling_ledger 4)" 5)
+check "with four rounds published the fifth still runs" yes "$(key run)"
+check "and the gate reports the round it read" 4 "$(key round)"
+check "a running gate names no label" "" "$(key label)"
+
+# Five published means the next is six, where `past_ceiling` defers everything
+# including floor. Running it cannot change the verdict, so it does not run.
+out=$(gate "$(_ceiling_ledger 5)" 5)
+check "with five published the sixth does not run" no "$(key run)"
+check "and the verdict it hands over is the one round six would reach" ai-review:pass "$(key label)"
+check "for a reason that is the cap, not an absent finding" cap "$(key reason)"
+
+# THE GATE NEVER ANSWERS BLOCKING. Past the ceiling `attadipa_review_verdict`
+# cannot answer blocking either, so a cap that could would be a new rule.
+absent "the cap cannot manufacture a block" ai-review:blocking "$out"
+
+# What was still open when the cap fell is reported, because the ledger comment
+# stays on the pull request and the note has to be able to point at it. OD-25
+# keeps recording when it stops holding.
+check "an open finding at the cap is still counted" 1 "$(key open)"
+
+out=$(gate "$(_ceiling_ledger 9)" 5)
+check "a round well past the ceiling does not run either" no "$(key run)"
+
+# IT FAILS TOWARD RUNNING, in every direction a ledger can be wrong. A skipped
+# review is the expensive mistake here: a needless round costs tokens, a round
+# lost to a parse bug costs the review.
+printf '%s' "not a ledger at all" > "$work/junk.md"
+out=$(gate "$work/junk.md" 5)
+check "a file that is not a ledger runs" yes "$(key run)"
+check "and reads as no round having published" 0 "$(key round)"
+
+out=$(gate "$work/nothing-here.md" 5)
+check "an absent ledger runs" yes "$(key run)"
+
+out=$(gate "" 5)
+check "no ledger path at all runs" yes "$(key run)"
+
+cat > "$work/corrupt.md" <<'EOF'
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=seven
+floor=4
+-->
+EOF
+out=$(gate "$work/corrupt.md" 5)
+check "an unreadable round runs rather than caps" yes "$(key run)"
+
+# The ceiling is one constant. A gate with its own default would be a second.
+out=$(gate "$(_ceiling_ledger 5)" "")
+check "an absent ceiling defaults to five" 5 "$(key ceiling)"
+check "so five published still caps on the default" no "$(key run)"
+out=$(gate "$(_ceiling_ledger 5)" not-a-number)
+check "an unreadable ceiling falls back to five rather than to none" no "$(key run)"
+out=$(gate "$(_ceiling_ledger 5)" 7)
+check "and a raised ceiling raises the cap with it" yes "$(key run)"
+
+
+echo
+echo "The cap counts paid rounds, not only the rounds the ledger admits to"
+
+# `Converge the published reviewer verdict` is skipped whenever
+# `review-published.sh` answers `unknown`, and then the ledger keeps the round
+# it had while the reviewer goes on publishing. #382 is the shape: `round=5` in
+# the ledger, nine findings blocks on the page. A cap reading the ledger alone
+# would have to be lucky.
+out=$(gate "$(_ceiling_ledger 3)" 5 9)
+check "nine paid rounds cap a ledger frozen at three" no "$(key run)"
+check "and the round reported is the paid count" 9 "$(key round)"
+check "while the ledger's own claim stays visible" 3 "$(key ledger)"
+
+# The ledger still wins when it is the larger of the two -- a round that
+# published nothing readable advances the ledger and no block.
+out=$(gate "$(_ceiling_ledger 5)" 5 2)
+check "a ledger ahead of the block count still caps" no "$(key run)"
+check "and the larger number is the one reported" 5 "$(key round)"
+
+# Under the ceiling on both counts, the round runs.
+out=$(gate "$(_ceiling_ledger 2)" 5 3)
+check "three paid and two recorded is still under five" yes "$(key run)"
+check "and the round reported is the larger" 3 "$(key round)"
+
+# Exactly at the ceiling on the paid count alone.
+out=$(gate "$(_ceiling_ledger 0)" 5 5)
+check "five paid rounds cap even with an empty ledger" no "$(key run)"
+
+# FAILING TOWARD RUNNING, on this input too. The count arrives from a `gh`
+# pipeline the workflow silences, so garbage and emptiness must both read as
+# nothing known rather than as a large number.
+out=$(gate "$(_ceiling_ledger 2)" 5 "")
+check "an empty count falls back to the ledger" yes "$(key run)"
+check "and reports the ledger's round" 2 "$(key round)"
+out=$(gate "$(_ceiling_ledger 2)" 5 "not-a-number")
+check "an unreadable count does not cap" yes "$(key run)"
+out=$(gate "$(_ceiling_ledger 2)" 5 "-4")
+check "a negative count does not cap" yes "$(key run)"
+out=$(gate "" 5 "")
+check "no ledger and no count runs" yes "$(key run)"
+check "and reports round zero" 0 "$(key round)"
+
+# The count cannot make the gate MORE permissive than the ledger alone: that is
+# the property the max exists for, asserted rather than assumed.
+out=$(gate "$(_ceiling_ledger 6)" 5 0)
+check "a zero count cannot un-cap a ledger past the ceiling" no "$(key run)"
+
+# ---------------------------------------------------------------------------
+# What the paid count counts, asserted against the live query
+#
+# The number above arrives from a `gh --jq` pipeline in the workflow, so none of
+# the cases above touch the thing that produces it. Over-counting is the failure
+# that matters here and it is the one nobody can see from outside: an early cap
+# just looks like a pull request that merged. Two ways it could happen were
+# raised in review -- one review comment that publishes several findings, and a
+# findings block pasted into a human's comment to answer it, both of which have
+# really occurred on this repository.
+#
+# So this runs the workflow's OWN filter, lifted out of the YAML rather than
+# copied, over comment streams shaped like those two cases.
+
+echo
+echo "What the paid count counts, asserted against the live query"
+
+workflow="$here/../workflows/claude-pr-review.yml"
+# The `paid=` line, minus everything but its --jq argument. Deliberately brittle:
+# if the query stops looking like this, the extraction fails loudly rather than
+# testing a filter that is no longer shipped.
+paid_filter=$(sed -n "s/^ *paid=.*--jq '\(.*\)' | wc -l.*$/\1/p" "$workflow")
+converge_filter=$(sed -n "s/^ *finding_id=.*--jq '\(.*\)' | tail -1)$/\1/p" "$workflow")
+
+if [ -z "$paid_filter" ]; then
+  echo "  FAIL: no paid= query found in $workflow -- the extraction is stale"
+  fail=$((fail + 1))
+fi
+
+# The two queries must agree by construction: the cap counts exactly the
+# comments the converge step would recognise as a published findings block. If
+# they ever diverge, one of them is counting something the other does not.
+check "the cap counts what converge identifies, character for character" \
+  "$paid_filter" "$converge_filter"
+
+count() {
+  ATTADIPA_REVIEW_ACTOR='claude[bot]' jq -r "$paid_filter" <<< "$1" | grep -c . || true
+}
+
+FIND='<!-- attadipa-review-findings round=1 -->'
+LEDGER='<!-- attadipa-review-ledger -->'
+
+check "no comments is no rounds" 0 \
+  "$(count '[]')"
+
+check "one findings comment is one round" 1 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND x\"}]")"
+
+# The case that would cap a round-3 pull request as though it were round 5.
+check "five findings in one comment is still one round" 1 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND a $FIND b $FIND c $FIND d $FIND e\"}]")"
+
+check "three separate findings comments are three rounds" 3 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":2,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":3,\"body\":\"$FIND\"}]")"
+
+# The second case raised in review: a person quoting the block back to answer it.
+# This repository is public, so this is also the whole subversion story -- anyone
+# may post, and a count with no author condition would let them end the review.
+check "a person quoting a findings block does not buy a round" 0 \
+  "$(count "[{\"user\":{\"login\":\"hleserg\"},\"id\":1,\"body\":\"> $FIND\"}]")"
+
+check "and neither does the bot that writes the ledger" 0 \
+  "$(count "[{\"user\":{\"login\":\"github-actions[bot]\"},\"id\":1,\"body\":\"$FIND\"}]")"
+
+# The ledger comment carries the marker inside it and is not a round.
+check "the ledger comment is not a findings block" 0 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$LEDGER\n$FIND\"}]")"
+
+check "a mixed stream counts only the reviewer's own blocks" 2 \
+  "$(count "[{\"user\":{\"login\":\"claude[bot]\"},\"id\":1,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"hleserg\"},\"id\":2,\"body\":\"quoting $FIND\"},
+             {\"user\":{\"login\":\"github-actions[bot]\"},\"id\":3,\"body\":\"$LEDGER\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":4,\"body\":\"$FIND\"},
+             {\"user\":{\"login\":\"claude[bot]\"},\"id\":5,\"body\":\"no marker here\"}]")"
+
+echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

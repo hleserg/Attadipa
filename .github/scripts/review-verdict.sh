@@ -479,7 +479,114 @@ _attadipa_render_deferred() {
   } > "$out"
 }
 
+# attadipa_review_gate PREV_LEDGER [CEILING]
+#
+# May another paid review round run at all?
+#
+# CEILING above is a ceiling on *holding*: past it `attadipa_review_verdict`
+# defers every finding, floor included, and answers `ai-review:pass`. The review
+# still ran to produce them. #382 ran eight rounds that way, and rounds six,
+# seven and eight could not change its verdict by construction -- three model
+# invocations whose only possible answer was the one already reached. OD-25's
+# five rounds are now five rounds of *reviewing*, decided before the model is
+# invoked rather than after it has answered.
+#
+# This does not touch which findings hold a pull request. Rounds one to five are
+# judged exactly as before, and OD-25's rule that nothing holds past the ceiling
+# is unchanged -- there is simply no longer a sixth round for it to apply to.
+#
+# PREV_LEDGER   the ledger comment body from the last round, as above. Missing
+#               or empty means no round has published yet.
+# CEILING       as above. ATTADIPA_REVIEW_CEILING is the default, itself 5.
+# PAID          how many findings blocks the reviewer has actually published on
+#               this pull request, counted by the caller. Optional; unreadable
+#               or absent counts as zero.
+#
+# TWO NUMBERS, AND THE LARGER WINS, BECAUSE THE LEDGER'S ONE STOPS COUNTING.
+# `Converge the published reviewer verdict` is what advances `round=`, and it is
+# skipped whenever `review-published.sh` answers `unknown` -- which it does when
+# the comment read behind it comes back empty, a read the workflow silences with
+# `2>/dev/null`. Nothing is then written and nothing is said: the run stays
+# green and the ledger keeps the round it had. #382 is the worked example. Its
+# ledger says `round=5`, last edited 15:35:45; the reviewer published findings
+# four more times, at 16:08, 16:34, 17:26 and 17:59, and converge was `skipped`
+# on every one of them. Nine paid rounds, a ledger that says five.
+#
+# A cap that read only the ledger would inherit that. Frozen at five it happens
+# to be right, frozen at three it never fires at all and the ceiling silently
+# stops existing -- the failure this whole function is here to prevent, arriving
+# by a route the function could not see. So the caller counts the published
+# blocks, which is the thing being paid for and cannot freeze while rounds run,
+# and this takes whichever number is larger. The ledger still wins when it is
+# ahead, which is what happens when a round published nothing readable.
+#
+# Prints `key=value` lines on stdout and nothing else:
+#
+#   run=        yes | no
+#   round=      rounds already paid for: the larger of the two counts
+#   ledger=     what the ledger alone claimed, so a gap is visible in the log
+#   ceiling=    the ceiling it was judged against
+#   open=       findings the ledger still carries open, on `run=no` only
+#   label=      ai-review:pass, on `run=no` only
+#   reason=     cap, on `run=no` only
+#
+# IT FAILS TOWARD RUNNING. An absent, unreadable or corrupt ledger reads as
+# round 0 and answers `run=yes`, because the two mistakes are not equal: a round
+# that need not have run costs tokens, and a round skipped by a parse bug costs
+# the review itself. The caller must fail the same way -- a gate that could not
+# execute means run, never means pass.
+attadipa_review_gate() {
+  local prev="${1:-}" ceiling="${2:-${ATTADIPA_REVIEW_CEILING:-5}}" paid="${3:-0}"
+  _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=5
+  _attadipa_is_uint "$paid" || paid=0
+
+  local prev_round=0 open_n=0 prev_block line rest id st
+  prev_block="$(_attadipa_block "$prev" "$ATTADIPA_LEDGER_OPEN")"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      round=*)
+        rest="${line#round=}"
+        _attadipa_is_uint "$rest" && prev_round="$rest"
+        continue ;;
+    esac
+    # A count, not a second parser. `attadipa_review_verdict` owns what a row
+    # means; all this needs is how many are still open, and only so the note it
+    # triggers can say so. Anything it disagrees with the verdict about is
+    # cosmetic by construction -- no branch below reads `open_n`.
+    case "$line" in *"|"*) ;; *) continue ;; esac
+    id="$(_attadipa_trim "${line%%|*}")"; rest="${line#*|}"
+    rest="${rest#*|}"; rest="${rest#*|}"
+    st="$(_attadipa_trim "${rest%%|*}")"
+    _attadipa_id_ok "$id" || continue
+    [ "$st" = "fixed" ] || open_n=$((open_n + 1))
+  done <<< "$prev_block"
+
+  local seen="$prev_round"
+  [ "$paid" -le "$seen" ] || seen="$paid"
+
+  printf 'round=%s\n'   "$seen"
+  printf 'ledger=%s\n'  "$prev_round"
+  printf 'ceiling=%s\n' "$ceiling"
+  if [ "$seen" -ge "$ceiling" ]; then
+    printf 'run=no\n'
+    printf 'open=%s\n' "$open_n"
+    printf 'label=ai-review:pass\n'
+    printf 'reason=cap\n'
+  else
+    printf 'run=yes\n'
+  fi
+  return 0
+}
+
 # Callable as a script as well as sourceable.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
+  # `gate` as a first word rather than a flag, and rather than a second script:
+  # the two decisions read the same ledger and share its parsing primitives, and
+  # a second file is how the two drift apart.
+  if [ "${1:-}" = gate ]; then
+    attadipa_review_gate "${2:-}" "${3:-}" "${4:-}"
+  else
+    attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
+  fi
 fi
