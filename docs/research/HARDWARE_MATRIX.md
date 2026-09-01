@@ -99,7 +99,7 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 | RTC | PCF8563 | main I2C, INT 17 | 0x51 | VBACKUP (coin cell) | VERIFIED |
 | Accelerometer | BMA423 — **no gyroscope** | main I2C, INT1 → GPIO 14. **INT2 is bonded out but not routed** (R12, R15 not fitted) | 0x19 | +3V3 | VERIFIED |
 | Haptic | DRV2605 | main I2C | 0x5A | **BLDO2 (enable)** | VERIFIED |
-| Radio | Schematic fits **HPD16B3** (SX1262-class pinout); vendor header builds **SX1280 / CC1101 / LR1121 / SI4432** variants by order. Only the SX1262 path is MeshCore-supported at the pinned revision, and CC1101/SI4432 cannot do LoRa at all — [ADR-0003](../adr/0003-radio-not-lora.md) | SPI: SCK 3, MISO 4, MOSI 1, CS 5, RST 8, BUSY 7, DIO1 9, **DIO3 6** | — | ALDO4 via R61 0 Ω (net `GPS_VDD`) | VERIFIED |
+| Radio | Schematic fits **HPD16B3** (SX1262-class pinout); vendor header builds **SX1280 / CC1101 / LR1121 / SI4432** variants by order. Only the SX1262 path is MeshCore-supported at the pinned revision, and CC1101/SI4432 cannot do LoRa at all — [ADR-0003](../adr/0003-radio-not-lora.md) | SPI: SCK 3, MISO 4, MOSI 1, CS 5, RST 8, BUSY 7, DIO1 9, **DIO3 6 — ⚠️ never driven as an output, see below** | — | ALDO4 via R61 0 Ω (net `GPS_VDD`) | VERIFIED |
 | GNSS | **u-blox MIA-M10Q or Quectel LS550G**, on a 13-pin 0.3 mm FPC daughterboard | UART: TX 42, RX 41; **PPS not connected** — the net exists on the daughterboard but `PPS` appears nowhere in the main-board schematic | — | BLDO1 (+ DC4 @850 mV for LS550G); enable net `GPS_LDO` on FPC pin 3 | VERIFIED |
 | Microphone | SPM1423HM4H-B, PDM | CLK 44, DATA 47. **`SELECT` is resistor-strapped (R80, R81 not fitted)** — channel fixed in hardware | — | +3V3 | VERIFIED |
 | Amplifier | MAX98357A, 3.2 W class-D | I2S: BCLK 48, WCLK 15, DIN 46. **`SD_MODE` is resistor-strapped (R14 = 1 MΩ; R74, R76 not fitted) — no GPIO reaches it** | — | `DLDO1` pin (DLDO1/DC1SW) via R18 0 Ω → `SPK_VDD` | VERIFIED |
@@ -111,6 +111,40 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 | RTC square-wave out | PCF8563 `CLKOUT` → `RTC_CLKOUT` → test point `TP66`; R291 pulls the open-drain net to +3V3 through 10 kΩ | **no route to the ESP32-S3 in S3**. `R126` is unrelated: it is an unpopulated DRV2605L supply resistor. Physical-unit continuity is `UNKNOWN` | via 0x51 | — | VERIFIED for S3; physical unit `UNKNOWN` — [RTC_SLOW_CLOCK](RTC_SLOW_CLOCK.md) |
 | Battery disconnect | MSK12C02-HB slide switch in series between the cell and `BAT` | mechanical only — firmware cannot sense or override it | — | — | VERIFIED |
 | Buttons | BOOT (GPIO 0) and RST both sit **on the GNSS daughterboard**, reaching the main board on FPC pins 2 and 6. PWR (SW7) wires to the AXP2101 `PWRON` pin — **it never reaches a GPIO**, so every press arrives as a PMU interrupt | — | — | — | VERIFIED |
+
+### The HPD16B3 pinout, and the pin nothing may drive
+
+Twelve pins, read off `T_WATCH-S3 25-03-24.pdf` sheet 5 rendered at 400 dpi as a
+drawing rather than as a text layer, which loses every wire. `U7` is the module.
+
+| Pin | Name | Net | Pin | Name | Net |
+|---|---|---|---|---|---|
+| 1 | `VCC` | — | 12 | `ANT` | `8FB2` ferrite → `47nH` / `NC` match |
+| 2 | `GND` | — | 11 | `GND` | — |
+| 3 | `NRESET` | `IO8` | 10 | `NSS` | `IO5` |
+| 4 | `BUSY` | `IO7` | 9 | `SCK` | `IO3` |
+| 5 | `DIO1` | `IO9` | 8 | `MOSI` | `IO1` |
+| 6 | **`DIO3`** | **`IO6`** | 7 | `MISO` | `IO4` |
+
+`C35` and `C36` on the antenna path are both `NC`. The eight signal nets are the
+eight the Radio row already carried; the drawing adds `VCC`, the two grounds and
+the antenna match, and confirms the row rather than correcting it.
+
+⚠️ **`GPIO 6` must never be driven as an output.** It is `DIO3`, and the SX1262
+drives that pin itself — as the TCXO reference supply once the modem is
+configured, and as a chip output in every other documented SX126x configuration.
+Two drivers on one net is a contention fault whatever the pin is carrying, so the
+rule does not rest on the module actually containing a TCXO, which is D10a and
+`UNKNOWN`. This is not a spare GPIO. The hazard has the shape of GPIO 45 among
+the strapping pins below: a reasonable-looking `gpio_set_direction` that damages
+the board instead of failing loudly. It belongs in a `platform/` pin-role table
+where a wrong direction fails a build; no such table exists yet, and this
+paragraph is where the rule waits for one.
+
+**Whichever bring-up first calls `begin()` owns the TCXO voltage.** LilyGO's
+watch firmware takes RadioLib's 1.6 V default without naming it, while LilyGO's
+own Pager and all three upstream SX1262 examples pass 3.0 V. Attadipa states its
+own number and why — D10a, [#326](https://github.com/hleserg/Attadipa/issues/326).
 
 ### The radio is one of five chips, and they are not equivalent
 
