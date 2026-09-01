@@ -447,9 +447,20 @@ sub="${1-}"; shift || true
 case "$sub" in
   api)
     if [ "${ATTADIPA_STUB_API_FAILS:-no}" = yes ]; then exit 1; fi
-    case "${1-}" in
+    # `gh api --method DELETE PATH` puts the path third, so find it rather than
+    # reading $1. The claim ref is modelled as a real object because claim.sh
+    # now confirms a deletion with a follow-up GET, and a stub that answered
+    # every path with the issue would report the ref as still there (#254).
+    api_path=""
+    for arg in "$@"; do case "$arg" in repos/*) api_path="$arg"; break ;; esac; done
+    case "$api_path" in
       */collaborators/*/permission)
         printf '%s\n' "${ATTADIPA_STUB_PERMISSION:-none}"; exit 0 ;;
+      */git/refs/tags/attadipa-claims/*)
+        : > "$state/ref-deleted"; exit 0 ;;
+      */git/ref/tags/attadipa-claims/*)
+        if [ -f "$state/ref-deleted" ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
+        printf '{"object":{"sha":"0123456789abcdef0123456789abcdef01234567"}}\n'; exit 0 ;;
     esac
     emit
     exit 0 ;;

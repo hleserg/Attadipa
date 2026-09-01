@@ -45,7 +45,9 @@ jobs:
       github.event.issue.pull_request != null
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # `claim.sh break` deletes a git ref. Without write access the DELETE was
+      # refused and the reset reported "claim cleared" anyway (#254).
+      contents: write
       issues: write
       pull-requests: write
     steps:

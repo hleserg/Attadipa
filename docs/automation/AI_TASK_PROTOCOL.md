@@ -53,7 +53,7 @@ The issue/PR is the record. Lifecycle labels are mutually exclusive:
 
 | Event | From | To | Recovery |
 | --- | --- | --- | --- |
-| accepted task | ready | working | stale claim returns after two hours |
+| accepted task | ready | working | claim returns after two hours, once its run has finished; a local lease needs `claim.sh break` |
 | draft PR/result | working | review | PR and checks hold detail |
 | explicit blocker | working | blocked + cause | external action, then fresh request |
 | first failed run | working | failed + ready | one automatic retry |

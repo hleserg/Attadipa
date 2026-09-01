@@ -27,7 +27,7 @@ scenarios people reach for first:
 | Already covered by the watchdog | Do not duplicate here |
 |---|---|
 | a `agent:ready` task nobody picked up | it dispatches one per tick, priority first |
-| an `agent:working` claim with nobody behind it | it returns the task to the queue after two hours |
+| an `agent:working` claim with nobody behind it | it returns the task to the queue after two hours, once the run behind it has finished |
 
 Two checks in two places is churn, and the second one to run finds nothing and
 bills for the privilege. So the backstop's scope is **what the watchdog cannot

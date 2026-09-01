@@ -31,8 +31,36 @@ edit_label() {
   gh "$kind" edit "$2" --repo "$1" "$3" "$4" >/dev/null
 }
 
+# A DELETE the token may not make and a DELETE that worked answer the same way:
+# `gh api` writes its own error and the callers below used to swallow both with
+# `|| true`. Confirm the absence instead, and confirm it as a 404 -- a 500 or a
+# rate limit says nothing about whether the ref is still there, and reading
+# "gone" out of an unknown answer is how a claim gets reported cleared while it
+# still holds the queue (#254). Every caller inherits this: release, break, reap.
 delete_ref() {
+  local err
   gh api --method DELETE "repos/$1/git/refs/tags/attadipa-claims/$2" >/dev/null 2>&1
+  err="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>&1 >/dev/null)"
+  case "$err" in
+    *'HTTP 404'*) return 0 ;;
+    '') printf '%s still exists after DELETE\n' "$(claim_ref "$2")" >&2 ;;
+    *) printf 'cannot confirm %s is gone: %s\n' "$(claim_ref "$2")" \
+         "$(printf '%s' "$err" | tr '\n' ' ')" >&2 ;;
+  esac
+  return 2
+}
+
+# Undo this attempt's own create, and only this attempt's. A ref carrying some
+# other tag is another writer's claim, and deleting it would hand two writers
+# the same task. A ref this attempt cannot remove is named on stderr, because a
+# claim nobody can see is exactly the stall #254 reports.
+discard_own_ref() {
+  local repo="$1" number="$2" tag_sha="$3" live
+  live="$(attadipa_claim_tag_sha "$repo" "$number")" || live=""
+  [ -z "$live" ] || [ "$live" = "$tag_sha" ] || return 0
+  delete_ref "$repo" "$number" && return 0
+  printf 'left behind: %s -- clear it with: claim.sh break %s %s\n' \
+    "$(claim_ref "$number")" "$repo" "$number" >&2
 }
 
 # The holder id is published: claim.sh puts it in the tag message and in the tag
@@ -90,10 +118,11 @@ acquire() {
   winner="$(attadipa_claim_owner "$repo" "$number")"
   if [ "$winner" != "$holder" ]; then
     printf 'claim verification failed\n' >&2
+    discard_own_ref "$repo" "$number" "$tag_sha"
     return 2
   fi
   if [ "$number" != writer ] && ! edit_label "$repo" "$number" --add-label agent:working; then
-    delete_ref "$repo" "$number" || true
+    discard_own_ref "$repo" "$number" "$tag_sha"
     return 2
   fi
   printf 'acquired by %s\n' "$holder"
@@ -118,17 +147,58 @@ release() {
 
 break_claim() {
   local repo="$1" number="$2"
+  # The ref first, the label second. The label is only the visible half; taking
+  # it off while the lock survives is what leaves a queue held by nobody -- the
+  # ref refuses every acquire and no issue says who holds it.
+  if ! delete_ref "$repo" "$number"; then
+    printf 'claim NOT cleared; %s still holds it\n' "$(claim_ref "$number")" >&2
+    return 2
+  fi
   [ "$number" = writer ] || edit_label "$repo" "$number" --remove-label agent:working || true
-  delete_ref "$repo" "$number" || true
   printf 'claim cleared\n'
 }
 
+# The only completion evidence this repository has is the Actions run named by a
+# hosted holder id, `agent-<run_id>-<attempt>` (claude-agent.yml, claude-ci-repair.yml).
+# A local holder -- `agent-i254-r1`, a person at a terminal -- has none: the
+# process runs on a machine Actions cannot see, and the tag's creation time says
+# only when the work started, never whether it stopped. So age alone reaps
+# nothing now; a local lease is released by `writer-start.sh finish`, or by hand
+# with `claim.sh break` (#254).
+holder_finished() {
+  local repo="$1" holder="$2" run status
+  if ! printf '%s' "$holder" | grep -Eq '^agent-[0-9]+-[0-9]+$'; then
+    printf 'holder %s is not a hosted run; nothing proves it ended\n' "$holder" >&2
+    return 1
+  fi
+  run="${holder#agent-}"; run="${run%-*}"
+  # A local holder can still be shaped like a hosted one. A run that cannot be
+  # read is not a run that finished, so it falls into the same bucket.
+  status="$(gh api "repos/$repo/actions/runs/$run" 2>/dev/null | jq -er '.status' 2>/dev/null)" || {
+    printf 'no readable Actions run %s behind holder %s\n' "$run" "$holder" >&2
+    return 1
+  }
+  [ "$status" = completed ] || {
+    printf 'Actions run %s is %s\n' "$run" "$status" >&2
+    return 1
+  }
+}
+
 reap() {
-  local repo="$1" number="$2" max_age="$3" tag_sha date claimed_epoch now
+  local repo="$1" number="$2" max_age="$3" tag_sha tag_json holder date claimed_epoch now
   if tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"; then
-    date="$(gh api "repos/$repo/git/tags/$tag_sha" | jq -er '.tagger.date')" || return 2
+    tag_json="$(gh api "repos/$repo/git/tags/$tag_sha")" || return 2
+    date="$(printf '%s' "$tag_json" | jq -er '.tagger.date')" || return 2
+    holder="$(printf '%s' "$tag_json" | jq -er '.message')" || return 2
+    if ! holder_finished "$repo" "$holder"; then
+      printf '%s is held by %s and stays held; release it by hand with: claim.sh break %s %s\n' \
+        "$(claim_ref "$number")" "$holder" "$repo" "$number" >&2
+      return 3
+    fi
   else
     # Migration path for labels created before repository refs became the lock.
+    # Age still decides here, and may: every claim a live writer holds, hosted
+    # or local, creates the ref this branch did not find.
     date="$(gh api "repos/$repo/issues/$number/timeline?per_page=100" --paginate --slurp \
       | jq -er 'if (length > 0 and (.[0] | type) == "array") then add else . end
                   | [.[] | select(.event == "labeled" and .label.name == "agent:working")]
@@ -137,7 +207,10 @@ reap() {
   claimed_epoch="$(date -u -d "$date" +%s 2>/dev/null)" || return 2
   now="$(date -u +%s)"
   [ $((now - claimed_epoch)) -ge "$max_age" ] || return 3
-  break_claim "$repo" "$number"
+  # A break that could not clear the ref is not a reap. Saying so is the point:
+  # the caller must not go on to hand the task back to the queue behind a lock
+  # that is still there.
+  break_claim "$repo" "$number" || return 2
   if [ "$number" != writer ] && [ "$(target_kind "$repo" "$number")" = issue ]; then
     edit_label "$repo" "$number" --add-label agent:ready
   fi

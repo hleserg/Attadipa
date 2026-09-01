@@ -313,7 +313,13 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
-      contents: read
+      # The claim is a git ref, so releasing one is a write to contents; and the
+      # holder id names an Actions run whose status is the only evidence that
+      # the writer behind the claim actually stopped. Reading `contents: read`
+      # here meant every reap this job attempted was refused and reported as a
+      # success (#254).
+      contents: write
+      actions: read
     steps:
       - name: Fetch the claim recovery from the default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
