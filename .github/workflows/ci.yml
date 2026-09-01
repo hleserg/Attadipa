@@ -377,9 +377,15 @@ jobs:
       # This was an inline `run:` block on #385 and is a script on #387, for
       # one reason: an inline block cannot be pointed at a tree with a planted
       # suite in it, so the one step in this file whose whole job is "no suite
-      # hides here" was the one step nothing tested. It also grew the Python
-      # half there, which is what #387 was about -- ten suites under `tools/`
-      # were in the same state as the three under `.github/tests/`.
+      # hides here" was the one step nothing tested. It also grew a Python
+      # half, and that is where #387's premise turned out to be wrong: the ten
+      # suites it named were NOT in the state
+      # `.github/tests/review-invalidate-workflow-test.sh` was in. Eleven of the
+      # sixteen under `tools/` are `add_test` entries in `tests/CMakeLists.txt`,
+      # which six jobs in this file run; the other five are steps in the `docs`
+      # job below. #387 measured coverage by grepping this directory alone, so
+      # it could not see a registration. What it did surface is that this guard
+      # knew only one of the two ways to run a suite here.
       - name: The suite-coverage guard actually catches an unwired suite
         run: bash .github/tests/suite-coverage-test.sh
 
@@ -524,24 +530,20 @@ jobs:
       # A named watch must stay named. The bench has a unit still carrying its
       # factory image, so a command aimed at one device and silently served by
       # another is not a tidiness problem.
+      #
+      # This drives the command line with a recorder behind it. Its sibling
+      # `tools/watch/selftest.py` -- which drives `Watch` against a scripted
+      # device, 41 groups and no socket -- is deliberately NOT a step here: it
+      # is registered at `tests/CMakeLists.txt:449` -- "add_test(NAME watch_tool"
+      # -- so six jobs already run it, and a step for it would be the tenth
+      # duplicate of the nine this pull request removed. Faster feedback in a
+      # job with no C++ build would be a reason to keep one; it is not a reason
+      # to keep one and not the other nine.
+      #
+      # This step and the four above it are steps because nothing registers
+      # them. Those five are the whole of what #387 was actually about.
       - name: An explicitly named watch stays named
         run: python3 tools/test_watch_control.py
-
-      # The step above drives the command line with a recorder behind it. This
-      # one drives `Watch` against a scripted device: framing, the envelope,
-      # the pixel paths and the request-id rules, 41 groups and no socket.
-      #
-      # It was not run here at all until #378 needed it. Every host-side defect
-      # in this file's history -- a poll that never polled, a blacklist that
-      # outlived what it protected, an id space that wrapped -- was caught by
-      # that suite and by nothing else, on a laptop. The nine other Python
-      # suites #387 named are NOT in that state and never were: all nine are
-      # `ctest` entries in `tests/CMakeLists.txt`, which six jobs in this file
-      # run. #387 measured coverage by grepping this directory alone, so it
-      # could not see them. This one is genuinely different -- it is the only
-      # suite under `tools/` that no `add_test` registers.
-      - name: The host's own protocol logic, without a device
-        run: python3 tools/watch/selftest.py
 
   simulator:
     name: Simulator build and headless run

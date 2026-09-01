@@ -20,7 +20,7 @@
 # only one. A `run:` line in a workflow is one. Registration as a `ctest` test in
 # `tests/CMakeLists.txt` is the other, and it is the one this repository
 # prefers: `tests/CMakeLists.txt:95` -- "# They are ctest entries rather than
-# CI-only steps so that a local run and CI enforce" -- says why. It counts
+# CI-only steps so that a local run and CI" -- says why. It counts
 # because `ctest` is not conditional on anything: `CMakeLists.txt:56` --
 # "add_subdirectory(tests)" -- is outside every `if()`, and six jobs run the
 # result, the first at `.github/workflows/ci.yml:43` -- "run: ctest --test-dir
@@ -45,6 +45,15 @@ if [ ! -d .github/workflows ]; then
     # failure this script is about.
     echo "check-suite-coverage: $root has no .github/workflows, so there is " \
          "nothing that could run a suite" >&2
+    exit 2
+fi
+
+if [ ! -d .github/tests ]; then
+    # And for the shell half. An unmatched glob writes nothing to stderr, so
+    # this one failed more quietly than `tools/` ever did: thirty suites walked,
+    # zero found, exit 0.
+    echo "check-suite-coverage: $root has no .github/tests, so the shell half " \
+         "would walk nothing and pass" >&2
     exit 2
 fi
 
@@ -90,9 +99,58 @@ triggered_workflow_text() {
 # that succeeded. Whether it does depends on how far into the file the match is,
 # so the first draft of this guard passed every suite registered near the bottom
 # of `tests/CMakeLists.txt` and failed the identical ones near the top.
+# THE CTEST HALF IS A REGISTRATION, NOT A MENTION. The workflow half demands the
+# literal invocation and then asks whether the file could ever run; asking less
+# of `tests/CMakeLists.txt` would let a path in a `configure_file`, a
+# `message()` or a `set()` count as a suite being run. So only the text inside
+# `add_test(...)` reaches the needle -- the command whose argument list is the
+# thing ctest executes.
+#
+# Nesting is counted rather than assumed, because the path and the `add_test(`
+# are usually on different lines. A `(` inside a quoted argument would end the
+# body early, which can only ever hide a registration -- a loud false "never
+# runs", never a silent pass, which is the same direction `without_comments`
+# fails in.
+#
+# What this still does not ask is whether the registration is *reachable*: an
+# `add_test` inside an `if()` with no `else()` runs in some jobs and not others.
+# Answering that needs `ctest --show-only=json-v1` against a configured build
+# tree, which this script does not have and a lint job will not build. The
+# convention that holds it up meanwhile is visible at `tests/CMakeLists.txt:247`
+# -- "add_test(NAME l10n_checks_unavailable" -- a gate that cannot register the
+# real test registers a failing one instead of registering nothing.
+add_test_text() {
+    awk '
+        {
+            s = $0
+            while (1) {
+                if (depth == 0) {
+                    if (match(s, /add_test[ \t]*\(/) == 0) break
+                    s = substr(s, RSTART + RLENGTH)
+                    depth = 1
+                }
+                out = ""
+                i = 1
+                n = length(s)
+                while (i <= n && depth > 0) {
+                    c = substr(s, i, 1)
+                    if (c == "(") depth++
+                    else if (c == ")") depth--
+                    if (depth > 0) out = out c
+                    i++
+                }
+                if (out != "") print out
+                if (depth > 0) break
+                s = substr(s, i)
+            }
+        }
+    '
+}
+
 workflow_text="$(triggered_workflow_text)"
 ctest_text=""
-[ -f tests/CMakeLists.txt ] && ctest_text="$(without_comments tests/CMakeLists.txt)"
+[ -f tests/CMakeLists.txt ] &&
+    ctest_text="$(without_comments tests/CMakeLists.txt | add_test_text)"
 
 # A suite that is deliberately not run, and why. Keep this list short and keep
 # the reason honest: "it is slow" is a reason to move it to another job, not to

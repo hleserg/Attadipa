@@ -185,13 +185,15 @@ rm -rf "$R"
 # toss -- `grep -q` exits at the first match, `sed` takes SIGPIPE, and the
 # pipeline reports 141 for a match it found. So suites registered near the
 # bottom of the file passed and identical ones near the top failed. This case
-# puts the registration on line 1 of a long file, which is where it broke.
+# puts the registration on line 1 of a long file, which is where it broke. The
+# fixture is a whole `add_test(...)` because a bare mention stopped counting in
+# round 4; position, not shape, is what this case is about.
 R="$(new_root)"
 : > "$R/tools/sub/selftest.py"
 mkdir -p "$R/tests"
 {
 # shellcheck disable=SC2016  # ${CMAKE_SOURCE_DIR} is CMake's, not the shell's
-    printf '${CMAKE_SOURCE_DIR}/tools/sub/selftest.py)\n'
+    printf 'add_test(NAME planted COMMAND ${CMAKE_SOURCE_DIR}/tools/sub/selftest.py)\n'
     for _ in $(seq 1 4000); do printf 'set(padding "a line that is not a needle")\n'; done
 } > "$R/tests/CMakeLists.txt"
 out="$(bash "$GUARD" "$R" 2>&1)"; rc=$?
@@ -253,7 +255,59 @@ check "a root with no tools/ is rc=2" 2 "$rc"
 contains "  and says why" "$out" "no tools/"
 rm -rf "$R"
 
-# --- 15. And the shipping tree is green. -------------------------------------
+# --- 15. A path outside an `add_test(` is a mention, not a registration. ------
+# The ctest needle used to be any occurrence of the path in tests/CMakeLists.txt.
+# A `configure_file`, a `set()` or a sentence in a `message()` naming a suite
+# then read as coverage -- and a comment naming one already did not (case 12b),
+# so the two halves of the same file disagreed.
+R="$(new_root)"
+: > "$R/tools/sub/planted_test.py"
+mkdir -p "$R/tests"
+cat > "$R/tests/CMakeLists.txt" <<'CM'
+message(STATUS "tools/sub/planted_test.py is not wired up yet")
+set(SOMEDAY tools/sub/planted_test.py)
+configure_file(tools/sub/planted_test.py planted.py COPYONLY)
+CM
+out="$(bash "$GUARD" "$R" 2>&1)"; rc=$?
+check "a path named outside add_test does not count" 1 "$rc"
+contains "  and the message names the file" "$out" "tools/sub/planted_test.py"
+
+# The same file, one real registration, and the arguments span three lines the
+# way every registration in this repository does.
+cat > "$R/tests/CMakeLists.txt" <<'CM'
+message(STATUS "unrelated")
+add_test(NAME planted
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/sub/planted_test.py)
+CM
+out="$(bash "$GUARD" "$R" 2>&1)"; rc=$?
+check "  and a multi-line add_test does" 0 "$rc"
+
+# Nesting, because the body is found by counting parentheses rather than by
+# taking the first `)`. A parenthesis inside an argument -- here a quoted one,
+# but a nested CMake call reads the same -- must not end the body before the
+# path that comes after it.
+cat > "$R/tests/CMakeLists.txt" <<'CM'
+add_test(NAME planted
+         COMMAND ${CMAKE_COMMAND} -E env "NOTE=(this argument has parentheses)"
+                 ${Python3_EXECUTABLE} tools/sub/planted_test.py)
+CM
+out="$(bash "$GUARD" "$R" 2>&1)"; rc=$?
+check "  and a parenthesis inside one does not truncate it" 0 "$rc"
+rm -rf "$R"
+
+# --- 16. A root with no .github/tests is an error, not a pass. ---------------
+# The shell half's own version of case 14, and it failed more quietly: an
+# unmatched glob writes nothing at all, so thirty suites became zero in silence.
+R="$(mktemp -d)"
+mkdir -p "$R/.github/workflows" "$R/tools"
+printf 'on: [push]\njobs:\n  a:\n    steps:\n' > "$R/.github/workflows/ci.yml"
+out="$(bash "$GUARD" "$R" 2>&1)"; rc=$?
+check "a root with no .github/tests is rc=2" 2 "$rc"
+contains "  and says why" "$out" "no .github/tests"
+rm -rf "$R"
+
+# --- 17. And the shipping tree is green. -------------------------------------
 # The cases above prove the rule. This one proves the repository obeys it,
 # which is what the ci.yml step is for -- run here as well so a `git bisect`
 # lands on the commit that broke it rather than on the workflow.
