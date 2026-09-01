@@ -221,6 +221,7 @@ jobs:
           # have written. The two queries must stay identical. This one decides
           # whether to review at all, which is the cheaper of the two to subvert.
           ATTADIPA_LEDGER_ACTOR: github-actions[bot]
+          ATTADIPA_REVIEW_ACTOR: claude[bot]
         run: |
           set -uo pipefail
           run=yes
@@ -232,7 +233,22 @@ jobs:
             if [ -n "$ledger_id" ]; then
               gh api "repos/$REPO/issues/comments/$ledger_id" --jq '.body' > /tmp/previous-ledger.md || : > /tmp/previous-ledger.md
             fi
-            if bash "$TRUSTED/review-verdict.sh" gate /tmp/previous-ledger.md 5 > /tmp/gate.txt; then
+            # THE SECOND COUNT, AND THE REASON THE LEDGER ALONE IS NOT ENOUGH.
+            # `Converge the published reviewer verdict` is what advances the
+            # ledger's `round=`, and it is skipped whenever `review-published.sh`
+            # answers `unknown`. On #382 that happened four times running: the
+            # ledger says `round=5`, and the reviewer published findings at
+            # 16:08, 16:34, 17:26 and 17:59 after it, every one of them with
+            # converge `skipped` and the run green. Nine paid rounds, a ledger
+            # that says five. Counting the published blocks measures the thing
+            # actually being paid for, and it cannot freeze while rounds run.
+            # Same query as converge's `finding_id`, counted rather than
+            # `tail -1`-ed -- and counted with `wc`, not with `jq | length`,
+            # because `--paginate` runs the filter once per page and a `length`
+            # would report the last page instead of the total. A pull request
+            # past a hundred comments is exactly the one that gets here.
+            paid=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_REVIEW_ACTOR) | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | contains("<!-- attadipa-review-findings")) | .id' | wc -l | tr -d ' ') || paid=0
+            if bash "$TRUSTED/review-verdict.sh" gate /tmp/previous-ledger.md 5 "$paid" > /tmp/gate.txt; then
               [ "$(sed -n 's/^run=//p' /tmp/gate.txt)" = no ] && run=no
               open=$(sed -n 's/^open=//p' /tmp/gate.txt)
               round=$(sed -n 's/^round=//p' /tmp/gate.txt)

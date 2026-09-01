@@ -498,11 +498,33 @@ _attadipa_render_deferred() {
 # PREV_LEDGER   the ledger comment body from the last round, as above. Missing
 #               or empty means no round has published yet.
 # CEILING       as above. ATTADIPA_REVIEW_CEILING is the default, itself 5.
+# PAID          how many findings blocks the reviewer has actually published on
+#               this pull request, counted by the caller. Optional; unreadable
+#               or absent counts as zero.
+#
+# TWO NUMBERS, AND THE LARGER WINS, BECAUSE THE LEDGER'S ONE STOPS COUNTING.
+# `Converge the published reviewer verdict` is what advances `round=`, and it is
+# skipped whenever `review-published.sh` answers `unknown` -- which it does when
+# the comment read behind it comes back empty, a read the workflow silences with
+# `2>/dev/null`. Nothing is then written and nothing is said: the run stays
+# green and the ledger keeps the round it had. #382 is the worked example. Its
+# ledger says `round=5`, last edited 15:35:45; the reviewer published findings
+# four more times, at 16:08, 16:34, 17:26 and 17:59, and converge was `skipped`
+# on every one of them. Nine paid rounds, a ledger that says five.
+#
+# A cap that read only the ledger would inherit that. Frozen at five it happens
+# to be right, frozen at three it never fires at all and the ceiling silently
+# stops existing -- the failure this whole function is here to prevent, arriving
+# by a route the function could not see. So the caller counts the published
+# blocks, which is the thing being paid for and cannot freeze while rounds run,
+# and this takes whichever number is larger. The ledger still wins when it is
+# ahead, which is what happens when a round published nothing readable.
 #
 # Prints `key=value` lines on stdout and nothing else:
 #
 #   run=        yes | no
-#   round=      the last round that published, read from the ledger
+#   round=      rounds already paid for: the larger of the two counts
+#   ledger=     what the ledger alone claimed, so a gap is visible in the log
 #   ceiling=    the ceiling it was judged against
 #   open=       findings the ledger still carries open, on `run=no` only
 #   label=      ai-review:pass, on `run=no` only
@@ -514,8 +536,9 @@ _attadipa_render_deferred() {
 # the review itself. The caller must fail the same way -- a gate that could not
 # execute means run, never means pass.
 attadipa_review_gate() {
-  local prev="${1:-}" ceiling="${2:-${ATTADIPA_REVIEW_CEILING:-5}}"
+  local prev="${1:-}" ceiling="${2:-${ATTADIPA_REVIEW_CEILING:-5}}" paid="${3:-0}"
   _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=5
+  _attadipa_is_uint "$paid" || paid=0
 
   local prev_round=0 open_n=0 prev_block line rest id st
   prev_block="$(_attadipa_block "$prev" "$ATTADIPA_LEDGER_OPEN")"
@@ -539,9 +562,13 @@ attadipa_review_gate() {
     [ "$st" = "fixed" ] || open_n=$((open_n + 1))
   done <<< "$prev_block"
 
-  printf 'round=%s\n'   "$prev_round"
+  local seen="$prev_round"
+  [ "$paid" -le "$seen" ] || seen="$paid"
+
+  printf 'round=%s\n'   "$seen"
+  printf 'ledger=%s\n'  "$prev_round"
   printf 'ceiling=%s\n' "$ceiling"
-  if [ "$prev_round" -ge "$ceiling" ]; then
+  if [ "$seen" -ge "$ceiling" ]; then
     printf 'run=no\n'
     printf 'open=%s\n' "$open_n"
     printf 'label=ai-review:pass\n'
@@ -558,7 +585,7 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   # the two decisions read the same ledger and share its parsing primitives, and
   # a second file is how the two drift apart.
   if [ "${1:-}" = gate ]; then
-    attadipa_review_gate "${2:-}" "${3:-}"
+    attadipa_review_gate "${2:-}" "${3:-}" "${4:-}"
   else
     attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
   fi

@@ -624,7 +624,7 @@ echo "The cap — five rounds of reviewing, not five rounds of holding"
 # round for it to decide about. The two must agree on where five ends, so these
 # use the same `_ceiling_ledger` and the same ceiling of 5.
 gate() {
-  bash "$script" gate "${1:-}" "${2:-}"
+  bash "$script" gate "${1:-}" "${2:-}" "${3:-}"
 }
 
 # Round 5 is AT the ceiling and still holds, so it must be allowed to happen: a
@@ -686,6 +686,53 @@ check "an unreadable ceiling falls back to five rather than to none" no "$(key r
 out=$(gate "$(_ceiling_ledger 5)" 7)
 check "and a raised ceiling raises the cap with it" yes "$(key run)"
 
+
+echo
+echo "The cap counts paid rounds, not only the rounds the ledger admits to"
+
+# `Converge the published reviewer verdict` is skipped whenever
+# `review-published.sh` answers `unknown`, and then the ledger keeps the round
+# it had while the reviewer goes on publishing. #382 is the shape: `round=5` in
+# the ledger, nine findings blocks on the page. A cap reading the ledger alone
+# would have to be lucky.
+out=$(gate "$(_ceiling_ledger 3)" 5 9)
+check "nine paid rounds cap a ledger frozen at three" no "$(key run)"
+check "and the round reported is the paid count" 9 "$(key round)"
+check "while the ledger's own claim stays visible" 3 "$(key ledger)"
+
+# The ledger still wins when it is the larger of the two -- a round that
+# published nothing readable advances the ledger and no block.
+out=$(gate "$(_ceiling_ledger 5)" 5 2)
+check "a ledger ahead of the block count still caps" no "$(key run)"
+check "and the larger number is the one reported" 5 "$(key round)"
+
+# Under the ceiling on both counts, the round runs.
+out=$(gate "$(_ceiling_ledger 2)" 5 3)
+check "three paid and two recorded is still under five" yes "$(key run)"
+check "and the round reported is the larger" 3 "$(key round)"
+
+# Exactly at the ceiling on the paid count alone.
+out=$(gate "$(_ceiling_ledger 0)" 5 5)
+check "five paid rounds cap even with an empty ledger" no "$(key run)"
+
+# FAILING TOWARD RUNNING, on this input too. The count arrives from a `gh`
+# pipeline the workflow silences, so garbage and emptiness must both read as
+# nothing known rather than as a large number.
+out=$(gate "$(_ceiling_ledger 2)" 5 "")
+check "an empty count falls back to the ledger" yes "$(key run)"
+check "and reports the ledger's round" 2 "$(key round)"
+out=$(gate "$(_ceiling_ledger 2)" 5 "not-a-number")
+check "an unreadable count does not cap" yes "$(key run)"
+out=$(gate "$(_ceiling_ledger 2)" 5 "-4")
+check "a negative count does not cap" yes "$(key run)"
+out=$(gate "" 5 "")
+check "no ledger and no count runs" yes "$(key run)"
+check "and reports round zero" 0 "$(key round)"
+
+# The count cannot make the gate MORE permissive than the ledger alone: that is
+# the property the max exists for, asserted rather than assumed.
+out=$(gate "$(_ceiling_ledger 6)" 5 0)
+check "a zero count cannot un-cap a ledger past the ceiling" no "$(key run)"
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
