@@ -42,9 +42,10 @@ exists. No window between choosing a path and owning it.
 
 ### A constructed path reaching `std::ifstream` in the replay tooling
 
-`cpp/path-injection`, five instances: `tests/replay/replay_main.cpp:33` —
-"no replay fixtures in %s" — and `tests/test_replay_rig.cpp` at 36, 61, 127 and
-150.
+`cpp/path-injection`, five instances across `tests/replay/replay_main.cpp` and
+`tests/test_replay_rig.cpp`. The lines the scan named are deliberately not
+recorded: they were a snapshot of a tree that has moved since, and a bare line
+number into code we edit is the thing this repository stopped writing.
 
 **Neither binary reads `argv`.** `replay_main` is `int main()` with no
 parameters, and the directory it walks is a compile-time constant CMake defines
@@ -65,12 +66,19 @@ somewhere the tool did not choose, and a test that validates a path CMake
 handed it. That is code written to satisfy a scanner rather than to do
 anything, and it would make the tooling worse.
 
-Dismissed as *used in tests*. The dismissal is per-alert rather than a
-`paths-ignore` for `tests/`, deliberately: excluding the test tree would also
-stop the scan seeing genuine defects in code that links against `core`, and
-those are worth seeing. The cost is that a future test which opens an `argv`
-path raises a new alert to triage — which is the correct default, because the
-next one might not be a test tool.
+Dismissed as *used in tests*, one alert at a time. This note used to say that
+the per-alert form was deliberate — that a `paths-ignore` for `tests/` would
+also stop the scan seeing genuine defects in code that links against `core`.
+
+**That is no longer what runs.** The whole test tree is excluded by
+`.github/codeql/codeql-config.yml:2` — "- tests/**", and the scan is given that
+config by `.github/workflows/codeql.yml:47` — "config-file: ./.github/codeql".
+The
+five dismissals above are history rather than the mechanism in force, and the
+cost the old note named is now being paid in full: nothing under `tests/` is
+scanned, so a genuine defect there raises nothing to triage. Whether that is
+the right scope is a decision for whoever changes it; what this file records is
+which one is running.
 
 ## If you are about to dismiss something
 
