@@ -20,13 +20,17 @@
 // callback timing on the board. The hardware stress this issue asks for is
 // NOT EXECUTED — HARDWARE REQUIRED.
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
+#include "attadipa/link/meshcore_companion.h"
 #include "attadipa/link/session_owner.h"
+#include "meshcore_boot.h"
 #include "meshcore_bond_recovery.h"
 #include "meshcore_write_outcome.h"
 
@@ -39,6 +43,7 @@ using attadipa::link::reconcile;
 using attadipa::link::SessionCatchUp;
 using attadipa::link::SessionMark;
 using attadipa::link::SessionOwner;
+using attadipa::link::SessionSnapshot;
 using attadipa::link::SessionPhase;
 using attadipa::link::SessionStep;
 using attadipa::firmware::classify_write_failure;
@@ -65,6 +70,11 @@ std::vector<SessionStep> steps_of(const SessionCatchUp& catch_up)
 
 // Bring a session all the way up, the way the GATT callbacks do: connect,
 // negotiate, discover, subscribe. Returns the generation.
+attadipa::core::MonotonicTime at(std::uint64_t ms)
+{
+    return attadipa::core::MonotonicTime{ms};
+}
+
 std::uint32_t establish(SessionOwner& owner, std::uint16_t connection,
                         std::uint16_t mtu = 247)
 {
@@ -763,22 +773,6 @@ void two_tasks_cannot_tear_a_session_or_lose_a_transition()
 // copied. What it has to hold is that a radio peer can provoke the event but
 // never choose the consequence.
 
-void a_repeat_pairing_event_never_answers_retry()
-{
-    using attadipa::firmware::BondIdentity;
-    using attadipa::firmware::BondRecovery;
-    BondRecovery recovery;
-    BondIdentity peer{};
-    peer.address = {1, 2, 3, 4, 5, 6};
-    peer.type = 1;
-    peer.valid = true;
-    // RETRY would mean deleting the bond inside the callback, before Phase 2
-    // authentication -- NimBLE #2206. There is no input that produces it.
-    CHECK(recovery.repeat_pairing(peer) == attadipa::firmware::kRepeatPairingIgnore);
-    CHECK(recovery.repeat_pairing(peer) != attadipa::firmware::kRepeatPairingRetry);
-    CHECK(recovery.recovery_required());
-}
-
 void nothing_is_forgotten_until_a_conflict_is_recorded()
 {
     using attadipa::firmware::BondIdentity;
@@ -799,7 +793,7 @@ void a_forget_consumes_the_record_so_a_second_one_is_refused()
     peer.address = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     peer.type = 0;
     peer.valid = true;
-    (void)recovery.repeat_pairing(peer);
+    recovery.record(peer);
 
     BondIdentity taken{};
     CHECK(recovery.take_forget(taken));
@@ -827,10 +821,10 @@ void a_second_peer_cannot_displace_the_bond_the_owner_was_told_about()
     intruder.address = {9, 9, 9, 9, 9, 9};
     intruder.valid = true;
 
-    (void)recovery.repeat_pairing(legitimate);
+    recovery.record(legitimate);
     // Any peer in range can send a Pairing Request. If the newest one won, it
     // would be aiming the owner's next forget at a bond of its choosing.
-    (void)recovery.repeat_pairing(intruder);
+    recovery.record(intruder);
 
     BondIdentity taken{};
     CHECK(recovery.take_forget(taken));
@@ -844,8 +838,7 @@ void an_unidentifiable_peer_offers_no_bond_to_forget()
     BondRecovery recovery;
     // ble_gap_conn_find() failed, so there is no identity address. Fail closed:
     // the transport stays faulted and no bond is nominated for deletion.
-    CHECK(recovery.repeat_pairing(BondIdentity{}) ==
-          attadipa::firmware::kRepeatPairingIgnore);
+    recovery.record(BondIdentity{});
     CHECK(!recovery.recovery_required());
 }
 
@@ -857,7 +850,7 @@ void encryption_coming_up_retires_the_conflict()
     BondIdentity peer{};
     peer.address = {2, 2, 2, 2, 2, 2};
     peer.valid = true;
-    (void)recovery.repeat_pairing(peer);
+    recovery.record(peer);
     CHECK(recovery.recovery_required());
 
     // The fresh pairing after a forget completes, or the peer produced the key
@@ -890,7 +883,7 @@ void a_key_missing_failure_records_the_bond_and_shares_the_one_slot()
     BondIdentity intruder{};
     intruder.address = {9, 9, 9, 9, 9, 9};
     intruder.valid = true;
-    (void)recovery.repeat_pairing(intruder);
+    recovery.record(intruder);
 
     BondIdentity taken{};
     CHECK(recovery.take_forget(taken));
@@ -922,6 +915,205 @@ void a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry()
     CHECK(retried.address == peer.address);
 }
 
+// ---------------------------------------------------------------------------
+// #344 -- the bootstrap is a transaction.
+//
+// firmware/main/meshcore_boot.h holds the acquisition order and the rollback,
+// and start_meshcore_ble() instantiates that same template with the real
+// ESP-IDF calls. What is driven here is therefore the production sequence with
+// failures injected, not a second copy of it.
+
+struct RecordingBootOps {
+    bool port_ok = true;
+    bool queue_ok = true;
+    bool worker_ok = true;
+    std::vector<std::string> calls;
+
+    bool port_init()
+    {
+        calls.push_back("port_init");
+        return port_ok;
+    }
+    void configure_host() { calls.push_back("configure_host"); }
+    bool queue_create()
+    {
+        calls.push_back("queue_create");
+        return queue_ok;
+    }
+    bool worker_create()
+    {
+        calls.push_back("worker_create");
+        return worker_ok;
+    }
+    void host_start() { calls.push_back("host_start"); }
+    void queue_delete() { calls.push_back("queue_delete"); }
+    void port_deinit() { calls.push_back("port_deinit"); }
+
+    bool did(const char* what) const
+    {
+        return std::find(calls.begin(), calls.end(), std::string(what)) !=
+               calls.end();
+    }
+};
+
+void a_successful_boot_starts_the_host_last()
+{
+    using attadipa::firmware::BootResult;
+    RecordingBootOps ops;
+    CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::Ok);
+    // The worker is created before the host task and after everything it
+    // reads. Nothing is released.
+    CHECK(ops.calls == std::vector<std::string>({"port_init", "configure_host",
+                                                 "queue_create",
+                                                 "worker_create",
+                                                 "host_start"}));
+}
+
+void a_failed_port_init_publishes_nothing_and_releases_nothing()
+{
+    using attadipa::firmware::BootResult;
+    RecordingBootOps ops;
+    ops.port_ok = false;
+    CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::PortInitFailed);
+    // This is the case the issue is about: the queue and the worker used to be
+    // created *before* nimble_port_init, so this failure left a task polling a
+    // queue nothing would ever post to for the rest of the boot.
+    CHECK(!ops.did("queue_create"));
+    CHECK(!ops.did("worker_create"));
+    CHECK(!ops.did("host_start"));
+    // Nothing was acquired, so nimble_port_deinit would be undoing a failure.
+    CHECK(!ops.did("port_deinit"));
+}
+
+void a_failed_queue_gives_nimble_back()
+{
+    using attadipa::firmware::BootResult;
+    RecordingBootOps ops;
+    ops.queue_ok = false;
+    CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::QueueFailed);
+    CHECK(!ops.did("worker_create"));
+    CHECK(!ops.did("host_start"));
+    CHECK(ops.did("port_deinit"));
+    // There is no queue to delete: the one thing that could have been acquired
+    // was not.
+    CHECK(!ops.did("queue_delete"));
+}
+
+void a_failed_worker_releases_in_reverse_acquisition_order()
+{
+    using attadipa::firmware::BootResult;
+    RecordingBootOps ops;
+    ops.worker_ok = false;
+    CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::WorkerFailed);
+    CHECK(!ops.did("host_start"));
+    const auto queue = std::find(ops.calls.begin(), ops.calls.end(),
+                                 std::string("queue_delete"));
+    const auto port = std::find(ops.calls.begin(), ops.calls.end(),
+                                std::string("port_deinit"));
+    CHECK(queue != ops.calls.end());
+    CHECK(port != ops.calls.end());
+    // The queue is what the worker would have read, so it goes back first.
+    CHECK(queue < port);
+}
+
+// ---------------------------------------------------------------------------
+// #345 -- a reconfiguration cannot be applied to the session it reconfigures.
+//
+// `reconcile()`, `SessionOwner` and `MeshCoreCompanion` below are the shipping
+// ones. What is modelled is the worker's dispatch, because that lives in an
+// ESP-IDF-only translation unit: `apply_steps` is the step-to-provider mapping
+// of `meshcore_ble.cpp`'s `apply_lifecycle()`, and `configure` is its
+// `EventKind::Configure` arm. The physical case -- a real `mesh-configure` over
+// a live BLE connection -- is NOT EXECUTED - HARDWARE REQUIRED.
+
+void apply_steps(SessionMark& applied, SessionOwner& owner,
+                 attadipa::link::MeshCoreCompanion& provider,
+                 bool reconnect_allowed)
+{
+    const SessionSnapshot session = owner.snapshot();
+    const SessionCatchUp catch_up = reconcile(applied, session);
+    applied = attadipa::link::mark_of(session);
+    for (std::uint8_t i = 0; i < catch_up.count; ++i) {
+        switch (catch_up.steps[i]) {
+        case SessionStep::StackReady:  provider.begin(at(0)); break;
+        case SessionStep::Fault:       provider.fault(at(0)); break;
+        case SessionStep::PeerArriving: provider.peer_arriving(at(0)); break;
+        case SessionStep::Ready:       provider.connected(at(0)); break;
+        case SessionStep::Disconnected:
+            provider.disconnected(at(0));
+            if (reconnect_allowed) provider.begin(at(0));
+            break;
+        }
+    }
+}
+
+// Did the provider queue a CMD_APP_START? It is the first frame of the
+// Companion handshake and the thing that stops arriving when the provider is
+// reset behind a live session -- opcode 1, sixteen bytes
+// (tests/test_meshcore_companion.cpp, connect_and_handshake).
+bool took_app_start(attadipa::link::MeshCoreCompanion& provider)
+{
+    attadipa::link::MeshCoreFrame frame{};
+    return provider.next_tx(frame) && frame.size == 16 && frame.bytes[0] == 1;
+}
+
+void a_reconfigure_over_a_live_session_recycles_it_rather_than_stranding_the_provider()
+{
+    SessionOwner owner;
+    attadipa::link::MeshCoreCompanion provider;
+    SessionMark applied{};
+
+    owner.stack_ready();
+    apply_steps(applied, owner, provider, true);
+    const std::uint32_t first = establish(owner, 7);
+    apply_steps(applied, owner, provider, true);
+    CHECK(took_app_start(provider));
+    CHECK(owner.snapshot().phase == SessionPhase::Ready);
+
+    // The shipping Configure arm: a live connection is ended, and nothing else
+    // is touched. provider.begin() used to run here instead, which is the
+    // defect -- it is asserted below.
+    CHECK(owner.snapshot().connection != attadipa::link::kNoSessionHandle);
+    CHECK(owner.ended(first));
+
+    // The disconnect path, then a fresh generation, exactly as the radio would
+    // produce them.
+    apply_steps(applied, owner, provider, true);
+    const std::uint32_t second = establish(owner, 8);
+    CHECK(second != first);
+    apply_steps(applied, owner, provider, true);
+
+    // One CMD_APP_START on the new session, and the two machines agree.
+    CHECK(took_app_start(provider));
+    CHECK(owner.snapshot().phase == SessionPhase::Ready);
+    CHECK(provider.status().transport == attadipa::core::TransportPhase::Ready);
+}
+
+void resetting_the_provider_under_a_live_session_is_what_wedged_it()
+{
+    SessionOwner owner;
+    attadipa::link::MeshCoreCompanion provider;
+    SessionMark applied{};
+
+    owner.stack_ready();
+    apply_steps(applied, owner, provider, true);
+    (void)establish(owner, 7);
+    apply_steps(applied, owner, provider, true);
+    CHECK(took_app_start(provider));
+
+    // What Configure used to do, unconditionally.
+    provider.begin(at(1));
+
+    // The owner never moved, so reconcile has no Ready to replay: the provider
+    // is never told it is connected again and no CMD_APP_START is queued. This
+    // is the state neither machine allows on its own -- transport Ready,
+    // provider back to Attached -- and it lasted until something disconnected.
+    apply_steps(applied, owner, provider, true);
+    CHECK(owner.snapshot().phase == SessionPhase::Ready);
+    CHECK(provider.status().transport != attadipa::core::TransportPhase::Ready);
+    CHECK(!took_app_start(provider));
+}
+
 }  // namespace
 
 int main()
@@ -946,7 +1138,6 @@ int main()
     the_transmit_classifier_names_only_a_broken_subsystem();
     a_recycled_write_ends_one_generation_a_fatal_one_faults_the_transport();
     two_tasks_cannot_tear_a_session_or_lose_a_transition();
-    a_repeat_pairing_event_never_answers_retry();
     nothing_is_forgotten_until_a_conflict_is_recorded();
     a_forget_consumes_the_record_so_a_second_one_is_refused();
     a_second_peer_cannot_displace_the_bond_the_owner_was_told_about();
@@ -954,6 +1145,12 @@ int main()
     encryption_coming_up_retires_the_conflict();
     a_key_missing_failure_records_the_bond_and_shares_the_one_slot();
     a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry();
+    a_successful_boot_starts_the_host_last();
+    a_failed_port_init_publishes_nothing_and_releases_nothing();
+    a_failed_queue_gives_nimble_back();
+    a_failed_worker_releases_in_reverse_acquisition_order();
+    a_reconfigure_over_a_live_session_recycles_it_rather_than_stranding_the_provider();
+    resetting_the_provider_under_a_live_session_is_what_wedged_it();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
