@@ -1014,6 +1014,14 @@ void an_answer_nobody_collected_does_not_wedge_the_next_request()
     // would be dead until the watch rebooted -- a worse failure than the one
     // this file fixes.
     CHECK(op.reserve());
+    // AND THE RESERVATION REPLACED THE ANSWER, rather than merely being
+    // permitted. A `reserve()` that overwrote only from `Idle` would return
+    // true here and leave `Deleted` in the slot, so the next `tick` would
+    // answer this request with the previous one's outcome -- #378 again, and
+    // with the whole of this change in place. Asserting `reserve()` alone
+    // cannot see that, because the `complete()` below overwrites the stale
+    // answer before anything reads it.
+    CHECK(op.take() == ForgetOutcome::InFlight);
     op.complete(ForgetOutcome::Refused);
     CHECK(op.take() == ForgetOutcome::Refused);
 }

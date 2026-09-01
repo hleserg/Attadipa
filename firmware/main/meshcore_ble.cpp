@@ -1433,6 +1433,16 @@ esp_err_t meshcore_ble_forget_bond()
     // meshcore_ble_forget_bond_outcome() is where the answer arrives.
     if (!forget_op.reserve()) return ESP_ERR_NOT_FINISHED;
     if (!post(Event{EventKind::ForgetBond})) {
+        // SAID OUT LOUD, because the failure text this returns to the host
+        // sends the operator to this log. `post()` is a zero-wait
+        // `xQueueSend` and writes nothing of its own, so without this line a
+        // request the watch threw away and a request that never arrived are
+        // the same evidence -- on a recovery path where the log is the only
+        // second signal there is.
+        ESP_LOGE(kTag,
+                 "forget-bond: the worker queue was full, so the request was"
+                 " dropped before the bond store saw it; the bond is still"
+                 " there -- run mesh-forget-bond again");
         forget_op.release();
         return ESP_ERR_NO_MEM;
     }

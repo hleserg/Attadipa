@@ -599,6 +599,13 @@ public:
     MeshSinkResult forget_bond() override
     {
         ++forget_calls;
+        // A NEW REQUEST CLEARS THE OLD ANSWER, which is what the firmware slot
+        // does: `reserve()` CAS-es any non-`InFlight` state to `InFlight`
+        // (firmware/main/meshcore_forget_outcome.h). Leaving this field alone
+        // let an uncollected outcome from the previous request be handed to
+        // the next one, and no bridge test could tell that apart from a fresh
+        // answer.
+        if (forget_result == MeshSinkResult::Pending) outcome = MeshSinkResult::Pending;
         return forget_result;
     }
 
@@ -2005,6 +2012,42 @@ void a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one()
     CHECK(last_req_id(rig.sink) == 17);
 }
 
+// The slot's rule at the bridge: an outcome nobody collected belongs to the
+// request that produced it, and the request AFTER it must not be answered with
+// it. `reserve()` is what enforces that in firmware, by CAS-ing whatever the
+// slot holds to `InFlight` (firmware/main/meshcore_forget_outcome.h), and
+// `FakeMeshSink::forget_bond` mirrors it. Without both, a host that left with
+// its answer uncollected hands the next host a `MeshOk` for a bond that is
+// still there -- which is #378, with the whole of this change in place.
+void an_uncollected_outcome_does_not_answer_the_request_after_it()
+{
+    FakeMeshSink mesh;
+    mesh.forget_result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+
+    rig.send(request(Opcode::MeshForgetBond, 21), 1000);
+    rig.bridge.on_disconnect(1050);
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+    // The worker finishes after the host is gone, so the answer sits in the
+    // slot with nobody to send it to.
+    mesh.outcome = MeshSinkResult::Accepted;
+
+    // A second conflict, a second request. The `Accepted` above belongs to the
+    // deletion that already happened; this bond has not been touched yet.
+    rig.send(request(Opcode::MeshForgetBond, 22), 2000);
+    CHECK(mesh.forget_calls == 2);
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+
+    // ...and this request's own outcome is answered once, against its req_id.
+    mesh.outcome = MeshSinkResult::Accepted;
+    rig.bridge.tick(2200, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 22);
+}
+
 int main()
 {
     an_envelope_survives_a_round_trip();
@@ -2028,6 +2071,7 @@ int main()
     a_conflict_record_that_was_already_gone_is_not_a_refused_deletion();
     a_forget_bond_with_no_outcome_is_not_answered_by_a_guess();
     a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one();
+    an_uncollected_outcome_does_not_answer_the_request_after_it();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
     a_handshake_at_the_wrong_version_still_says_what_this_device_is();
