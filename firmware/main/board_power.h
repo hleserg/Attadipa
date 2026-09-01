@@ -31,6 +31,17 @@
 // is a second display-power site added during T-Watch bring-up by somebody
 // who read the CI step as enforcing the whole sentence.
 //
+// `Availability` is uncovered the other way round: the owner publishes it and
+// nothing reads it. `PowerOwner::availability()` has no caller outside `core/`
+// and `tests/`, so a `Failed` latch after a failed unwind leaves the watch
+// showing nothing and one `ESP_LOGE` on a serial port a wearer does not have.
+// ADR-0016 section 4 wants the layer above to decide to reboot, and there is no
+// such layer yet. The pattern for it already exists -- `MeshCoreCompanion`
+// writes `status_.availability` and the registry carries it to the UI through
+// `apps/src/app_manifest.cpp` -- so wiring power in is a capability entry, not a
+// new mechanism. It is a feature rather than part of this seam, and `recover()`
+// consumes the latch inside the owner, so reading it late costs nothing.
+//
 // Two board facts shape the implementation, and both are why the generic
 // mechanism could not be written to assume them:
 //
