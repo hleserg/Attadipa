@@ -340,6 +340,44 @@ jobs:
       - name: A completed review reaches the pull request
         run: bash .github/tests/review-published-test.sh
 
+      # The step above drives `review-published.sh`. This one drives the
+      # workflow around it -- that a review which reached the model and
+      # published nothing reports red, and that the previous head's
+      # `ai-review:pass` comes off when the new head arrives.
+      #
+      # It is added here because it was never run. The file has existed since
+      # #277; every other suite in `.github/tests/` has an explicit `run:`
+      # above or below, and this one had none, so it was shellcheck-linted at
+      # `:233` and never executed. #339's assertions existed only on a laptop.
+      - name: A review that publishes nothing is red, and drops the stale pass
+        run: bash .github/tests/review-invalidate-workflow-test.sh
+
+      # The same query found two more, and they are not small: 19 assertions
+      # and 104. `pr-branch-update-decision.sh:19` even says "CI runs that" of
+      # a suite CI has never run.
+      - name: A CI escalation is cleared by a repair, and only on a pull request
+        run: bash .github/tests/ci-repair-reset-test.sh
+
+      - name: Updating a pull request branch decides before it writes
+        run: bash .github/tests/pr-branch-update-test.sh
+
+      # And nothing new joins them in the dark. Wiring three suites by hand is
+      # a fix that lasts until somebody adds a fourth file, so the list is
+      # checked rather than remembered. `shellcheck -x .github/tests/*.sh` at
+      # `:233` is what let this hide: a suite nothing runs still parses, and a
+      # green shellcheck reads as coverage.
+      - name: Every suite in .github/tests is actually run
+        run: |
+          set -uo pipefail
+          missing=0
+          for t in .github/tests/*.sh; do
+            grep -qF "bash $t" .github/workflows/ci.yml || {
+              echo "::error title=Test suite never runs::$t is in .github/tests/ and no step in ci.yml runs it. Add a step that does, or delete the file -- a suite nobody runs is worse than no suite, because the directory reads as coverage." >&2
+              missing=1
+            }
+          done
+          exit "$missing"
+
       - name: A re-review eventually converges without weakening floor findings
         run: bash .github/tests/review-verdict-test.sh
 

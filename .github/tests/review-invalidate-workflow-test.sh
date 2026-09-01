@@ -64,7 +64,8 @@ extract_step() {
 
 SILENT=$(extract_run_block "Say that the review published nothing" "$WF")
 NORUN=$(extract_run_block "Say that the review did not happen" "$WF")
-if [ -z "$SILENT" ] || [ -z "$NORUN" ]; then
+EARLY=$(extract_run_block "Drop the previous head's pass before reviewing this one" "$WF")
+if [ -z "$SILENT" ] || [ -z "$NORUN" ] || [ -z "$EARLY" ]; then
   no "both steps' shell can be extracted and run" \
      "no 'run: |' body found under one of the two step names in $WF -- if a step was renamed, re-point this test rather than deleting it"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
@@ -98,7 +99,7 @@ check_published_guard() {
 check_published_guard "$WHY_STEP" "the diagnosis step"
 check_published_guard "$NORUN_STEP" "the did-not-run step"
 
-for pair in "SILENT:the silent step" "NORUN:the did-not-run step"; do
+for pair in "SILENT:the silent step" "NORUN:the did-not-run step" "EARLY:the early-strip step"; do
   var=${pair%%:*}
   what=${pair#*:}
   # shellcheck disable=SC2016  # the literal characters ${{ are the thing sought.
@@ -188,9 +189,15 @@ sign() { [ "$1" -eq 0 ] && echo zero || echo nonzero; }
 echo
 echo "The silent step delegates, and survives a failed notification"
 
+# Every case in this section ends non-zero, and that is the point of #339: the
+# silence is the defect, so the exit status carries it. What the cases still
+# discriminate is the ANNOTATION -- "nothing was published" alone, or that plus
+# "the stale label is still there" -- and whether the labels actually came off.
+# A version that exits 1 without invalidating would pass the exit assertions
+# and fail `removed()`, which is why both are asserted every time.
 rc=$(FAIL_COMMENT=1 step "$SILENT" "$sandbox/trusted")
 say 'a failed gh pr comment does not keep the stale verdict' "$(removed)" "$BOTH"
-say '...and does not fail the step' "$(sign "$rc")" zero
+say '...and the step is red, because the review published nothing' "$(sign "$rc")" nonzero
 if [ -e "$sandbox/pwned" ]; then
   no "...and the workspace copy of the helper never runs" \
      "the reviewed branch supplied the code that decides whether its own verdict label survives"
@@ -200,7 +207,7 @@ fi
 
 rc=$(FAIL_API=1 step "$SILENT" "$sandbox/trusted")
 say 'a failed dedupe read does not keep the stale verdict' "$(removed)" "$BOTH"
-say '...and does not fail the step' "$(sign "$rc")" zero
+say '...and the step is red, because the review published nothing' "$(sign "$rc")" nonzero
 # The order this replaced did not lose the labels on THIS path -- the read sits
 # in an `if` condition, which `set -e` exempts -- but it did fall through to the
 # `else` and post a note it could not prove was absent. A dedupe that cannot
@@ -211,14 +218,21 @@ say '...and does not post a note it could not prove was absent' \
 
 rc=$(FAIL_REMOVE=ai-review:pass step "$SILENT" "$sandbox/trusted")
 say 'a failed removal fails the step' "$(sign "$rc")" nonzero
-say '...and the helper is what decided that' \
+say '...and the helper still says which label is stuck' \
     "$(grep -c '::error::could not remove the stale' "$sandbox/out")" 1
 
 rc=$(step "$SILENT" "$sandbox/trusted")
 say 'the ordinary path removes both labels' "$(removed)" "$BOTH"
 say '...and posts exactly one note' \
     "$(grep -c 'attadipa-review-not-published:deadbeefcafe1234' "$sandbox/comment")" 1
-say '...and exits 0' "$(sign "$rc")" zero
+# The regression this file exists to catch from now on. Before #339 the whole
+# section above asserted `zero` here, and a silent review reported a green
+# `Independent review` check that every cheap signal read as "reviewed".
+say '...and is red even though the invalidation worked' "$(sign "$rc")" nonzero
+say '...and says why, once' \
+    "$(grep -c '::error::the independent review ran on deadbeef and published no verdict' "$sandbox/out")" 1
+say '...and does not also claim a label is stuck' \
+    "$(grep -c '::error::could not remove' "$sandbox/out")" 0
 
 # ---------------------------------------------------------------------------
 echo
@@ -228,9 +242,10 @@ rc=$(step "$SILENT" "")
 say 'an unstaged helper still removes both labels' "$(removed)" "$BOTH"
 say '...and says so in the log' \
     "$(grep -c '::warning::the review invalidation helper was not staged' "$sandbox/out")" 1
-say '...and exits 0' "$(sign "$rc")" zero
+say '...and is red for the same reason as the staged path' "$(sign "$rc")" nonzero
 rc=$(FAIL_REMOVE=ai-review:blocking step "$SILENT" "")
-say '...and a removal that fails there is a failed step too' "$(sign "$rc")" nonzero
+say '...and a removal that fails there is named as well as red' \
+    "$(grep -c '::error::could not remove the stale' "$sandbox/out")" 1
 
 # ---------------------------------------------------------------------------
 echo
@@ -257,6 +272,37 @@ if [ -e "$sandbox/pwned" ]; then
      "the workspace copy ran instead of the staged default-branch helper"
 else
   ok "...and the reviewed branch cannot replace the no-review helper"
+fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "The early strip takes the previous head's pass off when the head arrives"
+
+rc=$(step "$EARLY" "$sandbox/trusted")
+say 'it removes the previous head'"'"'s pass' "$(removed)" ai-review:pass
+# A stale block holds a merge; a stale pass releases one. Only the second is
+# worth acting on before anything has reviewed the new head, and the
+# did-not-run path leaves `ai-review:blocking` alone for the same reason.
+say '...and leaves ai-review:blocking alone' \
+    "$(grep -c 'remove-label ai-review:blocking' "$sandbox/log")" 0
+say '...and says nothing on the pull request' \
+    "$(wc -c < "$sandbox/comment" | tr -d ' ')" 0
+say '...and exits 0' "$(sign "$rc")" zero
+
+rc=$(FAIL_REMOVE=ai-review:pass step "$EARLY" "$sandbox/trusted")
+# This step is an earlier attempt at an invalidation the publish path repeats
+# and fails on. Red here would report the API's bad minute as a failed review.
+say 'an API failure here is a warning, not a red check' "$(sign "$rc")" zero
+say '...and names the label it could not remove' \
+    "$(grep -c "::warning::could not remove a previous head's" "$sandbox/out")" 1
+
+# The `if:` is the half that decides WHEN, and it cannot be executed here.
+EARLY_STEP=$(extract_step "Drop the previous head's pass before reviewing this one" "$WF")
+if printf '%s\n' "$EARLY_STEP" | grep -Fq "github.event.action == 'synchronize'"; then
+  ok "and it fires on a new head rather than on every event"
+else
+  no "and it fires on a new head rather than on every event" \
+     "its condition does not name 'synchronize'; on reopened or ready_for_review the head is unchanged and the label is still this head's"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

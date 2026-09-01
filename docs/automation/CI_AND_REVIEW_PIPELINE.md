@@ -150,6 +150,27 @@ caller patch was applied during the queue recovery and removed. The executable
 workflow test still extracts both shipping steps and proves that notification
 failure cannot preserve the previous head's verdict.
 
+**And then the check goes red.** The step used to exit with the helper's status,
+so a *successful* invalidation of a silent review ended green: the check said
+`success`, `mergeStateStatus` said `CLEAN`, neither verdict label was present,
+and the only signal that said otherwise was the body of a comment. Four cheap
+signals out of five read as mergeable, and the fifth was an absence — which is
+the thing the note exists to say is not a pass. `merge-candidate.sh` held on that
+absence, so the automated path was safe; a hand merge was not (#339). The silence
+is now what the exit status carries, and the helper's own failure stays legible
+beside it as a second `::error::`: "nothing was published" and "and the stale
+label is still there" are different sentences.
+
+**The stale pass comes off when the new head arrives, not when the run ends.**
+The invalidation above is correct and late: it runs at publish time, so between a
+push and the end of the next review — thirteen minutes on a busy pull request —
+the label still says `ai-review:pass` about the *previous* head, while only
+`mergeStateStatus` and a pending check disagree. Anything that gates on the label
+alone merges an unreviewed head. So a step before the credential gate strips
+`ai-review:pass` on every `synchronize`. Only that one: a stale `ai-review:pass`
+releases a merge and a stale `ai-review:blocking` holds one, and a review that
+has not run yet has said nothing that justifies releasing somebody else's hold.
+
 ### How many rounds a review may hold a pull request
 
 The review reads the head commit, so answering every finding produces a new head
