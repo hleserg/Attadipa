@@ -671,6 +671,17 @@ jobs:
         run: |
           . "$IDF_PATH/export.sh"
           cd firmware
+          # The build rewrites dependencies.lock in place, so the committed
+          # copy is taken before anything runs. `git diff` cannot do this job
+          # here, and the reason is worth writing down rather than leaving for
+          # the next person to rediscover: the workspace is created by the
+          # runner as one user and this step runs as another inside the
+          # container, so git stops its discovery walk at the ownership
+          # boundary and answers "Not a git repository". That is exactly what
+          # the first version of this check did, on the pull request that
+          # added it -- the check is compared against a file, not against the
+          # index, for that reason and not by preference.
+          cp dependencies.lock "$RUNNER_TEMP/dependencies.lock.committed"
           idf.py set-target esp32s3
           idf.py build
           # This is the job that decides whether a product image can answer an
@@ -682,12 +693,12 @@ jobs:
           # turns this step red on both counts.
           grep -q "^# CONFIG_ATTADIPA_WATCH_CONTROL is not set$" sdkconfig
           python3 ../tools/flash/firmware_elf_check.py build/attadipa.elf
-          # The build above re-resolves the component graph and rewrites
+          # The build above re-resolved the component graph and rewrote
           # dependencies.lock. If what it resolved is not what this repository
           # holds, the licence audit in DEPENDENCIES.md describes a graph
           # nobody is building -- so the drift is the failure, not the diff.
           # Committing the lock without this check makes it decoration.
-          git diff --exit-code -- dependencies.lock || {
+          diff -u "$RUNNER_TEMP/dependencies.lock.committed" dependencies.lock || {
             echo "::error title=Resolved dependency graph moved::firmware/dependencies.lock changed during the build. Commit the new lock and re-run the licence audit in docs/research/DEPENDENCIES.md before merging." >&2
             exit 1
           }

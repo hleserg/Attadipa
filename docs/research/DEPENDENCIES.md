@@ -127,9 +127,13 @@ exactly, so neither drifts on its own, and the only failure left is a bump made
 on one route and forgotten on the other — which a third mechanism could catch
 and this paragraph catches more cheaply.
 
-**The lock is binding, not decorative.** The firmware CI job rebuilds — which
-re-resolves and rewrites the lock — and then fails on `git diff --exit-code`.
-Drift is the failure. Bumping a component means committing the new lock and
+**The lock is binding, not decorative.** The firmware CI job copies the
+committed lock aside, rebuilds — which re-resolves and rewrites it — and then
+fails on a `diff` between the two. Drift is the failure. It compares against a
+copy rather than against the index because `git` cannot read the repository
+from inside that container at all: the workspace belongs to the runner's user
+and the step runs as another, so git stops at the ownership boundary and
+answers "Not a git repository". Bumping a component means committing the new lock and
 re-reading the licence of whatever moved, in the same pull request.
 
 **Redistribution notices** are assembled for a release artefact, not carried in
