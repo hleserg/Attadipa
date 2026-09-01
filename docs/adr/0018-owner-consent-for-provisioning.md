@@ -91,12 +91,21 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-> `docs/research/VERIFIED_FACTS.md` — "button presses arrive as PMU interrupts
-> over I2C, not as GPIO edges. Press duration, long-press and power-off
-> behaviour are PMU register policy."
+`docs/research/VERIFIED_FACTS.md:853` — "button presses arrive as PMU interrupts"
+— over I2C rather than as GPIO edges, so press duration, long-press and
+power-off behaviour are PMU register policy —
 
 with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
+
+That entry is read from the **T-Watch** schematic —
+`docs/research/VERIFIED_FACTS.md:852` — "- **Source:** S3 sheet 1." — and its
+claim names SW7, a T-Watch designator, so by itself it is a fact about the other
+board. What carries it here is the Waveshare row cited above,
+`docs/research/HARDWARE_MATRIX.md:399`, which records the same wiring for the
+product board and whose evidence is a measurement taken on one — "physical BOOT
+and PWR edge pairs measured through `core::InputQueue`" — rather than a reading
+of another board's sheet.
 
 **UNKNOWN:** whether the AXP2101 can be configured to report a long press to
 firmware as an event instead of acting on it. That is traceable — a
@@ -254,15 +263,45 @@ Beyond B and C:
   rule asks for.
 - Commits to an NVS seam for what was provisioned — shared with every future
   mechanism, so it is not a cost of this choice alone.
-- **Fixes the authentication factor at possession alone, and this ADR should be
-  the place that says so.** There is no lock and no confirmation: whoever is
-  holding the watch can set its clock and arm a passkey. That is the same factor
-  B and C establish — a gesture and a screen are both possession — so it does
-  not separate them, but it is a boundary the record should carry rather than
-  leave for somebody to discover. Arming a passkey is also what puts the watch
-  on the SMP path where a wrong node's bond evicts the pinned node's, so
-  possession is what stands between a stranger and that eviction. Child Mode on
-  the roadmap is where a second factor would belong if one is ever wanted.
+- **Fixes the authentication factor at possession, and this ADR should be the
+  place that says so.** There is no lock and no confirmation: whoever is holding
+  the watch can set its clock and arm a passkey. That is the same factor B and C
+  establish — a gesture and a screen are both possession — so it does not
+  separate them, but it is a boundary the record should carry rather than leave
+  for somebody to discover. Arming a passkey is also what puts the watch on the
+  SMP path where a wrong node's bond evicts the pinned node's. Child Mode on the
+  roadmap is where a second factor would belong if one is ever wanted.
+- **"Possession" is of the watch or of a cable, and writing "possession alone"
+  hides the second half.** What is provisioned is stored in plain NVS, this
+  project builds with no flash or NVS encryption and will not — `AGENTS.md`
+  forbids burning eFuses — and a full flash read over that same port is
+  documented on this unit. esptool writes as well as reads, and the bond store
+  is in the same unencrypted NVS: `firmware/sdkconfig.defaults:108` —
+  "CONFIG_BT_NIMBLE_NVS_PERSIST=y". So what a cable reaches is not only the
+  passkey it can read but the bond records it can overwrite. Whether a
+  hand-written bond record is one NimBLE would accept is **UNKNOWN** and this
+  ADR does not need it to be: the passkey alone reaches the SMP path with nobody
+  touching the panel, which is the scenario #346 exists for. Every option here
+  stores the same secret in the same place, so this separates none of them; it
+  bounds all of them, and the register records it at
+  [OPEN_QUESTIONS.md:374](../research/OPEN_QUESTIONS.md).
+- **The passkey half has no `core::` seam, and that is the largest unpriced item
+  in this decision.** The clock half has one: an entry screen hands a time to
+  `core/include/attadipa/core/time_service.h:60` — "bool observe(const TimeObservation& observation);" —
+  ranked as what `core/include/attadipa/core/time_service.h:13` — "    Manual," — names.
+  Nothing equivalent exists for a passkey.
+  `core/include/attadipa/core/mesh_service.h:83` — "class MeshProvider {" — is
+  four methods — status, peer count, peer, send — and not one of them arms one;
+  the only writer is `firmware/main/meshcore_ble.h:12` —
+  "bool configure_meshcore_ble(std::uint32_t passkey);" — whose single caller is
+  inside the gated block, and `grep -rn configure_meshcore_ble core/ apps/`
+  returns nothing. So the implementation is a `core::` method and the firmware
+  provider behind it, not an NVS key: the shortest path from `apps/` to that
+  header is the application-layer hardware access `AGENTS.md` forbids, and an
+  implementer reading a cost list that stops at `firmware/main/` will take it.
+  It is **not** `observe`'s shape. `observe` ranks what it is given against what
+  it holds and may keep what it holds; arming a passkey has nothing to rank. It
+  is a request the application makes and the firmware may refuse.
 - Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
   no gesture at all. B or C would not have to close it either — they would use
   BOOT, and pay for a reset strap that cannot be injected remotely and that on

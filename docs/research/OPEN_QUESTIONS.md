@@ -325,9 +325,10 @@ Two things in what follows are worth reading against that, rather than deleted:
   provisioning input except the panel — so the answer sits outside the table
   rather than in it. The letters also collide: this table's **A** is roughly
   ADR-0018's **C**, and neither of its A/B/C means the other's.
-- **Row A prices its gesture as already paid, and on this board it is not.**
-  "The button path and its debounce already exist in `physical_input.cpp`" is
-  true of BOOT, which is a GPIO. It is not true of the power key: PWR reaches
+- **Row A prices its gesture as already paid, and that is true of one of the two
+  keys.** "The button path and its debounce already exist in
+  `physical_input.cpp`" is true of BOOT, which is a GPIO. It is not true of the
+  power key: PWR reaches
   the AXP2101 `PWRON` pin and never a GPIO, so press *duration* is PMU register
   policy and whether a long press can be reported to firmware at all is
   **UNKNOWN** — `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".

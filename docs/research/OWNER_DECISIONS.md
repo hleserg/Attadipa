@@ -1646,8 +1646,13 @@ implementation second.
 second LVGL face beside `ui/lvgl/clock_face.cpp`, with its application half in
 `apps/` — in both languages ([OD-24](#od-24--language-follows-the-reader),
 [ADR-0010](../adr/0010-localization.md)), and storage for what was entered. That
-storage is two different things, and the larger one is not the key: the passkey
-is one entry in the `attadipa_mesh` namespace #304 already created, while the
+storage is two different things and neither is the largest item. The passkey's
+storage is one entry in the `attadipa_mesh` namespace #304 already created; what
+it has no part of is a seam an application may use to reach it — `core::`
+carries no method that arms a passkey and the only writer is a
+`firmware/main/` header — so the passkey half is a `core::` provisioning method
+and the firmware provider behind it, or it is `apps/` reaching into firmware,
+which this repository does not allow. The
 clock half means moving `write_rtc()`'s caller and `save_time_metadata()` out
 from behind `CONFIG_ATTADIPA_WATCH_CONTROL` — the same symbol that gates the
 debug bridge — and showing `firmware_elf_check.py` still keeps
