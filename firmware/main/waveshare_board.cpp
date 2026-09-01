@@ -387,6 +387,21 @@ public:
                                : attadipa::debug::MeshSinkResult::Failed;
   }
 
+  attadipa::debug::MeshSinkResult forget_bond() override {
+    // Rejected only for the empty record -- that is a statement about the
+    // request. A full event queue is the transport failing, and reporting it
+    // as an invalid request would send the operator looking for a conflict
+    // that is recorded.
+    switch (meshcore_ble_forget_bond()) {
+    case ESP_OK:
+      return attadipa::debug::MeshSinkResult::Accepted;
+    case ESP_ERR_INVALID_STATE:
+      return attadipa::debug::MeshSinkResult::Rejected;
+    default:
+      return attadipa::debug::MeshSinkResult::Failed;
+    }
+  }
+
   attadipa::debug::MeshSinkResult
   send(const std::uint8_t peer_prefix[6], const char *text,
        std::size_t text_length, std::int64_t utc_seconds) override {

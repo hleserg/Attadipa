@@ -254,6 +254,28 @@ def cmd_mesh_configure(watch: Watch, args) -> int:
     return 0
 
 
+def cmd_mesh_forget_bond(watch: Watch, args) -> int:
+    try:
+        watch.mesh_forget_bond()
+    except p.ProtocolError as exc:
+        # BAD_INPUT is this command's expected answer, not a malformed request:
+        # the firmware sends it when no stale bond was recorded, which is the
+        # ordinary state and the one the operator has to be able to tell apart.
+        # The generic text is written for the touch and button opcodes and
+        # names a button this board does not have -- for a command that takes
+        # no arguments at all it says nothing true.
+        if exc.code is not p.ErrorCode.BAD_INPUT:
+            raise
+        raise WatchError(
+            "no stale MeshCore bond is recorded, so there is nothing to "
+            "forget; the watch records one only after a connection fails "
+            "because the node holds no key for it") from exc
+    emit(args, {"forgotten": True},
+         "forgot the conflicting MeshCore bond; the watch pairs afresh on the "
+         "next connection")
+    return 0
+
+
 def cmd_mesh_disconnect(watch: Watch, args) -> int:
     watch.mesh_disconnect()
     emit(args, {"disconnected": True}, "MeshCore BLE stopped")
@@ -612,6 +634,11 @@ def build_parser() -> argparse.ArgumentParser:
     mesh_disconnect = subparsers.add_parser(
         "mesh-disconnect", help="stop the watch's MeshCore BLE scan and link")
     mesh_disconnect.set_defaults(func=cmd_mesh_disconnect)
+    mesh_forget_bond = subparsers.add_parser(
+        "mesh-forget-bond",
+        help="forget the MeshCore bond a repeat-pairing conflict recorded, "
+             "and pair afresh (the node was reset or reflashed)")
+    mesh_forget_bond.set_defaults(func=cmd_mesh_forget_bond)
 
     mesh_send = subparsers.add_parser(
         "mesh-send", help="send one private MeshCore message")

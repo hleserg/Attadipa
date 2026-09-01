@@ -149,7 +149,7 @@ millisecond after the `PointerDown`, and `:740` does the same for buttons.
 `info` says so out loud — it prints `hold released after 0 ms`. So `0` is not a
 way to ask for an unbounded hold; a firmware that wants one has to raise the
 limit, not zero it. The default is `30000`
-(`debug/include/attadipa/debug/bridge.h:148`), and `bridge.cpp:359` copies the
+(`debug/include/attadipa/debug/bridge.h:148`), and `bridge.cpp:383` copies the
 enforced limit into the capabilities verbatim, so what is advertised and what
 is enforced are one number.
 
@@ -378,26 +378,35 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:665` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:680` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because `BoardTimeSink` and
 `save_time_metadata` are inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
 in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1097` "bool configure_meshcore_ble") has exactly one caller,
+(`meshcore_ble.cpp:1256` "bool configure_meshcore_ble") has exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:378`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM rather than
 storage: `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
-(`meshcore_ble.cpp:132` "std::atomic_bool configured", `meshcore_ble.cpp:134`
+(`meshcore_ble.cpp:150` "std::atomic_bool configured", `meshcore_ble.cpp:152`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
-that sets either of them **true** (`meshcore_ble.cpp:965`
-"configured.store(true)", `meshcore_ble.cpp:966`
+that sets `configured` **true** (`meshcore_ble.cpp:1061`
+"configured.store(true)", `meshcore_ble.cpp:1062`
 "reconnect_allowed.store(true)" — every other write clears them), and
-`start_scan()` returns unless both are true (`meshcore_ble.cpp:229`
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:247`
 "void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
-bond buys nothing without a scan. So provisioning over the HIL image does not
+bond buys nothing without a scan.
+
+One other event re-arms `reconnect_allowed`: `ForgetBond`
+(`meshcore_ble.cpp:1147` "reconnect_allowed.store(true)"), which is #325's
+recovery from a stale bond. It changes nothing here — it is reached only
+through `MeshForgetBond`, inside the same `#if`, and it re-arms a scan that
+`configured` still gates. A product image cannot reach it and would gain
+nothing if it could.
+
+So provisioning over the HIL image does not
 survive being flashed away — it does not survive a power cycle of the HIL image
 either, which is what shows the round trip never existed. A product image stays
 `Unprovisioned` for its whole life and nothing on the watch can change that:
@@ -409,9 +418,9 @@ never appears.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:1082` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:1241` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:1077` "xTaskCreate(mesh_task") for a subsystem that can never
+(`meshcore_ble.cpp:1236` "xTaskCreate(mesh_task") for a subsystem that can never
 scan. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is

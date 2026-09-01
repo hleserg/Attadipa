@@ -447,6 +447,7 @@ void the_two_numbering_tables_are_spelled_out()
     CHECK(static_cast<std::uint16_t>(Opcode::MeshSend) == 0x0051);
     CHECK(static_cast<std::uint16_t>(Opcode::MeshRoomSend) == 0x0052);
     CHECK(static_cast<std::uint16_t>(Opcode::MeshDisconnect) == 0x0053);
+    CHECK(static_cast<std::uint16_t>(Opcode::MeshForgetBond) == 0x0054);
     CHECK(static_cast<std::uint16_t>(Opcode::HelloOk) == 0x8001);
     CHECK(static_cast<std::uint16_t>(Opcode::CapabilitiesOk) == 0x8002);
     CHECK(static_cast<std::uint16_t>(Opcode::ScreenInfo) == 0x8010);
@@ -595,6 +596,12 @@ public:
         return result;
     }
 
+    MeshSinkResult forget_bond() override
+    {
+        ++forget_calls;
+        return forget_result;
+    }
+
     MeshSinkResult send(const std::uint8_t incoming_prefix[6],
                         const char* incoming_text, std::size_t length,
                         std::int64_t incoming_utc) override
@@ -623,6 +630,8 @@ public:
     std::uint32_t passkey = 0;
     unsigned configure_calls = 0;
     unsigned disconnect_calls = 0;
+    unsigned forget_calls = 0;
+    MeshSinkResult forget_result = MeshSinkResult::Accepted;
     unsigned send_calls = 0;
     unsigned room_calls = 0;
     std::uint8_t prefix[6]{};
@@ -710,6 +719,31 @@ void mesh_commands_are_typed_and_require_a_sink()
     rig.send(request(Opcode::MeshDisconnect, 3));
     CHECK(rig.sink.last_is(Opcode::MeshOk));
     CHECK(mesh.disconnect_calls == 1);
+
+    // Forget-bond carries no body: the bond it deletes is the one the
+    // transport recorded, never one the host names (#325).
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshForgetBond, 4, configure, sizeof(configure)));
+    CHECK(rig.sink.last_error() == ErrorCode::BadBody);
+    CHECK(mesh.forget_calls == 0);
+
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshForgetBond, 5));
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(mesh.forget_calls == 1);
+
+    // Nothing conflicted is a statement about the request, so the host is told
+    // BadInput and not a transport failure it might retry through.
+    mesh.forget_result = MeshSinkResult::Rejected;
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshForgetBond, 6));
+    CHECK(rig.sink.last_error() == ErrorCode::BadInput);
+    CHECK(mesh.forget_calls == 2);
+    mesh.forget_result = MeshSinkResult::Accepted;
+
+    Rig no_sink;
+    no_sink.send(request(Opcode::MeshForgetBond, 7));
+    CHECK(no_sink.sink.last_error() == ErrorCode::Unsupported);
 
     const std::uint8_t send[] = {
         1, 2, 3, 4, 5, 6,

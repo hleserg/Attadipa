@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "attadipa/link/session_owner.h"
+#include "meshcore_bond_recovery.h"
 #include "meshcore_write_outcome.h"
 
 namespace {
@@ -755,6 +756,172 @@ void two_tasks_cannot_tear_a_session_or_lose_a_transition()
     CHECK(model.arrivals >= 1);
 }
 
+// ---------------------------------------------------------------------------
+// #325 -- which bond an owner may forget.
+//
+// The seam is firmware/main/meshcore_bond_recovery.h, compiled here rather than
+// copied. What it has to hold is that a radio peer can provoke the event but
+// never choose the consequence.
+
+void a_repeat_pairing_event_never_answers_retry()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity peer{};
+    peer.address = {1, 2, 3, 4, 5, 6};
+    peer.type = 1;
+    peer.valid = true;
+    // RETRY would mean deleting the bond inside the callback, before Phase 2
+    // authentication -- NimBLE #2206. There is no input that produces it.
+    CHECK(recovery.repeat_pairing(peer) == attadipa::firmware::kRepeatPairingIgnore);
+    CHECK(recovery.repeat_pairing(peer) != attadipa::firmware::kRepeatPairingRetry);
+    CHECK(recovery.recovery_required());
+}
+
+void nothing_is_forgotten_until_a_conflict_is_recorded()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity taken{};
+    CHECK(!recovery.recovery_required());
+    CHECK(!recovery.take_forget(taken));
+    CHECK(!taken.valid);
+}
+
+void a_forget_consumes_the_record_so_a_second_one_is_refused()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity peer{};
+    peer.address = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    peer.type = 0;
+    peer.valid = true;
+    (void)recovery.repeat_pairing(peer);
+
+    BondIdentity taken{};
+    CHECK(recovery.take_forget(taken));
+    CHECK(taken.valid);
+    CHECK(taken.address == peer.address);
+    CHECK(taken.type == peer.type);
+
+    // One conflict, one deletion, one armed pairing. Without a fresh conflict
+    // the operation is refused, so it can never walk the bond store.
+    BondIdentity again{};
+    CHECK(!recovery.recovery_required());
+    CHECK(!recovery.take_forget(again));
+    CHECK(!again.valid);
+}
+
+void a_second_peer_cannot_displace_the_bond_the_owner_was_told_about()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity legitimate{};
+    legitimate.address = {1, 1, 1, 1, 1, 1};
+    legitimate.valid = true;
+    BondIdentity intruder{};
+    intruder.address = {9, 9, 9, 9, 9, 9};
+    intruder.valid = true;
+
+    (void)recovery.repeat_pairing(legitimate);
+    // Any peer in range can send a Pairing Request. If the newest one won, it
+    // would be aiming the owner's next forget at a bond of its choosing.
+    (void)recovery.repeat_pairing(intruder);
+
+    BondIdentity taken{};
+    CHECK(recovery.take_forget(taken));
+    CHECK(taken.address == legitimate.address);
+}
+
+void an_unidentifiable_peer_offers_no_bond_to_forget()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    // ble_gap_conn_find() failed, so there is no identity address. Fail closed:
+    // the transport stays faulted and no bond is nominated for deletion.
+    CHECK(recovery.repeat_pairing(BondIdentity{}) ==
+          attadipa::firmware::kRepeatPairingIgnore);
+    CHECK(!recovery.recovery_required());
+}
+
+void encryption_coming_up_retires_the_conflict()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity peer{};
+    peer.address = {2, 2, 2, 2, 2, 2};
+    peer.valid = true;
+    (void)recovery.repeat_pairing(peer);
+    CHECK(recovery.recovery_required());
+
+    // The fresh pairing after a forget completes, or the peer produced the key
+    // after all. Either way the stale bond is no longer why the link is down,
+    // so it stops being offered as a reason.
+    recovery.pairing_succeeded();
+    CHECK(!recovery.recovery_required());
+    BondIdentity taken{};
+    CHECK(!recovery.take_forget(taken));
+}
+
+void a_key_missing_failure_records_the_bond_and_shares_the_one_slot()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity node{};
+    node.address = {3, 3, 3, 3, 3, 3};
+    node.valid = true;
+
+    // This is the trigger the watch actually reaches. It is a central, and
+    // NimBLE raises BLE_GAP_EVENT_REPEAT_PAIRING only from ble_sm_pair_req_rx()
+    // -- the inbound Pairing Request. What a central sees when the node has
+    // been reflashed is the encryption refused with `PIN or Key Missing`.
+    recovery.record(node);
+    CHECK(recovery.recovery_required());
+
+    // Both entry points write the same single slot, so a peer that can provoke
+    // the other event cannot add a second nomination beside this one.
+    BondIdentity intruder{};
+    intruder.address = {9, 9, 9, 9, 9, 9};
+    intruder.valid = true;
+    (void)recovery.repeat_pairing(intruder);
+
+    BondIdentity taken{};
+    CHECK(recovery.take_forget(taken));
+    CHECK(taken.address == node.address);
+}
+
+void a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry()
+{
+    using attadipa::firmware::BondIdentity;
+    using attadipa::firmware::BondRecovery;
+    BondRecovery recovery;
+    BondIdentity peer{};
+    peer.address = {4, 4, 4, 4, 4, 4};
+    peer.valid = true;
+    recovery.record(peer);
+
+    BondIdentity taken{};
+    CHECK(recovery.take_forget(taken));
+    CHECK(!recovery.recovery_required());
+
+    // ble_store_util_delete_peer() answered non-zero -- a damaged or full NVS,
+    // which is exactly the state #325's erase-the-NVS workaround implies. The
+    // operator was already told the bond was gone, because the wire answer went
+    // out when the request was accepted. Putting the record back is what makes
+    // running the command again the fix rather than a refusal.
+    recovery.record(taken);
+    BondIdentity retried{};
+    CHECK(recovery.take_forget(retried));
+    CHECK(retried.address == peer.address);
+}
+
 }  // namespace
 
 int main()
@@ -779,6 +946,14 @@ int main()
     the_transmit_classifier_names_only_a_broken_subsystem();
     a_recycled_write_ends_one_generation_a_fatal_one_faults_the_transport();
     two_tasks_cannot_tear_a_session_or_lose_a_transition();
+    a_repeat_pairing_event_never_answers_retry();
+    nothing_is_forgotten_until_a_conflict_is_recorded();
+    a_forget_consumes_the_record_so_a_second_one_is_refused();
+    a_second_peer_cannot_displace_the_bond_the_owner_was_told_about();
+    an_unidentifiable_peer_offers_no_bond_to_forget();
+    encryption_coming_up_retires_the_conflict();
+    a_key_missing_failure_records_the_bond_and_shares_the_one_slot();
+    a_refused_deletion_puts_the_bond_back_so_the_owner_can_retry();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

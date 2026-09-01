@@ -106,6 +106,12 @@ CONFIG_BT_NIMBLE_SECURITY_ENABLE=y
 CONFIG_BT_NIMBLE_SM_SC=y
 CONFIG_BT_NIMBLE_STATIC_PASSKEY=y
 CONFIG_BT_NIMBLE_NVS_PERSIST=y
+# Pinned, not inherited. With this on, NimBLE deletes the conflicting bond
+# itself and never posts BLE_GAP_EVENT_REPEAT_PAIRING to the application
+# (ble_gap.c:9679-9685) -- which is the unauthenticated bond eviction of Apache
+# NimBLE #2206, and it would silently retire this firmware's handler. Upstream
+# defaults to n; #325 is why that default is written down here.
+CONFIG_BT_NIMBLE_HANDLE_REPEAT_PAIRING_DELETION=n
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 CONFIG_BT_NIMBLE_MAX_BONDS=1
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=256

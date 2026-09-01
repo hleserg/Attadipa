@@ -80,6 +80,7 @@ enum class Opcode : std::uint16_t {
     MeshSend      = 0x0051,
     MeshRoomSend  = 0x0052,
     MeshDisconnect= 0x0053,
+    MeshForgetBond= 0x0054,
 
     // Responses
     HelloOk       = 0x8001,
