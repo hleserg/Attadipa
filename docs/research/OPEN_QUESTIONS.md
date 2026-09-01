@@ -279,6 +279,7 @@ one. This project has no Heltec V4 and independently confirming it is
 | Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
 | Q4 | How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node? | **UNKNOWN** | owner decision. Verified 2026-09-01 against `144459f`: a production image can do none of it, and the options are below |
+| Q5 | How does a power lease taken on one task take part in a sleep decision made on another? | **UNKNOWN** | engineering decision, deferred. Blocks [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 only; consequence is zero until a plan suspends a domain a cross-task lease holds |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
 on 2026-08-21 in a way that reframed it. The board is not a lesser device that
@@ -303,6 +304,10 @@ be added externally" — yes — and leaves the product question untouched, beca
 open and remains independent: node orientation is not watch orientation
 ([ADR-0009](../adr/0009-heading.md) §3), so a node's magnetometer answers a
 different question than a wrist's does.
+
+What Q2 now asks is the narrow, still-open thing: **on a board nobody has
+modified, is heading GNSS-course-only for good?** That is a product decision and
+the retrofit does not make it.
 
 ### Q4 — a production watch cannot be provisioned at all, and the missing piece is a consent rule
 
@@ -355,9 +360,51 @@ existing example of a request whose answer is a queue post.
 treated as one: nothing below the application layer needs the answer. It blocks
 shipping a watch to a person who is not holding a build environment.
 
-What Q2 now asks is the narrow, still-open thing: **on a board nobody has
-modified, is heading GNSS-course-only for good?** That is a product decision and
-the retrofit does not make it.
+### Q5 — a lease taken on one task, read by another, and a sleep decision in between
+
+`PowerOwner` is single-task by contract
+([`core/include/attadipa/core/power_owner.h:251`](../../core/include/attadipa/core/power_owner.h) —
+"// **Not thread-safe, and deliberately so.** Every `acquire()`, `release()` and").
+Issue [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 asks the BLE
+transport to declare a lease, and the transport does not run on the task that
+sleeps. That is the whole of this question, and it is not the data race it looks
+like at first.
+
+**The sequence that has no lock-shaped answer.** The sleeper reads `held()`,
+finds nothing that blocks its plan, and commits. Between that read and the
+hardware actually stopping, the other task acquires a lease. The sleeper has
+already stopped looking. A mutex around the lease table serialises the *table*
+and changes none of it, because the sleeper cannot hold a lock across the sleep:
+it is inside `esp_light_sleep_start()` for as long as the sleep lasts, and a
+task blocked on a lock there is a task that cannot un-take the decision anyway.
+
+**Why nothing is broken today, stated so the reason is checkable rather than
+reassuring.** The only sleep plan the firmware issues suspends the display and
+nothing else
+([`firmware/main/physical_input.cpp:171`](../../firmware/main/physical_input.cpp) —
+"plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
+trip is an intersection
+([`core/src/power_owner.cpp:298`](../../core/src/power_owner.cpp) —
+"static_cast<std::uint16_t>(leases_.held() & (plan.suspend | plan.rails_off));").
+A `NodeLink` lease does not intersect `Display`, so the check that could be
+raced cannot fire whichever way the race lands. The gap is real and its
+consequence is currently zero.
+
+**What answering it costs, which is why it is a question and not a task.** The
+lease has to participate in the sleep decision itself — the sleeper publishes an
+intent, a late acquire either refuses or aborts it, and every consumer learns a
+protocol. That is a general power-management framework, and this project has
+one standing instruction against building one before a consumer needs it
+([ADR-0016](../adr/0016-one-power-owner.md) — the smallest mechanism the current
+product needs). The honest state is: the contract says single-task, the first
+cross-task consumer brings the answer, and until one exists there is nothing to
+measure a design against.
+
+**Not a blocker.** It blocks #367 item 7 and nothing else. Radio, GNSS and
+T-Watch bring-up all reach a working device without it; each of them arriving
+with a lease is what will make the question answerable, because only then is
+there a plan whose `suspend` set a cross-task lease can intersect.
+
 
 ---
 
