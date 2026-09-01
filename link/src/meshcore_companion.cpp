@@ -356,6 +356,15 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         ++malformed_frames_;
         return false;
     }
+    // A REFUSED NODE IS NOT ANSWERED AGAIN, and its traffic is not liveness.
+    // `wrong_node_` latches in the RESP_CODE_SELF_INFO case below and the
+    // transport then terminates the connection -- but that terminate is
+    // asynchronous, and it is one call whose result nothing enforced, so frames
+    // keep arriving in the window and used to be dispatched in full.
+    //
+    // Not counted as malformed: the frame is well formed and the node is
+    // behaving exactly as a MeshCore node should. It is simply not this watch's.
+    if (wrong_node_) return false;
     (void)link_.apply(LinkEvent::PeerData, now);
     switch (data[0]) {
     case kResponseDeviceInfo:

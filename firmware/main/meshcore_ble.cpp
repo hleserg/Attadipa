@@ -1255,7 +1255,15 @@ struct RealPinOps {
     }
     void disconnect(std::uint16_t connection)
     {
-        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+        // The whole refusal used to be this one call with its result thrown
+        // away, so a terminate that did not take left the watch attached to a
+        // node it will not talk to and said nothing. The link is harmless now
+        // -- `receive()` answers a refused node nothing -- but it still holds
+        // the radio, and that has to be visible somewhere.
+        const int rc = ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+        if (rc != 0) {
+            ESP_LOGE(kTag, "could not disconnect the refused node: %d", rc);
+        }
     }
 };
 
@@ -1295,10 +1303,29 @@ void settle_node_identity(std::uint32_t generation)
         ESP_LOGI(kTag, "MeshCore node %s, the pinned one", seen);
         break;
     case attadipa::firmware::PinOutcome::Refused:
-        // Identified and left alone. The bond is not deleted, nothing is
-        // written, and the node is not told anything -- the watch simply does
-        // not talk to it. `provider` has already stopped the handshake, so no
-        // contact sync and no send ever reached this node.
+        // Identified and then answered nothing: `MeshCoreCompanion::receive()`
+        // drops every frame once `wrong_node()` has latched, so no contact
+        // sync, no CMD_SYNC_NEXT_MESSAGE and no send ever reaches this node.
+        //
+        // WHAT IT CANNOT UNDO IS THE BOND, and round 1 of this change claimed
+        // it could. The key arrives only in RESP_CODE_SELF_INFO, which is after
+        // ENC_CHANGE -- so the watch has already paired and bonded with this
+        // node before anything here can know it is the wrong one. The store
+        // holds one bond (`firmware/sdkconfig.defaults:116` --
+        // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
+        // than refuses: the `ble_store_util_status_rr` installed in
+        // `configure_host()` below answers BLE_STORE_EVENT_OVERFLOW for
+        // OUR_SEC, PEER_SEC and PEER_ADDR with `ble_gap_unpair_oldest_peer()`
+        // (`host/src/ble_store_util.c:453`), which unpairs
+        // `oldest_peer_id_addr[0]` (`host/src/ble_gap.c:9516`) -- with one slot,
+        // the pinned node's.
+        //
+        // So a wrong node in range costs the pinned node its bond, the refusal
+        // is too late to prevent it, and the cooldown only bounds how often it
+        // recurs. Preventing it needs a second bond slot or a way to know the
+        // node before encrypting; both are provisioning, and #356's. What this
+        // rule does buy is that the watch no longer *talks* to the wrong node,
+        // which is what #304 measured.
         ESP_LOGW(kTag,
                  "MeshCore node %s is not this watch's node %s; disconnecting",
                  seen, want);
@@ -1599,7 +1626,7 @@ esp_err_t start_meshcore_ble()
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
-    // `firmware/main/waveshare_board.cpp:217` --
+    // `firmware/main/waveshare_board.cpp:191` --
     // "ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, \"initialize time metadata\");"
     // -- and `firmware/main/attadipa_main.cpp:307` logs a UI failure and starts
     // the mesh anyway, so on that path the pin would be read out of an

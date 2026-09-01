@@ -166,6 +166,19 @@ void test_another_node_answers_and_the_handshake_stops_there()
     MeshCoreFrame frame{};
     CHECK(!client.next_tx(frame));
     CHECK(client.status().availability != Availability::Ready);
+
+    // Nor is anything asked of it afterwards. The transport's terminate is
+    // asynchronous and unenforced, so a refused node goes on sending in the
+    // window -- and PUSH_CODE_MSG_WAITING used to enqueue CMD_SYNC_NEXT_MESSAGE
+    // unconditionally, which is the watch asking a node it has just refused for
+    // its queued messages.
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(!client.receive(waiting, sizeof(waiting), at(5)));
+    CHECK(!client.next_tx(frame));
+    // Not malformed either: the frame is well formed and the node is behaving
+    // normally. Counting it would put a refused node's ordinary traffic into
+    // the statistic that means "somebody is sending us rubbish".
+    CHECK(client.malformed_frames() == 0);
 }
 
 void test_the_pin_outlives_the_session_and_the_identity_does_not()

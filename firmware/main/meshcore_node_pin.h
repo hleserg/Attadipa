@@ -9,7 +9,7 @@
 // of ... an isolated decision helper does not prove the production caller
 // works"). What is here is therefore not a helper the production code mirrors
 // -- it *is* the production decision. `settle_node_identity()` instantiates it
-// with the real provider, NVS and NimBLE; `tests/test_node_pin.cpp`
+// with the real provider, NVS and NimBLE; `tests/test_session_owner.cpp`
 // instantiates it with fakes, and there is one rule between them.
 //
 // It is deliberately not a policy engine. It knows three outcomes because this

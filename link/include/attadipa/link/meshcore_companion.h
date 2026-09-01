@@ -83,10 +83,17 @@ public:
     bool node_id(core::MeshPeerId& out) const;
 
     // True once the handshake has read a public key that is not the pinned one.
-    // Nothing here acts on it: the frame was well formed, the session is not
-    // faulted, and tearing a connection down is the transport's decision to
-    // make and the transport's to not repeat. It latches until the next
-    // session, so a poll that happens after `disconnected()` still sees why.
+    // It latches until the next session, so a poll that happens after
+    // `disconnected()` still sees why.
+    //
+    // This class acts on it in exactly one way: `receive()` drops every frame
+    // that arrives after it latches. That is not the link being torn down --
+    // this class does not own the link, and one that tore it down would tear it
+    // down again on the reconnect that follows -- it is this class declining to
+    // answer. Round 2 of #388 measured what "acts on it in no way" cost:
+    // `kPushMessageWaiting` enqueued CMD_SYNC_NEXT_MESSAGE unconditionally, so
+    // the watch could ask a node it had just refused for its queued messages
+    // and put the reply on the mesh screen.
     bool wrong_node() const { return wrong_node_; }
 
     std::uint32_t malformed_frames() const { return malformed_frames_; }
