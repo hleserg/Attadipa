@@ -33,6 +33,15 @@ most sleep calls in it" is not a rule anybody can rely on.
 
 There is deliberately no flag to exempt a file. Moving the owner means editing
 `OWNER` in one commit, and the diff of that commit is the record.
+
+A second board is not a second owner, and the temptation when this first fails
+for the T-Watch will be to make `OWNER` a list. Don't: a list is the rule saying
+"one per file I happened to name", which is not a rule. One board is compiled at
+a time, so the check should then read which board the build selected and hold
+that board's file to the same single-owner rule -- the same invariant, asked of
+the tree that is actually being built. That is a change worth making when the
+second backend exists and not before; ADR-0017 is where the backend boundary is
+decided, and `firmware/main/CMakeLists.txt` is where the selection will appear.
 """
 
 from __future__ import annotations
