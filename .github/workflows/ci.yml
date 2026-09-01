@@ -651,6 +651,15 @@ jobs:
       - name: Partition table stays below the 16 MB addressing ceiling
         run: python3 tools/flash/partition_check.py
 
+      # ADR-0016 section 1 says this is checked in CI, and the rule it states
+      # was already broken when the ADR was written: sleep lived in one file and
+      # the rail writes in another, with nothing joining them.
+      - name: The power-owner check tests itself
+        run: python3 tools/flash/one_power_owner.py --selftest
+
+      - name: Sleep, wake arming and AXP2101 rails have one owner
+        run: python3 tools/flash/one_power_owner.py .
+
       - name: Build the production image
         shell: bash
         run: |
