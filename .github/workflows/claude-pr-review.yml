@@ -93,6 +93,45 @@ jobs:
         id: started
         run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      - name: Drop the previous head's pass before reviewing this one
+        # A `synchronize` is a new head, so an `ai-review:pass` on the pull
+        # request at this moment was granted to a commit that is no longer the
+        # one being merged. `review-invalidate.sh` takes it off too, but only
+        # when the run reaches its publish step -- thirteen minutes later on the
+        # pull request this was found on. For that whole window the cheapest
+        # signal anybody reads first, the label, says "reviewed, passed" about
+        # code nothing has read, while only `mergeStateStatus` and a pending
+        # check disagree. #339, second observation.
+        #
+        # Before the credential gate on purpose: a stale pass has to come off
+        # even when there is no credential to review the new head with.
+        #
+        # `ai-review:blocking` is deliberately left alone, for the reason the
+        # did-not-run path leaves it alone: a review that has not run yet has
+        # said nothing that justifies releasing a hold somebody else put on, and
+        # a stale block is the fail-safe direction of being wrong.
+        #
+        # Not routed through `review-invalidate.sh`: that helper also posts its
+        # "published no verdict" note, which is untrue at the start of a run.
+        #
+        # A re-run of a `synchronize` against a head that already passed strips
+        # a label that was valid and the same run re-grants it. Also the
+        # fail-safe direction.
+        #
+        # `--remove-label` on an absent label exits 0, so a failure here is an
+        # API failure rather than a missing label. It is a warning because the
+        # publish path invalidates again and fails the step if it cannot -- this
+        # step makes the invalidation earlier, it does not become the guard.
+        if: github.event.action == 'synchronize'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass ||
+            echo "::warning::could not remove a previous head's \`ai-review:pass\` from #$PR at the start of this run; the publish step invalidates again"
+
       - name: Check that an Anthropic credential exists
         id: auth
         env:
@@ -267,13 +306,28 @@ jobs:
           # the previous head's verdict labels, all under `set -euo pipefail`.
           # A rate-limited or 502-ing API on either of the first two ended the
           # step before the third, and a new head that nothing had reviewed kept
-          # its `ai-review:pass`. The helper inverts the order and this step's
-          # exit status is the helper's: notification failure is a warning,
-          # invalidation failure is a failure.
+          # its `ai-review:pass`. The helper inverts the order: notification
+          # failure is a warning, invalidation failure is a failure.
+          #
+          # THIS STEP THEN FAILS ANYWAY (#339). It used to exit with the
+          # helper's status, so a successful invalidation of a silent review
+          # ended green and the pull request presented as reviewed: check
+          # `success`, `mergeStateStatus` `CLEAN`, no verdict label either way,
+          # and the one signal that said otherwise was the body of a comment.
+          # `merge-candidate.sh` held on the absent `ai-review:pass`, so the
+          # automated path was safe; a hand merge was one step away. The silence
+          # is the defect being reported, so it is what the exit status has to
+          # carry. The helper's own result still reaches the log as its own
+          # `::error::`, which is the difference between "nothing was published"
+          # and "and the stale label is still there".
           set -uo pipefail
+          silent() {
+            echo "::error::the independent review ran on ${SHA:0:8} and published no verdict, so this check is red rather than reporting a review that did not happen. Re-run it: a silent run is not deterministic (#339)"
+            exit 1
+          }
           if [ -n "${TRUSTED:-}" ] && [ -r "$TRUSTED/review-invalidate.sh" ]; then
-            bash "$TRUSTED/review-invalidate.sh"
-            exit $?
+            bash "$TRUSTED/review-invalidate.sh" || true
+            silent
           fi
           # Reaching here means the default-branch bundle could not be staged,
           # which also means `steps.published` could not run its own helper and
@@ -281,10 +335,11 @@ jobs:
           # note rather than the invalidation, because the note is a courtesy
           # and the invalidation is what stops a merge.
           echo "::warning::the review invalidation helper was not staged from the default branch; removing the stale verdict labels without posting the note"
-          rc=0
-          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass || rc=1
-          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking || rc=1
-          exit $rc
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:pass ||
+            echo "::error::could not remove the stale \`ai-review:pass\` from #$PR; take it off by hand"
+          gh pr edit "$PR" --repo "$REPO" --remove-label ai-review:blocking ||
+            echo "::error::could not remove the stale \`ai-review:blocking\` from #$PR; take it off by hand"
+          silent
 
       - name: Converge the published reviewer verdict
         # This is deliberately after publication: no model output, missing bundle,
