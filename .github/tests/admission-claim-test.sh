@@ -505,6 +505,53 @@ set -e
   || bad 'a failed claim never deletes a ref it could not read' \
          "rc=$unread_orphan_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_orphan_err" | tr '\n' ' ')"
 
+# `release` meets the same lag as the read-back, seconds after the same
+# create: the ordinary `held: full` exit of writer-start.sh is acquire, deny,
+# release. A lagging read is retried rather than answered "nothing held".
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+printf '1\n' > "$work/state/lag.ref"
+set +e
+lag_release_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 2>/dev/null)"
+lag_release_rc=$?
+set -e
+[ "$lag_release_rc" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] \
+  && case "$lag_release_out" in *'released by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a release whose read lags the create is retried, not refused' \
+  || bad 'a release whose read lags the create is retried, not refused' \
+         "rc=$lag_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stdout=$lag_release_out"
+
+# A release that never learns who holds the ref deletes nothing -- and says so.
+# Every caller writes `|| true`, so silence here is a leaked lease nobody sees.
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+unread_release_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL=1 \
+  bash "$CLAIM" release o/r 7 agent-4242-1 2>&1 >/dev/null)"
+unread_release_rc=$?
+set -e
+[ "$unread_release_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$unread_release_err" in *'left behind'*'claim.sh break o/r 7'*) true ;; *) false ;; esac \
+  && ok 'a release that cannot read the holder names the ref it left behind' \
+  || bad 'a release that cannot read the holder names the ref it left behind' \
+         "rc=$unread_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_release_err" | tr '\n' ' ')"
+
+# `reap` is the third reader, and the one with the most to lose: its migration
+# path decides by age alone and deletes before it confirms. An unreadable ref
+# over an aged live local claim must not fall into it.
+reset_state; claimed "$CLAIM" agent-i254-r1
+printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
+set +e
+unread_reap_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL=1 \
+  bash "$CLAIM" reap o/r 7 7200 2>&1 >/dev/null)"
+unread_reap_rc=$?
+set -e
+[ "$unread_reap_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] && ! grep -Fxq agent:ready "$work/state/labels" \
+  && case "$unread_reap_err" in *'could not be read'*) true ;; *) false ;; esac \
+  && ok 'an unreadable ref is not reaped by age through the migration path' \
+  || bad 'an unreadable ref is not reaped by age through the migration path' \
+         "rc=$unread_reap_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), ready=$(grep -Fxq agent:ready "$work/state/labels" && echo yes || echo no), stderr=$(printf '%s' "$unread_reap_err" | tr '\n' ' ')"
+
 reset_state; printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
 ! grep -Fxq agent:working "$work/state/labels" && grep -Fxq agent:ready "$work/state/labels" \

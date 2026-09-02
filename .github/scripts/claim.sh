@@ -124,6 +124,7 @@ discard_own_ref() {
     if [ "$rc" -ne 1 ] || [ "$attempt" -eq 3 ]; then break; fi
     sleep 2
   done
+  [ "$rc" -ne 1 ] || return 0   # three 404s: there is no ref to leave behind
   if [ "$rc" -eq 0 ]; then
     [ "$live" = "$tag_sha" ] || return 0   # another writer's claim is not ours to remove
     delete_ref "$repo" "$number" && return 0
@@ -216,8 +217,24 @@ acquire() {
 }
 
 release() {
-  local repo="$1" number="$2" holder="$3" winner
-  winner="$(attadipa_claim_owner "$repo" "$number")" || return 3
+  local repo="$1" number="$2" holder="$3" winner rc attempt
+  # The read is retried as acquire's is: a release seconds after the create
+  # meets the same lag. An answer that never settles is said out loud, because
+  # every caller writes `|| true` -- this line is the whole signal that a lease
+  # trusted at its create is still there (#392).
+  for attempt in 1 2 3; do
+    winner="$(attadipa_claim_owner "$repo" "$number")"
+    rc=$?
+    if [ "$rc" -eq 0 ] || [ "$attempt" -eq 3 ]; then break; fi
+    sleep 2
+  done
+  case "$rc" in
+    0) ;;
+    1) printf 'nothing is held at %s\n' "$(claim_ref "$number")" >&2; return 3 ;;
+    *) printf 'cannot read who holds %s; left behind -- clear it with: claim.sh break %s %s\n' \
+         "$(claim_ref "$number")" "$repo" "$number" >&2
+       return 3 ;;
+  esac
   if [ "$winner" != "$holder" ]; then
     printf 'held by %s\n' "$winner" >&2
     return 3
@@ -286,8 +303,10 @@ claim_finished() {
 }
 
 reap() {
-  local repo="$1" number="$2" max_age="$3" tag_sha tag_json message holder date claimed_epoch now
-  if tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"; then
+  local repo="$1" number="$2" max_age="$3" tag_sha tag_json message holder date claimed_epoch now rc
+  tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
     tag_json="$(gh api "repos/$repo/git/tags/$tag_sha")" || return 2
     date="$(printf '%s' "$tag_json" | jq -er '.tagger.date')" || return 2
     message="$(printf '%s' "$tag_json" | jq -er '.message')" || return 2
@@ -297,7 +316,7 @@ reap() {
         "$(claim_ref "$number")" "$holder" "$repo" "$number" >&2
       return 3
     fi
-  else
+  elif [ "$rc" -eq 1 ]; then
     # Migration path for labels created before repository refs became the lock.
     # Age still decides here, and may: every claim a live writer holds, hosted
     # or local, creates the ref this branch did not find.
@@ -305,6 +324,12 @@ reap() {
       | jq -er 'if (length > 0 and (.[0] | type) == "array") then add else . end
                   | [.[] | select(.event == "labeled" and .label.name == "agent:working")]
                   | last.created_at')" || return 3
+  else
+    # "Could not read" is not "not there". The path above reaps by age and
+    # `break_claim` deletes before it confirms, so an unreadable ref has to stop
+    # here or a live local writer's lock goes with it (#392).
+    printf '%s could not be read; nothing is reaped behind that answer\n' "$(claim_ref "$number")" >&2
+    return 3
   fi
   claimed_epoch="$(date -u -d "$date" +%s 2>/dev/null)" || return 2
   now="$(date -u +%s)"
