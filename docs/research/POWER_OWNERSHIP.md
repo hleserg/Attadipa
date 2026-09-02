@@ -257,7 +257,7 @@ Two things the rollback leaves behind, on purpose. The rails, always: the
 bring-up wrote them, and switching any of them off is authorised by a
 measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
 a supply), so they stay as written and the log says so:
-[`firmware/main/waveshare_board.cpp:1063`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1067`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". And the whole display stack — LVGL, the display, the
 panel, its IO and the QSPI host — when the failure *was* the LVGL lock: a task
 that has held it past a second is inside `lv_timer_handler()`, most plausibly
@@ -265,7 +265,7 @@ a flush the panel never acknowledged; `lvgl_port_remove_disp()` would wait on
 that lock forever, and freeing the panel or the host under a flush in
 progress is a use-after-free on the next byte, so that path leaves all five
 where they are and logs it
-([`firmware/main/waveshare_board.cpp:1019`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1024`](../../firmware/main/waveshare_board.cpp) —
 "if (state.display != nullptr && !lvgl_reachable) {"). That leak is
 unbounded — the LVGL task and its buffers stay allocated for the life of the
 boot — and it is the trade made: a leak is recoverable and a hang or a panic

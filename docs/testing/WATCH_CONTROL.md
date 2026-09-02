@@ -385,7 +385,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:1107` "restore_time_metadata()") is outside the `#if` — and,
+(`waveshare_board.cpp:1111` "restore_time_metadata()") is outside the `#if` — and,
 since #356's second change, writes one too: `provision_time()` has two callers,
 `BoardProvisioner` (`waveshare_board.cpp:453` "provision_time(ops, request,")
 outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:515`
