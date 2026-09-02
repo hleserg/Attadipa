@@ -350,11 +350,14 @@ Everything that provisions a watch sits behind that symbol:
   is called by nothing outside that block. `restore_time_metadata()` is
   unguarded, so production can read a stored offset it has no way to have
   stored.
-- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of the
-  `configured` flag, and it too is reachable only from inside that block. The
-  worker's `firmware/main/meshcore_ble.cpp:1117` — "if (configured.load()) start_scan();"
-  is therefore false forever in a production image: the transport starts, is
-  never configured, and never looks for a node.
+- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of
+  the passkey key, and it is reachable only from inside that block. Since
+  #356's first change boot replays a stored passkey through the same
+  `Configure` event, so a production image scans if a HIL image left one on
+  flash; with nothing on flash the worker's
+  `firmware/main/meshcore_ble.cpp:1166` — "if (configured.load()) start_scan();"
+  is false forever: the transport starts, is never configured, and never looks
+  for a node.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
   the same single gated caller.
 

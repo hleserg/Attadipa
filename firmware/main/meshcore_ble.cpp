@@ -99,6 +99,10 @@ struct Event {
     std::uint32_t generation = 0;
     std::uint16_t size = 0;
     std::uint32_t passkey = 0;
+    // A Configure from the operator writes its passkey to NVS; the one boot
+    // posts to replay a stored passkey does not, or every boot would rewrite
+    // flash with what it just read.
+    bool persist_passkey = false;
     attadipa::core::WallTime timestamp{};
     std::array<std::uint8_t, attadipa::link::kMeshCoreFrameBytes> bytes{};
     std::array<std::uint8_t, 6> peer_prefix{};
@@ -218,6 +222,9 @@ std::atomic_bool send_claimed{false};
 // state is visible without a serial cable.
 constexpr const char* kMeshNvsNamespace = "attadipa_mesh";
 constexpr const char* kNodeKeyNvsKey    = "node";
+// The passkey, once provisioned, so that a power cycle does not unprovision
+// the watch (ADR-0018, fact 2). Plain NVS, like the pin and the bonds.
+constexpr const char* kPasskeyNvsKey    = "passkey";
 
 // The address of the peer this session is with, and the address of the last one
 // refused, packed as type<<48 | the six address bytes. Atomics rather than a
@@ -317,6 +324,48 @@ PinRead load_node_pin(attadipa::core::MeshPeerId& out)
         return PinRead::Unreadable;
     }
     return PinRead::Pinned;
+}
+
+enum class PasskeyRead : std::uint8_t {
+    Provisioned,
+    Unprovisioned,
+    Unreadable,
+};
+
+// `load_node_pin` for the passkey: a value the image would refuse at
+// `configure_meshcore_ble()` is Unreadable here, not Provisioned, so a boot
+// never arms what an operator could not have asked for.
+PasskeyRead load_passkey(std::uint32_t& out)
+{
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READONLY, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return PasskeyRead::Unprovisioned;
+    if (opened != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore passkey: nvs_open: %s", esp_err_to_name(opened));
+        return PasskeyRead::Unreadable;
+    }
+    const esp_err_t err = nvs_get_u32(handle, kPasskeyNvsKey, &out);
+    nvs_close(handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return PasskeyRead::Unprovisioned;
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore passkey: nvs_get_u32: %s", esp_err_to_name(err));
+        return PasskeyRead::Unreadable;
+    }
+    if (out > 999999) {
+        ESP_LOGE(kTag, "MeshCore passkey on flash is not six digits; ignored");
+        return PasskeyRead::Unreadable;
+    }
+    return PasskeyRead::Provisioned;
+}
+
+bool store_passkey(std::uint32_t passkey)
+{
+    nvs_handle_t handle{};
+    if (nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
+    esp_err_t err = nvs_set_u32(handle, kPasskeyNvsKey, passkey);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
 }
 
 bool store_node_pin(const attadipa::core::MeshPeerId& id)
@@ -1387,6 +1436,15 @@ void mesh_task(void*)
                     provider.fault(now());
                     break;
                 }
+                // Stored after the stack has taken it and before the session
+                // is told, so that what flash holds is a passkey this image
+                // accepted. A refused write is this boot's problem only: the
+                // watch is configured, and says it will not be next time.
+                if (event.persist_passkey && !store_passkey(event.passkey)) {
+                    ESP_LOGE(kTag,
+                             "MeshCore passkey armed but not stored; it will "
+                             "not survive a power cycle");
+                }
                 configured.store(true);
                 reconnect_allowed.store(true);
                 // A Configure that lands on a live session is a
@@ -1636,6 +1694,34 @@ struct RealBootOps {
     void port_deinit() { (void)nimble_port_deinit(); }
 };
 
+// A watch provisioned before this boot configures itself the way the operator
+// did, through the same event, once the worker exists to take it. Posting
+// before the host stack is up is fine: the worker arms the passkey at once
+// and the scan waits for the stack's sync, as it does for a Configure from
+// the bridge.
+void restore_passkey()
+{
+    std::uint32_t passkey = 0;
+    switch (load_passkey(passkey)) {
+    case PasskeyRead::Provisioned: {
+        Event event{EventKind::Configure};
+        event.passkey = passkey;
+        if (post(event)) {
+            ESP_LOGI(kTag, "MeshCore passkey restored from flash");
+        } else {
+            ESP_LOGE(kTag, "MeshCore passkey restored but not applied: queue full");
+        }
+        break;
+    }
+    case PasskeyRead::Unprovisioned:
+        ESP_LOGI(kTag, "no MeshCore passkey stored; BLE stays unconfigured");
+        break;
+    case PasskeyRead::Unreadable:
+        ESP_LOGE(kTag, "MeshCore passkey could not be read; BLE stays unconfigured");
+        break;
+    }
+}
+
 }  // namespace
 
 esp_err_t start_meshcore_ble()
@@ -1704,6 +1790,7 @@ esp_err_t start_meshcore_ble()
     RealBootOps ops;
     switch (attadipa::firmware::boot_meshcore(ops)) {
     case attadipa::firmware::BootResult::Ok:
+        restore_passkey();
         return ESP_OK;
     case attadipa::firmware::BootResult::PortInitFailed:
         // The bootstrap used to create the queue and start the worker *before*
@@ -1723,6 +1810,7 @@ bool configure_meshcore_ble(std::uint32_t passkey)
     if (passkey > 999999) return false;
     Event event{EventKind::Configure};
     event.passkey = passkey;
+    event.persist_passkey = true;
     return post(event);
 }
 
