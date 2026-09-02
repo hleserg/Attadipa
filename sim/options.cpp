@@ -82,6 +82,8 @@ void print_usage(const char *argv0) {
       "  --clock-state <name> ready, stale, unprovisioned, unreachable, or "
       "failed\n"
       "  --child          render the Clock in Child mode\n"
+      "  --provision      open the Clock's entry screen for the time and the "
+      "node passkey\n"
       "  --no-bring-up    leave every part untouched instead of pretending it "
       "came up\n"
       "  --list-boards    print the board profiles this build knows about\n"
@@ -139,6 +141,10 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     }
     if (std::strcmp(arg, "--clock") == 0) {
       out.clock_screen = true;
+      continue;
+    }
+    if (std::strcmp(arg, "--provision") == 0) {
+      out.provision_screen = true;
       continue;
     }
     if (std::strcmp(arg, "--child") == 0) {
@@ -296,7 +302,7 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     out.board.radio = platform::radio_info_for(radio);
   }
 
-  if (out.diagnostic_screen && out.clock_screen) {
+  if (out.diagnostic_screen && (out.clock_screen || out.provision_screen)) {
     std::fprintf(stderr, "--diagnostic and --clock select different screens\n");
     return ParseResult::Error;
   }

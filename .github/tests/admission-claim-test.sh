@@ -139,6 +139,12 @@ case "$method:$path" in
     fi
     if mkdir "$state/$prefix.lock" 2>/dev/null; then
       field sha > "$state/$prefix.sha"
+      # GitHub's reads lag its writes: ATTADIPA_STUB_REF_LAG=N answers 404 to
+      # the next N reads of a ref that was just created (#392).
+      [ -z "${ATTADIPA_STUB_REF_LAG-}" ] || printf '%s\n' "$ATTADIPA_STUB_REF_LAG" > "$state/lag.$prefix"
+      # A replica behind the previous DELETE: ATTADIPA_STUB_REF_STALE=N answers
+      # the last deleted ref's sha to the next N reads of this one (round 3).
+      [ -z "${ATTADIPA_STUB_REF_STALE-}" ] || printf '%s\n' "$ATTADIPA_STUB_REF_STALE" > "$state/stale.$prefix"
       printf '{"ref":"%s"}\n' "$ref"
     else
       echo 'Reference already exists' >&2; exit 1
@@ -152,7 +158,31 @@ case "$method:$path" in
       echo 'gh: Server Error (HTTP 500)' >&2; exit 1
     fi
     lock=ref; [ "${path##*/}" = writer ] && lock=writer
+    # ATTADIPA_STUB_REF_GET_FAIL_AFTER=N: the first N reads of this ref answer
+    # normally, every read after them is a 500 (round 5: the loops must keep
+    # their last readable answer, not their last answer).
+    if [ -n "${ATTADIPA_STUB_REF_GET_FAIL_AFTER-}" ]; then
+      reads=$(( $(cat "$state/reads.$lock" 2>/dev/null || echo 0) + 1 )); echo "$reads" > "$state/reads.$lock"
+      if [ "$reads" -gt "$ATTADIPA_STUB_REF_GET_FAIL_AFTER" ]; then echo 'gh: Server Error (HTTP 500)' >&2; exit 1; fi
+    fi
+    if [ -s "$state/dellag.$lock" ]; then
+      # The read lags the DELETE too: ATTADIPA_STUB_DELETE_LAG=N keeps serving
+      # the deleted ref's sha for N reads, then it is gone (#392, round 2).
+      if [ "$(cat "$state/dellag.$lock")" -gt 0 ]; then
+        echo "$(($(cat "$state/dellag.$lock") - 1))" > "$state/dellag.$lock"
+        printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/$lock.sha")"; exit 0
+      fi
+      rm -f "$state/dellag.$lock" "$state/$lock.sha"; rm -rf "$state/$lock.lock"
+    fi
     if [ ! -d "$state/$lock.lock" ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
+    if [ -s "$state/stale.$lock" ] && [ "$(cat "$state/stale.$lock")" -gt 0 ] && [ -s "$state/last.$lock.sha" ]; then
+      echo "$(($(cat "$state/stale.$lock") - 1))" > "$state/stale.$lock"
+      printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/last.$lock.sha")"; exit 0
+    fi
+    if [ -s "$state/lag.$lock" ] && [ "$(cat "$state/lag.$lock")" -gt 0 ]; then
+      echo "$(($(cat "$state/lag.$lock") - 1))" > "$state/lag.$lock"
+      echo 'gh: Not Found (HTTP 404)' >&2; exit 1
+    fi
     printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/$lock.sha")" ;;
   GET:repos/o/r/actions/runs/*)
     # The completion evidence behind a hosted holder. No file: no readable run.
@@ -165,7 +195,12 @@ case "$method:$path" in
       echo 'gh: Resource not accessible by integration (HTTP 403)' >&2; exit 1
     fi
     lock=ref; [ "${path##*/}" = writer ] && lock=writer
-    rm -rf "$state/$lock.lock"; rm -f "$state/$lock.sha" ;;
+    [ ! -s "$state/$lock.sha" ] || cp "$state/$lock.sha" "$state/last.$lock.sha"
+    if [ -n "${ATTADIPA_STUB_DELETE_LAG-}" ]; then
+      printf '%s\n' "$ATTADIPA_STUB_DELETE_LAG" > "$state/dellag.$lock"
+    else
+      rm -rf "$state/$lock.lock"; rm -f "$state/$lock.sha"
+    fi ;;
   *) echo "unexpected api call: $method $path" >&2; exit 64 ;;
 esac
 STUB
@@ -454,6 +489,246 @@ case "$orphan_err" in
   *) bad 'an orphan it cannot remove is named rather than left silent' \
          "stderr was: $(printf '%s' "$orphan_err" | tr '\n' ' ')" ;;
 esac
+
+# #392: the create is the compare-and-set; the read-back only confirms it. A
+# ref that answers 404 for a moment after its own creation is lag, not loss.
+reset_state
+set +e
+lag_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_LAG=1 \
+  bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+lag_rc=$?
+set -e
+lag_owner="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" owner o/r 7 2>/dev/null)" || lag_owner=none
+[ "$lag_rc" -eq 0 ] && [ -d "$work/state/ref.lock" ] && [ "$lag_owner" = agent-4242-1 ] \
+  && case "$lag_err" in *'read back after 2 attempts'*) true ;; *) false ;; esac \
+  && ok 'a read-back that lags the create is retried, not read as a lost claim' \
+  || bad 'a read-back that lags the create is retried, not read as a lost claim' \
+         "rc=$lag_rc, owner=$lag_owner, stderr=$(printf '%s' "$lag_err" | tr '\n' ' ')"
+
+# A read-back that never settles cannot un-win the claim: the ref stays, the
+# acquire succeeds, and stderr says the confirmation is missing.
+reset_state
+set +e
+unread_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL=1 \
+  bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+unread_rc=$?
+set -e
+[ "$unread_rc" -eq 0 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$unread_err" in *'not readable back'*'trusting the create'*) true ;; *) false ;; esac \
+  && ok 'an unreadable read-back leaves the won ref intact and reports success' \
+  || bad 'an unreadable read-back leaves the won ref intact and reports success' \
+         "rc=$unread_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_err" | tr '\n' ' ')"
+
+# The undo path has the same rule: it deletes only a ref it positively read as
+# its own. Unknown is left in place and named.
+reset_state
+set +e
+unread_orphan_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+  ATTADIPA_STUB_REF_GET_FAIL=1 bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+unread_orphan_rc=$?
+set -e
+[ "$unread_orphan_rc" -eq 2 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$unread_orphan_err" in *'left behind'*'refs/tags/attadipa-claims/7'*) true ;; *) false ;; esac \
+  && ok 'a failed claim never deletes a ref it could not read' \
+  || bad 'a failed claim never deletes a ref it could not read' \
+         "rc=$unread_orphan_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_orphan_err" | tr '\n' ' ')"
+
+# The undo runs only after the create returned 201, so the ref is there and
+# three 404s are a read that never caught up, not an absence. The read-back
+# spends its four attempts and trusts the create, the label edit fails, and the
+# undo reads 404 three times: rc 2, lock kept, and the ref NAMED on stderr --
+# silence here is a lock with no holder and no label, which no sweep visits
+# (round 3, finding 1; round 2 asserted the opposite and was wrong).
+reset_state
+set +e
+absent_undo_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+  ATTADIPA_STUB_REF_LAG=99 bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+absent_undo_rc=$?
+set -e
+[ "$absent_undo_rc" -eq 2 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$absent_undo_err" in *'left behind'*'refs/tags/attadipa-claims/7'*) true ;; *) false ;; esac \
+  && ok 'three 404s after a create that returned 201 name the ref left behind' \
+  || bad 'three 404s after a create that returned 201 name the ref left behind' \
+         "rc=$absent_undo_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$absent_undo_err" | tr '\n' ' ')"
+
+# The writer lease is released and re-acquired seconds apart, and a replica
+# behind that DELETE still serves the previous holder's tag to the read-back.
+# One such read used to be "claim verification failed" and the undo deleted
+# the ref this attempt had legitimately won -- #392's headline, zero tags on
+# origin (round 3, finding 2). A stale answer is retried like a missing one.
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+stale_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_STALE=1 \
+  bash "$CLAIM" acquire o/r 7 agent-9999-1 2>/dev/null)"
+stale_rc=$?
+stale_owner="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" owner o/r 7 2>/dev/null)"
+set -e
+[ "$stale_rc" -eq 0 ] && [ "$stale_out" = 'acquired by agent-9999-1' ] && [ "$stale_owner" = agent-9999-1 ] \
+  && ok 'a read-back that serves the previous holder once is retried, not undone' \
+  || bad 'a read-back that serves the previous holder once is retried, not undone' \
+         "rc=$stale_rc, stdout=$stale_out, owner=$stale_owner, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone)"
+
+# `release` meets the same replica: acquire-then-release seconds apart is the
+# ordinary `held: full` exit of writer-start.sh, and one read naming the
+# previous holder used to be "held by <them>", rc 3, the lease left on origin
+# held by the caller that just gave up (round 4, finding 1).
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-9999-1 >/dev/null 2>&1
+printf '2\n' > "$work/state/stale.ref"
+set +e
+stale_release_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-9999-1 2>/dev/null)"
+stale_release_rc=$?
+set -e
+[ "$stale_release_rc" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] && ! grep -Fxq agent:working "$work/state/labels" \
+  && case "$stale_release_out" in *'released by agent-9999-1'*) true ;; *) false ;; esac \
+  && ok 'a release whose read names the previous holder is retried, not refused' \
+  || bad 'a release whose read names the previous holder is retried, not refused' \
+         "rc=$stale_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stdout=$stale_release_out"
+
+# The undo's own read can hit the same replica: a sha that is not this
+# attempt's, after a create that returned 201. That used to be a silent
+# return -- a lock with no holder, no label and no message (round 4, finding 2).
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+stale_undo_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_STALE=9 \
+  bash "$CLAIM" acquire o/r 7 agent-9999-1 2>&1 >/dev/null)"
+stale_undo_rc=$?
+set -e
+[ "$stale_undo_rc" -eq 2 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$stale_undo_err" in *'left behind'*'refs/tags/attadipa-claims/7'*'claim.sh owner'*) true ;; *) false ;; esac \
+  && ok 'an undo whose read names another tag names the ref it left behind' \
+  || bad 'an undo whose read names another tag names the ref it left behind' \
+         "rc=$stale_undo_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$stale_undo_err" | tr '\n' ' ')"
+
+# acquire may now exit 0 having never read its ref ("trusting the create"), and
+# the next statement on the deny path is a release. Its 404 used to be
+# "nothing is held" -- an assertion of absence about a ref that is there,
+# reassuring and last in the log (round 4, finding 3). It says what it knows.
+reset_state
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_LAG=99 bash "$CLAIM" acquire o/r writer local-x-1 >/dev/null 2>&1
+trusted_rc=$?
+unread_release2_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r writer local-x-1 2>&1 >/dev/null)"
+unread_release2_rc=$?
+set -e
+[ "$trusted_rc" -eq 0 ] && [ "$unread_release2_rc" -eq 3 ] && [ -d "$work/state/writer.lock" ] \
+  && case "$unread_release2_err" in *'nothing is held'*) false ;; *'refs/tags/attadipa-claims/writer'*'nothing deleted'*) true ;; *) false ;; esac \
+  && ok 'a release that reads 404 on a just-trusted create says nothing deleted, not nothing held' \
+  || bad 'a release that reads 404 on a just-trusted create says nothing deleted, not nothing held' \
+         "acquire rc=$trusted_rc, release rc=$unread_release2_rc, stderr=$(printf '%s' "$unread_release2_err" | tr '\n' ' ')"
+
+# A loop's knowledge is its last READABLE answer. Three reads name the previous
+# holder and the fourth is a 500: that is a foreign holder, not "not readable
+# back", and the claim is undone rather than trusted with the label added
+# (round 5, finding 2). The pre-check is the first of the four normal reads.
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+last_readable_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_STALE=9 \
+  ATTADIPA_STUB_REF_GET_FAIL_AFTER=4 bash "$CLAIM" acquire o/r 7 agent-9999-1 2>&1 >/dev/null)"
+last_readable_rc=$?
+set -e
+[ "$last_readable_rc" -eq 2 ] && ! grep -Fxq agent:working "$work/state/labels" \
+  && case "$last_readable_err" in *'trusting the create'*) false ;; *'claim verification failed: held by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a read-back that named another holder is not unsaid by a 500 after it' \
+  || bad 'a read-back that named another holder is not unsaid by a 500 after it' \
+         "rc=$last_readable_rc, labels=$(tr '\n' ' ' < "$work/state/labels"), stderr=$(printf '%s' "$last_readable_err" | tr '\n' ' ')"
+
+# Same rule in release: one readable read names another writer, the next two
+# are 500s. "held by <them>", never "left behind -- break it" over a ref a read
+# said is somebody else's (round 5, finding 1).
+reset_state; claimed
+set +e
+held_not_break_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL_AFTER=1 \
+  bash "$CLAIM" release o/r 7 agent-9999-1 2>&1 >/dev/null)"
+held_not_break_rc=$?
+set -e
+[ "$held_not_break_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] && grep -Fxq agent:working "$work/state/labels" \
+  && case "$held_not_break_err" in *'left behind'*) false ;; *'held by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a release that read another holder once does not advise breaking their ref' \
+  || bad 'a release that read another holder once does not advise breaking their ref' \
+         "rc=$held_not_break_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$held_not_break_err" | tr '\n' ' ')"
+
+# `release` meets the same lag as the read-back, seconds after the same
+# create: the ordinary `held: full` exit of writer-start.sh is acquire, deny,
+# release. A lagging read is retried rather than answered "nothing held".
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+printf '1\n' > "$work/state/lag.ref"
+set +e
+lag_release_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 2>/dev/null)"
+lag_release_rc=$?
+set -e
+[ "$lag_release_rc" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] \
+  && case "$lag_release_out" in *'released by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a release whose read lags the create is retried, not refused' \
+  || bad 'a release whose read lags the create is retried, not refused' \
+         "rc=$lag_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stdout=$lag_release_out"
+
+# The confirmation after the DELETE reads a ref deleted milliseconds ago, the
+# tightest window in the file. One lagging answer used to make `release` put
+# `agent:working` back on an issue whose lock was already gone -- the label the
+# watchdog then requeues two hours later (round 2, finding 1).
+reset_state; claimed
+set +e
+dellag_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_DELETE_LAG=1 \
+  bash "$CLAIM" release o/r 7 agent-4242-1 2>/dev/null)"
+dellag_rc=$?
+set -e
+[ "$dellag_rc" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] && ! grep -Fxq agent:working "$work/state/labels" \
+  && case "$dellag_out" in *'released by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a DELETE whose confirmation lags once is a cleared claim, and the label stays off' \
+  || bad 'a DELETE whose confirmation lags once is a cleared claim, and the label stays off' \
+         "rc=$dellag_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), labels=$(tr '\n' ' ' < "$work/state/labels"), stdout=$dellag_out"
+
+# The losing racer reads the winner's ref once, milliseconds after it was
+# created, and answered "ownership is unknown" (exit 2, a red run) where the
+# truth was "held" (exit 3, a clean exit) a second later (round 2, finding 2).
+reset_state; claimed
+printf '2\n' > "$work/state/lag.ref"
+set +e
+loser_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+  bash "$CLAIM" acquire o/r 7 agent-9999-1 2>&1 >/dev/null)"
+loser_rc=$?
+set -e
+[ "$loser_rc" -eq 3 ] && case "$loser_err" in *'held by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a loser whose read of the winner lags is told held, not unknown' \
+  || bad 'a loser whose read of the winner lags is told held, not unknown' \
+         "rc=$loser_rc, stderr=$(printf '%s' "$loser_err" | tr '\n' ' ')"
+
+# A release that never learns who holds the ref deletes nothing -- and says so.
+# Every caller writes `|| true`, so silence here is a leaked lease nobody sees.
+reset_state
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+unread_release_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL=1 \
+  bash "$CLAIM" release o/r 7 agent-4242-1 2>&1 >/dev/null)"
+unread_release_rc=$?
+set -e
+[ "$unread_release_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$unread_release_err" in *'left behind'*'claim.sh break o/r 7'*) true ;; *) false ;; esac \
+  && ok 'a release that cannot read the holder names the ref it left behind' \
+  || bad 'a release that cannot read the holder names the ref it left behind' \
+         "rc=$unread_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_release_err" | tr '\n' ' ')"
+
+# `reap` is the third reader, and the one with the most to lose: its migration
+# path decides by age alone and deletes before it confirms. An unreadable ref
+# over an aged live local claim must not fall into it.
+reset_state; claimed "$CLAIM" agent-i254-r1
+printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
+set +e
+unread_reap_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL=1 \
+  bash "$CLAIM" reap o/r 7 7200 2>&1 >/dev/null)"
+unread_reap_rc=$?
+set -e
+[ "$unread_reap_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] && ! grep -Fxq agent:ready "$work/state/labels" \
+  && case "$unread_reap_err" in *'could not be read'*) true ;; *) false ;; esac \
+  && ok 'an unreadable ref is not reaped by age through the migration path' \
+  || bad 'an unreadable ref is not reaped by age through the migration path' \
+         "rc=$unread_reap_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), ready=$(grep -Fxq agent:ready "$work/state/labels" && echo yes || echo no), stderr=$(printf '%s' "$unread_reap_err" | tr '\n' ' ')"
 
 reset_state; printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null

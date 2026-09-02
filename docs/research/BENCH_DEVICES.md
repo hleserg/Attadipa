@@ -3,7 +3,8 @@
 > **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
 > development host.
 > Every value below came from `esptool flash-id` and `udevadm`; nothing here is
-> inferred from a product name.
+> inferred from a product name — **except "Two GNSS modules"**, a section
+> recorded from marketplace listings on 2026-09-02 and marked as such.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
@@ -193,6 +194,52 @@ chip-ID register. [HARDWARE_MATRIX](HARDWARE_MATRIX.md) does name all three from
 this board's schematic and from register reads made elsewhere — `0x18` ES8311,
 `0x40` ES7210, `0x6b` QMI8658 — so `UNKNOWN` here means "not established *by
 this instrument*", and the matrix is the canonical source.
+
+## Two GNSS modules, delivered 2026-09-02 — NOT YET READ
+
+The owner ordered two GNSS receiver boards for the wearable-node experiments
+that [OD-1](OWNER_DECISIONS.md#od-1--there-is-a-separate-attadipa-node-and-the-watch-uses-it)
+opens — a node carrying LoRa, GNSS and an ESP32, which the watch connects to.
+They arrived on 2026-09-02. **Nothing below has been read off the hardware.**
+Every value comes from the owner's four screenshots of the two marketplace
+listings — title, product photo and description text — sent in the working
+session of 2026-09-02 and recorded through
+[#415](https://github.com/hleserg/Attadipa/pull/415); the marketplace itself
+and the order references were not captured, so a claim that disagrees with
+the board in hand cannot be re-checked against its listing later. A listing is
+an advertisement, not a datasheet; until a module has been powered, its NMEA
+read on a host and its chip identified from its own version sentence, each row
+is `UNKNOWN` in the sense AGENTS.md means. This section exists so the next
+session knows the boards are on the bench and does not order or assume a
+third. The read-off is [H18](OPEN_QUESTIONS.md#hardware--measurement-required),
+and the owner's own plan for it — authenticity check of the u-blox part,
+chipset identification of the GT-U12 by its NMEA prefixes and vendor probes,
+and the L5 check — is section A1 of
+[idei-i-dorabotki](../ideas/idei-i-dorabotki.md), written before the boards
+arrived; that catalogue names the u-blox part as `UBX-M10050-KB`, which is a
+chip designation and not something read off this board either.
+
+| | "GT-U12" | QUESCAN "AN3126" |
+|---|---|---|
+| Listing claims | dual-band GNSS; "new BDS SoC"; BDS, GPS, GLONASS, Galileo, IRNSS, QZSS, SBAS | u-blox **M10** platform; L1 only; GPS, GLONASS, Galileo, BeiDou; QZSS/SBAS; up to 25 Hz "in high-performance mode" |
+| Chip | **UNKNOWN** — the listing names no part; "dual-band" and "BDS SoC" suggest an Allystar or Unicore die, and that is a guess | claimed u-blox M10; which module is a guess nobody has grounds for yet; **UNKNOWN** until `$GNTXT` / `UBX-MON-VER` is read |
+| Header, as printed | `VCC GND TX RX PPS` (5 pins, photographed) | 5 pins; silkscreen not legible in the listing — **UNKNOWN** |
+| Antenna, from the product photo | external: a separate active patch on its own carrier, on a u.FL pigtail | ceramic patch soldered to the board |
+| Interface | UART presumed from the header; baud, protocol and level **UNKNOWN** | UART presumed; baud and level **UNKNOWN** |
+| Supply | **UNKNOWN** — whether the carrier regulates, and what `VCC` wants, is not in the listing | **UNKNOWN** — same |
+| Datasheet | none found yet | none found yet; u-blox publishes MIA-M10Q / MAX-M10S sheets, which apply only once the part is identified |
+| Price paid | 1 596 ₽ | 791 ₽ |
+
+What these are for, and what they are not: OD-1 puts GNSS on the **node**, not
+the watch, and [HARDWARE_MATRIX](HARDWARE_MATRIX.md) already records the
+T-Watch's own on-board receiver. These two boards are for bench experiments on
+the node side — a first `PositionProvider` fed by a real receiver over UART, and
+the questions OD-5 raises about a receiver's own integrity protection — and the
+first thing owed is the read-off — and before any power, the supply: find the
+regulator or its absence on each carrier and what `VCC` wants, because two
+units with no spare do not survive a guess. Then a USB-UART bridge, a minute of
+NMEA, and the `UNKNOWN`s above replaced with what the module says about
+itself. Until then no code depends on either.
 
 ## What this does not say
 

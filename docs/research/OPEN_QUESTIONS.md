@@ -90,6 +90,7 @@ proceed; hardware work does not.
 | H14 | **Which QMI8658 is on the Waveshare, and which of its datasheets describes the silicon?** Two halves. (a) *A or C* — [TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md) reports the schematic naming `QMI8658C` twice, so this is evidenced as **C** and only needs confirming, not answering. (b) *Which C document* — the half this row was opened for. As it stood: [PEDOMETER_PARTS §2.2](PEDOMETER_PARTS.md) read `13-52-27` Rev A (2022-06-20), where chapter 11 documents a complete hardware pedometer, while TAGS §2.2 reported the only obtainable C datasheet as Rev 0.6 (2021-01) marked ADVANCE INFORMATION, whose `CTRL8` is *"Reserved: Not Used"* and which documents **no pedometer** — so the two were read as describing different parts. **Both halves are closed below**, and the three TAGS sentences that framed this one are withdrawn there. This is [ADR-0003](../adr/0003-radio-not-lora.md)'s shape in a second subsystem — the part name does not tell you whether the feature exists — and OD-6 makes the pedometer mandatory. **Answered on the bench, 2026-08-23 (S13):** the silicon reports `REVISION_ID = 0x7C`, which is the value in `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`; the C Rev 0.6 document gives `0x79`. So (a) the schematic's `QMI8658C` name does **not** predict the register map, and (b) **`13-52-27` is the document that describes this part** — the one with a hardware pedometer in chapter 11. Corroborated by writing: `CTRL2 = 0x26`, `CTRL7 = 0x01`, `CTRL8 = 0x90` all read back exactly, `CTRL8` included, which the Rev 0.6 document calls *"Reserved: Not Used"*; the accelerometer then read gravity at 1.03 g under Rev A's ±8 g scaling. **Which Rev A document — resolved by [#341](https://github.com/hleserg/Attadipa/issues/341).** This row used to end *"the Rev A document number is 13-52-25, not 13-52-27"*; that is withdrawn. QST published two Rev A datasheets dated 20 June 2022 and both exist — `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and `13-52-25 ∙ QMI8658A Datasheet ∙ Rev A`. Both have since been read side by side, and **both give `0x7C`** (register-description section; both also print `0x68` in their register-map summary). So `0x7C` separates Rev A from the Rev 0.6 draft, which is what this row needed, but it does **not** separate the two Rev A documents from each other — nor do `WHO_AM_I` or the product id. `13-52-27` is named here because the schematic prints `QMI8658C`, not because any register says so. md5s: `13-52-27` `e093b1cc1d1cf85097f955abbea65c08`, `13-52-25` `5a0fef65a358430d6499944a75d22e19`. Nothing measured moves. Withdrawn from this row, matching the three sentences [TAGS_TRACKS_RECKONING §2.2](TAGS_TRACKS_RECKONING.md) withdraws by name: the clause reporting *"the only obtainable C datasheet"* as Rev 0.6 — `13-52-27` is a C datasheet, it is Rev A, and it is in hand; the attribution of *"no pedometer"* to the C part — chapter 11 of `13-52-27` documents `CTRL8.Pedo_EN` and the same `STEP_CNT_*` registers as the A's Rev A does; and the conclusion that the two documents *"describe different parts"* — they describe the same silicon, and no register tells them apart. So half (b) is **not** open: `13-52-27` is the document, and what it does not settle is which of the two Rev A papers applies, which no register can | **RESOLVED** (was CONFLICTING) | done — [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §3.2. What is **not** done is proving the engine *counts*. On 2026-08-23 step count stayed 0 on a stationary board — the correct reading, and no evidence either way. On 2026-08-28 (S15) it stayed 0 through sixteen unbroken seconds of hand motion whose per-axis one-second peak-to-peak reached 2242 mg (scale UNKNOWN: 1121 mg if that build divided by 4096) against a configured `ped_fix_peak2peak` of 78 mg, which is a negative result rather than a null one — but hand-shaking is not the gait chapter 11 specifies, so it does not settle the question either. That still needs someone to walk twenty steps with it — **T-112**, [PEDOMETER_BENCH_2026-08-28](PEDOMETER_BENCH_2026-08-28.md) |
 | H15 | **What is the IMU's axis orientation relative to the wearer, on each board?** A step counter tolerates a wrong sign; a wrist-raise gesture and any future orientation feature do not. [PEDOMETER_PARTS.md](PEDOMETER_PARTS.md) §1.9 notes that on the BMA423 axis remapping applies to the *features* only, so getting it wrong is silent rather than obviously broken. **Half answered on the Waveshare, 2026-08-22:** the board-frame triad is silkscreened beside the IMU — X toward the battery edge, Y toward the USB-C edge, Z as ⊙ out of the back face ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.6). What is still missing is how the board is rotated inside the case, and one is useless without the other. Nothing is known for the T-Watch | **PARTIAL** (was UNKNOWN) | tilt the **assembled** watch through known angles and read raw axes — the board frame is printed, the case rotation is not. Cheap now that a Waveshare is on the desk; still impossible for the T-Watch |
 | H16 | **What pull-up does each magnetometer module actually fit, and does the CJMCU-9911's `RST` pad reach the die?** Four ohmmeter readings on two bare modules, no board, no power, no soldering: `SDA`→`VCC` and `SCL`→`VCC` on each module gives the pull-up; `RST`→`VCC` and `RST`→`GND` on the CJMCU-9911 says whether the pad is tied, floating, or not connected at all. **Neither is guesswork-tolerant.** The pull-ups land in parallel with the Waveshare board's own 2.2 kΩ and the combination must stay above `UM10204`'s 3 mA sink limit — 4.7 kΩ passes, 3.3 kΩ does not — and `RSTN` left floating is forbidden by the AK09911C datasheet outright, which makes the retrofit five wires rather than four until this says otherwise. The arithmetic and both pass lines are already written, so this is a lookup rather than an analysis | **UNKNOWN — `NOT MEASURED`** | the four probes above, once the modules arrive. [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.6.3 and §4.3.3; owned by **T-109** |
+| H18 | **What are the two GNSS modules on the bench, and what do they want on `VCC`?** Two receivers for the node path arrived 2026-09-02 — a "GT-U12" and a QUESCAN "AN3126", recorded from their listings only in [BENCH_DEVICES](BENCH_DEVICES.md#two-gnss-modules-delivered-2026-09-02--not-yet-read). Supply, logic level, baud, and the chip behind each are UNKNOWN. | UNKNOWN | identify the carrier's regulator or its absence before applying power, and the bridge's `TXD` level — jumpered or measured — before the first byte goes out, since a 3.3 V-only `RX` does not survive a 5 V bridge any better than `VCC` does; then a minute of NMEA on each, **read-only first**: the sentence prefixes name the vendor without anything driven in (`$GBGSV`, `$GIGSV` per [idei-i-dorabotki](../ideas/idei-i-dorabotki.md), working IRNSS being the Allystar tell); only then, for the version, a query the part can answer — `UBX-MON-VER` only if the AN3126 is the u-blox it claims, and for the GT-U12 the `$GNTXT` sentences it sends on its own plus a vendor probe such as the CAS `$PCAS06,0*1B` from the same catalogue, each tried and its silence recorded as the probe's, not the module's — the owner's bench |
 | H17 | **What is the Waveshare main I2C bus's total capacitance `Cb`?** Unneeded at the 100 kHz the bench scan ran at, and the first thing that bites at 400 kHz: with the board's 2.2 kΩ pull-ups, `UM10204` Rev. 7.0 §7.1 caps `Cb` at **161 pF** for Fast-mode, and the pin capacitances plus the board's own `C34`/`C35` at 22 pF each put the bus at a loosely `ESTIMATED` 100–150 pF before any retrofit lead is added. So the headroom for two modules on flying wires is `UNKNOWN` and may be negative | **UNKNOWN — `ESTIMATED` only** | a scope on a rising edge of `SDA`, measuring 30 %→70 % against the `Rp` in circuit. [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §4.3.4 |
 
 ## Radio
@@ -352,34 +353,39 @@ Two things in what follows are worth reading against that, rather than deleted:
 Verified in this tree at `144459f`, not inferred from the issue that predicted
 it. The production image is the one built from `sdkconfig.defaults` alone, and
 that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n".
-Everything that provisions a watch sits behind that symbol:
+Everything that provisioned a watch sat behind that symbol, and #356 moved
+each piece out from behind it in the order below — the tense of each bullet
+is the record of what was true at `144459f` and what changed it:
 
-- **The clock cannot be set.** `write_rtc()` is reached only through
-  `provision_time()`, whose one instantiation is inside the
-  `firmware/main/waveshare_board.cpp:414` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
-  block. (Since #356's first change the sequence itself compiles in every
-  image; what a production image lacks is a caller.) A production watch reads
-  the PCF85063 and never writes it, so a board off the shelf shows whatever its
-  RTC powered up with.
-- **The timezone cannot be kept,** for the same reason: `save_time_metadata()`
-  is called by nothing outside that block. `restore_time_metadata()` is
-  unguarded, so production can read a stored offset it has no way to have
-  stored.
-- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of
-  the passkey key, and it is reachable only from inside that block. Since
-  #356's first change boot replays a stored passkey through the same
-  `Configure` event, so a production image scans if a HIL image left one on
-  flash; with nothing on flash the worker's
+- **The clock could not be set.** `write_rtc()` was reached only through
+  `provision_time()`, whose one instantiation was inside the
+  `#if CONFIG_ATTADIPA_WATCH_CONTROL` block. #356's first change made the
+  sequence compile in every image; its second gave a product image the caller:
+  `firmware/main/waveshare_board.cpp:429` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
+  is ungated and is reached from the entry screen a long press on the clock
+  opens (`firmware/main/waveshare_board.cpp:788` — "void long_press(lv_event_t *) {").
+  A board off the shelf still shows whatever its RTC powered up with until
+  somebody holding it enters the date and time — which is what ADR-0018 chose.
+- **The timezone could not be kept,** for the same reason, and for the same
+  reason it now is: the offset is the third field of that screen and goes
+  through the same `provision_time()` as the clock.
+- **MeshCore never scanned.** `configure_meshcore_ble()` is the only writer of
+  the passkey key. #356's first change made boot replay a stored passkey
+  through the same `Configure` event, and its second lets the fourth field of
+  the entry screen store one:
+  `firmware/main/waveshare_board.cpp:460` — "set_mesh_passkey(std::uint32_t passkey) override {".
+  With nothing on flash and nothing entered the worker's
   `firmware/main/meshcore_ble.cpp:1174` — "if (configured.load()) start_scan();"
-  is false forever: the transport starts, is never configured, and never looks
-  for a node.
+  is false forever, which is now the same "not set up yet" as a blank clock
+  rather than a product that cannot be set up.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
   the same single gated caller.
 
 So the gap #346 opened when the unauthenticated USB control plane left the
 product image was wider than "time is not settable": the mesh half of the
-product does not run at all without it. That gap is what OD-26 answers; it is
-closed as a question and open as work, in #356.
+product does not run at all without it. That gap is what OD-26 answers, and
+#356 is the work that closed it; what remains hardware-untested is listed in
+that PR, not here.
 
 What was missing was not a mechanism. It was a rule about **who may put a watch
 into provisioning mode**, and that is a product decision, not an engineering

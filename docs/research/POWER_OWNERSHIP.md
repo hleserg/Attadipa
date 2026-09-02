@@ -50,7 +50,7 @@ wrong answer.
 позволяет безопасно проектировать production rail gating"*. D13 was resolved on
 2026-08-28 by [#313](https://github.com/hleserg/Attadipa/issues/313), reading
 the schematic as a drawing:
-[`OPEN_QUESTIONS.md:127`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net". The
+[`OPEN_QUESTIONS.md:128`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net". The
 rail-to-load map is in §6.1 below. Rail gating is no longer blocked on
 evidence; it is blocked on nobody owning it, which is this document's subject.
 
@@ -235,9 +235,9 @@ by construction.
 Recorded here because it is the same defect on the other end of the lifetime,
 and the executable issue in §8 should not fix one without the other.
 `start_waveshare_ui()` raises I2C, then the PMU, then display, then touch:
-[`firmware/main/waveshare_board.cpp:830`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:949`](../../firmware/main/waveshare_board.cpp) —
 "initialize AXP2101", through
-[`firmware/main/waveshare_board.cpp:842`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:961`](../../firmware/main/waveshare_board.cpp) —
 "initialize touch". Every step is `ESP_RETURN_ON_ERROR`. A touch failure after a
 successful display therefore returns with the panel up, LVGL running, the PMU
 programmed and nothing torn down — a partially initialised board reported as a
@@ -554,7 +554,7 @@ the issue gave.
 From [#313](https://github.com/hleserg/Attadipa/issues/313), 2026-08-28, by
 reading the schematic as a drawing, with the register decode traced to AXP2101
 Datasheet V1.4 §6.13.2.75–77 rather than to library source. Recorded at
-[`OPEN_QUESTIONS.md:127`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net"; not
+[`OPEN_QUESTIONS.md:128`](OPEN_QUESTIONS.md) — "**ALDO1** (3.3 V) = net"; not
 restated as a new fact here, only as the input this contract consumes.
 
 | Rail | What it is | May the owner gate it? |
@@ -574,7 +574,7 @@ figures and then quoted as a result.
 The ⚠️ row is the single most important line in this document for anyone
 writing the executable change. It belongs in a board-side table where a wrong
 call fails a build or a test, not in prose — the same argument
-[`OPEN_QUESTIONS.md:122`](OPEN_QUESTIONS.md) — "must never be driven as an output"
+[`OPEN_QUESTIONS.md:123`](OPEN_QUESTIONS.md) — "must never be driven as an output"
 makes for GPIO 6.
 
 ### 6.2 The probe plan, withdrawn

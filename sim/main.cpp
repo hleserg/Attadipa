@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <ctime>
+#include <optional>
 #include <vector>
 
 #include "lvgl.h"
@@ -13,6 +14,8 @@
 #include "attadipa/core/input.h"
 #include "attadipa/debug/bridge.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/provision_face.h"
+#include "attadipa/ui/tokens.h"
 
 #include "boot_screen.h"
 #include "debug_server.h"
@@ -39,6 +42,72 @@ ui::ClockFaceConfig g_clock_config;
 apps::ClockState g_clock_state;
 bool g_clock_active = false;
 bool g_clock_live = false;
+
+// A board that takes whatever it is given. The simulator has no RTC and no
+// radio to hand a value to, so the seam ends here, out loud.
+struct AcceptingProvisioner final : core::Provisioner {
+  core::ProvisionOutcome
+  set_wall_clock(const core::WallClockEntry &entry) override {
+    std::printf("provision: clock %lld s, offset %d min\n",
+                static_cast<long long>(entry.utc_seconds),
+                static_cast<int>(entry.timezone_offset_minutes));
+    return core::ProvisionOutcome::Accepted;
+  }
+  core::ProvisionOutcome set_mesh_passkey(std::uint32_t passkey) override {
+    std::printf("provision: passkey %06u\n", static_cast<unsigned>(passkey));
+    return core::ProvisionOutcome::Accepted;
+  }
+};
+
+void rebuild_clock_screen();
+
+AcceptingProvisioner g_provisioner;
+std::optional<apps::ProvisioningEntry> g_entry;
+ui::ProvisionFace g_provision_face;
+ui::ProvisionFaceConfig g_provision_config;
+bool g_provision_active = false;
+
+void rebuild_provision_screen() {
+  g_provision_config.locale = l10n::locale();
+  g_provision_face.build(lv_screen_active(), g_provision_config, *g_entry);
+}
+
+ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
+  return {clock.width_px, clock.height_px, clock.theme,
+          clock.pixel_cost, clock.metrics,  l10n::locale()};
+}
+
+// The same loop the board runs: Done shows for a moment, then the clock is
+// back. Here it is an LVGL timer that deletes itself; there it is the
+// clock's own refresh timer counting ticks.
+void leave_provisioning(lv_timer_t *timer) {
+  if (!g_entry->finished()) {
+    return;
+  }
+  lv_timer_delete(timer);
+  g_provision_face.clear();
+  g_entry.reset();
+  g_provision_active = false;
+  g_clock_active = true;
+  l10n::set_locale_changed_handler(rebuild_clock_screen);
+  rebuild_clock_screen();
+}
+
+// A long press on the clock opens the entry screen, as on the board.
+void on_long_press(lv_event_t *) {
+  if (!g_clock_active) {
+    return;
+  }
+  g_clock_face.clear();
+  g_clock_active = false;
+  g_provision_active = true;
+  g_provision_config = provision_config_for(g_clock_config);
+  g_entry.emplace(g_provisioner);
+  l10n::set_locale_changed_handler(rebuild_provision_screen);
+  rebuild_provision_screen();
+  lv_timer_create(leave_provisioning,
+                  ui::milliseconds_of(ui::Motion::Slow) * 8U, nullptr);
+}
 
 void rebuild_clock_screen() {
   g_clock_state.locale = l10n::locale();
@@ -150,6 +219,11 @@ void on_screen_key(lv_event_t *event) {
                                  ? ui::Theme::Night
                                  : ui::Theme::Day;
       rebuild_clock_screen();
+    } else if (g_provision_active) {
+      g_provision_config.theme = g_provision_config.theme == ui::Theme::Day
+                                     ? ui::Theme::Night
+                                     : ui::Theme::Day;
+      rebuild_provision_screen();
     } else {
       attadipa::sim::toggle_theme();
     }
@@ -225,7 +299,7 @@ int main(int argc, char **argv) {
     // pattern in half of it cannot reveal a crop.
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_diagnostic_screen);
     attadipa::sim::build_diagnostic_screen(options.board);
-  } else if (options.clock_screen) {
+  } else if (options.clock_screen || options.provision_screen) {
     g_clock_active = true;
     g_clock_live = !options.clock_time_set;
     g_clock_config = {
@@ -254,6 +328,13 @@ int main(int argc, char **argv) {
     if (g_clock_live) {
       lv_timer_create(refresh_clock, apps::clock_manifest().tick_period.value,
                       nullptr);
+    }
+    lv_obj_add_event_cb(lv_screen_active(), on_long_press,
+                        LV_EVENT_LONG_PRESSED, nullptr);
+    if (options.provision_screen) {
+      // Straight to the entry screen, for a screenshot that does not need a
+      // finger held on the clock first.
+      lv_obj_send_event(lv_screen_active(), LV_EVENT_LONG_PRESSED, nullptr);
     }
   } else {
     attadipa::sim::build_boot_screen(inventory, caps);

@@ -1673,8 +1673,8 @@ because nothing accepts input except the panel.
 `watch_control.py sync-time` as the first real time input. That sentence stopped
 being true of the product image at #346, not at this decision —
 `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n" — so
-ADR-0014 now points here for what replaces it. The sentence itself is rewritten
-when the entry screen ships, so it and the code change together.
+ADR-0014 now points here for what replaces it. The sentence itself was
+rewritten when the entry screen shipped, so it and the code changed together.
 
 ## OD-25 — The independent review gets five rounds, then it files rather than holds
 
