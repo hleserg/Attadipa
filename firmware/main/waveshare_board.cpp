@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <string_view>
 
 #include "driver/i2c_master.h"
@@ -32,9 +33,11 @@
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/provisioning.h"
 #include "attadipa/core/time_service.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/provision_face.h"
 #include "attadipa_fonts.h"
 
 #if CONFIG_BT_NIMBLE_ENABLED
@@ -112,6 +115,13 @@ struct BoardState {
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
   attadipa::ui::ClockFace clock_face;
+  attadipa::ui::ProvisionFace provision_face;
+  // Present while the entry screen is up; a fresh one for each visit, so a
+  // half-typed date from last time is not waiting on the next.
+  std::optional<attadipa::apps::ProvisioningEntry> entry;
+  // Ticks of `refresh_ui` the Done screen has been showing; the clock comes
+  // back after kDoneTicks of them.
+  unsigned done_ticks = 0;
   attadipa::core::TimeService time_service;
   lv_obj_t *mesh_state = nullptr;
   lv_obj_t *mesh_node = nullptr;
@@ -381,6 +391,55 @@ attadipa::apps::ClockState read_clock_state() {
   clock.time = time.local;
   return clock;
 }
+
+// What the entry screen hands the board, in every image. The same sequence
+// the HIL sink runs, with the entry's own terms: a person typing the time is
+// trusted for a day and is allowed to move the clock by any amount, because
+// the alternative is a watch that refuses the first time it is ever set.
+class BoardProvisioner final : public attadipa::core::Provisioner {
+public:
+  attadipa::core::ProvisionOutcome
+  set_wall_clock(const attadipa::core::WallClockEntry &entry) override {
+    const attadipa::core::MonotonicTime now{
+        static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+    BoardTimeOps ops;
+    const attadipa::firmware::TimeProvisionRequest request{
+        entry.utc_seconds, entry.timezone_offset_minutes, kManualValidForMs,
+        true};
+    switch (attadipa::firmware::provision_time(ops, request,
+                                               state.time_service, now)) {
+    case attadipa::firmware::ProvisionTimeResult::Rejected:
+      return attadipa::core::ProvisionOutcome::Rejected;
+    case attadipa::firmware::ProvisionTimeResult::Failed:
+      return attadipa::core::ProvisionOutcome::Failed;
+    case attadipa::firmware::ProvisionTimeResult::Accepted:
+      break;
+    }
+    ESP_LOGI(kTag, "PCF85063 set from the watch");
+    return attadipa::core::ProvisionOutcome::Accepted;
+  }
+
+  attadipa::core::ProvisionOutcome
+  set_mesh_passkey(std::uint32_t passkey) override {
+    if (passkey == 0 || passkey > 999999) {
+      return attadipa::core::ProvisionOutcome::Rejected;
+    }
+#if CONFIG_BT_NIMBLE_ENABLED
+    return configure_meshcore_ble(passkey)
+               ? attadipa::core::ProvisionOutcome::Accepted
+               : attadipa::core::ProvisionOutcome::Failed;
+#else
+    return attadipa::core::ProvisionOutcome::Failed;
+#endif
+  }
+
+private:
+  // A day. The RTC keeps counting after that; what expires is the trust in
+  // the offset a person typed, the same way it would for a host's.
+  static constexpr std::uint32_t kManualValidForMs = 24U * 60U * 60U * 1000U;
+};
+
+BoardProvisioner provisioner;
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
 class BoardTimeSink final : public attadipa::debug::TimeSink {
@@ -663,6 +722,43 @@ void refresh_mesh() {
 }
 #endif
 
+void build_clock_screen() {
+  const attadipa::apps::ClockState clock = read_clock_state();
+  const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  state.clock_face.build(lv_screen_active(),
+                         {kWidth, kHeight, attadipa::ui::Theme::Night,
+                          attadipa::ui::PixelCost::PerPixel,
+                          attadipa::ui::Metrics::for_dpi(
+                              profile != nullptr ? profile->display.dpi() : 0)},
+                         attadipa::apps::format_clock(clock, false));
+}
+
+constexpr unsigned kDoneTicks = 3;
+
+// A long press on the clock opens the entry screen. It is on the screen
+// object, which both faces share, so it needs adding once; the clock face
+// leaves its children unclickable and the press lands here, while the
+// keypad's buttons take theirs and never let one through.
+void long_press(lv_event_t *) {
+  if (state.entry.has_value() || state.mesh_screen) {
+    return;
+  }
+  const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  state.clock_face.clear();
+  state.entry.emplace(provisioner);
+  state.done_ticks = 0;
+  state.provision_face.build(
+      lv_screen_active(),
+      {kWidth, kHeight, attadipa::ui::Theme::Night,
+       attadipa::ui::PixelCost::PerPixel,
+       attadipa::ui::Metrics::for_dpi(profile != nullptr ? profile->display.dpi()
+                                                          : 0),
+       attadipa::l10n::Locale::En},
+      *state.entry);
+}
+
 void refresh_ui(lv_timer_t *timer) {
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
@@ -673,6 +769,14 @@ void refresh_ui(lv_timer_t *timer) {
     return;
   }
 #endif
+  if (state.entry.has_value()) {
+    if (!state.entry->finished() || ++state.done_ticks < kDoneTicks) {
+      return;
+    }
+    state.provision_face.clear();
+    state.entry.reset();
+    build_clock_screen();
+  }
   refresh_clock(timer);
 }
 
@@ -781,15 +885,9 @@ esp_err_t initialize_touch() {
 }
 
 void create_ui() {
-  const attadipa::apps::ClockState clock = read_clock_state();
-  const attadipa::platform::BoardProfile *profile =
-      attadipa::platform::find_board_profile(kBoardProfileId);
-  state.clock_face.build(lv_screen_active(),
-                         {kWidth, kHeight, attadipa::ui::Theme::Night,
-                          attadipa::ui::PixelCost::PerPixel,
-                          attadipa::ui::Metrics::for_dpi(
-                              profile != nullptr ? profile->display.dpi() : 0)},
-                         attadipa::apps::format_clock(clock, false));
+  build_clock_screen();
+  lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
+                      nullptr);
   lv_timer_create(refresh_ui,
                   attadipa::apps::clock_manifest().tick_period.value, nullptr);
 }
