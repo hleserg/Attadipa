@@ -391,11 +391,11 @@ sequence, `BoardTimeSink`, is inside it. Flashing the HIL image, setting the tim
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
 in NVS.
 
-*MeshCore has no round trip at all.* `configure_meshcore_ble()`
+*MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:1839` "bool configure_meshcore_ble") has exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:420`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
-image contains no call to it. What that call sets is per-boot RAM:
+image contains no call to it. What that call set was per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
 (`meshcore_ble.cpp:160` "std::atomic_bool configured", `meshcore_ble.cpp:162`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing

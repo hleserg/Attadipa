@@ -702,8 +702,9 @@ produce — the wire does not separate them, so the host says the bond survived
 and sends the reader to the watch's log rather than naming the bond store. When
 the operator is told the bond survived, the record has gone back, nothing has
 been re-armed, and running the command again is the fix.
-`mesh-configure` is still needed afterwards if the watch has been reset since,
-because the passkey lives only in RAM.
+`mesh-configure` is not needed again after a reset: since #356's first change
+an accepted passkey is stored and replayed at boot (`NOT EXECUTED — HARDWARE
+REQUIRED` for the replay; the row in §8 says which half was measured).
 
 Everything in this subsection is `SIMULATED` on a host
 ([`../../tests/test_session_owner.cpp`](../../tests/test_session_owner.cpp),

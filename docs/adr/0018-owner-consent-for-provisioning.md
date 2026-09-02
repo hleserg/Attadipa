@@ -14,9 +14,11 @@ carry an endpoint that does what it is told because something was plugged in.
 
 What that left is [#356](https://github.com/hleserg/Attadipa/issues/356): a
 product image can no longer set its wall clock or receive a MeshCore passkey,
-and for the passkey there is not even a flash-and-flash-back workaround, because
-what `configure_meshcore_ble()` sets is per-boot RAM. The issue states that
-state and does not pick the mechanism. This ADR prices the three candidates.
+and for the passkey there was not even a flash-and-flash-back workaround, because
+what `configure_meshcore_ble()` set was per-boot RAM (#356's first change made
+it survive a boot; the workaround exists now, and fact 2 says what it costs).
+The issue states that state and does not pick the mechanism. This ADR prices
+the three candidates.
 
 The question is not which wire. It is **what act, performed by a person, can a
 product image observe and treat as consent** — an act nothing on the other end
@@ -40,8 +42,9 @@ recorded here so that no option is credited with paying them.
    `firmware/main/waveshare_board.cpp:231` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
-2. **The passkey is RAM-only today, and the storage it needs is one key in a
-   namespace that already exists.** Nothing persists the passkey:
+2. **The passkey was RAM-only when this was decided, and the storage it
+   needed is one key in a namespace that already existed.** Nothing persisted
+   the passkey:
    `firmware/main/meshcore_ble.cpp:1839` — "bool configure_meshcore_ble(std::uint32_t passkey)"
    reaches `firmware/main/meshcore_ble.cpp:1441` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
@@ -263,12 +266,18 @@ weakness is bounded does, and it is withdrawn until somebody measures it.
 
 Beyond B and C:
 
-- **Keep the flash-HIL-provision-reflash round trip.** Rejected because #356
-  established it never existed: what `configure_meshcore_ble()` sets is RAM, so
-  provisioning does not survive a power cycle of the HIL image either.
+- **Keep the flash-HIL-provision-reflash round trip.** When this was
+  decided, #356 had established it never existed: what
+  `configure_meshcore_ble()` set was RAM, so provisioning did not survive a
+  power cycle of the HIL image either. #356's first change made the passkey
+  persist, so the round trip now exists — and it is still rejected as the
+  *rule*, because it makes a laptop, a cable and a second image the consent
+  factor for a watch that will be worn by somebody who has none of them. It
+  stays as the bench path.
 - **A third, provisioning-only firmware variant.** Rejected: three images to
-  build and check instead of two, and the passkey still does not survive the
-  reflash, because the thing that does not persist is the state, not the image.
+  build and check instead of two, for the same consent factor as the round
+  trip above, and the thing that had to persist was the state, not the image
+  — once the state persists, the extra image buys nothing.
 
 ## Consequences
 
