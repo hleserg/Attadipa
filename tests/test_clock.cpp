@@ -99,6 +99,24 @@ int main() {
   no_touch.availability = core::Availability::Unreachable;
   CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
                     "no touch · unreachable") == 0);
+  // The Russian pairs are the long ones, and a cut by bytes would land inside
+  // a two-byte character; every pair fits, and the longest is checked whole.
+  no_touch.locale = l10n::Locale::Ru;
+  no_touch.availability = core::Availability::Unprovisioned;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
+                    "нет сенсора · не настроено") == 0);
+  no_touch.availability = core::Availability::Unsupported;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
+                    "нет сенсора · не поддерживается") == 0);
+  char cut[] = "не\xD0";  // "не" and the lead byte of a third letter
+  apps::trim_partial_utf8(cut);
+  CHECK(std::strcmp(cut, "не") == 0);
+  char whole[] = "нет";
+  apps::trim_partial_utf8(whole);
+  CHECK(std::strcmp(whole, "нет") == 0);
+  char ascii[] = "no touch";
+  apps::trim_partial_utf8(ascii);
+  CHECK(std::strcmp(ascii, "no touch") == 0);
 
   return failures == 0 ? 0 : 1;
 }

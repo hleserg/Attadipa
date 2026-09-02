@@ -37,7 +37,7 @@ struct ClockText {
   char seconds[3] = "--";
   char year[5] = {};
   char date[40] = {};
-  char status[48] = {};
+  char status[72] = {};  // the longest pair the catalogue has is 64 bytes
   unsigned day_progress_minutes = 0;
   unsigned weekday = 0;
   ClockMode mode = ClockMode::Adult;
@@ -47,6 +47,9 @@ struct ClockText {
 bool civil_from_wall_time(core::WallTime time, CivilTime &out);
 bool wall_time_from_civil(const CivilTime &civil, core::WallTime &out);
 ClockText format_clock(const ClockState &state, bool compact_date);
+// Cut a trailing incomplete UTF-8 sequence off a NUL-terminated string in
+// place, so a status truncated by bytes never ends on half a character.
+void trim_partial_utf8(char *s);
 std::uint32_t milliseconds_to_next_minute(core::WallTime time);
 const AppManifest &clock_manifest();
 

@@ -119,9 +119,34 @@ bool wall_time_from_civil(const CivilTime &civil, core::WallTime &out) {
 
 ClockText format_clock_time(const ClockState &state, bool compact_date);
 
+// A cut inside a multi-byte character leaves a lead byte with no tail; LVGL
+// drops the glyph rather than crashing, but a dropped glyph is still wrong.
+void trim_partial_utf8(char *s) {
+  const std::size_t end = std::strlen(s);
+  std::size_t i = end;  // one past the last byte that is not a continuation
+  while (i > 0 && (static_cast<unsigned char>(s[i - 1]) & 0xC0U) == 0x80U) {
+    --i;
+  }
+  if (i == 0) {
+    return;
+  }
+  const std::size_t lead = i - 1;
+  const unsigned char first = static_cast<unsigned char>(s[lead]);
+  const std::size_t need = (first & 0xE0U) == 0xC0U   ? 2
+                           : (first & 0xF0U) == 0xE0U ? 3
+                           : (first & 0xF8U) == 0xF0U ? 4
+                                                      : 1;
+  if (end - lead < need) {
+    s[lead] = '\0';
+  }
+}
+
 // The missing input first, then the clock's own reason: the face clips at
 // 240 px (`LV_LABEL_LONG_CLIP`), the dashes already say the clock is not
 // ready, and "no touch" is the one fact nothing else on the glass shows.
+// `status` holds every pair the catalogue has today; the trim is for the day
+// it does not. `%.*s` is what keeps GCC's format-truncation check quiet about
+// a cut that is the intent.
 void prepend_touch_absent(const ClockState &state, ClockText &text) {
   if (!state.touch_absent) {
     return;
@@ -129,14 +154,15 @@ void prepend_touch_absent(const ClockState &state, ClockText &text) {
   char reason[sizeof(text.status)];
   std::memcpy(reason, text.status, sizeof(reason));
   const char *no_touch = l10n::tr(l10n::StringId::ClockNoTouch, state.locale);
-  // Truncation is the intent (the face clips anyway), and `%.*s` is what
-  // keeps GCC's format-truncation check from calling it a bug.
   const int room = static_cast<int>(sizeof(text.status)) - 1;
-  const int written = std::snprintf(text.status, sizeof(text.status), "%.*s",
-                                    room, no_touch);
-  if (reason[0] != '\0' && written >= 0 && written < room) {
-    std::snprintf(text.status + written, sizeof(text.status) - written,
-                  " · %.*s", room - written, reason);
+  const int written =
+      reason[0] == '\0'
+          ? std::snprintf(text.status, sizeof(text.status), "%.*s", room,
+                          no_touch)
+          : std::snprintf(text.status, sizeof(text.status), "%.*s · %.*s", room,
+                          no_touch, room, reason);
+  if (written >= room) {
+    trim_partial_utf8(text.status);
   }
 }
 
