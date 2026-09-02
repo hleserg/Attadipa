@@ -220,7 +220,15 @@ CITATION = re.compile(
     # COLUMN, quoted from a transcript nobody may edit, and it is not this
     # repository's citation syntax -- but `:9` matched, and the mandatory
     # fingerprint below then asked a build log to make a promise.
-    r"\)?:(\d+)(?:[-\u2013](\d+))?\b(?!:\d)"
+    #
+    # The backtick beside the paren is the third spelling this tree uses:
+    # `` `board_profile.h`:16 `` closes the code span BEFORE the line number.
+    # MAGNETOMETER_RETROFIT.md wrote ninety-eight citations that way, and to
+    # this pattern every one of them was prose -- not asked for a fingerprint,
+    # and not even checked for a blank line, which two of them pointed at
+    # while holding a retrofit blocker open. Found in review, the third time
+    # the same failure mode -- a spelling the grammar does not admit -- was.
+    r"[)`]?:(\d+)(?:[-\u2013](\d+))?\b(?!:\d)"
 )
 
 # The FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display FPC"`. A
@@ -298,7 +306,8 @@ UPSTREAM_PREFIX = "docs/upstream/"
 # `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
 # this check was written for actually lived. Resolved against the tree rather
 # than a hardcoded list, and only when exactly one file answers to the name.
-BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:[-\u2013](\d+))?\b")
+# The same backtick-before-the-colon spelling as above: `` `HARDWARE_MATRIX`:318 ``.
+BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,})`?:(\d+)(?:[-\u2013](\d+))?\b")
 
 # A CONTINUATION: `:271` with no path, meaning "the file the citation before it
 # named". The empty group(1) keeps the group numbering every other citation form

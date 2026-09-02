@@ -426,6 +426,30 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
+        # THE BACKTICK CLOSING BEFORE THE COLON: `` `docs/TARGET.md`:9 `` and
+        # `` `TARGET`:9 ``. Ninety-eight citations in one document were written
+        # that way, and to a grammar that admits only a paren there every one
+        # was prose -- not asked for a fingerprint, and not seen pointing at a
+        # blank line while it held a retrofit blocker open. Found in review of
+        # #399, the third review to find a spelling the grammar did not admit.
+        write(root, "docs/CITER.md", "See `docs/TARGET.md`:9.\n")
+        case(
+            "a backtick closing before the colon is still a citation",
+            "check_citation_lines",
+            any(
+                "cites docs/TARGET.md:9" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        write(root, "docs/CITER.md", "See `TARGET`:9.\n")
+        case(
+            "a bare name with the backtick before the colon is one too",
+            "check_citation_lines",
+            any(
+                "cites TARGET:9" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
         # A CONTINUATION -- `:2` with no path -- continues the citation before
         # it ON THE SAME LINE. Both the bind and the four ways it must NOT bind
         # are below, because binding by proximity instead is what makes this
