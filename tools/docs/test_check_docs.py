@@ -251,13 +251,64 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
-        # The exemption #331 settled: documentation lines are stable and are
-        # themselves checked, so a citation into one stays opt-in.
+        # #331 exempted documentation on the reasoning that its lines are
+        # stable and themselves checked. #386 found the check they face is
+        # "exists and is not blank", which a table rule passes, and that a
+        # majority of the tree's `.md` citations had already drifted onto one.
+        # So the rule is the same for every file this repository edits, and
+        # the report names the file so the author knows which rule fired.
         write(root, "docs/CITER.md", "See `docs/TARGET.md:2`.\n")
+        problems = check_docs.check_citation_lines(root)
         case(
-            "a documentation citation still needs no fingerprint",
+            "a documentation citation with no fingerprint is reported",
+            "check_citation_lines",
+            any("with no fingerprint" in problem and "docs/TARGET.md" in problem
+                for problem in problems),
+        )
+        write(root, "docs/CITER.md", 'See `docs/TARGET.md:2` — "two".\n')
+        case(
+            "a documentation citation that carries one passes",
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
+        )
+        # THE TWO EXEMPTIONS THAT REMAIN, asserted rather than assumed.
+        # `docs/upstream/` is tracked -- so "tracked" alone would demand a
+        # quote there -- but it is somebody else's text, which this repository
+        # does not re-read; #386 keeps it opt-in by name.
+        write(root, "docs/upstream/THEIRS.md", "their one\ntheir two\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        write(root, "docs/CITER.md", "See `docs/upstream/THEIRS.md:2`.\n")
+        case(
+            "a tracked upstream document is not required to carry one",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "docs/CITER.md", 'See `docs/upstream/THEIRS.md:2` — "their one".\n')
+        case(
+            "a fingerprint into an upstream document is still checked when given",
+            "check_citation_lines",
+            any("which is now at :1" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # A bare `:NN` with no citation on its own line continues nothing
+        # (#336), so there is nothing to demand a fingerprint for: it stays
+        # silent under the mandatory rule exactly as it did before it.
+        write(root, "docs/CITER.md",
+              'See `docs/TARGET.md:1` — "one".\nAnd `:2` as well.\n')
+        case(
+            "a bare continuation on its own line is still checked by nothing",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # ... while one on the SAME line continues a tracked citation and is
+        # held to the same rule as its anchor.
+        write(root, "docs/CITER.md",
+              'See `docs/TARGET.md:1` — "one" and `:2`.\n')
+        case(
+            "a continuation on the anchor's line needs its own fingerprint",
+            "check_citation_lines",
+            any("with no fingerprint" in problem and ":2" in problem
+                for problem in check_docs.check_citation_lines(root)),
         )
         # THE DECORATION A FINGERPRINT MAY WEAR. Three live citations were
         # rejected for punctuation alone, and the rejection read as "no
@@ -293,6 +344,17 @@ def main() -> int:
                 for problem in check_docs.check_citation_lines(root)
             ),
         )
+        # THE SAME DECORATION WHEN THE QUOTE WRAPS. Reflowed prose puts the
+        # quote at the head of the next line; the line before it may end in
+        # the same colon or comma the same-line rule accepts, or the two paths
+        # disagree and the wrapped one says "no fingerprint" about a quote one
+        # line down. Found in review of #399.
+        write(root, "docs/CITER.md", 'See `core/thing.h:2`:\n"beta" and so on.\n')
+        case(
+            "a wrapped fingerprint after a colon is one",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
         # A LENGTH LIMIT THAT SAYS SO. The cap used to live inside the match,
         # so a quote one character too long fell out of it and was reported as
         # no quote at all. Two citations in this repository were in that state
@@ -312,6 +374,21 @@ def main() -> int:
             any("%d-character fingerprint" % len(long_quote) in problem
                 for problem in problems)
             and not any("with no fingerprint" in problem for problem in problems),
+        )
+        # ... and the limit is not gated on the file being one this repository
+        # edits: an upstream target is exempt from NEEDING a quote, not from
+        # being held to the one it carries. Found in review of #399, where the
+        # only length case cited a source file and `if tracked and len(...)`
+        # survived the suite.
+        write(root, "docs/upstream/LONG.md", "alpha\n%s\n" % long_quote)
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        write(root, "docs/CITER.md",
+              'See `docs/upstream/LONG.md:2` — "%s".\n' % long_quote)
+        case(
+            "an over-long fingerprint into an exempt file is still over-long",
+            "check_citation_lines",
+            any("%d-character fingerprint" % len(long_quote) in problem
+                for problem in check_docs.check_citation_lines(root)),
         )
         # Scoped to what we EDIT. A build directory or a vendored tree is not
         # ours to keep, and is not in CI's checkout at all.
@@ -365,7 +442,8 @@ def main() -> int:
                 for problem in check_docs.check_citation_lines(root)
             ),
         )
-        write(root, "docs/CITER.md", 'See `docs/TARGET.md:1` and `:2`.\n')
+        write(root, "docs/CITER.md",
+              'See `docs/TARGET.md:1` — "one" and `:2` — "two".\n')
         case(
             "a continuation naming a line that exists passes",
             "check_citation_lines",
@@ -415,7 +493,7 @@ def main() -> int:
         write(
             root,
             "docs/CITER.md",
-            "Ours `docs/TARGET.md:1`, theirs "
+            'Ours `docs/TARGET.md:1` — "one", theirs '
             "`upstream/infinitime/clock.py:97` and `:9`.\n",
         )
         case(
@@ -425,7 +503,7 @@ def main() -> int:
         )
         # Backticks are what separate a citation from prose, and `:9` is far
         # too small a shape to read outside them.
-        write(root, "docs/CITER.md", "See `docs/TARGET.md:1` at :9 today.\n")
+        write(root, "docs/CITER.md", 'See `docs/TARGET.md:1` — "one" at :9 today.\n')
         case(
             "an unbackticked :NN in prose is not a continuation",
             "check_citation_lines",
