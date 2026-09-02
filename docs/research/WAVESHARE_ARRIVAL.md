@@ -812,10 +812,10 @@ twice. **Two are still live.**
 
 5. **Splitting D12 left three places behind, and all three are now closed.**
    `HARDWARE_MATRIX.md:377` "8 MB **octal**" reads VERIFIED/octal;
-   [RESOURCE_BUDGET.md:40](../architecture/RESOURCE_BUDGET.md) "8 MB **octal**, D12a"
+   [RESOURCE_BUDGET.md:40](../architecture/RESOURCE_BUDGET.md) "CEILING, both MEASURED"
    now splits the two
-   columns — D12a octal for the Waveshare, D12b for the T-Watch, itself since
-   resolved octal on a physical unit — and the open-question row in
+   columns — D12a octal for the Waveshare, D12b octal for the T-Watch, read
+   off the die on 2026-08-27 — and the open-question row in
    [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and split the same way.
 
    The third took one more commit and is the one worth remembering.

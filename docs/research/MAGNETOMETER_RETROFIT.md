@@ -1216,11 +1216,10 @@ behaviour the library is admired for is off until you turn it on. Licence remain
 MIT.
 
 **Two `REJECT` verdicts fire their own written revisit triggers**, not a proposal
-of ours: `REUSE_LEDGER` lines 659-661 — *"Revisit when: an external magnetometer is
-decided (OPEN_QUESTIONS A5)"* — and
-[`research-integration.md`](../upstream/research-integration.md):406 — *"Verdict:
-REJECT, and not deferred — the finding is inapplicable to this hardware rather
-than premature."* The Waveshare with a magnetometer has accel + gyro + mag, which
+of ours: `docs/research/REUSE_LEDGER.md:743` — "an external magnetometer is decided"
+(OPEN_QUESTIONS A5) — and
+`docs/upstream/research-integration.md:406` — "and not deferred — the finding is inapplicable"
+(*"to this hardware rather than premature"*). The Waveshare with a magnetometer has accel + gyro + mag, which
 is the full Madgwick/Mahony parts list. **The reason is now false for this unit;
 the verdict should stand, amended, for the different reasons above.**
 
@@ -1421,7 +1420,8 @@ expensive way.
 **Not the board case.** ADR-0007 §1 defines the hardware inventory as *"per
 **board**, contributed by the BSP"* and says of the predicate: *"`present()` is
 honest and narrow: it is a fact about a board, it does not change while running,
-and no node ever makes it true."* `board_profile.h` lines 16-18 says the same in code:
+and no node ever makes it true."* `platform/include/attadipa/platform/board_profile.h:40` — "It describes a board"
+says the same in code:
 *"It describes a board *variant*. A T-Watch S3 Plus with a CC1101 and one with an
 SX1262 are two profiles."* **A variant is a purchase-time SKU difference — a
 fact true of every unit that shipped that way.** `kWaveshareFeatures` is a
@@ -1452,16 +1452,16 @@ closed by answering a different one.** [ADR-0001](../adr/0001-capability-model.m
 **The struck-through question is this question.** ADR-0004 resolved the node case
 only. **The expansion-connector/soldered case has never been decided**, and the
 strike-through is why nobody noticed. Two other places enumerate the routes and
-omit this one: `research-integration.md` line 416 — *"via an Attadipa node or a future
-board"* — and `MAGNETOMETER_BACKLOG` line 90, where A5 offers *"a variant board, a
-daughterboard, a different unit"*. Three options, none of them "soldered onto
+omit this one: `docs/upstream/research-integration.md:416` — "via an Attadipa node or a future board"
+— and A5 at `docs/hardware/MAGNETOMETER_BACKLOG.md:89` — "a variant board, a daughterboard, a different unit".
+Three options, none of them "soldered onto
 the unit we already have".
 
 ### 8.2 What already works, and what the question is actually about
 
 **Everything from `Capability::Heading` upward needs no new concept.**
-`capability_registry.cpp` lines 103-104 already prefers a magnetometer over GNSS
-course-over-ground, and ADR-0009's Consequences already promised *"Adding a
+`core/src/capability_registry.cpp:106` — "if (inventory_->present(HardwareFeature::MagnetometerSensor))"
+already prefers a magnetometer over GNSS course-over-ground, and ADR-0009's Consequences already promised *"Adding a
 magnetometer later is a new `HeadingSource` and a calibration record; nothing
 above `LocationService` changes."*
 
@@ -1914,7 +1914,7 @@ which is the argument ADR-0004 §2a already makes: *"the cost of runtime-
 extensible capabilities is almost entirely in the *contracts* around them ...
 cheap to decide with no code and expensive to retrofit."* `design`.
 
-**Q12 · Fix first-present-wins in `capability_registry.cpp` lines 103-106.**
+**Q12 · Fix first-present-wins at `core/src/capability_registry.cpp:106` — "if (inventory_->present(HardwareFeature::MagnetometerSensor))".**
 A present-but-`Failed` magnetometer suppresses the GNSS course-over-ground
 fallback. Invisible on the Waveshare, a real regression on a T-Watch retrofit.
 **Belongs with Q11, not after it.** `bug`.

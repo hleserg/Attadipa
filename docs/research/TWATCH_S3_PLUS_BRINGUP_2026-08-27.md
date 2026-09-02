@@ -246,7 +246,8 @@ PCB clipped into the back cover**. So the GNSS daughterboard that
 [HARDWARE_MATRIX](HARDWARE_MATRIX.md):103 "13-pin 0.3 mm FPC daughterboard"
 describes is physically present and
 antenna-fed on this unit — previously a schematic-only fact — which is also why
-BOOT and RST exist at all on this board (:113, :226) and why the hardware
+BOOT and RST exist at all on this board (`docs/research/HARDWARE_MATRIX.md:113` — "BOOT (GPIO 0) and RST both sit"
+and `:231` — "BOOT button, on the GNSS daughterboard") and why the hardware
 download-mode entry in §7 worked.
 
 `PPS` being an exposed pad rather than a buried net matters to
