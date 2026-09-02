@@ -119,6 +119,7 @@ struct BoardState {
   esp_lcd_panel_io_handle_t panel_io = nullptr;
   esp_lcd_panel_handle_t panel = nullptr;
   bool lvgl_up = false;
+  lv_timer_t *ui_timer = nullptr;  // create_ui()'s refresh tick
   esp_lcd_panel_io_handle_t touch_io = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
@@ -951,8 +952,8 @@ void create_ui() {
   build_clock_screen();
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
-  lv_timer_create(refresh_ui,
-                  attadipa::apps::clock_manifest().tick_period.value, nullptr);
+  state.ui_timer = lv_timer_create(
+      refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
 }
 
 // One teardown step: issue it, keep the first failure, and null the handle
@@ -976,7 +977,21 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // Undo every boot step that succeeded, in reverse, so a boot that fails at
 // step n does not leave n-1 subsystems up and unreported (POWER_OWNERSHIP §2.5,
 // #367 item 6). The journal is the handles above: null means the step never
-// ran. Must be called with the LVGL lock *not* held.
+// ran. Takes the LVGL lock itself (recursive, so a caller holding it is fine)
+// for the UI part, because the LVGL task reads the default display before it
+// blocks on the lock, and a display removed between those two reads is a
+// `lv_timer_handler()` over freed objects.
+//
+// `lvgl_reachable == false` is the one caller whose failure *was* that lock:
+// the LVGL task has held it past a second, and `lvgl_port_remove_disp()` would
+// wait on it forever (it locks with no timeout). That display is then left
+// where it is and said so; a leak is recoverable and a hang is not.
+//
+// What "undone" means for LVGL itself is narrower than for the rest:
+// `lvgl_port_deinit()` only asks the LVGL task to stop, and `lv_deinit()` runs
+// on that task after this returns. Whether a QSPI transfer the last flush
+// started is drained before the panel below it is deleted is UNKNOWN; the port
+// offers no synchronous stop.
 //
 // The one thing it cannot undo is the rails: `board_power_bring_up_rails()`
 // wrote them, and switching any of them off is authorised by a measurement
@@ -987,18 +1002,30 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // Returns the first teardown failure. A failed step is logged and skipped,
 // not retried: the board is then in a state nobody read back, and the honest
 // report to the caller is that error, not ESP_OK.
-esp_err_t abandon_board() {
+esp_err_t abandon_board(bool lvgl_reachable) {
   esp_err_t first_failure = ESP_OK;
-  undo(state.display, first_failure, "remove LVGL display",
-       lvgl_port_remove_disp);
-  if (state.lvgl_up) {
-    const esp_err_t err = lvgl_port_deinit();
-    if (err != ESP_OK) {
-      ESP_LOGE(kTag, "boot rollback: stop LVGL failed: %s", esp_err_to_name(err));
-      if (first_failure == ESP_OK) {
-        first_failure = err;
-      }
+  if (state.display != nullptr && !lvgl_reachable) {
+    ESP_LOGE(kTag, "boot rollback: LVGL holds its lock; its display is left "
+                   "in place rather than waited for");
+    state.display = nullptr;
+  }
+  if (state.display != nullptr) {
+    lvgl_port_lock(0);
+    // create_ui()'s objects go first, under the lock, or the refresh tick
+    // outlives the screen it draws on.
+    state.provision_face.clear();
+    state.entry.reset();
+    state.clock_face.clear();
+    if (state.ui_timer != nullptr) {
+      lv_timer_delete(state.ui_timer);
+      state.ui_timer = nullptr;
     }
+    undo(state.display, first_failure, "remove LVGL display",
+         lvgl_port_remove_disp);
+    lvgl_port_unlock();
+  }
+  if (state.lvgl_up) {
+    (void)lvgl_port_deinit();  // always ESP_OK: a request, not a result
     state.lvgl_up = false;
   }
   undo(state.touch, first_failure, "delete touch", esp_lcd_touch_del);
@@ -1027,10 +1054,11 @@ esp_err_t abandon_board() {
 
 // A required step failed: roll back, and report the step's error -- a rollback
 // that itself failed is already in the log, and the caller cannot act on two.
-esp_err_t abandon_board_after(esp_err_t err, const char *step) {
+esp_err_t abandon_board_after(esp_err_t err, const char *step,
+                              bool lvgl_reachable = true) {
   ESP_LOGE(kTag, "%s failed: %s; rolling the boot back", step,
            esp_err_to_name(err));
-  (void)abandon_board();
+  (void)abandon_board(lvgl_reachable);
   return err;
 }
 
@@ -1083,7 +1111,7 @@ esp_err_t start_waveshare_ui() {
   }
 
   if (!lvgl_port_lock(1000)) {
-    return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL");
+    return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL", false);
   }
   create_ui();
   // Which of the two images this is, said out loud once per boot. The endpoint
