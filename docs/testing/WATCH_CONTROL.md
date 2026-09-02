@@ -385,7 +385,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:1091` "restore_time_metadata()") is outside the `#if` — and,
+(`waveshare_board.cpp:1107` "restore_time_metadata()") is outside the `#if` — and,
 since #356's second change, writes one too: `provision_time()` has two callers,
 `BoardProvisioner` (`waveshare_board.cpp:453` "provision_time(ops, request,")
 outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:515`
@@ -458,7 +458,7 @@ The scan itself is the part nobody has priced. A restored or typed passkey
 starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:484` —
 "BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:159` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
-(`firmware/main/board_power.cpp:324` — "esp_light_sleep_start();") without a PM
+(`firmware/main/board_power.cpp:329` — "esp_light_sleep_start();") without a PM
 lock, because `CONFIG_PM_ENABLE` is not set. Whether the scan survives that
 sleep, and what a node out of range costs a worn watch per day, is
 **NOT EXECUTED — HARDWARE REQUIRED** — the row

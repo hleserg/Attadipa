@@ -91,7 +91,7 @@ recursiveness and per-handle thread-safety caveat (§3.1), and the XPowersLib
 [`firmware/main/physical_input.cpp:159`](../../firmware/main/physical_input.cpp) —
 "void maybe_sleep() {". It is the only caller of `esp_light_sleep_start()` in
 the tree — now
-[`firmware/main/board_power.cpp:324`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:329`](../../firmware/main/board_power.cpp) —
 "const esp_err_t result = esp_light_sleep_start();" — and the only caller of any
 `esp_sleep_enable_*`.
 
@@ -109,14 +109,14 @@ What it does not have is a way for anyone else to take part.
 ### 2.2 One rail writer, which is accidentally right
 
 `initialize_pmu()` programs three rails and enables two:
-[`firmware/main/board_power.cpp:419`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:425`](../../firmware/main/board_power.cpp) —
 "DC1 3.3 V", then ALDO1 and
-[`firmware/main/board_power.cpp:421`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:427`](../../firmware/main/board_power.cpp) —
 "ALDO2 3.3 V", enabling them read-modify-write at
-[`firmware/main/board_power.cpp:428`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:434`](../../firmware/main/board_power.cpp) —
 "ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,". Its comment
 states the discipline it is keeping —
-[`firmware/main/board_power.cpp:417`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:423`](../../firmware/main/board_power.cpp) —
 "// Preserve unrelated rails. The known-working board implementation needs".
 The three writes moved into the owner unchanged; `initialize_pmu()` now calls
 `board_power_bring_up_rails()` and the boot sequence is byte-identical.
@@ -176,7 +176,7 @@ this is what it was.* Before sleeping, the code armed a GPIO wake — the call i
 now [`firmware/main/board_power.cpp:234`](../../firmware/main/board_power.cpp) —
 "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);",
 reached only from `arm_wake()` and journaled. On the way out it disarmed exactly
-one source — [`firmware/main/board_power.cpp:264`](../../firmware/main/board_power.cpp) —
+one source — [`firmware/main/board_power.cpp:265`](../../firmware/main/board_power.cpp) —
 "result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);", which is now
 one arm of a `disarm_wake()` that the transaction calls for each source it
 recorded — and
@@ -212,10 +212,10 @@ firmware already treats as a transaction.
 **One wake cause is read where a bitmap is available.** *Fixed by the owner.*
 The code read `esp_sleep_get_wakeup_cause()` and then decided touch by
 re-reading the pin. It now reads the bitmap —
-[`firmware/main/board_power.cpp:337`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:342`](../../firmware/main/board_power.cpp) —
 "const std::uint32_t soc = esp_sleep_get_wakeup_causes();" — and the pin is a
 corroborating signal that only logs a warning:
-[`firmware/main/board_power.cpp:347`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:352`](../../firmware/main/board_power.cpp) —
 "gpio_get_level(touch_interrupt_) != 0) {". ESP-IDF's own header says of the
 single-cause API: *"This API will only return one wakeup source. If multiple
 wakeup sources wake up at the same time, the wakeup source information may be
@@ -242,7 +242,7 @@ nothing torn down — a partially initialised board reported as a failure.
 The owner contract's `prepare → commit → rollback` shape is the same shape
 boot needs, and boot has it now. Three steps are required — the bus, the
 rails and the display — and each failure calls
-[`firmware/main/waveshare_board.cpp:1005`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1017`](../../firmware/main/waveshare_board.cpp) —
 "esp_err_t abandon_board(bool lvgl_reachable) {", which reads the journal
 off `BoardState`'s handles and undoes every step that succeeded, in reverse —
 except LVGL, which it can only ask to stop: `lvgl_port_deinit()` sets a flag
@@ -259,7 +259,7 @@ The one thing the rollback does not undo is the rails. The bring-up wrote
 them, and switching any of them off is authorised by a measurement nobody has
 made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not a supply), so they stay
 as written and the log says so:
-[`firmware/main/waveshare_board.cpp:1047`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1063`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". **NOT EXECUTED — HARDWARE REQUIRED:** every path
 through `abandon_board()` is a boot-failure path; none has been provoked on a
 board, and whether a CO5300 whose `esp_lcd_panel_del` failed leaves the QSPI
@@ -361,7 +361,7 @@ actually used, not the file.
 `getIrqStatus()` assembles three status bytes into one word (lines 2590–2596),
 and earlier revisions got the order wrong. Attadipa never assembles that word:
 it reads register `0x49` as a single byte and masks it —
-[`firmware/main/board_power.cpp:385`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:390`](../../firmware/main/board_power.cpp) —
 "const esp_err_t read_result = read_reg(pmu_, kAxpInterruptStatus2, &status);" against
 the mask in `firmware/main/power_button_edges.h`. The known bug is real and the
 pin is right, and neither is currently load-bearing here.
