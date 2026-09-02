@@ -2543,11 +2543,13 @@ code under its own licence — no new dependency, no new licence surface:
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. What does not
-  exist anywhere is an eraser for the pin, and it is two pieces: the NVS key
-  `kNodeKeyNvsKey`, whose eraser has `erase_passkey()`'s shape, and the RAM
+  exist anywhere is an eraser for the pin, and it is two pieces: the RAM
   copy in `MeshCoreCompanion` that `settle_node_pin()` actually reads, which
-  has `pin()` and no reverse — a new method on a host-tested `link/` class.
-  Clearing NVS alone takes hold at the next reboot, not before.
+  has `pin()` and no reverse — a new method on a host-tested `link/` class,
+  and the one that makes the clear take hold, since the next adoption
+  overwrites the NVS key by itself; and the NVS key `kNodeKeyNvsKey`, whose
+  eraser has `erase_passkey()`'s shape and covers only a reboot in the window
+  before that adoption re-pins the old key out of flash.
 
 Evidence: [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md).
 Physical stale-bond recovery remains `NOT EXECUTED — HARDWARE REQUIRED`.
