@@ -88,8 +88,9 @@ has since added and exercised `sdkconfig.defaults` and a partition CSV. What
 is narrower and was already filed: whether that PSRAM is quad or octal, open
 question D12, named there as a blocker on the LVGL draw-buffer decision. That
 question has since been split on the strength of §3.1 — D12a resolved octal for
-this board, D12b still open for the T-Watch
-([OPEN_QUESTIONS.md:125-126](OPEN_QUESTIONS.md) "Waveshare: quad or octal?").
+this board ([OPEN_QUESTIONS.md:125](OPEN_QUESTIONS.md) "Waveshare: quad or octal?"),
+and D12b, the T-Watch half, was then settled octal on a physical unit
+([OPEN_QUESTIONS.md:126](OPEN_QUESTIONS.md) "RESOLVED 2026-08-27 — octal").
 
 **The I2C topology was known; the addresses were not.** The main bus at SDA 15 /
 SCL 14 and the membership of the touch, PMU, IMU and RTC are all VERIFIED
@@ -106,16 +107,18 @@ same commit that introduced this document, so the gap is closed; it is recorded
 here because the assessment of the advice depends on it having been real.
 
 **"Wrap the vendor BSP rather than rewrite it" is not a finding, it is a
-proposal, and the repository has deliberately left the question open.** It is
-recorded by name in three places that agree with each other: T6, "Use the
-Waveshare BSP as a dependency, or take only its pin facts?", UNKNOWN
-([OPEN_QUESTIONS.md:271](OPEN_QUESTIONS.md) "Use the Waveshare BSP as a dependency");
-decision row 6, "open"
-([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "take only their pin facts");
-and "This is a reuse-ledger decision, not a default" in `DEPENDENCIES.md` — a
-sentence #371 has since replaced with the decision itself,
-[DEPENDENCIES.md:364](DEPENDENCIES.md) "Neither vendor BSP becomes a", which
-also struck T6. The surrounding facts were already
+proposal, and when this was written the repository had deliberately left the
+question open** — T6, "Use the Waveshare BSP as a dependency, or take only its
+pin facts?", UNKNOWN, with a decision row reading "open" and a sentence in
+`DEPENDENCIES.md` reading "This is a reuse-ledger decision, not a default". All
+three have since been answered the other way, by
+[ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md): T6 is struck
+([OPEN_QUESTIONS.md:271](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
+the decision row reads decided
+([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "a board backend composes ESP-IDF"),
+and the sentence is the decision itself
+([DEPENDENCIES.md:364](DEPENDENCIES.md) "Neither vendor BSP becomes a"). The
+surrounding facts were already
 established too: BSP v2.0.0 declares `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`
 and drives display, touch, audio and SD only, so it does not touch the QMI8658,
 the AXP2101 or the PCF85063 that are on the board — the distinction now recorded
@@ -188,9 +191,12 @@ build that aborts at boot if octal PSRAM is not found.
 **Scope.** This closes D12 for the Waveshare board only. D12 as written binds
 both targets through the shared `R8` marking, and the LilyGO vendor document
 describing the T-Watch's PSRAM as QSPI remains a live conflicting source that
-nobody has re-examined. So the question was split rather than closed: D12a
-records the Waveshare as resolved and octal, D12b leaves the T-Watch CONFLICTING
-pending its own readback ([OPEN_QUESTIONS.md:126](OPEN_QUESTIONS.md) "T-Watch: quad or octal?").
+nobody had re-examined. So the question was split rather than closed: D12a
+records the Waveshare as resolved and octal, and D12b held the T-Watch
+CONFLICTING pending its own readback — which came on 2026-08-27, from the die's
+own eFuses on a physical unit, and closed it octal
+([OPEN_QUESTIONS.md:126](OPEN_QUESTIONS.md) "RESOLVED 2026-08-27 — octal";
+[HARDWARE_MATRIX.md:87](HARDWARE_MATRIX.md) "Closes D12b").
 
 **A flash conflict comes with it, and is not resolved.** Those same five vendor
 `sdkconfig.defaults` set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, while the schematic
@@ -808,9 +814,9 @@ twice. **Two are still live.**
    `HARDWARE_MATRIX.md:377` "8 MB **octal**" reads VERIFIED/octal;
    [RESOURCE_BUDGET.md:40](../architecture/RESOURCE_BUDGET.md) "8 MB **octal**, D12a"
    now splits the two
-   columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
-   open-question row in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and
-   split the same way.
+   columns — D12a octal for the Waveshare, D12b for the T-Watch, itself since
+   resolved octal on a physical unit — and the open-question row in
+   [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and split the same way.
 
    The third took one more commit and is the one worth remembering.
    [VERIFIED_FACTS.md](VERIFIED_FACTS.md) still concluded, twenty-five lines
