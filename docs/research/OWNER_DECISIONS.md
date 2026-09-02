@@ -1652,13 +1652,15 @@ it has no part of is a seam a product image compiles. The shape is already
 written — `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" —
 but the layer it lives in is added only under
 `firmware/main/CMakeLists.txt:31` — "if(CONFIG_ATTADIPA_WATCH_CONTROL)", the
-same symbol that keeps the debug bridge out. So the passkey half is that
-interface brought out from behind the gate, or a `core::` method with a
-firmware provider behind it; what it may not be is `apps/` reaching into
-`firmware/main/`, which this repository does not allow. The
-clock half means moving `write_rtc()`'s caller and `save_time_metadata()` out
-from behind `CONFIG_ATTADIPA_WATCH_CONTROL` — the same symbol that gates the
-debug bridge — and showing `firmware_elf_check.py` still keeps
+same symbol that keeps the debug bridge out. So the passkey half is a `core::`
+method with a firmware provider behind it — ungating `MeshSink` would make it
+nameable in `firmware/main/` and nowhere `apps/` links, and what it may not be
+is `apps/` reaching into `firmware/main/`, which this repository does not
+allow. The clock half means moving the sequence behind `write_rtc()` and
+`save_time_metadata()` out from behind `CONFIG_ATTADIPA_WATCH_CONTROL` into
+something a product image compiles — `write_rtc()`'s one caller was a
+`debug::TimeSink`, which no product image can name, so the caller itself
+cannot move — and showing `firmware_elf_check.py` still keeps
 `attadipa::debug::Bridge::handle` out of a product image.
 It does **not** add a listener of any kind to a product image: no BLE peripheral
 role, no provisioning endpoint, no bounded window, and nothing to authenticate,
