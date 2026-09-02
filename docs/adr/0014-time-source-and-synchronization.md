@@ -44,12 +44,16 @@ cannot honestly resume where it left off.
   the chip is touched). The host does not retry a lost acknowledgement because
   that could repeat a wall-clock write.
 
-  **This is no longer true of a product image, and has not been since #346.**
+  **That is the bench path, and has been only that since #346.**
   `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n", so the
-  opcode above exists only in the HIL build. The owner chose on-device entry as
-  the replacement — [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26
-  — and this bullet is rewritten when that ships, so the sentence and the code
-  change together. Until then it describes the HIL image only.
+  opcode above exists only in the HIL build. The product's first real input is
+  the watch itself: a long press on the clock opens an entry screen for the
+  date, the time, the offset and the node passkey
+  (`apps/include/attadipa/apps/provisioning.h:43` — "class ProvisioningEntry {"), and the board's
+  `firmware/main/waveshare_board.cpp:402` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
+  runs the same `provision_time()` sequence as the opcode, with the same
+  order and the same one-day lifetime. Whoever holds the watch may set it —
+  [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26 decided that.
 - This slice stores an effective offset, not an IANA zone database or a DST
   rule. A future companion or network provider refreshes the offset before its
   deadline. If it does not, local time becomes stale rather than silently

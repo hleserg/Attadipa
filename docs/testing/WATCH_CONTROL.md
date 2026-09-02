@@ -385,7 +385,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:804` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:902` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because the one caller of that
 sequence, `BoardTimeSink`, is inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
@@ -393,7 +393,7 @@ in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:1839` "bool configure_meshcore_ble") has exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:420`
+`BoardMeshSink::configure` (`waveshare_board.cpp:479`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call set was per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
@@ -428,13 +428,15 @@ stays stopped across a power cycle, where before this change the power cycle
 was itself the off switch. So the MeshCore round trip now exists the way the
 clock's does — flash the HIL image, configure, flash back, and the product
 image scans for and pairs with its node until the HIL image is flashed back
-and told to stop — and what a product image still cannot do is put that key
-there itself, or take it away. Nothing on the watch can change its
-provisioning either way, and the mesh screen never appears:
-`mesh_screen_requested` (`waveshare_board.cpp:125`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:423`
-"mesh_screen_requested.store(true)", inside the same `#if`, so the mesh screen
-never appears.
+and told to stop — and since #356's second change a product image can also
+put that key there itself, though not take it away: the entry screen a long
+press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:423`
+"set_mesh_passkey(std::uint32_t passkey) override {" sends the same `Configure`
+event. What stays HIL-only is watching it happen: the mesh screen's
+`mesh_screen_requested` (`waveshare_board.cpp:135`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:482`
+"mesh_screen_requested.store(true)", inside the `#if`, so a product image
+scans without showing that it does.
 
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
@@ -442,10 +444,25 @@ and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
 `nimble_port_init()` (`meshcore_ble.cpp:1677` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
 (`meshcore_ble.cpp:1698` "xTaskCreate(mesh_task") for a subsystem that scans
-only if a HIL image left a passkey behind. That cost is real and is recorded against
+only once a passkey is on flash — left by a HIL image, or, since #356's second
+change, typed on the entry screen. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is
 about the USB control plane.
+
+The scan itself is the part nobody has priced. A restored or typed passkey
+starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:484` —
+"BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:159` —
+"void maybe_sleep() {") enters Light-sleep under it through the power owner
+(`firmware/main/board_power.cpp:316` — "esp_light_sleep_start();") without a PM
+lock, because `CONFIG_PM_ENABLE` is not set. Whether the scan survives that
+sleep, and what a node out of range costs a worn watch per day, is
+**NOT EXECUTED — HARDWARE REQUIRED** — the row
+[POWER_OWNERSHIP](../research/POWER_OWNERSHIP.md) §1 already keeps for BLE under
+Light-sleep (`docs/research/POWER_OWNERSHIP.md:36` — "Whether BLE survives").
+Until it is measured, a product watch whose
+passkey never finds its node is a watch with an `UNKNOWN` sleep floor, and the
+wearer has no indication of the scan.
 
 All of this is a deliberate consequence of the trust boundary rather than an
 oversight, and giving a product image its own consented provisioning path — the

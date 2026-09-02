@@ -28,8 +28,8 @@ at [`assets/fonts/attadipa_fonts.h:25`](../../assets/fonts/attadipa_fonts.h) —
 temporal strings at
 [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) —
 "ClockMonthJan"; the simulator's state injection at
-[`sim/options.cpp:146`](../../sim/options.cpp) — "out.child_mode = true;" and
-[`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
+[`sim/options.cpp:152`](../../sim/options.cpp) — "out.child_mode = true;" and
+[`sim/options.cpp:163`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
 at [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) —
 "core::Millis tick_period". Two things §8.1 asks for are still missing —
 battery injection, and a screenshot taken after a chosen event rather than on
@@ -59,7 +59,7 @@ this repository, and most of them are not obviously about a clock.
 | which panel, at what density | `platform::BoardProfile`, resolved through `Dp` | `ui/metrics.h` |
 
 **So `Capability::Time` is the clock's source, and it is not local by
-definition.** `sim/main.cpp:122` — "core::Capability::Time" — already lists
+definition.** `sim/main.cpp:191` — "core::Capability::Time" — already lists
 `Capability::Time` among what an attached Attadipa node provides. A watch whose
 own RTC has never been set and
 which has a node attached has a *Ready* time from `Origin::Node`; the same watch
@@ -633,14 +633,14 @@ that the Clock is one of the six minimum screens.
 
 | Axis | Today | Evidence |
 |---|---|---|
-| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:198-210` — "out.board = *found;" |
+| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:215-227` — "out.board = *found;" |
 | theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:242-256` — "out.theme = ui::Theme::Day;" |
 | locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:227-240` — "out.locale = l10n::Locale::En;" |
-| Adult/Child | **yes** — `--child` | [`sim/options.cpp:146`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:251`](../../sim/main.cpp) — "apps::ClockMode::Child" |
-| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:157`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:230`](../../sim/main.cpp) — "g_clock_live = !options.clock_time_set" |
+| Adult/Child | **yes** — `--child` | [`sim/options.cpp:152`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:325`](../../sim/main.cpp) — "apps::ClockMode::Child" |
+| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:163`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:304`](../../sim/main.cpp) — "g_clock_live = !options.clock_time_set" |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
 | node attached / detached | **yes** — `--node` | `sim/options.cpp:128-131` — "out.node_attached = true;" |
-| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:335-343` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
+| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:416-424` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
 
@@ -651,7 +651,7 @@ foreach(_board t-watch-s3-plus waveshare-amoled-206)
                      --screenshot ${_attadipa_shot_dir}/${_board}.png)
 ```
 
-— [`tests/CMakeLists.txt:280-283`](../../tests/CMakeLists.txt) —
+— [`tests/CMakeLists.txt:284-287`](../../tests/CMakeLists.txt) —
 "foreach(_board t-watch-s3-plus waveshare-amoled-206)". Two boards, EN,
 Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with
