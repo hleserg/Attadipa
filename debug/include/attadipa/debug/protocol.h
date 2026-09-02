@@ -64,8 +64,9 @@ inline constexpr std::uint8_t kClassDebug = 0x02;  // this file
 
 // The debug class's own version, negotiated in Hello and independent of the
 // node protocol's `proto_major` -- ADR-0005 section 5's point that version and
-// capability set are orthogonal applies here too.
-inline constexpr std::uint8_t kDebugProtocolVersion = 1;
+// capability set are orthogonal applies here too. v2 added the session
+// generation to `HelloBody`; a v1 body still decodes (see `decode_hello`).
+inline constexpr std::uint8_t kDebugProtocolVersion = 2;
 
 enum class Opcode : std::uint16_t {
     // Requests
@@ -223,15 +224,26 @@ enum class Orientation : std::uint8_t {
 // Bodies
 // ---------------------------------------------------------------------------
 
-// Hello (request): version the host speaks.
-// HelloOk (response): version the device speaks, plus who it is.
+// Hello (request): version the host speaks, and the session it is opening.
+// HelloOk (response): version the device speaks, who it is, and that session
+// echoed unchanged.
 struct HelloBody {
-    std::uint8_t protocol_version = kDebugProtocolVersion;
-    char         board_id[24]     = {};  // BoardProfile::id, NUL-padded
-    char         build[24]        = {};  // "simulator" or a firmware version
+    std::uint8_t  protocol_version = kDebugProtocolVersion;
+    char          board_id[24]     = {};  // BoardProfile::id, NUL-padded
+    char          build[24]        = {};  // "simulator" or a firmware version
+    // The session epoch ADR-0005 section 5 asks the HELLO reply to carry. The
+    // host draws it, non-zero, every time it opens the port; the device ends
+    // whatever session came before and answers `HelloOk` carrying the same
+    // value. Everything the device wrote before that `HelloOk` belongs to the
+    // old session, which is how a host tells its own reply from one addressed
+    // to a process that exited with the cable still in (#348). Not proof of
+    // anything: a correlation, exactly like `req_id`, one level up.
+    // 0 is what a v1 host sends by not sending it.
+    std::uint32_t session          = 0;
 };
 
-inline constexpr std::size_t kHelloBodyBytes = 1 + 24 + 24;
+inline constexpr std::size_t kHelloV1BodyBytes = 1 + 24 + 24;
+inline constexpr std::size_t kHelloBodyBytes   = kHelloV1BodyBytes + 4;
 
 std::size_t encode_hello(const HelloBody& in, std::uint8_t* out, std::size_t capacity);
 bool        decode_hello(const std::uint8_t* body, std::size_t len, HelloBody& out);

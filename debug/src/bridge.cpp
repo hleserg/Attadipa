@@ -123,7 +123,7 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
 
     switch (envelope.op) {
     case Opcode::Hello:
-        handle_hello(envelope.req_id, body, envelope.body_len, emit, ctx);
+        handle_hello(envelope.req_id, body, envelope.body_len, now_ms, emit, ctx);
         return;
     case Opcode::Capabilities:
         handle_capabilities(envelope.req_id, emit, ctx);
@@ -376,35 +376,42 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
 }
 
 void Bridge::handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::size_t len,
-                          Emit emit, void* ctx)
+                          std::uint32_t now_ms, Emit emit, void* ctx)
 {
     HelloBody incoming;
     if (!decode_hello(body, len, incoming)) {
         send_error(req_id, ErrorCode::BadBody, emit, ctx);
         return;
     }
-    // A HELLO IS A NEW HOST, so the forget-bond correlation from the old one is
-    // dropped here for the same reason `on_disconnect` drops it: the stored
-    // req_id belongs to somebody who is gone.
+    // A HELLO IS A NEW SESSION, and the old one ends here, in full, for the
+    // same reason `on_disconnect` ends it: the remote holds, the transfer and
+    // the forget-bond correlation all belong to a host that is gone.
     //
     // `on_disconnect` alone was not enough. It runs off
     // `usb_serial_jtag_is_connected()`, which is a bus condition rather than
     // "the process closed the tty", so a host that times out and exits with the
     // cable in never triggers it. The next invocation then restarts its request
-    // ids at 1 and sends `mesh-forget-bond` as req_id 3, exactly as its
-    // predecessor did -- and a reply `tick` writes against the *old* 3, in the
-    // poll between this `HelloOk` and that request arriving, is matched by the
-    // new host as its own answer. `{"forgotten": true}` before the bond store
-    // was touched, which is #378 with the whole of the fix in place.
+    // ids at 1 and asks the same questions in the same order as its
+    // predecessor -- so every late reply written against the old 1, 2, 3 is
+    // addressed to the new host's request of the same number. Until #348 only
+    // `forget_` was dropped here, which closed the one reply #378 had made
+    // reachable and left a screen transfer in flight to keep pouring the
+    // previous host's chunks into the new host's frame.
     //
-    // The host-side eviction in `_allocate_req_id` closes the frame that
-    // arrived before the id was issued; this closes the one that arrives after.
-    // Not cancelling anything: the deletion is on the worker and the bond is
-    // the owner's, not the connection's. Clearing the correlation only says
-    // nobody is waiting for that answer -- and if one genuinely is still
-    // running, the sink still knows, because `reserve()` refuses and the next
-    // request is answered `Busy` rather than silently accepted.
-    forget_.active = false;
+    // The session generation is what lets the host tell the two apart. It is
+    // echoed unchanged in the `HelloOk`, and a host that has just opened the
+    // port discards everything it reads ahead of the `HelloOk` carrying its own
+    // generation. That is sound because this bridge writes in order and writes
+    // nothing for the old session after this line: `pump` is gated on the
+    // transfer this call ends, `tick` on the correlation it clears, and every
+    // other reply is written inside the request that asked for it. Nothing
+    // here is authentication -- two hosts that both draw a generation are
+    // still whatever the host OS let open the port (docs/testing/
+    // WATCH_CONTROL.md, "The trust boundary"). Not cancelling a deletion,
+    // either: it is on the worker and the bond is the owner's, and if one is
+    // genuinely still running the sink still knows, because `reserve()`
+    // refuses and the next request is answered `Busy`.
+    on_disconnect(now_ms);
     // The version is reported, not enforced to be equal: ADR-0005 section 5
     // keeps version and capability set orthogonal, and a host one minor behind
     // should learn what it is talking to rather than be hung up on. This is
@@ -414,6 +421,7 @@ void Bridge::handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::s
     reply.protocol_version = kDebugProtocolVersion;
     std::strncpy(reply.board_id, source_.board_id(), sizeof(reply.board_id) - 1);
     std::strncpy(reply.build, source_.build_id(), sizeof(reply.build) - 1);
+    reply.session = incoming.session;
 
     std::uint8_t      out[kHelloBodyBytes] = {};
     const std::size_t n                    = encode_hello(reply, out, sizeof(out));
@@ -757,9 +765,10 @@ void Bridge::handle_input(std::uint16_t req_id, const std::uint8_t* body, std::s
             break;
         }
         ++stats_.events_refused;
-        // Its own code. `Busy` means a screen transfer is already running; a
-        // dropped swipe point answering with it sent the reader to the wrong
-        // subsystem entirely.
+        // Its own code. `Busy` means the device is already doing one of those
+        // -- a screen transfer, or since #378 a bond deletion -- and a dropped
+        // swipe point answering with it sent the reader to the wrong subsystem
+        // entirely.
         send_error(req_id, ErrorCode::QueueFull, emit, ctx);
         return;
     }
