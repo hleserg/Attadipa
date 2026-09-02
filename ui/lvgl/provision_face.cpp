@@ -19,14 +19,15 @@ void bare(lv_obj_t *object) {
   lv_obj_remove_flag(object, LV_OBJ_FLAG_CLICKABLE);
 }
 
-// Row-major: three digit rows, then sign / 0 / erase, then OK across the
-// whole width. The order is the order a person expects from a phone.
+// Row-major: three digit rows, then sign / 0 / erase, then Cancel and a
+// double-width OK. The order is the order a person expects from a phone, and
+// the way out sits where a phone puts it, left of the way through.
 constexpr apps::EntryKey kKeys[] = {
     apps::EntryKey::Digit1, apps::EntryKey::Digit2, apps::EntryKey::Digit3,
     apps::EntryKey::Digit4, apps::EntryKey::Digit5, apps::EntryKey::Digit6,
     apps::EntryKey::Digit7, apps::EntryKey::Digit8, apps::EntryKey::Digit9,
     apps::EntryKey::Sign,   apps::EntryKey::Digit0, apps::EntryKey::Backspace,
-    apps::EntryKey::Ok,
+    apps::EntryKey::Cancel, apps::EntryKey::Ok,
 };
 constexpr unsigned kColumns = 3;
 constexpr unsigned kRows = 5;
@@ -39,6 +40,8 @@ const char *label_of(apps::EntryKey key, const apps::EntryText &text) {
     return "±";
   case apps::EntryKey::Backspace:
     return text.backspace;
+  case apps::EntryKey::Cancel:
+    return text.cancel;
   case apps::EntryKey::Ok:
     return text.ok;
   default:
@@ -123,7 +126,7 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
   // The keypad takes what the three lines above leave. A key is as tall as a
   // fifth of that allows and never taller than a touch target: on the
   // 410 x 502 panel that is under 44 dp already, and on a 240 x 240 one it is
-  // a good deal under, which is the price of twelve keys on 1.54 inches and
+  // a good deal under, which is the price of fourteen keys on 1.54 inches and
   // the reason this screen is entered on purpose and not in passing.
   const int keypad_top = hint_top + line * hint_lines + gap;
   const int keypad_height = static_cast<int>(config.height_px) - keypad_top -
@@ -151,7 +154,7 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
     lv_obj_t *button = lv_button_create(keypad_);
     lv_obj_remove_style_all(button);
     lv_obj_remove_flag(button, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(button, ok ? width : key_width, key_height);
+    lv_obj_set_size(button, ok ? key_width * 2 + gap : key_width, key_height);
     const int row = static_cast<int>(i / kColumns);
     const int column = static_cast<int>(i % kColumns);
     lv_obj_set_pos(button, column * (key_width + gap),
@@ -164,7 +167,7 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
         static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
     // No border: a rounded border is the one thing on this screen the
     // software renderer cannot draw into a snapshot twice -- the second
-    // 617 kB capture of thirteen of them finds no room in LVGL's pool, on
+    // 617 kB capture of thirteen of them found no room in LVGL's pool, on
     // the simulator and on the device alike. The raised fill is the key.
     lv_obj_add_event_cb(button, key_event, LV_EVENT_CLICKED, this);
     // The key itself, not a pointer to it: fits in the user-data slot without
@@ -176,9 +179,10 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
     bare(label);
     // A word on a key, not a digit: the smaller face, or "Стереть" runs
     // past the key's edge on both panels.
-    lv_obj_set_style_text_font(
-        label, key == apps::EntryKey::Backspace ? small_font : key_font,
-        LV_PART_MAIN);
+    const bool word = key == apps::EntryKey::Backspace ||
+                      key == apps::EntryKey::Cancel;
+    lv_obj_set_style_text_font(label, word ? small_font : key_font,
+                               LV_PART_MAIN);
     lv_obj_set_style_text_color(label, ok ? page : ink, LV_PART_MAIN);
     lv_label_set_text(label, label_of(key, initial));
     lv_obj_center(label);
@@ -186,6 +190,8 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
       sign_key_ = button;
     } else if (key == apps::EntryKey::Backspace) {
       backspace_key_ = button;
+    } else if (key == apps::EntryKey::Cancel) {
+      cancel_key_ = button;
     } else if (ok) {
       ok_key_ = button;
     }
@@ -202,6 +208,7 @@ void ProvisionFace::clear() {
   sign_key_ = nullptr;
   ok_key_ = nullptr;
   backspace_key_ = nullptr;
+  cancel_key_ = nullptr;
 }
 
 void ProvisionFace::update() {
@@ -214,6 +221,7 @@ void ProvisionFace::update() {
   lv_label_set_text(hint_, text.hint);
   lv_label_set_text(lv_obj_get_child(ok_key_, 0), text.ok);
   lv_label_set_text(lv_obj_get_child(backspace_key_, 0), text.backspace);
+  lv_label_set_text(lv_obj_get_child(cancel_key_, 0), text.cancel);
   text.sign_key ? lv_obj_remove_flag(sign_key_, LV_OBJ_FLAG_HIDDEN)
                 : lv_obj_add_flag(sign_key_, LV_OBJ_FLAG_HIDDEN);
   text.done ? lv_obj_add_flag(keypad_, LV_OBJ_FLAG_HIDDEN)

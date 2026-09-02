@@ -16,7 +16,7 @@ struct ProvisionFaceConfig {
   l10n::Locale locale = l10n::Locale::En;
 };
 
-// The entry screen: a field above, twelve keys below. Every key goes straight
+// The entry screen: a field above, fourteen keys below. Every key goes straight
 // to `ProvisioningEntry::press()` and the face redraws from `text()`; it has
 // no state of its own beyond the objects it made.
 class ProvisionFace {
@@ -38,6 +38,7 @@ private:
   lv_obj_t *sign_key_ = nullptr;
   lv_obj_t *ok_key_ = nullptr;
   lv_obj_t *backspace_key_ = nullptr;
+  lv_obj_t *cancel_key_ = nullptr;
   bool built_ = false;
 };
 

@@ -49,8 +49,11 @@ cannot honestly resume where it left off.
   opcode above exists only in the HIL build. The product's first real input is
   the watch itself: a long press on the clock opens an entry screen for the
   date, the time, the offset and the node passkey
-  (`apps/include/attadipa/apps/provisioning.h:43` — "class ProvisioningEntry {"), and the board's
-  `firmware/main/waveshare_board.cpp:402` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
+  (`apps/include/attadipa/apps/provisioning.h:55` — "class ProvisioningEntry {"); a Cancel key
+  leaves it at any point, and nothing reaches the board before the offset is
+  accepted (`apps/include/attadipa/apps/provisioning.h:35` — "Cancel,"), so a
+  long press made by accident costs one key and not a retyped clock. The board's
+  `firmware/main/waveshare_board.cpp:403` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
   runs the same `provision_time()` sequence as the opcode, with the same
   order and the same one-day lifetime. Whoever holds the watch may set it —
   [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26 decided that.

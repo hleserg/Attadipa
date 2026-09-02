@@ -1,17 +1,11 @@
 #include "attadipa/apps/provisioning.h"
 
-#include <cstdio>
-
 #include "attadipa/apps/clock.h"
 #include "attadipa/l10n/string_id.h"
 #include "attadipa/l10n/tr.h"
 
 namespace attadipa::apps {
 namespace {
-
-// How long a hand-entered time is trusted before the RTC's own reading takes
-// over again: the same day the USB bridge's default asks for.
-constexpr std::uint32_t kManualValidForMs = 86400U * 1000U;
 
 unsigned number(const char* digits, unsigned from, unsigned count) {
   unsigned value = 0;
@@ -74,6 +68,14 @@ void ProvisioningEntry::press(EntryKey key) {
     return;
   case EntryKey::Ok:
     accept();
+    return;
+  case EntryKey::Cancel:
+    // Past the offset the clock is already the board's; leaving then is the
+    // empty-passkey skip by another key, and says so.
+    verdict_ = field_ == EntryField::Passkey ? EntryVerdict::Skipped
+                                             : EntryVerdict::Cancelled;
+    field_ = EntryField::Done;
+    count_ = 0;
     return;
   default:
     return;
@@ -181,6 +183,7 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
   EntryText out;
   out.ok = l10n::tr(StringId::ProvisionKeyOk, locale);
   out.backspace = l10n::tr(StringId::ProvisionKeyErase, locale);
+  out.cancel = l10n::tr(StringId::ProvisionKeyCancel, locale);
   out.sign_key = field_ == EntryField::Offset;
   out.done = field_ == EntryField::Done;
 
@@ -221,6 +224,9 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
     break;
   case EntryVerdict::Skipped:
     hint = StringId::ProvisionSkipped;
+    break;
+  case EntryVerdict::Cancelled:
+    hint = StringId::ProvisionCancelled;
     break;
   }
   out.title = l10n::tr(title, locale);

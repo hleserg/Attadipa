@@ -455,6 +455,10 @@ ru = "без кода; часы установлены"
 en = "the watch is set up"
 ru = "часы настроены"
 
+[provision_cancelled]
+en = "nothing changed"
+ru = "ничего не изменено"
+
 [provision_key_ok]
 en = "OK"
 ru = "OK"
@@ -462,3 +466,7 @@ ru = "OK"
 [provision_key_erase]
 en = "Erase"
 ru = "Стереть"
+
+[provision_key_cancel]
+en = "Cancel"
+ru = "Отмена"

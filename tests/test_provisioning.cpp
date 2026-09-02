@@ -241,6 +241,51 @@ int main()
         entry.press(EntryKey::Ok);
         CHECK(std::strstr(entry.text(Locale::En).hint, "check") != nullptr);
     }
+    // Cancel before the offset is accepted leaves nothing behind: the board
+    // was never asked, and the screen says so.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        type(entry, "20260902");
+        entry.press(EntryKey::Ok);
+        type(entry, "12");
+        entry.press(EntryKey::Cancel);
+        CHECK(entry.finished());
+        CHECK(entry.verdict() == EntryVerdict::Cancelled);
+        CHECK(board.clocks == 0 && board.passkeys == 0);
+        CHECK(entry.text(Locale::En).done);
+        CHECK(std::strcmp(entry.text(Locale::En).hint, "nothing changed") == 0);
+        CHECK(std::strcmp(entry.text(Locale::En).cancel, "Cancel") == 0);
+        // Keys after a cancel do nothing either.
+        type(entry, "3");
+        entry.press(EntryKey::Ok);
+        CHECK(board.clocks == 0 && entry.finished());
+    }
+    // Cancel on the passkey is the empty-passkey skip: the clock the person
+    // just set stays set, and no passkey reaches the board.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        type(entry, "20260902");
+        entry.press(EntryKey::Ok);
+        type(entry, "1230");
+        entry.press(EntryKey::Ok);
+        type(entry, "0000");
+        entry.press(EntryKey::Ok);
+        CHECK(board.clocks == 1 && entry.field() == EntryField::Passkey);
+        type(entry, "12");
+        entry.press(EntryKey::Cancel);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
+        CHECK(board.clocks == 1 && board.passkeys == 0);
+    }
+    // Cancel on a fresh screen: a long press made by accident costs one key.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        entry.press(EntryKey::Cancel);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Cancelled);
+        CHECK(board.clocks == 0 && board.passkeys == 0);
+    }
 
     return failures == 0 ? 0 : 1;
 }
