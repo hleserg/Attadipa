@@ -4,6 +4,7 @@
 #include "meshcore_boot.h"
 #include "meshcore_node_pin.h"
 #include "meshcore_passkey.h"
+#include "meshcore_passkey_outcome.h"
 #include "meshcore_write_outcome.h"
 
 #include <algorithm>
@@ -104,6 +105,11 @@ struct Event {
     // posts to replay a stored passkey does not, or every boot would rewrite
     // flash with what it just read.
     bool persist_passkey = false;
+    // Who is waiting for this Configure to finish, if anybody is. Zero is the
+    // boot replay and the debug bridge, which post and do not wait; the entry
+    // screen reserves a ticket first and reads the answer back under it
+    // (meshcore_passkey_outcome.h).
+    std::uint32_t passkey_ticket = 0;
     attadipa::core::WallTime timestamp{};
     std::array<std::uint8_t, attadipa::link::kMeshCoreFrameBytes> bytes{};
     std::array<std::uint8_t, 6> peer_prefix{};
@@ -397,6 +403,11 @@ bool claim_send()
 // request task reserves it and the worker completes it; the rules are in
 // meshcore_forget_outcome.h, which the host tests compile.
 attadipa::firmware::ForgetBondOperation forget_op;
+
+// The same shape for the entry screen's passkey, and for the same reason: the
+// arming and the flash write happen on this worker, and the screen that asked
+// is on the LVGL task. meshcore_passkey_outcome.h, compiled by the host tests.
+attadipa::firmware::PasskeyOperation passkey_op;
 
 attadipa::core::MonotonicTime now()
 {
@@ -1384,11 +1395,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:161` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:167` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1441` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1452` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:829` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:840` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1441,20 +1452,41 @@ void mesh_task(void*)
                 secure_pairing.store(event.passkey != 0);
                 if (event.passkey != 0 &&
                     ble_sm_configure_static_passkey(event.passkey, true) != 0) {
+                    // Whoever asked hears this. Before #416 the only record
+                    // that the stack had refused was the fault the provider
+                    // takes below, which nothing above the transport reads --
+                    // so a watch whose passkey was never armed had already
+                    // told its holder it was set up.
+                    passkey_op.complete(
+                        event.passkey_ticket,
+                        attadipa::firmware::PasskeyOutcome::Refused);
                     provider.fault(now());
                     break;
                 }
                 // Stored after the stack has taken it and before the session
                 // is told, so that what flash holds is a passkey this image
                 // accepted. A refused write is this boot's problem only: the
-                // watch is configured, and says it will not be next time.
-                if (event.persist_passkey && !store_passkey(event.passkey)) {
+                // watch is configured, and says it will not be next time --
+                // and now says it to the screen as well, because "it will be
+                // gone at the next boot" is not a fact a serial log can carry
+                // to somebody holding the watch.
+                const bool stored =
+                    !event.persist_passkey || store_passkey(event.passkey);
+                if (!stored) {
                     ESP_LOGE(kTag,
                              "MeshCore passkey armed but not stored; it will "
                              "not survive a power cycle");
                 }
                 configured.store(true);
                 reconnect_allowed.store(true);
+                // Armed and, where it had to be, on flash: everything the
+                // request asked for has happened. What is left below is the
+                // transport's own reconnection, which is not what the person
+                // typing a passkey is waiting to hear.
+                passkey_op.complete(
+                    event.passkey_ticket,
+                    stored ? attadipa::firmware::PasskeyOutcome::Armed
+                           : attadipa::firmware::PasskeyOutcome::NotStored);
                 // A Configure that lands on a live session is a
                 // reconfiguration, and it cannot be applied to the session it
                 // would reconfigure: the passkey above governs pairing, and
@@ -1717,6 +1749,9 @@ struct RealBootOps {
 // replay is not re-stored -- is `meshcore_passkey.h`; this is its NVS and its
 // queue.
 struct PasskeyOps {
+    // Zero unless somebody is waiting on the answer; see Event::passkey_ticket.
+    std::uint32_t ticket = 0;
+
     attadipa::firmware::StoredPasskey load(std::uint32_t& out)
     {
         return load_passkey(out);
@@ -1726,6 +1761,7 @@ struct PasskeyOps {
         Event event{EventKind::Configure};
         event.passkey = passkey;
         event.persist_passkey = persist;
+        event.passkey_ticket = ticket;
         return post(event);
     }
 };
@@ -1844,8 +1880,56 @@ bool configure_meshcore_ble(std::uint32_t passkey)
     // boot would leave a product image scanning in the clear with nobody
     // having asked, and the Room Server password crosses the air inside those
     // frames.
+    //
+    // No ticket: this is the debug channel's `mesh-configure`, which is
+    // watching the console the worker logs to. The watch's own screen is not,
+    // and takes meshcore_ble_configure_passkey() below instead.
     PasskeyOps ops;
     return attadipa::firmware::request_passkey(ops, passkey);
+}
+
+esp_err_t meshcore_ble_configure_passkey(std::uint32_t passkey,
+                                         std::uint32_t& ticket)
+{
+    // `ticket` is written only on ESP_OK: on every refusal it keeps naming
+    // whatever the caller last had in flight, which the busy refusal below
+    // is precisely about -- the screen reads that ticket next to learn
+    // whether the earlier passkey may still arm (#416, review round 2).
+    // Only a pairing passkey. The unpaired probe is a diagnostic somebody asks
+    // for while watching the console; a screen with a keypad cannot ask for it
+    // and must not be able to arm an unencrypted scan by typing six zeros.
+    if (!attadipa::firmware::is_pairing_passkey(passkey)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    // Reserved before the event is queued, and one at a time -- the same order
+    // meshcore_ble_forget_bond() uses, for the same reason: a slot claimed
+    // after the post is a slot the worker can complete before it exists.
+    std::uint32_t reserved = 0;
+    if (!passkey_op.reserve(reserved)) return ESP_ERR_NOT_FINISHED;
+    PasskeyOps ops;
+    ops.ticket = reserved;
+    if (!attadipa::firmware::request_passkey(ops, passkey)) {
+        // SAID OUT LOUD, for the reason the forget-bond one is: `post()` is a
+        // zero-wait `xQueueSend` and writes nothing of its own, so without
+        // this line a request the watch threw away and a request that never
+        // arrived leave the same evidence. The screen is told too -- this
+        // returns a failure and the entry stays where it is -- but the log is
+        // the only place that says which of the two ways it failed.
+        ESP_LOGE(kTag,
+                 "MeshCore passkey: the worker queue was full, so the request"
+                 " was dropped before the stack saw it; the watch is not"
+                 " configured");
+        passkey_op.release(reserved);
+        return ESP_ERR_NO_MEM;
+    }
+    ticket = reserved;
+    return ESP_OK;
+}
+
+attadipa::firmware::PasskeyOutcome
+meshcore_ble_passkey_outcome(std::uint32_t ticket)
+{
+    return passkey_op.take(ticket);
 }
 
 bool stop_meshcore_ble()

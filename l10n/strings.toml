@@ -447,6 +447,15 @@ ru = "не принято — проверьте"
 en = "could not be stored"
 ru = "не удалось сохранить"
 
+# The passkey is armed and written on the radio worker, not on the task that
+# takes the key press, so there is a moment where neither "set up" nor "could
+# not be stored" is true yet (#416). This is that moment, and it is also what
+# the screen says to somebody who leaves during it: the request is with the
+# radio either way, and the watch will not pretend to know how it ended.
+[provision_pending]
+en = "still setting up the node"
+ru = "узел ещё настраивается"
+
 [provision_skipped]
 en = "no passkey; the clock is set"
 ru = "без кода; часы установлены"

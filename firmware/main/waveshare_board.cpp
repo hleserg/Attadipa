@@ -468,11 +468,36 @@ public:
       return attadipa::core::ProvisionOutcome::Failed;
     }
 #if CONFIG_BT_NIMBLE_ENABLED
-    // `true` here is a post to the radio worker, not its answer: the stack's
-    // own refusal, if any, reaches only the serial log (`meshcore_ble.cpp`).
-    return configure_meshcore_ble(passkey)
-               ? attadipa::core::ProvisionOutcome::Accepted
-               : attadipa::core::ProvisionOutcome::Failed;
+    // Queued, and that is all this says. The passkey is armed and written on
+    // the radio worker, and `mesh_passkey_outcome()` below is where that
+    // finishes -- #416, where this returned `Accepted` for a post and the
+    // screen printed "the watch is set up" over a stack that had not been
+    // asked yet.
+    if (meshcore_ble_configure_passkey(passkey, passkey_ticket_) != ESP_OK) {
+      return attadipa::core::ProvisionOutcome::Failed;
+    }
+    return attadipa::core::ProvisionOutcome::Pending;
+#else
+    return attadipa::core::ProvisionOutcome::Failed;
+#endif
+  }
+
+  attadipa::core::ProvisionOutcome mesh_passkey_outcome() override {
+#if CONFIG_BT_NIMBLE_ENABLED
+    switch (meshcore_ble_passkey_outcome(passkey_ticket_)) {
+    case attadipa::firmware::PasskeyOutcome::InFlight:
+      return attadipa::core::ProvisionOutcome::Pending;
+    case attadipa::firmware::PasskeyOutcome::Armed:
+      passkey_ticket_ = 0;
+      return attadipa::core::ProvisionOutcome::Accepted;
+    default:
+      // Refused, NotStored, and Idle with them. Idle means the answer was
+      // already taken or the ticket is not this slot's any more, so there is
+      // no operation left to wait for; reporting that as Pending would hold
+      // the screen open for an answer that is never coming.
+      passkey_ticket_ = 0;
+      return attadipa::core::ProvisionOutcome::Failed;
+    }
 #else
     return attadipa::core::ProvisionOutcome::Failed;
 #endif
@@ -482,6 +507,11 @@ private:
   // A day. The RTC keeps counting after that; what expires is the trust in
   // the offset a person typed, the same way it would for a host's.
   static constexpr std::uint32_t kManualValidForMs = 24U * 60U * 60U * 1000U;
+
+  // Not atomic and does not need to be: both halves of a passkey request are
+  // made by the entry screen, which is the LVGL task. The worker's half of the
+  // handover is the slot in `meshcore_passkey_outcome.h`, which is.
+  std::uint32_t passkey_ticket_ = 0;
 };
 
 BoardProvisioner provisioner;
@@ -820,6 +850,14 @@ void refresh_ui(lv_timer_t *timer) {
   }
 #endif
   if (state.entry.has_value()) {
+    // The radio's half of a passkey arrives here, on the tick, and not on a
+    // key press -- so this is the only thing that can move the screen off
+    // "still setting up the node" (#416). One second is the clock's tick and
+    // therefore the longest a person waits for an answer the worker usually
+    // has in milliseconds.
+    if (state.entry->poll()) {
+      state.provision_face.update();
+    }
     if (!state.entry->finished() || ++state.done_ticks < kDoneTicks) {
       return;
     }

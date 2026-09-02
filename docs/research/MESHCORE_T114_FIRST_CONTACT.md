@@ -625,7 +625,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1. What the *store* does when a second node bonds is no longer open, but it was settled by reading the vendor tree rather than on this bench: [VERIFIED_FACTS.md](VERIFIED_FACTS.md) "A wrong MeshCore node's bond evicts the pinned node's". This row is the bench half and stays `UNKNOWN` until a run exercises it |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1840`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1443`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1451` "store_passkey(event.passkey)") and replayed at boot; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1876`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1454`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1474` "store_passkey(event.passkey)") and replayed at boot; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
@@ -681,6 +681,36 @@ It deletes only the bond that the conflict recorded — it takes no peer to name
 — and arms one fresh pairing. With no conflict recorded it refuses, and says
 so in those words rather than as a malformed-request error, so the ordinary
 state is distinguishable from a fault; it is not a way to walk the bond store.
+
+**And for the case this subsection is about, it is step one of a recovery whose
+step two does not exist.** Corrected 2026-09-02 by
+[#409](https://github.com/hleserg/Attadipa/issues/409): the node whose keys are
+gone is a node that was factory-reset, and a factory reset also regenerates its
+public key — the row at [`:50`](MESHCORE_T114_FIRST_CONTACT.md)
+"a factory reset regenerates it" is the `MEASURED` fact three paragraphs of this
+section rest on. So after `mesh-forget-bond` — and a `Configure` carrying the
+node's current digits, since a reset node shows new ones at every boot — the
+watch pairs afresh, completes
+the handshake, reads a key that is not the one it is pinned to, and refuses the
+node: [`../../firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
+— "return PinOutcome::Refused;". Nothing in any image erases the pin — the sole
+writer is [`../../firmware/main/meshcore_ble.cpp:389`](../../firmware/main/meshcore_ble.cpp)
+— "nvs_set_blob(handle, kNodeKeyNvsKey" and there is no eraser beside it — so
+the watch refuses the node once a minute, indefinitely, and `idf.py erase-flash`
+is the only way back. `mesh-forget-bond` is still correct and still necessary;
+it is sufficient only if the node somehow lost its bond while **keeping** its
+public key, and no operation is known that does that. Full trace, and the
+minimum atomic scope a real recovery would need, in
+[MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md).
+
+**A second thing this section did not know: the node's passkey does not survive
+its own reset either.** At `d929643`, a T114 with a display whose preferences
+were wiped (`ble_pin == 0`) generates a fresh six-digit passkey at *every* boot —
+`_active_ble_pin = rng.nextInt(100000, 999999); // random pin each session` in
+`examples/companion_radio/MyMesh.cpp`. So the sentence below about
+`mesh-configure` not being needed again is about a watch reboot, and must not be
+read as covering a *node* reset: after one of those the stored passkey is stale,
+and stale again after the node's next power cycle.
 
 **The reply waits for the deletion.** Until #378 it did not: the request was
 answered when it reached the event queue, so the operator was told the bond was

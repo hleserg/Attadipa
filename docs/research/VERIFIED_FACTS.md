@@ -336,13 +336,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:1684`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1716`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
-  ([`firmware/main/meshcore_ble.cpp:161`](../../firmware/main/meshcore_ble.cpp)
+  ([`firmware/main/meshcore_ble.cpp:167`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1441`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1452`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -359,6 +359,94 @@ reader ends up citing the one that was not updated.
   [`firmware/main/meshcore_node_pin.h`](../../firmware/main/meshcore_node_pin.h)
   "struct RefusalState {" only bounds how often it recurs, which is why a
   second wrong node in range has to raise a floor rather than overwrite a slot.
+
+### A stored bond makes the watch encrypt, not pair — so re-entering a passkey cannot clear it
+
+- **Claim:** while a bond for the peer is in the store, arming a passkey and
+  reconnecting does **not** run the pairing procedure, so the passkey is never
+  consulted. As a central the watch encrypts with the stored LTK, and a node
+  that has lost its half answers `PIN or Key Missing` again. There is no
+  sequence of passkey entries that recovers a stale bond.
+- **Source (upstream, read):** `ble_gap_security_initiate()` at
+  `nimble/host/src/ble_gap.c:9216-9235` — "perform the encryption procedure
+  rather than the pairing procedure" — reads `ble_store_read_peer_sec()` and,
+  when `value_sec.ltk_present`, calls `ble_sm_enc_initiate()` instead of
+  `ble_sm_pair_initiate()`. Read at `espressif/esp-nimble`
+  `685675c0128deafdd201c9eb82e61d227364646c`, which is the submodule SHA
+  `espressif/esp-idf@v5.5.5` records for
+  `components/bt/host/nimble/nimble`.
+- **Source (this repository):** the watch is the central and takes that branch
+  from [`firmware/main/meshcore_ble.cpp:840`](../../firmware/main/meshcore_ble.cpp)
+  "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
+  [`firmware/main/meshcore_ble.cpp:1481`](../../firmware/main/meshcore_ble.cpp)
+  "reconnect_allowed.store(true);".
+- **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
+- **Boundary — source-traced, not measured.** No stale bond has been made on
+  this bench. The lookup is keyed on the peer's identity address, so if a reset
+  node's BLE address changed the store would miss and the watch would pair
+  afresh instead; whether it changes is **UNKNOWN**.
+- **Consequence:** a product image cannot recover from a stale bond by any
+  action it has. See
+  [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md) §3.
+
+### No image can clear the pinned MeshCore node key, so deleting the stale bond does not finish the recovery
+
+- **Claim:** `mesh-forget-bond` deletes the bond and re-arms one pairing, but once a
+  `Configure` carries the node's current digits the watch pairs afresh, reads the reset
+  node's **new** public key and refuses it: the pin, in NVS and in RAM, still names the old one. Nothing in the product image,
+  the HIL image or the debug protocol erases that pin. The only recovery is
+  `idf.py erase-flash`, which takes the bonds and the time metadata with it.
+- **Source (this repository):** the refusal is
+  [`firmware/main/meshcore_node_pin.h:194`](../../firmware/main/meshcore_node_pin.h)
+  "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
+  [`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
+  "return PinOutcome::Refused;", latched by
+  [`link/src/meshcore_companion.cpp:397`](../../link/src/meshcore_companion.cpp)
+  "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
+  is [`firmware/main/meshcore_ble.cpp:389`](../../firmware/main/meshcore_ble.cpp)
+  "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
+  the passkey instead —
+  [`firmware/main/meshcore_ble.cpp:378`](../../firmware/main/meshcore_ble.cpp)
+  "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". The mesh opcode
+  block ends at
+  [`debug/include/attadipa/debug/protocol.h:84`](../../debug/include/attadipa/debug/protocol.h)
+  "MeshForgetBond= 0x0054".
+- **Precondition, `MEASURED`:** a factory reset regenerates the node's key —
+  [MESHCORE_T114_FIRST_CONTACT.md:50](MESHCORE_T114_FIRST_CONTACT.md)
+  "a factory reset regenerates it".
+- **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
+- **Boundary — source-traced, not measured.** No node has been reset while a
+  watch was pinned to it.
+- **Consequence:** two comments in the tree say the gap closes with #356 —
+  [`firmware/main/meshcore_ble.cpp:225`](../../firmware/main/meshcore_ble.cpp)
+  "re-pin**: nothing erases the " and
+  [`core/include/attadipa/core/mesh_service.h:61`](../../core/include/attadipa/core/mesh_service.h)
+  "until #356 there is no in-image way to re-pin". #356's implementation
+  excludes it, so the expectation expires with nothing behind it.
+
+### A factory-reset MeshCore node shows a new random BLE passkey at every boot
+
+- **Claim:** on a T114 with a display running MeshCore's companion BLE build,
+  a factory reset leaves `ble_pin == 0` in the node's preferences, and the node
+  then generates a fresh six-digit passkey on **each** power-on rather than
+  reusing one. A watch that stores one passkey and replays it at boot is
+  therefore wrong again as soon as the node restarts.
+- **Source (upstream, read):** `MyMesh::begin()` in
+  `examples/companion_radio/MyMesh.cpp` at `meshcore-dev/MeshCore@d929643`:
+  under `_prefs.ble_pin == 0` and `has_display`, `_active_ble_pin =
+  rng.nextInt(100000, 999999); // random pin each session`. The default is
+  `uint32_t ble_pin = 0;` in `examples/companion_radio/NodePrefs.h`; the reset
+  is `DataStore::formatFileSystem()`, which on nRF52 formats the filesystem the
+  preferences file lives in. The bench node's variant defines both flags:
+  `variants/heltec_t114/platformio.ini`, `[env:Heltec_t114_companion_radio_ble]`
+  extends `Heltec_t114_with_display` and sets `-D BLE_PIN_CODE=123456`.
+- **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
+- **Boundary — source-traced, not measured.** No node has been reset to see it.
+- **Consequence:** any recovery design that asks the owner to "re-enter your
+  passkey" is wrong for this fleet; the correct instruction is to read the
+  digits the node is showing now. A field test that types the old passkey after
+  a reset proves nothing. See
+  [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md) §5.
 
 ---
 
@@ -725,7 +813,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1782`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1870`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1757,7 +1845,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:708`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
