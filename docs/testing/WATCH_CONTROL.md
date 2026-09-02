@@ -479,7 +479,7 @@ tools/watch_control.py                the command line
        └───────────────────────────────────────────────────┘
 ```
 
-Five decisions worth knowing:
+Six decisions worth knowing:
 
 1. **It is not a second protocol.** `link::frame_codec`'s framing — sync `F1
    5E`, a checked length, CRC-16/CCITT, a resynchronising decoder — carries an
@@ -512,6 +512,13 @@ Five decisions worth knowing:
    of board facts — it asks. A tool that knew "the Waveshare is 410 × 502" would
    be the architecture rule broken in a script, and wrong the first time a panel
    was rotated.
+
+6. **One request per host write.** On the physical device a single write larger
+   than the USB-Serial/JTAG receive ring — 4 096 bytes — loses its tail in the
+   driver, before any byte reaches the decoder, and nothing counts it
+   ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md#one-host-write-larger-than-the-usb-receive-ring-loses-its-tail-before-the-decoder),
+   `MEASURED`). The client never batches requests into one write, so it never
+   gets there; a script that does must stay under that ring.
 
 ### Tests
 

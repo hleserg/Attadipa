@@ -342,12 +342,11 @@ void DebugServer::drop_client(std::uint32_t now_ms, debug::Bridge& bridge, const
     std::fflush(stdout);
 }
 
-// Dispatches every complete frame the decoder currently holds. Returns true if
-// it dispatched at least one, which is how the read loop above tells "the
-// decoder is full and stuck" from "the decoder is full and about to empty".
-bool DebugServer::dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge)
+// Dispatches every complete frame the decoder currently holds. It is the
+// drain `feed` runs before every offer and once after; whether it freed any
+// room is `push`'s next answer, so it reports nothing itself.
+void DebugServer::dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge)
 {
-    bool any = false;
     std::uint8_t payload[link::kMaxPayload];
     for (;;) {
         const link::FrameResult frame = decoder_.next(payload, sizeof(payload));
@@ -355,12 +354,10 @@ bool DebugServer::dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge)
             break;
         }
         if (frame.status == link::FrameStatus::OutputTooSmall) {
-            return any;
+            return;
         }
         bridge.handle(payload, frame.length, now_ms, &DebugServer::emit, this);
-        any = true;
     }
-    return any;
 }
 
 void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
@@ -435,33 +432,20 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
     // one poll. Pushing all of that before dispatching anything meant a client
     // that pipelined its commands had them silently refused by a full decoder,
     // which is the one thing this transport is not allowed to do quietly. The
-    // inner drain always makes progress: the buffer either holds a complete
+    // drain always makes progress: the buffer either holds a complete
     // frame, which `next` consumes, or a bad header, which it resynchronises
     // past one byte at a time.
     std::uint8_t chunk[4096];
     for (int reads = 0; reads < 8; ++reads) {
         const ssize_t got = ::recv(client_fd_, chunk, sizeof(chunk), 0);
         if (got > 0) {
-            const std::size_t total = static_cast<std::size_t>(got);
-            std::size_t       at    = 0;
-            while (at < total) {
-                // Drain *first*, then offer. The other order -- push, and on a
-                // refusal drain and push the same bytes again -- counted them
-                // into `input_dropped` on every attempt, because
-                // `Decoder::push` adds `length - accepted` itself
-                // (`frame_codec.cpp:89-91`). So the bytes were never lost
-                // silently; they were reported several times over, which is the
-                // same statistic being wrong in the friendlier direction.
-                // Draining first means a zero take is a real refusal, counted
-                // once, and there is nothing left to try.
-                (void)dispatch_ready(now_ms, bridge);
-                const std::size_t taken = decoder_.push(chunk + at, total - at);
-                if (taken == 0) {
-                    break;
-                }
-                at += taken;
-            }
-            (void)dispatch_ready(now_ms, bridge);
+            // `feed` drains before every offer and once after. What it still
+            // cannot place after a drain is the one real refusal, and the
+            // decoder counts it there, once. This loop used to be written out
+            // here and again in the firmware, each with its own idea of what a
+            // refusal was; now there is one, in `link`, and it is tested.
+            decoder_.feed(chunk, static_cast<std::size_t>(got),
+                          [&] { dispatch_ready(now_ms, bridge); });
             continue;
         }
         if (got == 0) {
@@ -476,7 +460,7 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
     }
 
     // Anything left over from an earlier poll.
-    (void)dispatch_ready(now_ms, bridge);
+    dispatch_ready(now_ms, bridge);
 
     // Pump the screenshot while there is room. The watermark is what keeps a
     // 600 kB transfer from stopping the interface: the socket sets the pace.

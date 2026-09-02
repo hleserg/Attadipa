@@ -57,8 +57,8 @@ public:
     const std::string& path() const { return path_; }
 
 private:
-    // Dispatches every complete frame the decoder holds; true if any went out.
-    bool dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge);
+    // Dispatches every complete frame the decoder holds; it is `feed`'s drain.
+    void dispatch_ready(std::uint32_t now_ms, debug::Bridge& bridge);
 
     void drop_client(std::uint32_t now_ms, debug::Bridge& bridge, const char* why);
     void flush();

@@ -940,6 +940,11 @@ void test_detach_from_a_non_live_phase_keeps_the_last_session_reason()
 
 // The decoder's buffer is finite, and what it does when a peer fills it faster
 // than anybody drains it is a design decision rather than an accident.
+// The buffer refuses what it cannot hold and says so by the return value. A
+// refusal is not yet a loss -- the caller may drain and offer the rest again,
+// and `feed` does exactly that -- so `push` counts nothing. `feed` with a
+// drain that frees nothing is the caller that gives up, and its count is the
+// exact remainder, once.
 void test_input_beyond_the_buffer_is_refused_and_counted()
 {
     Decoder decoder;
@@ -948,9 +953,19 @@ void test_input_beyond_the_buffer_is_refused_and_counted()
         noise[i] = static_cast<std::uint8_t>(i & 0xFFu);
     }
 
-    const std::size_t taken = decoder.push(noise, sizeof noise);
-    CHECK(taken < sizeof noise);
-    CHECK(decoder.stats().input_dropped > 0);
+    CHECK(decoder.push(noise, sizeof noise) == Decoder::kCapacity);
+    CHECK(decoder.stats().input_dropped == 0);
+
+    // Full, and a drain that frees nothing: the whole read is given up on.
+    std::size_t drains = 0;
+    CHECK(decoder.feed(noise, sizeof noise, [&] { ++drains; }) == 0);
+    CHECK(drains == 2);  // before the one offer, and once after giving up
+    CHECK(decoder.stats().input_dropped == sizeof noise);
+
+    // Empty, and the same drain: what fits goes in, the rest is counted once.
+    Decoder fresh;
+    CHECK(fresh.feed(noise, sizeof noise, [] {}) == Decoder::kCapacity);
+    CHECK(fresh.stats().input_dropped == sizeof noise - Decoder::kCapacity);
 
     // And it recovers: after draining, a real frame decodes.
     decoder.reset();
@@ -1318,7 +1333,7 @@ void test_a_frame_too_big_for_the_caller_does_not_end_the_drain()
     std::uint8_t more[64];
     fill(more, sizeof more);
     CHECK(decoder.push(more, sizeof more) == Decoder::kCapacity - encoded);
-    CHECK(decoder.stats().input_dropped > 0);
+    CHECK(decoder.stats().input_dropped == 0);  // refused, not lost: nobody gave up on them
 
     // Handled rather than treated as an exit, the frame comes out intact.
     std::uint8_t out[kMaxPayload];
@@ -1509,6 +1524,241 @@ void test_the_counters_agree_with_what_was_observable()
     CHECK(popped == queue.accepted());
 }
 
+// ---------------------------------------------------------------------------
+// A refusal is not a loss until somebody gives up on the bytes (#347).
+//
+// `push` refuses what it cannot hold and says so by its return; the count of
+// what was *lost* belongs to whoever abandons the remainder. Both production
+// readers -- the simulator's 4096-byte `recv`, the firmware's 1024-byte USB
+// read -- hand a read to `Decoder::feed`, which drains between offers and
+// gives up only on what a drain could not make room for. These tests run that
+// same function, not a copy of the loop.
+
+// The frames a burst is made of: every size that matters, the two largest
+// placed so that no 200-byte buffer holds a pair of them, and an empty frame
+// where a resync would be most tempting. Repeated, the burst outgrows both
+// production read sizes.
+constexpr std::size_t kBurstPattern[] = {0, 1, 17, 64, kMaxPayload, 5, 128, 0, 33, kMaxPayload};
+constexpr std::size_t kBurstPatternFrames = sizeof kBurstPattern / sizeof kBurstPattern[0];
+constexpr std::size_t kBurstFrames        = kBurstPatternFrames * 6;
+
+struct Burst {
+    std::uint8_t wire[kBurstFrames * kMaxFrame];
+    std::size_t  length = 0;
+};
+
+std::size_t  burst_size(std::size_t frame) { return kBurstPattern[frame % kBurstPatternFrames]; }
+std::uint8_t burst_seed(std::size_t frame) { return static_cast<std::uint8_t>(frame * 13u + 1u); }
+
+void make_burst(Burst& burst)
+{
+    burst.length = 0;
+    std::uint8_t payload[kMaxPayload];
+    for (std::size_t frame = 0; frame < kBurstFrames; ++frame) {
+        fill(payload, burst_size(frame), burst_seed(frame));
+        burst.length += encode(payload, burst_size(frame), burst.wire + burst.length,
+                               sizeof burst.wire - burst.length);
+    }
+}
+
+// Feed a burst in reads of `read` bytes, exactly as the production loops feed
+// theirs, checking every frame that comes out against the one that went in.
+struct FedBurst {
+    Decoder     decoder;
+    std::size_t frames_out = 0;
+    bool        in_order   = true;
+};
+
+void feed_in_reads(const Burst& burst, std::size_t read, FedBurst& fed)
+{
+    std::uint8_t out[kMaxPayload];
+    std::uint8_t expected[kMaxPayload];
+    auto drain = [&] {
+        for (;;) {
+            const FrameResult got = fed.decoder.next(out, sizeof out);
+            if (got.exhausted()) {
+                break;
+            }
+            if (!got) {
+                // Only OutputTooSmall reaches here -- a bad CRC never surfaces
+                // -- and `next()` would answer it again for ever, so a loop
+                // that continues past it hangs the suite instead of failing.
+                fed.in_order = false;
+                break;
+            }
+            const std::size_t frame = fed.frames_out++;
+            if (frame >= kBurstFrames || got.length != burst_size(frame)) {
+                fed.in_order = false;
+                continue;
+            }
+            fill(expected, got.length, burst_seed(frame));
+            fed.in_order = fed.in_order && same(out, expected, got.length);
+        }
+    };
+    for (std::size_t at = 0; at < burst.length; at += read) {
+        const std::size_t chunk = burst.length - at < read ? burst.length - at : read;
+        CHECK(fed.decoder.feed(burst.wire + at, chunk, drain) == chunk);
+    }
+}
+
+// A header whose length is impossible and whose check byte agrees with it, so
+// the decoder rejects the *length* rather than resynchronising past a garbled
+// header. The check function is the decoder's own business; it is found here
+// by asking the decoder, not by copying the formula.
+std::size_t encode_impossible_length(std::uint8_t* out)
+{
+    const std::uint16_t declared = kMaxPayload + 1;
+    for (unsigned check = 0; check < 256; ++check) {
+        const std::uint8_t header[kHeaderBytes] = {
+            kSync0, kSync1, static_cast<std::uint8_t>(declared & 0xFFu),
+            static_cast<std::uint8_t>(declared >> 8), static_cast<std::uint8_t>(check)};
+        Decoder      probe;
+        std::uint8_t scratch[kMaxPayload];
+        probe.push(header, sizeof header);
+        (void)probe.next(scratch, sizeof scratch);
+        if (probe.stats().bad_length == 1) {
+            std::memcpy(out, header, sizeof header);
+            return sizeof header;
+        }
+    }
+    CHECK(false && "no check byte makes the decoder call this a bad length");
+    return 0;
+}
+
+// The simulator's read is 4096 bytes and the decoder holds 200. Fed with a
+// drain between offers, every frame comes out in order and nothing is lost --
+// and the counter says so. The old `push` added `length - accepted` on every
+// offer, so this burst, which loses nothing, reported some twenty buffers'
+// worth of loss.
+void test_a_burst_longer_than_the_buffer_loses_nothing_when_the_drain_keeps_up()
+{
+    Burst burst;
+    make_burst(burst);
+    CHECK(burst.length > 4096);
+    CHECK(burst.length > Decoder::kCapacity * 20);
+
+    FedBurst fed;
+    feed_in_reads(burst, 4096, fed);
+    CHECK(fed.frames_out == kBurstFrames);
+    CHECK(fed.in_order);
+    CHECK(fed.decoder.stats().frames == kBurstFrames);
+    CHECK(fed.decoder.stats().resyncs == 0);
+    CHECK(fed.decoder.stats().input_dropped == 0);
+    CHECK(fed.decoder.buffered() == 0);
+}
+
+// The reads the two production callers actually make -- 4096 and 1024 -- and
+// boundaries that split headers, trailers and empty frames every way there
+// is. What came out, and what was counted, depend on none of them.
+void test_the_loss_counter_does_not_depend_on_where_the_reads_fall()
+{
+    Burst burst;
+    make_burst(burst);
+    const std::size_t reads[] = {1, 7, 64, Decoder::kCapacity, 1024, 4096};
+    for (const std::size_t read : reads) {
+        FedBurst fed;
+        feed_in_reads(burst, read, fed);
+        CHECK(fed.frames_out == kBurstFrames);
+        CHECK(fed.in_order);
+        CHECK(fed.decoder.stats().frames == kBurstFrames);
+        CHECK(fed.decoder.stats().resyncs == 0);
+        CHECK(fed.decoder.stats().input_dropped == 0);
+    }
+}
+
+// A drain that frees nothing is the one case where bytes are really lost, and
+// then the count is the exact remainder, once per read that gave up on it.
+void test_what_a_drain_could_not_make_room_for_is_counted_once()
+{
+    // A full-size frame the caller keeps refusing for want of an output buffer
+    // stays put, one byte short of the decoder's capacity.
+    std::uint8_t payload[kMaxPayload];
+    fill(payload, sizeof payload, 8);
+    std::uint8_t wire[kMaxFrame];
+    const std::size_t encoded = encode(payload, sizeof payload, wire, sizeof wire);
+
+    Decoder      decoder;
+    std::uint8_t cramped[16];
+    auto refuse = [&] { (void)decoder.next(cramped, sizeof cramped); };  // OutputTooSmall
+    CHECK(decoder.feed(wire, encoded, refuse) == encoded);
+    CHECK(decoder.stats().input_dropped == 0);  // it went in; nothing is lost yet
+
+    // 64 more bytes: one fits, 63 do not, and the drain cannot change that.
+    std::uint8_t more[64];
+    fill(more, sizeof more);
+    const std::size_t slack = Decoder::kCapacity - encoded;
+    CHECK(decoder.feed(more, sizeof more, refuse) == slack);
+    CHECK(decoder.stats().input_dropped == sizeof more - slack);
+
+    // The next read is refused whole, and counted whole -- once more, exactly.
+    CHECK(decoder.feed(more, sizeof more, refuse) == 0);
+    CHECK(decoder.stats().input_dropped == 2 * sizeof more - slack);
+
+    // A caller with a real buffer gets the frame that was waiting all along.
+    // The stray byte behind it is a resync, not a loss, and a read that fits
+    // adds nothing to the counter.
+    std::uint8_t out[kMaxPayload];
+    CHECK(delivered(decoder.next(out, sizeof out), kMaxPayload));
+    CHECK(same(out, payload, kMaxPayload));
+    const std::uint32_t lost = decoder.stats().input_dropped;
+    auto drain = [&] {
+        for (FrameResult got = decoder.next(out, sizeof out); !got.exhausted();
+             got = decoder.next(out, sizeof out)) {
+            if (!got) {
+                break;  // OutputTooSmall would repeat for ever; test_the_drain_loop_the_header_prescribes_terminates() says why
+            }
+        }
+    };
+    CHECK(decoder.feed(more, sizeof more, drain) == sizeof more);
+    CHECK(decoder.stats().input_dropped == lost);
+}
+
+// Corrupt frames in a burst are counted by their own counters and never as
+// loss: a bad CRC is one bad CRC and an impossible length is one bad length,
+// at any read size, with `input_dropped` untouched. The three kinds of
+// trouble do not bleed into each other.
+void test_corrupt_frames_in_a_burst_are_not_counted_as_loss()
+{
+    std::uint8_t payload[kMaxPayload];
+    fill(payload, sizeof payload, 5);
+
+    std::uint8_t wire[kMaxFrame * 5];
+    std::size_t  used = 0;
+    used += encode(payload, sizeof payload, wire + used, sizeof wire - used);
+    const std::size_t corrupt_at = used;
+    used += encode(payload, sizeof payload, wire + used, sizeof wire - used);
+    wire[corrupt_at + kHeaderBytes + 10] ^= 0xFFu;  // a bad CRC, whole frame present
+    used += encode(payload, 16, wire + used, sizeof wire - used);
+    used += encode_impossible_length(wire + used);
+    used += encode(payload, sizeof payload, wire + used, sizeof wire - used);
+    CHECK(used > Decoder::kCapacity * 3);
+
+    const std::size_t reads[] = {1, 64, 1024, 4096};
+    for (const std::size_t read : reads) {
+        Decoder      decoder;
+        std::uint8_t out[kMaxPayload];
+        std::size_t  good = 0;
+        auto drain = [&] {
+            for (FrameResult got = decoder.next(out, sizeof out); !got.exhausted();
+                 got = decoder.next(out, sizeof out)) {
+                if (!got) {
+                    break;  // OutputTooSmall would repeat for ever; test_the_drain_loop_the_header_prescribes_terminates() says why
+                }
+                ++good;
+            }
+        };
+        for (std::size_t at = 0; at < used; at += read) {
+            const std::size_t chunk = used - at < read ? used - at : read;
+            CHECK(decoder.feed(wire + at, chunk, drain) == chunk);
+        }
+        CHECK(good == 3);
+        CHECK(decoder.stats().frames == 3);
+        CHECK(decoder.stats().bad_crc == 1);
+        CHECK(decoder.stats().bad_length == 1);
+        CHECK(decoder.stats().input_dropped == 0);
+    }
+}
+
 }  // namespace
 
 int main()
@@ -1553,6 +1803,12 @@ int main()
     test_the_drain_loop_the_header_prescribes_terminates();
     test_incomplete_does_not_promise_that_anything_is_coming();
     test_the_counters_agree_with_what_was_observable();
+
+    // A refusal is not a loss until somebody gives up on the bytes (#347).
+    test_a_burst_longer_than_the_buffer_loses_nothing_when_the_drain_keeps_up();
+    test_the_loss_counter_does_not_depend_on_where_the_reads_fall();
+    test_what_a_drain_could_not_make_room_for_is_counted_once();
+    test_corrupt_frames_in_a_burst_are_not_counted_as_loss();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
