@@ -3,6 +3,7 @@
 
 #include "attadipa/core/time_service.h"
 #include "pcf85063_time.h"
+#include "provision_time.h"
 
 namespace {
 
@@ -26,11 +27,233 @@ attadipa::core::TimeObservation sample(
             false};
 }
 
+// ---- provision_time.h: the one sequence that sets the clock ----------------
+
+// The storage and the chip, as a test sees them. The store is one blob that is
+// there or is not -- `nvs_set_blob` lands whole or leaves the old value -- but
+// it can land *and* report failure, when the erase of the old version after
+// it fails, so a refused save has two shapes and the fake has both.
+struct FakeTimeOps {
+    bool has_blob = false;
+    attadipa::firmware::TimeMetadata blob{};
+    bool fail_read = false, fail_save = false, fail_rtc = false;
+    bool save_lands_then_fails = false;  // once: the next save only
+    int saves = 0, erases = 0, rtc_writes = 0;
+
+    attadipa::firmware::MetadataRead read_metadata(
+        attadipa::firmware::TimeMetadata *out)
+    {
+        if (fail_read) return attadipa::firmware::MetadataRead::Unreadable;
+        if (!has_blob) return attadipa::firmware::MetadataRead::Absent;
+        *out = blob;
+        return attadipa::firmware::MetadataRead::Present;
+    }
+    bool save_metadata(const attadipa::firmware::TimeMetadata &m)
+    {
+        ++saves;
+        if (fail_save) return false;
+        blob = m;
+        has_blob = true;
+        if (save_lands_then_fails) {
+            save_lands_then_fails = false;
+            return false;
+        }
+        return true;
+    }
+    bool erase_metadata()
+    {
+        ++erases;
+        has_blob = false;
+        blob = {};
+        return true;
+    }
+    bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &,
+                              std::int64_t)
+    {
+        ++rtc_writes;
+        return !fail_rtc;
+    }
+};
+
+const attadipa::core::MonotonicTime kProvisionNow{1000};
+// 2026-09-02T00:00:00Z, inside the years the PCF85063 can hold.
+const std::int64_t kProvisionUtc = 1788307200;
+
+attadipa::firmware::TimeProvisionRequest provision_request()
+{
+    attadipa::firmware::TimeProvisionRequest r;
+    r.utc_seconds = kProvisionUtc;
+    r.timezone_offset_minutes = 300;
+    r.valid_for_ms = 60000;
+    return r;
+}
+
+void test_provision_time()
+{
+    using attadipa::core::TimeService;
+    using attadipa::core::TimeSource;
+    using attadipa::firmware::ProvisionTimeResult;
+    using attadipa::firmware::provision_time;
+
+    // Accepted: the service moves and the blob holds this synchronization.
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Accepted);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::Manual);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == 300 &&
+              ops.blob.last_sync_utc == kProvisionUtc);
+        CHECK(ops.rtc_writes == 1 && ops.erases == 0);
+    }
+    // Rejected before anything is touched: no validity window ...
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        auto r = provision_request();
+        r.valid_for_ms = 0;
+        CHECK(provision_time(ops, r, svc, kProvisionNow) ==
+              ProvisionTimeResult::Rejected);
+        CHECK(ops.saves == 0 && ops.rtc_writes == 0);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // ... a window whose deadline overflows ...
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        auto r = provision_request();
+        r.valid_for_ms = 0xFFFFFFFFu;
+        CHECK(provision_time(ops, r, svc,
+                             attadipa::core::MonotonicTime{
+                                 0xFFFFFFFFFFFFFF00ull}) ==
+              ProvisionTimeResult::Rejected);
+        CHECK(ops.rtc_writes == 0);
+    }
+    // ... and a year the chip cannot hold.
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        auto r = provision_request();
+        r.utc_seconds = 0;  // 1970
+        CHECK(provision_time(ops, r, svc, kProvisionNow) ==
+              ProvisionTimeResult::Rejected);
+        CHECK(ops.rtc_writes == 0);
+    }
+    // Unreadable metadata stops the sequence before the chip: the fail-closed
+    // check, whose whole value is the order.
+    {
+        FakeTimeOps ops;
+        ops.fail_read = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.saves == 0 && ops.rtc_writes == 0);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // A refused save likewise stops before the chip, and the old blob stays.
+    {
+        FakeTimeOps ops;
+        ops.has_blob = true;
+        ops.blob = {-60, 42};
+        ops.fail_save = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.rtc_writes == 0 && ops.erases == 0);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
+              ops.blob.last_sync_utc == 42);
+    }
+    // A save that landed and then said it failed -- the old version's erase
+    // refused -- is put back too, or a reboot would restore an offset for a
+    // synchronization the host was told did not happen.
+    {
+        FakeTimeOps ops;
+        ops.has_blob = true;
+        ops.blob = {-60, 42};
+        ops.save_lands_then_fails = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.rtc_writes == 0 && ops.saves == 2 && ops.erases == 0);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
+              ops.blob.last_sync_utc == 42);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    {
+        FakeTimeOps ops;
+        ops.save_lands_then_fails = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.rtc_writes == 0 && ops.saves == 1 && ops.erases == 1);
+        CHECK(!ops.has_blob);
+    }
+    // The chip refuses and the store had a blob: it comes back exactly.
+    {
+        FakeTimeOps ops;
+        ops.has_blob = true;
+        ops.blob = {-60, 42};
+        ops.fail_rtc = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
+              ops.blob.last_sync_utc == 42);
+        CHECK(ops.saves == 2 && ops.erases == 0);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // The chip refuses and the store had nothing: it is absent again, not a
+    // zero. A watch that never synchronized must not boot holding an offset it
+    // never accepted.
+    {
+        FakeTimeOps ops;
+        ops.fail_rtc = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(!ops.has_blob && ops.erases == 1 && ops.saves == 1);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+}
+
 }  // namespace
+
+// ---- the blob on flash: the fields and nothing else -----------------------
+
+void test_time_metadata_bytes()
+{
+    using attadipa::firmware::decode_time_metadata;
+    using attadipa::firmware::encode_time_metadata;
+    using attadipa::firmware::TimeMetadata;
+
+    // Ten bytes, not sixteen: no padding leaves the struct, and a field added
+    // later cannot hide in a gap the size check would not see.
+    static_assert(attadipa::firmware::kTimeMetadataBytes == 10);
+    static_assert(sizeof(TimeMetadata) > attadipa::firmware::kTimeMetadataBytes);
+
+    const auto bytes = encode_time_metadata({-180, 0x0102030405060708});
+    CHECK(bytes[0] == 0x4C && bytes[1] == 0xFF);  // -180 = 0xFF4C, low first
+    CHECK(bytes[2] == 0x08 && bytes[9] == 0x01);
+    const TimeMetadata back = decode_time_metadata(bytes);
+    CHECK(back.offset_minutes == -180);
+    CHECK(back.last_sync_utc == 0x0102030405060708);
+
+    // The corners of both fields survive the trip.
+    for (const TimeMetadata sample :
+         {TimeMetadata{0, 0}, TimeMetadata{840, -1},
+          TimeMetadata{-720, std::numeric_limits<std::int64_t>::min()},
+          TimeMetadata{std::numeric_limits<std::int16_t>::min(),
+                       std::numeric_limits<std::int64_t>::max()}}) {
+        const TimeMetadata again = decode_time_metadata(encode_time_metadata(sample));
+        CHECK(again.offset_minutes == sample.offset_minutes);
+        CHECK(again.last_sync_utc == sample.last_sync_utc);
+    }
+}
 
 int main()
 {
     using namespace attadipa::core;
+    test_time_metadata_bytes();
 
     std::uint8_t raw_rtc[7] = {0x56, 0x34, 0x12, 0x25, 0x02, 0x08, 0x26};
     attadipa::firmware::RtcDateTime rtc{};
@@ -233,6 +456,8 @@ int main()
                                        TimeQuality::Trusted, Millis{1000},
                                        1000)));
     CHECK(stale_current.state({2000}).source == TimeSource::Gnss);
+
+    test_provision_time();
 
     return failures == 0 ? 0 : 1;
 }

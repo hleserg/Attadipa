@@ -254,13 +254,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:1613`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1684`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
-  ([`firmware/main/meshcore_ble.cpp:156`](../../firmware/main/meshcore_ble.cpp)
+  ([`firmware/main/meshcore_ble.cpp:161`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1384`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1441`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -1963,3 +1963,86 @@ constants.
   ordinary way a host process ends is not one. Vendor source, not a bench
   result: the process-exit and pipelined-write checks on the physical watch
   remain **NOT EXECUTED — HARDWARE REQUIRED** (#403).
+
+---
+
+## Read from the pinned ESP-IDF source (S14, continued)
+
+Two facts about the storage layer the firmware writes provisioning into. They
+sit here rather than under the S14 heading above only so that inserting them
+moves no citation into that section; the admissibility and the weakness are the
+ones that heading states.
+
+### NVS is not transactional: `nvs_commit()` is a no-op on ESP-IDF v5.5.5
+
+- **Claim:** a multi-key NVS write is not atomic. Each `nvs_set_*` reaches
+  flash when it is called and `nvs_commit()` does nothing, so a sequence that
+  sets two keys can fail after the first one has landed, and the error the
+  caller receives does not mean the store is unchanged.
+- **Source (upstream, read):** the pinned toolchain's own source, `~/esp/esp-idf`
+  at `v5.5.5` (`b774170ff46`), `components/nvs_flash/src/`. `nvs_api.cpp:414`
+  — `// no-op for now, to be used when intermediate cache is added` — is the
+  body of `nvs_commit()` before it defers to `handle->commit()`, and
+  `nvs_handle_simple.cpp:101` — `if (!valid) return ESP_ERR_NVS_INVALID_HANDLE;`
+  — is the whole of that. The write path does not wait for it:
+  `nvs_page.cpp:106` — `err = mPartition->write(phyAddr, &item, sizeof(item));`
+  — reaching `nvs_partition.cpp:51` —
+  `return esp_partition_write(mESPPartition, dst_offset, src, size);`. The
+  public header promises a floor, not a boundary: `include/nvs.h:566` —
+  "Individual implementations may write to storage at other times, but this is
+  not guaranteed."
+- **Checked:** 2026-09-02. A fact about the toolchain, not a board revision,
+  and about v5.5.5 rather than the NVS API — the comment says "for now", so an
+  ESP-IDF upgrade re-reads this rather than inheriting it.
+- **Consequence:** related fields that must change together are stored as one
+  value, not one key each. `firmware/main/provision_time.h` — "struct
+  TimeMetadata {" is one blob for that reason; the two keys it replaced
+  (`tz_min`, `last_utc`, #264/#396) were the defect. It obliges no audit of
+  single-key writes.
+
+### A single `nvs_set_blob` is an atomic replacement — for a different reason
+
+- **Claim:** one blob write survives power loss whole: a reader gets the
+  complete old value or the complete new one, never a mixture, and a torn write
+  reads as absent. This does **not** follow from the entry above — the no-op
+  commit is what breaks a *sequence*; what makes one write atomic is the order
+  inside `Storage::writeItem`.
+- **Source (upstream, read):** same tree. `nvs_storage.cpp:487`-`:488` toggle
+  the version *before* writing —
+  `= (prevStart == VerOffset::VER_1_OFFSET) ? VerOffset::VER_0_OFFSET : VerOffset::VER_1_OFFSET;`
+  — so old and new coexist; `nvs_storage.cpp:491` —
+  `err = writeMultiPageBlob(nsIndex, key, data, dataSize, nextStart);` — writes
+  the new one and returns on failure (`:498`); `nvs_storage.cpp:546` —
+  `err = eraseMultiPageBlob(nsIndex, key, prevStart);` — erases the old one
+  only after that succeeded. Within a write the index comes **after** the data
+  chunks — `nvs_storage.cpp:361` —
+  `err = getCurrentPage().writeItem(nsIndex, ItemType::BLOB_IDX, key, item.data, sizeof(item.data));`
+  — following the chunk loop at `:324`, and a reader looks the index up
+  **first** — `nvs_storage.cpp:406` —
+  `err = findItem(nsIndex, ItemType::BLOB_IDX, key, findPage, item, Page::CHUNK_ANY, VerOffset::VER_ANY, &itemIndex);`
+  — so chunks with no index are not a value. An index whose chunks do not add
+  up is removed at init and its chunks after it: `nvs_storage.cpp:236` —
+  `eraseMismatchedBlobIndexes(blobIdxList);` — then `:239` —
+  `eraseOrphanDataBlobs(blobIdxList);` — before the store goes `ACTIVE` at
+  `:243`. The call sites are the citation, not the definitions: a definition
+  proves the pass exists, not that boot runs it.
+- **Not relied on:** the comment at `nvs_storage.cpp:58`-`:60` that pagemanager
+  removes the earlier of two indices. If both survived a cut, each still points
+  at a complete set of chunks, so the reader gets one whole value either way;
+  that comment decides which wins, not whether a torn state exists.
+- **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
+- **Also read, and it cuts the other way:** the erase of the old version is
+  the last step and its failure is reported — `nvs_storage.cpp:546` —
+  `err = eraseMultiPageBlob(nsIndex, key, prevStart);` — then `:548`-`:549` —
+  `return ESP_ERR_NVS_REMOVE_FAILED;` — after the new version is written and
+  indexed. So a failed `nvs_set_blob` is one of two states, untouched or
+  replaced, and the caller cannot tell which.
+- **Consequence:** a sequence that writes one blob and then hardware needs no
+  torn-state check at boot — but it does need a rollback for a failed save,
+  because "failed" may mean "replaced". `firmware/main/provision_time.h` —
+  "template <typename Ops>" puts the previous blob back on both refusals, the
+  store's and the chip's. `nvs_get_blob` with a
+  buffer smaller than the stored value is `ESP_ERR_NVS_INVALID_LENGTH`
+  (`nvs_api.cpp:522`-`:524`), and a larger buffer returns the stored size in
+  `*length` (`:526`), which is what lets a reader reject a blob of another
+  schema by size.

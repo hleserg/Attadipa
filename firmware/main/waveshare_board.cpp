@@ -5,6 +5,7 @@
 
 #include "board_power.h"
 #include "pcf85063_time.h"
+#include "provision_time.h"
 
 #include <array>
 #include <cinttypes>
@@ -72,8 +73,11 @@ constexpr gpio_num_t kI2cScl = GPIO_NUM_14;
 constexpr std::uint8_t kAxp2101Address = 0x34;
 constexpr std::uint8_t kPcf85063Address = 0x51;
 constexpr char kTimeNvsNamespace[] = "attadipa_time";
-constexpr char kTimezoneNvsKey[] = "tz_min";
-constexpr char kLastSyncNvsKey[] = "last_utc";
+// One blob, not one key per field; `provision_time.h` says why. The two keys
+// this replaced, `tz_min` and `last_utc`, are not read and not erased: only
+// bench and HIL images ever wrote them, and their watches re-enter the time
+// once rather than carry a migration forever.
+constexpr char kTimeMetadataNvsKey[] = "meta";
 
 constexpr std::uint8_t kC4[] = {0x80};
 constexpr std::uint8_t kTearingLine[] = {0x01, 0xD1};
@@ -187,157 +191,67 @@ bool wall_time_from_rtc(const attadipa::firmware::RtcDateTime &rtc,
       out);
 }
 
-// Reads the stored UTC offset back at boot. This one is **outside**
-// CONFIG_ATTADIPA_WATCH_CONTROL and runs in the product image, which is the
-// whole reason the key it reads is the one that matters.
-//
-// An interrupted write is **not** caught here. It is prevented by the write
-// order below: the timezone key is written last and erased first, so whatever
-// this reads is a value somebody accepted, whole. Requiring both keys cannot
-// catch a torn write and never could -- a watch that has synchronized once
-// already has `last_sync_utc` on flash, so both keys are present no matter
-// where the interruption landed. That was round 3's finding.
-//
-// It requires both keys anyway, for the one store the ordering does not cover:
-// a bench image from before this fix wrote the timezone first, so a first-ever
-// synchronization cut between the two sets left a timezone with no stamp behind
-// it. Rejecting that pair is what gets such a watch back without another bench
-// image. `last_sync_utc` is read and thrown away -- nothing in the tree
-// consumes it -- and its presence is the whole of what is being asked.
+// The one reader of `attadipa_time`, for boot and for provisioning. A blob of
+// the wrong size is reported as absent, not as an error: it is a schema this
+// image does not know, the next synchronization overwrites it, and refusing
+// to synchronize over it would leave the watch stuck with a clock it cannot
+// set.
+esp_err_t read_time_metadata(attadipa::firmware::TimeMetadata *out,
+                             bool *present) {
+  *out = {};
+  *present = false;
+  nvs_handle_t handle{};
+  const esp_err_t opened = nvs_open(kTimeNvsNamespace, NVS_READONLY, &handle);
+  if (opened == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(opened, kTag, "open time metadata");
+  attadipa::firmware::TimeMetadataBytes bytes{};
+  std::size_t size = bytes.size();
+  const esp_err_t err =
+      nvs_get_blob(handle, kTimeMetadataNvsKey, bytes.data(), &size);
+  nvs_close(handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
+  }
+  if (err == ESP_ERR_NVS_INVALID_LENGTH || (err == ESP_OK && size != bytes.size())) {
+    ESP_LOGW(kTag, "time metadata has an unknown size; ignored");
+    *out = {};
+    return ESP_OK;
+  }
+  ESP_RETURN_ON_ERROR(err, kTag, "read time metadata");
+  *out = attadipa::firmware::decode_time_metadata(bytes);
+  *present = true;
+  return ESP_OK;
+}
+
+// Puts the stored UTC offset back into the time service at boot. Runs in the
+// product image; a torn write cannot reach here, because a single
+// `nvs_set_blob` lands whole or reads as absent (`provision_time.h`).
 esp_err_t restore_time_metadata() {
   ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, "initialize time metadata");
-  nvs_handle_t handle{};
-  esp_err_t err = nvs_open(kTimeNvsNamespace, NVS_READONLY, &handle);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
+  attadipa::firmware::TimeMetadata stored{};
+  bool present = false;
+  ESP_RETURN_ON_ERROR(read_time_metadata(&stored, &present), kTag,
+                      "restore time metadata");
+  if (!present) {
     return ESP_OK;
   }
-  ESP_RETURN_ON_ERROR(err, kTag, "open time metadata");
-  std::int16_t offset = 0;
-  std::int64_t last_sync_utc = 0;
-  err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);
-  if (err == ESP_OK) {
-    err = nvs_get_i64(handle, kLastSyncNvsKey, &last_sync_utc);
-  }
-  nvs_close(handle);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
-    return ESP_OK;
-  }
-  ESP_RETURN_ON_ERROR(err, kTag, "read timezone metadata");
-  ESP_RETURN_ON_FALSE(state.time_service.set_provisional_timezone(offset),
-                      ESP_ERR_INVALID_STATE, kTag,
-                      "stored timezone metadata is invalid");
-  ESP_LOGI(kTag, "restored provisional UTC offset %+d minutes", offset);
+  ESP_RETURN_ON_FALSE(
+      state.time_service.set_provisional_timezone(stored.offset_minutes),
+      ESP_ERR_INVALID_STATE, kTag, "stored timezone metadata is invalid");
+  ESP_LOGI(kTag, "restored provisional UTC offset %+d minutes",
+           stored.offset_minutes);
   return ESP_OK;
 }
 
-#if CONFIG_ATTADIPA_WATCH_CONTROL
-// What `attadipa_time` held before a synchronization started, and whether that
-// was a *complete* stored state.
-//
-// One flag rather than one per key -- but not because the two keys move
-// together, which they do not. A successful `nvs_set_*` is already on flash --
-// in ESP-IDF v5.5.5, nvs_commit() in components/nvs_flash/src/nvs_api.cpp is
-// commented "no-op for now, to be used when intermediate cache is added" and
-// NVSHandleSimple::commit() returns ESP_OK without touching storage -- so a
-// `save_time_metadata()` that fails between its two sets leaves `last_utc`
-// behind without `tz_min`; the offset is written last, so a torn write never
-// publishes a new one. The flag means complete, and a
-// half-written store is deliberately not complete: restoring it would put back
-// a UTC offset from a synchronization that failed, which is the one thing this
-// type exists to prevent. So `present == false` is restored by erasing both
-// keys, and it covers "there was nothing" and "there was half of something"
-// with the same answer, on purpose.
-struct TimeMetadata {
-  std::int16_t offset;
-  std::int64_t last_sync_utc;
-  bool present;
-};
-
-esp_err_t read_time_metadata(TimeMetadata *out) {
-  *out = TimeMetadata{};
-  nvs_handle_t handle{};
-  const esp_err_t open_err =
-      nvs_open(kTimeNvsNamespace, NVS_READONLY, &handle);
-  if (open_err == ESP_ERR_NVS_NOT_FOUND) {
-    return ESP_OK;
-  }
-  ESP_RETURN_ON_ERROR(open_err, kTag, "open time metadata to read");
-  esp_err_t err = nvs_get_i16(handle, kTimezoneNvsKey, &out->offset);
-  if (err == ESP_OK) {
-    err = nvs_get_i64(handle, kLastSyncNvsKey, &out->last_sync_utc);
-  }
-  nvs_close(handle);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
-    // Either key missing means there is no complete state to restore. Clear
-    // what the first read may already have filled in, so that a half-read
-    // `offset` never travels beside `present == false`.
-    *out = TimeMetadata{};
-    return ESP_OK;
-  }
-  ESP_RETURN_ON_ERROR(err, kTag, "read time metadata to read");
-  out->present = true;
-  return ESP_OK;
-}
-
-esp_err_t erase_if_present(nvs_handle_t handle, const char *key) {
-  const esp_err_t err = nvs_erase_key(handle, key);
-  return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
-}
-
-// **The order of the two writes is the mechanism, not a detail.** The timezone
-// key is the one the product image reads, so it is written **last** here and
-// erased **first** in the roll-back below. A power loss cannot be reported, the
-// caller never returns and no roll-back can run, so within this function the
-// only thing protecting the product image is that at every instant the key it
-// reads holds the last value anybody accepted. Writing it first -- which this
-// did until round 3 of #396 -- left a watch that had synchronized before with
-// the new offset beside the old stamp: two present keys, a read that accepts
-// them, and an offset from a synchronization that never reached the PCF85063.
-//
-// **Within this function is the whole of the claim.** `synchronize()` calls
-// this before it writes the chip, so between the two there is a window in which
-// the key holds an offset for a synchronization the PCF85063 has not taken --
-// and a cut there is no more reportable than a cut in here. That window is
-// named and priced where it is opened; do not read this paragraph as covering
-// it.
-//
-// `nvs_commit()` does not make the pair a transaction and nothing here pretends
-// it does: it is a no-op on ESP-IDF v5.5.5 and a successful `nvs_set_*` is
-// already on flash. See the note on `TimeMetadata` above.
-esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {
-  nvs_handle_t handle{};
-  ESP_RETURN_ON_ERROR(
-      nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle), kTag,
-      "open time metadata for write");
-  esp_err_t err = nvs_set_i64(handle, kLastSyncNvsKey, last_sync_utc);
-  if (err == ESP_OK) {
-    err = nvs_set_i16(handle, kTimezoneNvsKey, offset);
-  }
-  if (err == ESP_OK) {
-    err = nvs_commit(handle);
-  }
-  nvs_close(handle);
-  return err;
-}
-
-// Puts `previous` back after a refused write, chip or metadata. No complete
-// state means erasing rather than writing, which is what the flag on
-// `TimeMetadata` is for -- and either key may already be absent, because
-// `previous` can predate any synchronization at all and because the store can
-// be half-written. `ESP_ERR_NVS_NOT_FOUND` from an erase is therefore the
-// outcome asked for and not a failure; treating it as one used to abandon the
-// second erase and report an error for a store that had ended up correct.
-esp_err_t roll_back_time_metadata(const TimeMetadata &previous) {
-  if (previous.present) {
-    return save_time_metadata(previous.offset, previous.last_sync_utc);
-  }
+esp_err_t save_time_metadata(const attadipa::firmware::TimeMetadata &metadata) {
   nvs_handle_t handle{};
   ESP_RETURN_ON_ERROR(nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle),
-                      kTag, "open time metadata to roll back");
-  esp_err_t err = erase_if_present(handle, kTimezoneNvsKey);
-  if (err == ESP_OK) {
-    err = erase_if_present(handle, kLastSyncNvsKey);
-  }
+                      kTag, "open time metadata for write");
+  const auto bytes = attadipa::firmware::encode_time_metadata(metadata);
+  esp_err_t err =
+      nvs_set_blob(handle, kTimeMetadataNvsKey, bytes.data(), bytes.size());
   if (err == ESP_OK) {
     err = nvs_commit(handle);
   }
@@ -345,17 +259,23 @@ esp_err_t roll_back_time_metadata(const TimeMetadata &previous) {
   return err;
 }
 
-// Rolls back, and says so when even that fails. Two callers -- a refused
-// metadata write and a refused chip write -- and a second copy of this log
-// line is how they end up saying different things about the same state.
-void roll_back_or_log(const TimeMetadata &previous) {
-  const esp_err_t rollback = roll_back_time_metadata(previous);
-  if (rollback != ESP_OK) {
-    ESP_LOGE(kTag,
-             "could not roll back time metadata: %s -- NVS may hold a UTC "
-             "offset for a synchronization that did not happen",
-             esp_err_to_name(rollback));
+// A key that is not there is the outcome asked for, not a failure.
+esp_err_t erase_time_metadata() {
+  nvs_handle_t handle{};
+  const esp_err_t opened = nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle);
+  if (opened == ESP_ERR_NVS_NOT_FOUND) {
+    return ESP_OK;
   }
+  ESP_RETURN_ON_ERROR(opened, kTag, "open time metadata to erase");
+  esp_err_t err = nvs_erase_key(handle, kTimeMetadataNvsKey);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    err = ESP_OK;
+  }
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  return err;
 }
 
 // The PCF85063 half of a synchronization: write, read back, and check that
@@ -387,7 +307,42 @@ bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
   }
   return true;
 }
-#endif
+
+// This board's storage and chip, as `provision_time()` sees them. The
+// sequence -- what is written, in which order, and what is put back -- is in
+// `provision_time.h` and tested there; this is only the wiring.
+struct BoardTimeOps {
+  attadipa::firmware::MetadataRead
+  read_metadata(attadipa::firmware::TimeMetadata *out) {
+    bool present = false;
+    if (read_time_metadata(out, &present) != ESP_OK) {
+      return attadipa::firmware::MetadataRead::Unreadable;
+    }
+    return present ? attadipa::firmware::MetadataRead::Present
+                   : attadipa::firmware::MetadataRead::Absent;
+  }
+  bool save_metadata(const attadipa::firmware::TimeMetadata &metadata) {
+    const esp_err_t err = save_time_metadata(metadata);
+    if (err != ESP_OK) {
+      ESP_LOGW(kTag, "persist time metadata failed: %s", esp_err_to_name(err));
+    }
+    return err == ESP_OK;
+  }
+  bool erase_metadata() {
+    const esp_err_t err = erase_time_metadata();
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag,
+               "could not roll back time metadata: %s -- NVS may hold a UTC "
+               "offset for a synchronization that did not happen",
+               esp_err_to_name(err));
+    }
+    return err == ESP_OK;
+  }
+  bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
+                            std::int64_t utc_seconds) {
+    return ::write_and_verify_rtc(rtc, utc_seconds);
+  }
+};
 
 attadipa::apps::ClockState read_clock_state() {
   attadipa::apps::ClockState clock;
@@ -434,110 +389,20 @@ public:
   synchronize(const attadipa::debug::TimeSyncBody &request) override {
     const attadipa::core::MonotonicTime now{
         static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
-    if (request.valid_for_ms == 0 ||
-        now.ms > std::numeric_limits<std::uint64_t>::max() -
-                     request.valid_for_ms) {
+    BoardTimeOps ops;
+    const attadipa::firmware::TimeProvisionRequest provision{
+        request.utc_seconds, request.timezone_offset_minutes,
+        request.valid_for_ms,
+        (request.flags & attadipa::debug::kTimeSyncAllowLargeCorrection) != 0};
+    switch (attadipa::firmware::provision_time(ops, provision,
+                                               state.time_service, now)) {
+    case attadipa::firmware::ProvisionTimeResult::Rejected:
       return attadipa::debug::TimeSinkResult::Rejected;
-    }
-
-    attadipa::apps::CivilTime civil;
-    if (!attadipa::apps::civil_from_wall_time(
-            attadipa::core::WallTime{request.utc_seconds}, civil) ||
-        civil.year < 2000 || civil.year > 2099) {
-      return attadipa::debug::TimeSinkResult::Rejected;
-    }
-    const attadipa::firmware::RtcDateTime rtc{
-        static_cast<unsigned>(civil.year), civil.month, civil.day,
-        civil.weekday, civil.hour, civil.minute, civil.second};
-
-    attadipa::core::TimeService candidate = state.time_service;
-    const attadipa::core::MonotonicTime valid_until{
-        now.ms + request.valid_for_ms};
-    if (!candidate.set_timezone(request.timezone_offset_minutes, valid_until,
-                                now) ||
-        !candidate.observe(
-            {attadipa::core::WallTime{request.utc_seconds}, now,
-             attadipa::core::Millis{request.valid_for_ms}, 0,
-             attadipa::core::TimeSource::Manual,
-             attadipa::core::TimeQuality::Trusted,
-             (request.flags &
-              attadipa::debug::kTimeSyncAllowLargeCorrection) != 0})) {
-      return attadipa::debug::TimeSinkResult::Rejected;
-    }
-
-    // The metadata write goes first, and it IS the fail-closed check ahead of
-    // the RTC write. #264's ledger names the shape: boot may already know the
-    // metadata layer is unusable -- `firmware/main/waveshare_board.cpp:941` --
-    // "time metadata unavailable; continuing without it" logs it and carries
-    // on -- and this function used to write and verify the PCF85063 anyway,
-    // discovering only afterwards that nvs_open() could not succeed. That is a
-    // repeatable partial update of physical hardware, with state.time_service
-    // left holding the old observation and no recovery path. Ordering the
-    // metadata first also covers a write failure boot cannot predict, which a
-    // boot-time readiness flag would not.
-    //
-    // Ordering alone only moves the partial update, which is what round 1 of
-    // this pull request's review said and the first version of this comment
-    // got wrong. It called the residue inert because nothing reads the
-    // last-sync stamp. That is true of `last_utc` and false of `tz_min`:
-    // `firmware/main/waveshare_board.cpp:217` --
-    // "err = nvs_get_i16(handle, kTimezoneNvsKey, &offset);" -- puts it back
-    // into the time service on every boot, so a refused RTC write would have
-    // left the watch displaying an offset it never accepted, for good. Hence
-    // `previous`: the metadata is restored on every path out of here that does
-    // not reach `state.time_service = candidate`, which is what makes the
-    // sequence all-or-nothing rather than differently partial.
-    //
-    // That includes a refused metadata write, which the first version of this
-    // comment claimed it had covered and did not. It is not only a wrong
-    // sentence: `save_time_metadata()` has four exits and two of them happen
-    // after the first `nvs_set` has already returned ESP_OK, and on the pinned
-    // ESP-IDF that set is already on flash -- see the note on `TimeMetadata`,
-    // which carries the source. So that exit leaves a `tz_min` the wearer
-    // never accepted, exactly as the RTC path did.
-    TimeMetadata previous{};
-    const esp_err_t previous_result = read_time_metadata(&previous);
-    if (previous_result != ESP_OK) {
-      ESP_LOGW(kTag, "read time metadata before write failed: %s",
-               esp_err_to_name(previous_result));
+    case attadipa::firmware::ProvisionTimeResult::Failed:
       return attadipa::debug::TimeSinkResult::Failed;
+    case attadipa::firmware::ProvisionTimeResult::Accepted:
+      break;
     }
-
-    // Metadata first, chip second, and the order is a **trade rather than a
-    // win** -- there is no ordering of a flash key and an I2C chip with no
-    // window between them, so the only choice is which residue a power cut
-    // leaves.
-    //
-    // This way round, the write that can be predicted to fail is the one that
-    // runs first, which is what makes the sequence fail-closed and is the whole
-    // of #264's second defect: a doomed `nvs_open()` used to be discovered only
-    // after the PCF85063 had already been rewritten. The cost is the residue a
-    // cut between here and `write_and_verify_rtc()` leaves -- the new offset
-    // beside the old UTC, an offset for a synchronization that never happened.
-    // `main` has the opposite residue, the old offset beside the new UTC, which
-    // is the better of the two whenever the timezone did not change; it pays
-    // for that by discovering an unusable metadata layer too late to matter.
-    //
-    // Neither residue can be cleared by a product image today, because no
-    // product image can synchronize at all. That is what #356 is for, and it is
-    // also where this stops being a trade: the sequence moves behind one seam
-    // there, and one `nvs_set_blob` of the pair makes the flash side a single
-    // atomic write.
-    const esp_err_t metadata_result = save_time_metadata(
-        request.timezone_offset_minutes, request.utc_seconds);
-    if (metadata_result != ESP_OK) {
-      ESP_LOGW(kTag, "persist time metadata failed: %s",
-               esp_err_to_name(metadata_result));
-      roll_back_or_log(previous);
-      return attadipa::debug::TimeSinkResult::Failed;
-    }
-
-    if (!write_and_verify_rtc(rtc, request.utc_seconds)) {
-      roll_back_or_log(previous);
-      return attadipa::debug::TimeSinkResult::Failed;
-    }
-
-    state.time_service = candidate;
     ESP_LOGI(kTag, "PCF85063 synchronized from host");
     return attadipa::debug::TimeSinkResult::Accepted;
   }

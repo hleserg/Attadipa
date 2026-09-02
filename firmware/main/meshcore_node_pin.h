@@ -89,7 +89,7 @@ inline bool refusal_active(std::uint64_t until_ms, std::uint64_t now_ms)
 // What the transport remembers about refused nodes, and the two decisions over
 // it. Pure, so both are host-testable: the firmware holds the three fields as
 // atomics and marshals them in and out
-// (`firmware/main/meshcore_ble.cpp:261` -- "bool addr_is_refused(const ble_addr_t& addr)").
+// (`firmware/main/meshcore_ble.cpp:269` -- "bool addr_is_refused(const ble_addr_t& addr)").
 //
 // One address, plus a floor, and it has to be both.
 //

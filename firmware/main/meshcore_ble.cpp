@@ -3,6 +3,7 @@
 #include "meshcore_forget_outcome.h"
 #include "meshcore_boot.h"
 #include "meshcore_node_pin.h"
+#include "meshcore_passkey.h"
 #include "meshcore_write_outcome.h"
 
 #include <algorithm>
@@ -99,6 +100,10 @@ struct Event {
     std::uint32_t generation = 0;
     std::uint16_t size = 0;
     std::uint32_t passkey = 0;
+    // A Configure from the operator writes its passkey to NVS; the one boot
+    // posts to replay a stored passkey does not, or every boot would rewrite
+    // flash with what it just read.
+    bool persist_passkey = false;
     attadipa::core::WallTime timestamp{};
     std::array<std::uint8_t, attadipa::link::kMeshCoreFrameBytes> bytes{};
     std::array<std::uint8_t, 6> peer_prefix{};
@@ -218,6 +223,9 @@ std::atomic_bool send_claimed{false};
 // state is visible without a serial cable.
 constexpr const char* kMeshNvsNamespace = "attadipa_mesh";
 constexpr const char* kNodeKeyNvsKey    = "node";
+// The passkey, once provisioned, so that a power cycle does not unprovision
+// the watch (ADR-0018, fact 2). Plain NVS, like the pin and the bonds.
+constexpr const char* kPasskeyNvsKey    = "passkey";
 
 // The address of the peer this session is with, and the address of the last one
 // refused, packed as type<<48 | the six address bytes. Atomics rather than a
@@ -317,6 +325,55 @@ PinRead load_node_pin(attadipa::core::MeshPeerId& out)
         return PinRead::Unreadable;
     }
     return PinRead::Pinned;
+}
+
+// `load_node_pin` for the passkey. What the value found is allowed to do is
+// decided in `meshcore_passkey.h`, not here: this only reads.
+attadipa::firmware::StoredPasskey load_passkey(std::uint32_t& out)
+{
+    using attadipa::firmware::StoredPasskey;
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READONLY, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return StoredPasskey::Absent;
+    if (opened != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore passkey: nvs_open: %s", esp_err_to_name(opened));
+        return StoredPasskey::Unreadable;
+    }
+    const esp_err_t err = nvs_get_u32(handle, kPasskeyNvsKey, &out);
+    nvs_close(handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return StoredPasskey::Absent;
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore passkey: nvs_get_u32: %s", esp_err_to_name(err));
+        return StoredPasskey::Unreadable;
+    }
+    return StoredPasskey::Found;
+}
+
+bool store_passkey(std::uint32_t passkey)
+{
+    nvs_handle_t handle{};
+    if (nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
+    esp_err_t err = nvs_set_u32(handle, kPasskeyNvsKey, passkey);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+// The off switch. Before the passkey outlived a boot, a power cycle was one;
+// now `Deconfigure` has to be, or `mesh-disconnect` lasts until the next boot
+// and a provisioned watch cannot be told to stop scanning without
+// `erase-flash`, which takes the bonds, the pin and the time metadata too.
+bool erase_passkey()
+{
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return true;
+    if (opened != ESP_OK) return false;
+    esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);
+    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
 }
 
 bool store_node_pin(const attadipa::core::MeshPeerId& id)
@@ -1327,11 +1384,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:156` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:161` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1384` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1441` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:772` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:829` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1387,6 +1444,15 @@ void mesh_task(void*)
                     provider.fault(now());
                     break;
                 }
+                // Stored after the stack has taken it and before the session
+                // is told, so that what flash holds is a passkey this image
+                // accepted. A refused write is this boot's problem only: the
+                // watch is configured, and says it will not be next time.
+                if (event.persist_passkey && !store_passkey(event.passkey)) {
+                    ESP_LOGE(kTag,
+                             "MeshCore passkey armed but not stored; it will "
+                             "not survive a power cycle");
+                }
                 configured.store(true);
                 reconnect_allowed.store(true);
                 // A Configure that lands on a live session is a
@@ -1421,6 +1487,11 @@ void mesh_task(void*)
             case EventKind::Deconfigure: {
                 configured.store(false);
                 reconnect_allowed.store(false);
+                if (!erase_passkey()) {
+                    ESP_LOGE(kTag,
+                             "MeshCore passkey not erased; the watch will "
+                             "scan again at the next boot");
+                }
                 if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
                 const std::uint16_t connection = session_snapshot().connection;
                 if (connection != attadipa::link::kNoSessionHandle) {
@@ -1636,6 +1707,52 @@ struct RealBootOps {
     void port_deinit() { (void)nimble_port_deinit(); }
 };
 
+// A watch provisioned before this boot configures itself the way the operator
+// did, through the same event, once the worker exists to take it. Posting
+// before the host stack is up is fine: the worker arms the passkey at once
+// and the scan waits for the stack's sync, as it does for a Configure from
+// the bridge.
+//
+// The rule -- only a pairing passkey is stored, a stored zero is refused, a
+// replay is not re-stored -- is `meshcore_passkey.h`; this is its NVS and its
+// queue.
+struct PasskeyOps {
+    attadipa::firmware::StoredPasskey load(std::uint32_t& out)
+    {
+        return load_passkey(out);
+    }
+    bool configure(std::uint32_t passkey, bool persist)
+    {
+        Event event{EventKind::Configure};
+        event.passkey = passkey;
+        event.persist_passkey = persist;
+        return post(event);
+    }
+};
+
+void restore_passkey()
+{
+    using attadipa::firmware::PasskeyRestore;
+    PasskeyOps ops;
+    switch (attadipa::firmware::restore_passkey(ops)) {
+    case PasskeyRestore::Restored:
+        ESP_LOGI(kTag, "MeshCore passkey restored from flash");
+        break;
+    case PasskeyRestore::NotQueued:
+        ESP_LOGE(kTag, "MeshCore passkey restored but not applied: queue full");
+        break;
+    case PasskeyRestore::Absent:
+        ESP_LOGI(kTag, "no MeshCore passkey stored; BLE stays unconfigured");
+        break;
+    case PasskeyRestore::Unreadable:
+        ESP_LOGE(kTag, "MeshCore passkey could not be read; BLE stays unconfigured");
+        break;
+    case PasskeyRestore::Refused:
+        ESP_LOGE(kTag, "MeshCore passkey on flash is not six digits; ignored");
+        break;
+    }
+}
+
 }  // namespace
 
 esp_err_t start_meshcore_ble()
@@ -1648,7 +1765,7 @@ esp_err_t start_meshcore_ble()
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
-    // `firmware/main/waveshare_board.cpp:208` --
+    // `firmware/main/waveshare_board.cpp:232` --
     // "ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, \"initialize time metadata\");"
     // -- and `firmware/main/attadipa_main.cpp:307` logs a UI failure and starts
     // the mesh anyway, so on that path the pin would be read out of an
@@ -1704,6 +1821,7 @@ esp_err_t start_meshcore_ble()
     RealBootOps ops;
     switch (attadipa::firmware::boot_meshcore(ops)) {
     case attadipa::firmware::BootResult::Ok:
+        restore_passkey();
         return ESP_OK;
     case attadipa::firmware::BootResult::PortInitFailed:
         // The bootstrap used to create the queue and start the worker *before*
@@ -1720,10 +1838,13 @@ esp_err_t start_meshcore_ble()
 
 bool configure_meshcore_ble(std::uint32_t passkey)
 {
-    if (passkey > 999999) return false;
-    Event event{EventKind::Configure};
-    event.passkey = passkey;
-    return post(event);
+    // Whether it outlives this boot is `meshcore_passkey.h`'s call: a pairing
+    // passkey does, the unpaired probe's zero does not -- replaying that at
+    // boot would leave a product image scanning in the clear with nobody
+    // having asked, and the Room Server password crosses the air inside those
+    // frames.
+    PasskeyOps ops;
+    return attadipa::firmware::request_passkey(ops, passkey);
 }
 
 bool stop_meshcore_ble()

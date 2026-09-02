@@ -64,9 +64,15 @@ add_test(NAME clock COMMAND test_clock)
 
 add_executable(test_time_service test_time_service.cpp)
 target_include_directories(test_time_service PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
-target_link_libraries(test_time_service PRIVATE attadipa_core)
+target_link_libraries(test_time_service PRIVATE attadipa_core attadipa_apps)
 add_test(NAME time_service COMMAND test_time_service)
 set_tests_properties(time_service PROPERTIES LABELS time)
+
+# The passkey rule -- what outlives a boot and what a stored value may do at
+# the next -- is a header in firmware/main on the same pattern.
+add_executable(test_meshcore_passkey test_meshcore_passkey.cpp)
+target_include_directories(test_meshcore_passkey PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME meshcore_passkey COMMAND test_meshcore_passkey)
 
 # The other boundary, and it points the opposite way. An application must not
 # learn which chip answered; the core must not learn which language will be

@@ -625,7 +625,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1. What the *store* does when a second node bonds is no longer open, but it was settled by reading the vendor tree rather than on this bench: [VERIFIED_FACTS.md](VERIFIED_FACTS.md) "A wrong MeshCore node's bond evicts the pinned node's". This row is the bench half and stays `UNKNOWN` until a run exercises it |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1721`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1386`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"), lives only in RAM and is gone on reset. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:1839`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1443`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1451` "store_passkey(event.passkey)") and replayed at boot; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
@@ -702,8 +702,9 @@ produce — the wire does not separate them, so the host says the bond survived
 and sends the reader to the watch's log rather than naming the bond store. When
 the operator is told the bond survived, the record has gone back, nothing has
 been re-armed, and running the command again is the fix.
-`mesh-configure` is still needed afterwards if the watch has been reset since,
-because the passkey lives only in RAM.
+`mesh-configure` is not needed again after a reset: since #356's first change
+an accepted passkey is stored and replayed at boot (`NOT EXECUTED — HARDWARE
+REQUIRED` for the replay; the row in §8 says which half was measured).
 
 Everything in this subsection is `SIMULATED` on a host
 ([`../../tests/test_session_owner.cpp`](../../tests/test_session_owner.cpp),

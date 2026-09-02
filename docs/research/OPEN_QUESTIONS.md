@@ -339,19 +339,25 @@ it. The production image is the one built from `sdkconfig.defaults` alone, and
 that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n".
 Everything that provisions a watch sits behind that symbol:
 
-- **The clock cannot be set.** `write_rtc()` has exactly one caller, inside the
-  `firmware/main/waveshare_board.cpp:233` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
-  block. A production watch reads the PCF85063 and never
-  writes it, so a board off the shelf shows whatever its RTC powered up with.
-- **The timezone cannot be kept.** `firmware/main/waveshare_board.cpp:233` —
-  "#if CONFIG_ATTADIPA_WATCH_CONTROL" guards `save_time_metadata()`.
-  `restore_time_metadata()` is unguarded, so production can read a stored offset
-  it has no way to have stored.
-- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of the
-  `configured` flag, and it too is reachable only from inside that block. The
-  worker's `firmware/main/meshcore_ble.cpp:1117` — "if (configured.load()) start_scan();"
-  is therefore false forever in a production image: the transport starts, is
-  never configured, and never looks for a node.
+- **The clock cannot be set.** `write_rtc()` is reached only through
+  `provision_time()`, whose one instantiation is inside the
+  `firmware/main/waveshare_board.cpp:385` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+  block. (Since #356's first change the sequence itself compiles in every
+  image; what a production image lacks is a caller.) A production watch reads
+  the PCF85063 and never writes it, so a board off the shelf shows whatever its
+  RTC powered up with.
+- **The timezone cannot be kept,** for the same reason: `save_time_metadata()`
+  is called by nothing outside that block. `restore_time_metadata()` is
+  unguarded, so production can read a stored offset it has no way to have
+  stored.
+- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of
+  the passkey key, and it is reachable only from inside that block. Since
+  #356's first change boot replays a stored passkey through the same
+  `Configure` event, so a production image scans if a HIL image left one on
+  flash; with nothing on flash the worker's
+  `firmware/main/meshcore_ble.cpp:1174` — "if (configured.load()) start_scan();"
+  is false forever: the transport starts, is never configured, and never looks
+  for a node.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
   the same single gated caller.
 
