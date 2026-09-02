@@ -336,6 +336,7 @@ class Watch:
 
     def _await_locked(self, req_id: int, ops: tuple[p.Op, ...], deadline: float,
                       waited: float, session: int | None = None):
+        saw_no_generation = False
         while True:
             for index, envelope in enumerate(self._pending):
                 if envelope.req_id != req_id:
@@ -353,11 +354,14 @@ class Watch:
                     except p.ProtocolError:
                         continue
                     if echoed == 0:
-                        raise p.ProtocolError(
-                            "the device answered the handshake without a session "
-                            "generation: it speaks debug protocol v1, and this tool "
-                            "needs v2 to tell its replies from a previous "
-                            "invocation's. Update the firmware or the simulator")
+                        # What a v1 device sends -- and also what a v2 device
+                        # echoed to a pre-#348 host, which is then on the
+                        # port when this process opens it. One of these says
+                        # nothing about the device; only the wait running
+                        # out with no echo of our own does, and it is named
+                        # there. Nothing in the envelope tells the two apart.
+                        saw_no_generation = True
+                        continue
                     if echoed != session:
                         continue
                     # Everything ahead of the echo was written before the
@@ -372,6 +376,12 @@ class Watch:
                     del self._pending[index]
                     return envelope
             if time.monotonic() >= deadline:
+                if saw_no_generation:
+                    raise p.ProtocolError(
+                        "the device answered the handshake without a session "
+                        "generation: it speaks debug protocol v1, and this tool "
+                        "needs v2 to tell its replies from a previous "
+                        "invocation's. Update the firmware or the simulator")
                 raise WatchError(
                     f"the device did not answer within {waited:.1f}s. "
                     f"Is it still running, and is anything else connected to it?")

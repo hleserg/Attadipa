@@ -261,6 +261,11 @@ private:
       reset_remote(now_ms, "light-sleep cycle completed");
       usb_connected_ = false;
     }
+    // `connected` is the host's SOF stream, tty open or not: a host process
+    // that exits with the cable in does not come through here as a disconnect
+    // (`docs/research/VERIFIED_FACTS.md`, "USB Serial/JTAG counts as connected
+    // while the host sends SOF"), which is what #348's session generation is
+    // for.
     const bool usb_connected = usb_serial_jtag_is_connected();
     if (!usb_connected) {
       if (usb_connected_) {

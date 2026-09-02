@@ -257,7 +257,10 @@ So:
 
 The debug class carries this epoch since #348, and it is the first place the
 watch's own protocol has needed it: on USB Serial/JTAG a host process that
-exits with the cable in is not a link loss, so nothing reset the session, and
+exits with the cable in is not a link loss — the vendor driver reports
+`connected` on the host's SOF packets alone, tty open or not
+([VERIFIED_FACTS](../research/VERIFIED_FACTS.md), "USB Serial/JTAG counts as
+connected while the host sends SOF") — so nothing reset the session, and
 the next process — restarting its request ids at 1 — read its predecessor's
 late replies as its own. `HelloBody` carries a 32-bit session the host draws
 per connection

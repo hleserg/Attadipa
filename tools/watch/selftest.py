@@ -1454,6 +1454,37 @@ def a_previous_invocations_reply_is_not_this_ones_answer() -> None:
     check([op for op, _ in device.asked] == [p.Op.HELLO, p.Op.CAPABILITIES],
           "the device was asked, rather than the queue")
 
+    # --- 1b. A was a pre-#348 host ------------------------------------------
+    # Its HELLO carried no generation, so the device echoed 0, and that 0 is
+    # on the port when B opens it. It records what A was, not what the
+    # device is; B's own echo is what settles that. Before round 1 of #403
+    # this refused a correctly flashed watch as v1.
+    no_generation = p.Hello(board_id="scripted", build="sim 0.0.1", session=0).encode()
+    device_after_v1_host = _left_on_the_port(
+        _session_device(),
+        (p.Op.HELLO_OK, 1, no_generation),
+        (p.Op.CAPABILITIES_OK, 2, _capabilities_body(99, 99)))
+    after_v1_host = Watch(device_after_v1_host, timeout=0.5)
+    after_v1_host.connect()
+    drawn_after = p.Hello.decode(next(
+        body for op, body in device_after_v1_host.asked if op is p.Op.HELLO)).session
+    check(after_v1_host.hello is not None and after_v1_host.hello.session == drawn_after,
+          "a pre-#348 host's leftover does not make a v2 device look like v1")
+    check(after_v1_host.capabilities is not None and after_v1_host.capabilities.width == 4,
+          "and B's capabilities are the fresh answer, not A's 99x99")
+
+    # --- 1c. A real v1 device -----------------------------------------------
+    # It echoes nothing, so 0 is all it ever sends. Named as v1 when the wait
+    # runs out -- the one moment that tells it from a leftover -- rather than
+    # reported as a device that did not answer.
+    v1_device = ScriptedDevice(lambda e: [_reply_to(e, p.Op.HELLO_OK, no_generation)]
+                               if e.op is p.Op.HELLO else [])
+    try:
+        Watch(v1_device, timeout=0.1).connect()
+        check(False, "a v1 device does not open a session")
+    except p.ProtocolError as refusal:
+        check("protocol v1" in str(refusal), "and it is named as v1, not as silent")
+
     # --- 2. A's `STABLE_OK = true` does not settle B's wait -----------------
     # B's first WAIT_STABLE is req_id 3, the number A's `true` is addressed
     # to. The device says `false`; B must say so and keep polling.

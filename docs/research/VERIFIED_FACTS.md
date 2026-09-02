@@ -1939,3 +1939,27 @@ constants.
 - **Boundary:** T114 firmware version, revision, node serial log and a clean
   single-attempt pairing reproduction remain `UNKNOWN`; this is not an upstream
   defect verdict.
+
+### USB Serial/JTAG counts as connected while the host sends SOF, whether or not the tty is open
+
+- **Claim:** on the ESP32-S3, ESP-IDF's `usb_serial_jtag_is_connected()` is
+  true for as long as the host is sending USB start-of-frame packets — in the
+  vendor's words, "even if there is no serial communications occurring (i.e.,
+  the USJ is connected to the PC, but the serial port is not opened)". A host
+  process that closes the tty and exits with the cable in is therefore not a
+  disconnect as the watch sees it; only the SOF stream stopping is, and the
+  driver confirms that over `USJ_DISCONNECT_CONFIRM_PERIOD_MS` = 3 ms of
+  FreeRTOS tick hooks.
+- **Source:** ESP-IDF at tag `v5.5.5`, the pinned firmware toolchain:
+  `components/esp_driver_usb_serial_jtag/include/driver/usb_serial_jtag.h:97-100`
+  (the doc comment on `usb_serial_jtag_is_connected`, quoted above) and
+  `components/esp_driver_usb_serial_jtag/src/usb_serial_jtag_connection_monitor.c:25-34`
+  (the confirm period, and `usb_serial_jtag_is_connected` returning
+  `s_usb_serial_jtag_conn_status`) with `:37-46` (`usb_serial_jtag_sof_tick_hook`,
+  which reads `USB_SERIAL_JTAG_INTR_SOF` from the raw interrupt status on every
+  tick and moves that status). Read from the local checkout on 2026-09-02.
+- **Why it is here:** it is the premise of #348's session generation. The debug
+  protocol cannot rely on a USB disconnect to end a session, because the
+  ordinary way a host process ends is not one. Vendor source, not a bench
+  result: the process-exit and pipelined-write checks on the physical watch
+  remain **NOT EXECUTED — HARDWARE REQUIRED** (#403).
