@@ -355,7 +355,7 @@ point — most of it stays empty, and empty is the correct answer.
 | `observed_at` | monotonic time the **frame arrived** | it is the only clock we have. It is an arrival time and must never be presented as an observation time |
 | `position` | set, after §3.3's checks | |
 | `altitude_msl_mm` | path B only, provenance recorded | §3.3; `UNKNOWN` datum |
-| `fix_type` | **`FixType::Unknown`** | never `TwoD`, never `ThreeD`. The node did not say. `NoFix` is also wrong — that is the node saying "no", and it never says |
+| `fix_type` | **`FixType::Unknown`** | never `TwoD`, never `ThreeD`. The node did not say, and `NoFix` in this *field* would be the node saying "no", which it never says. The *verdict* on the observation is another matter: `classify()` maps an unstated fix type to `PositionValidity::NoFix` before it looks at the coordinate or the clock (§4.1) |
 | `source` | **`PositionSource::NodeGnss`** | `core/include/attadipa/core/position.h:81` — "enum class PositionSource : std::uint8_t {" — already has it. Note the name overstates: it is *a node's coordinate*, whose origin may be manual |
 | `receiver_time`, `receiver_time_valid` | absent / false | the node has it and does not send it |
 | `horizontal_accuracy_mm`, `hdop_centi`, `satellites_used`, everything in "what it can see" | **absent** | not transmitted, at either revision |
@@ -365,8 +365,31 @@ point — most of it stays empty, and empty is the correct answer.
 ### 4.1 Validity, and why `Valid` is not reachable
 
 `core/include/attadipa/core/position.h:185` — "enum class PositionValidity" —
-has four values, and the honest ceiling for a stock MeshCore node is
-**`Degraded`, with `Stale` as the resting state.**
+has four values, and through the tree's `classify()` a stock MeshCore node
+reaches exactly one of them: **`NoFix`, at every age.** The classifier returns
+it for `FixType::Unknown` before the coordinate or the clock is consulted —
+`core/src/position.cpp:13` — "observation.fix_type == FixType::Unknown) {" —
+into `core/src/position.cpp:14` — "return PositionValidity::NoFix;" — and
+ADR-0011 makes that verdict the caller's with a policy, not something a
+provider may hold its own opinion about
+(`docs/adr/0011-gnss-integrity.md:423` — "that is a `classify()` verdict a caller reaches with a").
+
+The consequence is downstream, and it is conservative. A second provider is
+comparable only at `Valid` or `Degraded` —
+`core/src/trust.cpp:706` — "other_validity == PositionValidity::Valid ||" —
+`core/src/trust.cpp:707` — "other_validity == PositionValidity::Degraded;" —
+so a node provider built to this document is never one: ADR-0011's
+cross-provider check does not run against a node, and
+`core/src/trust.cpp:404` — "set(engine_, TrustReason::FixLost, validity == PositionValidity::NoFix, now);"
+— holds `FixLost` while the node is the source. Nothing the first consumer
+(§6) needs is lost by that: the fix type, both ages and the `gps` key are on
+the same surface as the coordinate. The ladder the rest of this section argues
+— **`Stale` as the resting state, `Degraded` only on a changing coordinate from
+a running receiver** — is what a classifier *would* say about a coordinate
+whose fix type was never stated. That is a new `classify()` case, an amendment
+to ADR-0011, and it is deferred with §6's list rather than assumed; the
+argument is kept here so it is not derived twice, and §8.1 pins the current
+verdict so the amendment cannot land without this report changing.
 
 The argument is short. `classify()` needs freshness, and the freshest thing we
 know is when the frame arrived. `ValidityPolicy`'s `stale_after` is 30 s. A
@@ -391,7 +414,7 @@ larger is unbounded. So:
   the ages as unknown, not as `0 ms`. This is the only thing that makes the
   zero safe, and it is the contract §8.1 tests.
 
-A `PositionValidity` of `Degraded` is defensible *only* when
+Under that amendment, a `PositionValidity` of `Degraded` is defensible *only* when
 `RESP_CODE_CUSTOM_VARS` said `gps:1` and the value changed since the last read —
 a changing coordinate from a running receiver is weak evidence of a live fix.
 `gps:0`, no `gps` key, or an unchanged value all mean `Stale`. **`Valid` is not
@@ -403,11 +426,12 @@ either.** The coordinate arrives once per session, in the `RESP_CODE_SELF_INFO`
 that answers `CMD_APP_START`; the only way to ask again is to send
 `CMD_APP_START` again, which is M27 — `UNKNOWN`, and it aborts a contacts
 iteration in progress (§5) — and §5 argues against the poller that would
-produce a second read anyway. So the first slice's ladder **tops out at
-`Stale`**: `Degraded` becomes reachable only when a safe re-read exists —
-M27 measured, or path B's request/response decoded — and until then a provider
-that publishes `Degraded` has read something this document has not shown it.
-§6.1 carries the same rule as a lifecycle row and §8.1 tests it.
+produce a second read anyway. So even under the amendment the first slice's
+ladder **tops out at `Stale`**: `Degraded` becomes reachable only when a safe
+re-read exists — M27 measured, or path B's request/response decoded — and until
+then a provider that publishes `Degraded` has read something this document has
+not shown it. Until the amendment lands, §6.1's rows and §8.1's tests say
+`NoFix`, which is what the tree says today.
 
 ### 4.2 Provenance is the node, and the node is not the wrist
 
@@ -510,8 +534,10 @@ The shape, following `core/include/attadipa/core/mesh_service.h:83` —
 none. Applications see neither; they see availability, validity and two ages,
 exactly as `TimeService` already publishes them.
 
-**Deferred out of the first slice, deliberately:** the LPP decoder (specified in
-§3, buildable any time), local GNSS, source fusion or any estimator, GNSS power
+**Deferred out of the first slice, deliberately:** an ADR-0011 amendment
+giving `classify()` a case for a coordinate whose fix type was never stated
+(§4.1 — without it every node observation is `NoFix`), the LPP decoder
+(specified in §3, buildable any time), local GNSS, source fusion or any estimator, GNSS power
 policy, Navigator, and provider selection between two live providers — ADR-0008
 §3's table needs more rows before that is a decision rather than a coin toss.
 
@@ -527,15 +553,15 @@ Semantics for the events that will otherwise be decided by accident:
 
 | Event | Required behaviour |
 |---|---|
-| link disconnects | availability → `Unreachable`. The last observation is **retained** and its age keeps growing. It does not become `NoFix` — that would be the node saying "no" |
+| link disconnects | availability → `Unreachable`. The last observation is **retained** and its age keeps growing; its validity is `NoFix` already (§4.1) and stays so. It is not *cleared* — that would be the node saying "no", and it never did |
 | session reconnects | the coordinate is re-read from the new `RESP_CODE_SELF_INFO`. Nothing survives the session except as an aged observation |
 | node identity changes | the pinned-key machinery already refuses this; the retained observation is **discarded**, not re-attributed. A new key is a new node |
 | node reboots | invisible to us. Covered by the retained-value rules, not by a reboot signal we do not get |
 | permission denied / no `LPP_GPS` record | a normal outcome. Availability stays `Ready`; validity is unaffected; **not** an error to the user |
 | timeout on a remote request | one outstanding request, so: fail it, do not retry inside the provider, surface it. Retry policy belongs to the caller |
 | identical coordinate read twice | evidence *against* a live fix, not for one. Never refreshes `age_at_source_ms` |
-| `gps:0`, or no `gps` key | availability stays `Ready` — the node handed over a coordinate regardless, and the watch cannot bring the node's receiver up. It is **not** `Off`: `core/include/attadipa/core/availability.h:22` — "Off,            // deliberately powered down; can be brought up" — is a remedy this device can perform, and a node provider has none. The receiver's state is a fact about the coordinate, so validity caps at `Stale` (§4.1) and the first consumer (§6) shows the `gps` key itself |
-| mid-session refresh | **none in the first slice.** Path A is read once per session and there is no safe re-read (M27); validity tops out at `Stale` and `Degraded` is not produced. A second read happens only at reconnect, and that is a new session, not a refresh |
+| `gps:0`, or no `gps` key | availability stays `Ready` — the node handed over a coordinate regardless, and the watch cannot bring the node's receiver up. It is **not** `Off`: `core/include/attadipa/core/availability.h:22` — "Off,            // deliberately powered down; can be brought up" — is a remedy this device can perform, and a node provider has none. The receiver's state is a fact about the coordinate; the verdict is `NoFix` regardless (§4.1), so the first consumer (§6) shows the `gps` key itself |
+| mid-session refresh | **none in the first slice.** Path A is read once per session and there is no safe re-read (M27); validity is `NoFix` (§4.1) and neither `Stale` nor `Degraded` is produced. A second read happens only at reconnect, and that is a new session, not a refresh |
 | two providers disagree | out of scope. Recorded so that the first slice's shape does not foreclose ADR-0011 §5.2 |
 
 ## 7. Reuse comparison
@@ -562,24 +588,39 @@ before multiplication; ±90/±180 accepted at the boundary; negative coordinates
 the equator and the prime meridian; the truncate-toward-zero bias of §3.2 as an
 explicit case rather than an accident of rounding.
 
-Frame parsing, buildable in the first slice: `RESP_CODE_SELF_INFO` shorter than
-44 bytes; a coordinate of exactly (0, 0), which is legal, plausible and almost
+Frame parsing, buildable in the first slice — and *above* the length check,
+which the companion owns: `link/src/meshcore_companion.cpp:384` — "if (size < 58) { ++malformed_frames_; return false; }"
+— drops a `RESP_CODE_SELF_INFO` shorter than the name offset before any
+provider sees it. The companion's suite fails closed on a short *contact* frame
+(`tests/test_meshcore_companion.cpp:509` — "CHECK(client.malformed_frames() == 1);")
+and has no short `SELF_INFO` case; that missing case is the one length test this
+plan names, and it belongs in that file, not in the provider's. Bytes 36–43 are
+therefore present in every frame the provider is handed, and a 44-byte case in
+the provider's tests would go green without the shipping path reaching it
+(`../../AGENTS.md:87` — "of a fixture, copied implementation, generated patch, or isolated decision").
+The provider's frame cases are value cases: a coordinate of exactly (0, 0), which is legal, plausible and almost
 certainly an unset pref; ±90/±180 ×10⁶ at the boundary; a value beyond it, which
 `CMD_SET_ADVERT_LATLON`'s own check should make unreachable and which must be
 rejected anyway.
 
-Semantics, which are the tests that matter: **no input produces
-`PositionValidity::Valid`**, and in the first slice none produces `Degraded`
-either (§4.1: no second read); every published `Timed<Position>` carries
+Semantics, which are the tests that matter: **every observation classifies
+`NoFix`** — §4's observation handed to `classify()` at age 0 and at an hour
+returns it both times (`core/src/position.cpp:14` — "return PositionValidity::NoFix;"),
+and the fixture asserts that verdict rather than the ladder §4.1 argues for, so
+the ADR-0011 amendment cannot land without turning this test red and this
+report with it; **no input produces `PositionValidity::Valid`**, none
+`Degraded`, none `Stale`; every published `Timed<Position>` carries
 `Validity::Unknown`, and the fixture asserts *that* rather than the value of
 `age_at_source_ms`, which has no unknown representation (§4.1) — a consumer
 that reads the age before the validity is the bug the test exists to catch;
 `FixType::Unknown` survives to the consumer; an unchanged coordinate read twice
-does not refresh either age; `gps:0` and a missing `gps` key both cap validity
-at `Stale`; disconnect retains and ages rather than clearing.
+does not refresh either age; `gps:0` and a missing `gps` key change nothing in
+the verdict and reach the consumer as the key itself (§6.1); disconnect retains
+and ages rather than clearing.
 
 Replay: a plausible coordinate, then loss of fix, then the same coordinate for
-an hour — the fixture must end `Stale` and must never have been `Valid`. A
+an hour — the fixture must end `NoFix`, must never have been `Valid`, and is
+judged by the same classifier (`tests/replay/replay.cpp:484` — "validity = classify(step.observation, step.at, validity_policy);"). A
 manually typed coordinate and a GNSS one must produce **identical** observations
 except for the `gps` key, and the test asserts that indistinguishability rather
 than papering over it.
@@ -588,17 +629,25 @@ than papering over it.
 
 A fake provider drives every `Availability` a node provider can produce —
 `Unprovisioned` (no node pinned), `Unreachable`, `Incompatible` (the version
-handshake fails), `Failed` (the short frame §8.1 rejects) and `Ready` — and, under `Ready`, the
-`PositionValidity` ladder `NoFix` and `Stale` (the first slice's ceiling, §4.1),
-plus disconnect and recovery, without the consumer learning which provider
+handshake fails), `Failed` (the transport fault: `firmware/main/meshcore_ble.cpp:1188` — "provider.fault(now());"
+lands as `link/src/meshcore_companion.cpp:211` — "status_.availability = core::Availability::Failed;")
+and `Ready` — and, under `Ready`, `PositionValidity::NoFix` (the first slice's
+only verdict, §4.1), plus disconnect and recovery, without the consumer learning which provider
 answered. `Degraded` is a validity, not an availability —
 `core/include/attadipa/core/position.h:188` — "Degraded,  // usable, with a caveat the interface must show"
 — and the two are never folded into one another (ADR-0004 §3); the seven
-availabilities must render as seven different sentences, which is what the
-simulator is there to show. `Unsupported` and `Off` are the two values a node
+availabilities must render as seven different sentences, and the fake drives
+the five that have a producer. `Unsupported` and `Off` are the two values a node
 provider cannot produce: the first is left to the board that has no node at
-all, the second has no producer because a node hands over its coordinate with
+all; the second has no producer because a node hands over its coordinate with
 the receiver off (§6.1, `gps:0`) and the watch cannot bring that receiver up.
+`Failed` stays, but its producer is the transport fault named above, not a
+short frame: a frame the companion cannot parse is counted at
+`link/src/meshcore_companion.cpp:384` — "if (size < 58) { ++malformed_frames_; return false; }"
+and never reaches the provider, and a
+provider that came up over a link that then sent garbage has not failed to come
+up — `Failed` is
+`core/include/attadipa/core/availability.h:21` — "Failed,         // bound and reachable; it did not come up".
 
 ### 8.3 Physical — `NOT EXECUTED — HARDWARE REQUIRED`
 
