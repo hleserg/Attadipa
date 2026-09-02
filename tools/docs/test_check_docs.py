@@ -259,6 +259,60 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
+        # THE DECORATION A FINGERPRINT MAY WEAR. Three live citations were
+        # rejected for punctuation alone, and the rejection read as "no
+        # fingerprint given" -- silence about a quote the author can see on
+        # the line. The class has no letters in it, so widening it cannot let
+        # a quotation further down the sentence be read as this citation's
+        # fingerprint; the guard case below is what holds that.
+        write(root, "docs/CITER.md", 'See `core/thing.h:2`: *"beta"*.\n')
+        case(
+            "an italic fingerprint after a colon is one",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "docs/CITER.md", 'See `core/thing.h:2`, "beta".\n')
+        case(
+            "a fingerprint after a comma is one",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # THE GUARD. Prose between the citation and the quote means the author
+        # wrote a sentence, not a fingerprint, and the widening above must not
+        # reach across it.
+        write(
+            root,
+            "docs/CITER.md",
+            'See `core/thing.h:2` which the report calls "beta".\n',
+        )
+        case(
+            "a quote separated by prose is not a fingerprint",
+            "check_citation_lines",
+            any(
+                "with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)
+            ),
+        )
+        # A LENGTH LIMIT THAT SAYS SO. The cap used to live inside the match,
+        # so a quote one character too long fell out of it and was reported as
+        # no quote at all. Two citations in this repository were in that state
+        # and the check said nothing a reader could act on.
+        long_quote = "x" * (check_docs.FINGERPRINT_MAX + 5)
+        write(root, "core/long.h", "alpha\n%s\n" % long_quote)
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        write(
+            root,
+            "docs/CITER.md",
+            'See `core/long.h:2` — "%s".\n' % long_quote,
+        )
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "an over-long fingerprint is named as over-long, not as missing",
+            "check_citation_lines",
+            any("%d-character fingerprint" % len(long_quote) in problem
+                for problem in problems)
+            and not any("with no fingerprint" in problem for problem in problems),
+        )
         # Scoped to what we EDIT. A build directory or a vendored tree is not
         # ours to keep, and is not in CI's checkout at all.
         write(root, "build/generated.h", "alpha\nbeta\n")

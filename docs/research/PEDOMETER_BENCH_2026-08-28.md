@@ -366,7 +366,7 @@ is `UNKNOWN` is which number names the Rev A part**, not what either paper
 holds — the two records put the same chapter 11 in both, so no register below
 turns on the number. This report therefore cites only the paper it read, and
 the tree-wide reconciliation — including which document
-the `0x7C` attribution at [`VERIFIED_FACTS.md:1561-1565`](VERIFIED_FACTS.md)
+the `0x7C` attribution at [`VERIFIED_FACTS.md:1664`](VERIFIED_FACTS.md)
 *"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
 

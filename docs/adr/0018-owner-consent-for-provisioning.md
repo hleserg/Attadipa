@@ -282,7 +282,7 @@ Beyond B and C:
   project builds with no flash or NVS encryption and will not — `AGENTS.md`
   forbids burning eFuses — and a full flash read over that same port is
   documented on this unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:314` —
-  "esptool.py --port <port> --baud 921600 read_flash 0 0x2000000 waveshare-2.06-factory.bin".
+  "read_flash 0 0x2000000 waveshare-2.06-factory.bin".
   esptool writes as well as reads, and the bond store
   is in the same unencrypted NVS: `firmware/sdkconfig.defaults:108` —
   "CONFIG_BT_NIMBLE_NVS_PERSIST=y". So what a cable reaches is not only the

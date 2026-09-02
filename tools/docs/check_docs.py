@@ -248,9 +248,29 @@ CITATION_HREF = re.compile(r"\A`?\]\(([^)#]+)")
 # the two cannot disagree about where a citation ends.
 FINGERPRINT_LEAD = re.compile(r'\A`?(?:\]\([^)]*\))?`?')
 
+# Everything that may sit between the citation and the opening quote. It
+# contains no letters, so it cannot step over a word: the quote still has to be
+# adjacent to the citation, which is what stops a quotation further down the
+# sentence from being read as this citation's fingerprint. Written as one class
+# rather than a fixed order because the tree writes all of them --
+# `` — "..." ``, `` : *"..."* ``, `` , "..." `` -- and an order is a thing to
+# get wrong. Three live citations were rejected for punctuation alone before
+# this was widened, and the rejection read as "no fingerprint given".
+FINGERPRINT_DECOR = r'[\s:,;\u2014\u2013*_-]*'
+
+# NO UPPER BOUND HERE, deliberately. `[^"]` cannot cross a quote, so this
+# matches exactly one quoted run and cannot swallow a paragraph. The length
+# limit is enforced below as its OWN complaint, because a cap inside the match
+# turns "your quote is too long" into "you wrote no quote" -- silence about
+# text the author can see. That is the failure this whole check exists to
+# prevent, and it had it.
 FINGERPRINT = re.compile(
-    FINGERPRINT_LEAD.pattern + r'\s*[\u2014-]?\s*"([^"]{3,80})"'
+    FINGERPRINT_LEAD.pattern + FINGERPRINT_DECOR + r'"([^"]{3,})"'
 )
+
+# A fingerprint is a handle, not a transcription: it has to be short enough to
+# read inline and long enough to be unique in the cited line.
+FINGERPRINT_MAX = 80
 
 # HOW TO WRITE AN EXAMPLE THAT IS NOT A CITATION. A fingerprint is an
 # assertion, and prose that merely ILLUSTRATES the syntax makes it by accident:
@@ -633,6 +653,19 @@ def _report(problems, rel_self, lineno, cited, match, body, line="",
             )
         return
     snippet = stamp.group(1)
+    if len(snippet) > FINGERPRINT_MAX:
+        # Said as its own complaint rather than folded into "no fingerprint".
+        # Two citations in this tree were over the limit and were reported as
+        # carrying no quote at all -- an author reading that goes looking for
+        # the quote they can see on the line. Name the length and the limit,
+        # and the fix is obvious without reading this file.
+        problems.append(
+            '%s:%d: cites %s:%s with a %d-character fingerprint; the limit is '
+            "%d. Shorten it to a fragment unique to the cited line -- a "
+            "fingerprint is a handle, not a transcription."
+            % (rel_self, lineno, cited, span, len(snippet), FINGERPRINT_MAX)
+        )
+        return
     if any(snippet in body[n - 1] for n in wanted):
         return
     elsewhere = [n for n, text in enumerate(body, 1) if snippet in text]
