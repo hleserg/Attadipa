@@ -249,7 +249,7 @@ high-water mark is never sampled is an unbudgeted task.
 `Bridge::handle` into a message
 decode and out through a reply is about **1 KB of zero-initialised locals**. But
 that is not the deepest path: it is called from inside a **4 KB receive buffer**.
-`sim/debug_server.cpp:441` — "std::uint8_t chunk[4096];" — puts it on the stack and calls
+`sim/debug_server.cpp:438` — "std::uint8_t chunk[4096];" — puts it on the stack and calls
 `dispatch_ready` from within its scope, which adds `payload[link::kMaxPayload]`
 and, under `emit`, `queue`'s `frame[link::kMaxFrame]`. The whole chain is about
 **5 KB**, `ESTIMATED` by reading the desktop frames rather than measured.
