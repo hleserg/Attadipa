@@ -4,15 +4,36 @@ set -uo pipefail
 
 claim_ref() { printf 'refs/tags/attadipa-claims/%s' "$1"; }
 
+# Three answers, not two. 0: the tag sha, on stdout. 1: there is no such ref
+# (GitHub said 404). 2: the answer is unknown -- a 5xx, a rate limit, a body
+# jq cannot read. Only the first two are knowledge. Collapsing the third into
+# the second is how a lease that was legitimately won got deleted by its own
+# winner: the read-back of a ref created milliseconds earlier lags, and the
+# caller undid a claim that was there (#392).
 attadipa_claim_tag_sha() {
-  gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>/dev/null |
-    jq -er '.object.sha' 2>/dev/null
+  local err_file body rc err
+  err_file="$(mktemp)" || return 2
+  body="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>"$err_file")"
+  rc=$?
+  err="$(cat "$err_file")"
+  rm -f "$err_file"
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$body" | jq -er '.object.sha' 2>/dev/null && return 0
+    return 2
+  fi
+  case "$err" in
+    *'HTTP 404'*) return 1 ;;
+    *) return 2 ;;
+  esac
 }
 
+# Same three answers. The tag object behind a readable ref is as new as the
+# ref, so a failure to read it is "unknown", never "no claim".
 attadipa_claim_message() {
-  local tag_sha
-  tag_sha="$(attadipa_claim_tag_sha "$1" "$2")" || return 1
-  gh api "repos/$1/git/tags/$tag_sha" 2>/dev/null | jq -er '.message' 2>/dev/null
+  local tag_sha body
+  tag_sha="$(attadipa_claim_tag_sha "$1" "$2")" || return $?
+  body="$(gh api "repos/$1/git/tags/$tag_sha" 2>/dev/null)" || return 2
+  printf '%s' "$body" | jq -er '.message' 2>/dev/null || return 2
 }
 
 # The holder is the first line of the tag message; the lines under it are this
@@ -20,7 +41,7 @@ attadipa_claim_message() {
 # existed is one line and nothing else, and reads back the same way here.
 attadipa_claim_owner() {
   local message
-  message="$(attadipa_claim_message "$1" "$2")" || return 1
+  message="$(attadipa_claim_message "$1" "$2")" || return $?
   printf '%s\n' "${message%%$'\n'*}"
 }
 
@@ -92,10 +113,21 @@ delete_ref() {
 # the same task. A ref this attempt cannot remove is named on stderr, because a
 # claim nobody can see is exactly the stall #254 reports.
 discard_own_ref() {
-  local repo="$1" number="$2" tag_sha="$3" live
-  live="$(attadipa_claim_tag_sha "$repo" "$number")" || live=""
-  [ -z "$live" ] || [ "$live" = "$tag_sha" ] || return 0
-  delete_ref "$repo" "$number" && return 0
+  local repo="$1" number="$2" tag_sha="$3" live rc attempt
+  # Delete only what is positively this attempt's ref. A 404 seconds after the
+  # create is usually the read lagging the write, so look again; an answer that
+  # never settles leaves the ref where it is and names it. Deleting on "unknown"
+  # is the bug this file had (#392).
+  for attempt in 1 2 3; do
+    live="$(attadipa_claim_tag_sha "$repo" "$number")"
+    rc=$?
+    if [ "$rc" -ne 1 ] || [ "$attempt" -eq 3 ]; then break; fi
+    sleep 2
+  done
+  if [ "$rc" -eq 0 ]; then
+    [ "$live" = "$tag_sha" ] || return 0   # another writer's claim is not ours to remove
+    delete_ref "$repo" "$number" && return 0
+  fi
   printf 'left behind: %s -- clear it with: claim.sh break %s %s\n' \
     "$(claim_ref "$number")" "$repo" "$number" >&2
 }
@@ -152,11 +184,29 @@ acquire() {
     return 2
   fi
 
-  winner="$(attadipa_claim_owner "$repo" "$number")"
-  if [ "$winner" != "$holder" ]; then
-    printf 'claim verification failed\n' >&2
+  # The create above is the compare-and-set: GitHub refuses a ref that exists,
+  # so its success is the claim won. The read-back confirms it and can only
+  # add one fact -- that another holder is there after all. It cannot un-win
+  # the claim by failing: the ref is milliseconds old and GitHub's reads lag
+  # its writes, so an unreadable answer is retried and, if it never settles,
+  # reported and trusted (#392).
+  local attempt=1 read_rc
+  while :; do
+    winner="$(attadipa_claim_owner "$repo" "$number")"
+    read_rc=$?
+    if [ "$read_rc" -eq 0 ] || [ "$attempt" -eq 4 ]; then break; fi
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  if [ "$read_rc" -ne 0 ]; then
+    printf 'claim created but not readable back after %s attempts; trusting the create -- confirm with: claim.sh owner %s %s\n' \
+      "$attempt" "$repo" "$number" >&2
+  elif [ "$winner" != "$holder" ]; then
+    printf 'claim verification failed: held by %s\n' "$winner" >&2
     discard_own_ref "$repo" "$number" "$tag_sha"
     return 2
+  elif [ "$attempt" -gt 1 ]; then
+    printf 'claim read back after %s attempts\n' "$attempt" >&2
   fi
   if [ "$number" != writer ] && ! edit_label "$repo" "$number" --add-label agent:working; then
     discard_own_ref "$repo" "$number" "$tag_sha"

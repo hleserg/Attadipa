@@ -139,6 +139,9 @@ case "$method:$path" in
     fi
     if mkdir "$state/$prefix.lock" 2>/dev/null; then
       field sha > "$state/$prefix.sha"
+      # GitHub's reads lag its writes: ATTADIPA_STUB_REF_LAG=N answers 404 to
+      # the next N reads of a ref that was just created (#392).
+      [ -z "${ATTADIPA_STUB_REF_LAG-}" ] || printf '%s\n' "$ATTADIPA_STUB_REF_LAG" > "$state/lag.$prefix"
       printf '{"ref":"%s"}\n' "$ref"
     else
       echo 'Reference already exists' >&2; exit 1
@@ -153,6 +156,10 @@ case "$method:$path" in
     fi
     lock=ref; [ "${path##*/}" = writer ] && lock=writer
     if [ ! -d "$state/$lock.lock" ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
+    if [ -s "$state/lag.$lock" ] && [ "$(cat "$state/lag.$lock")" -gt 0 ]; then
+      echo "$(($(cat "$state/lag.$lock") - 1))" > "$state/lag.$lock"
+      echo 'gh: Not Found (HTTP 404)' >&2; exit 1
+    fi
     printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/$lock.sha")" ;;
   GET:repos/o/r/actions/runs/*)
     # The completion evidence behind a hosted holder. No file: no readable run.
@@ -454,6 +461,49 @@ case "$orphan_err" in
   *) bad 'an orphan it cannot remove is named rather than left silent' \
          "stderr was: $(printf '%s' "$orphan_err" | tr '\n' ' ')" ;;
 esac
+
+# #392: the create is the compare-and-set; the read-back only confirms it. A
+# ref that answers 404 for a moment after its own creation is lag, not loss.
+reset_state
+set +e
+lag_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_LAG=1 \
+  bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+lag_rc=$?
+set -e
+lag_owner="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" owner o/r 7 2>/dev/null)" || lag_owner=none
+[ "$lag_rc" -eq 0 ] && [ -d "$work/state/ref.lock" ] && [ "$lag_owner" = agent-4242-1 ] \
+  && case "$lag_err" in *'read back after 2 attempts'*) true ;; *) false ;; esac \
+  && ok 'a read-back that lags the create is retried, not read as a lost claim' \
+  || bad 'a read-back that lags the create is retried, not read as a lost claim' \
+         "rc=$lag_rc, owner=$lag_owner, stderr=$(printf '%s' "$lag_err" | tr '\n' ' ')"
+
+# A read-back that never settles cannot un-win the claim: the ref stays, the
+# acquire succeeds, and stderr says the confirmation is missing.
+reset_state
+set +e
+unread_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL=1 \
+  bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+unread_rc=$?
+set -e
+[ "$unread_rc" -eq 0 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$unread_err" in *'not readable back'*'trusting the create'*) true ;; *) false ;; esac \
+  && ok 'an unreadable read-back leaves the won ref intact and reports success' \
+  || bad 'an unreadable read-back leaves the won ref intact and reports success' \
+         "rc=$unread_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_err" | tr '\n' ' ')"
+
+# The undo path has the same rule: it deletes only a ref it positively read as
+# its own. Unknown is left in place and named.
+reset_state
+set +e
+unread_orphan_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+  ATTADIPA_STUB_REF_GET_FAIL=1 bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+unread_orphan_rc=$?
+set -e
+[ "$unread_orphan_rc" -eq 2 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$unread_orphan_err" in *'left behind'*'refs/tags/attadipa-claims/7'*) true ;; *) false ;; esac \
+  && ok 'a failed claim never deletes a ref it could not read' \
+  || bad 'a failed claim never deletes a ref it could not read' \
+         "rc=$unread_orphan_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_orphan_err" | tr '\n' ' ')"
 
 reset_state; printf 'agent:working\n' > "$work/state/labels"; printf '2000-01-01T00:00:00Z\n' > "$work/state/timeline-date"
 PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" reap o/r 7 7200 >/dev/null
