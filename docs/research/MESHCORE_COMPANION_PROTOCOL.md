@@ -328,13 +328,26 @@ local client.
 The advert builder **truncates toward zero** (`double`→`int32`), it does not
 round.
 
-> **Caveat on the LPP encoder.** The call is `telemetry.addGPS(...)` on a
-> `CayenneLPP` object, and CayenneLPP is an **external dependency** —
-> `electroniccats/CayenneLPP @ 1.6.1`, declared in `platformio.ini:27` and **not
-> vendored** here (only a stub in `test/mocks/` with no `addGPS`). The 9-byte
-> layout above is established from MeshCore's own reader, writer and size tables,
-> which agree with each other three ways, but **not** from the `addGPS` source,
-> which is not in this repository.
+> **The caveat on the LPP encoder is closed — 2026-09-02, [#412](https://github.com/hleserg/Attadipa/issues/412).**
+> The call is `telemetry.addGPS(...)` on a `CayenneLPP` object, and CayenneLPP is
+> an **external dependency** — `electroniccats/CayenneLPP @ 1.6.1`, declared in
+> `platformio.ini:27` and **not vendored** here (only a stub in `test/mocks/`
+> with no `addGPS`). The 9-byte layout above used to rest on MeshCore's own
+> reader, writer and size tables, which agree three ways, and **not** on the
+> `addGPS` source. That source has now been read at
+> `ElectronicCats/CayenneLPP@a83f3e4`, `src/CayenneLPP.cpp`: it writes
+> `[channel][136]` then `lat>>16, lat>>8, lat` and the same for `lon` and `alt`,
+> from `int32_t lat = latitude * 10000` and `alt = altitude * 100`, guarded by
+> `LPP_GPS_SIZE 9`. **Byte-for-byte what the three in-repo tables predicted** —
+> the layout is now established from the code that actually produces the bytes.
+>
+> It also carries the same truncation as the advert builder, and one step more:
+> `node_lat` is a `double`, `addGPS` takes a `float`, and the C conversion at the
+> end truncates toward zero. So a telemetry coordinate is never larger in
+> magnitude than the node's stored one and may be a full LSB — **≈ 11.1 m** —
+> smaller, biased toward the equator and the prime meridian. A golden vector
+> generated with round-to-nearest disagrees with a real device about half the
+> time. [NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md) §3.2.
 
 ### 4.2 Does telemetry carry a position? Yes — conditionally
 

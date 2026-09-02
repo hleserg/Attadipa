@@ -77,6 +77,10 @@ want to inherit the experience, not only the code.
 | `esp-iot-solution` | github.com/espressif/esp-iot-solution | `5d75f3f0dc499d9ed4b69284a3741187c2b75a70` | 2026-08-23 | **where `esp_lcd_sh8601` and `esp_lcd_co5300` upstream actually live** — not `esp-bsp`, whose `components/lcd` holds neither. Read 2026-08-23 for the byte-order trace (D21): both drivers pass the framebuffer to `esp_lcd_panel_io_tx_color()` **verbatim**, so any swap is above them. Apache-2.0. **Read, not depended on** |
 | `xiaozhi-esp32` | github.com/78/xiaozhi-esp32 | `bb9122ab08c3083eeb4f67b3974b7afe771723b8` | 2026-08-22 | MIT; carries `main/boards/waveshare/esp32-s3-touch-amoled-2.06/` — this exact board. Evaluated for the audio path below; **re-read 2026-08-23 for the display path**, where `SpiLcdDisplay` sets `.swap_bytes = 1`. The commit is the one the licence check was run against. Note the version on the unit is **1.8.5**, in `ota_0`, never selected |
 | `meshcore-firmware` (Offband) | github.com/OffbandMesh/meshcore-firmware | `4f5e8b7aa63408370d95d44cdf60ba4125f07ea0` (branch `firmware-base`) | 2026-08-23 | a MeshCore derivative that measured the BLE frame-capacity defect on hardware; T-127. Examined at three revisions — `fda4cdd8`, `4f5e8b7a`, `7549cf30`. **Not** a GitHub fork of `meshcore-dev/MeshCore`: the API reports `fork: false` and no parent, so it is an independent tree, and its divergence has to be read rather than diffed |
+| `CayenneLPP` (ElectronicCats) | github.com/ElectronicCats/CayenneLPP | `a83f3e4` (**1.6.1**) | 2026-05-01 | MIT, `LICENSE.md`. **The library MeshCore actually links** — `platformio.ini:27`, `electroniccats/CayenneLPP @ 1.6.1` — so `src/CayenneLPP.cpp::addGPS` is the code that writes the bytes a node sends, and not one more implementation of the same spec. Read 2026-09-02 for exactly that: it closes the encoder caveat [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) carried since 2026-08-22. Rejected as a dependency — heap `_buffer`, ArduinoJson in the ESP-IDF component — and kept as the writer of record for golden vectors |
+| `CayenneLPP` (myDevices) | github.com/myDevicesIoT/CayenneLPP | `e8cca2c` | **2018-12-07** | the original, read for format lineage only. Eight years unmaintained; not a candidate |
+| `meshcore_py` | github.com/meshcore-dev/meshcore_py | `664ba0c99e3eedd13d701fc58ed4b273670bf64b` (2.3.9.1) | 2026-08-30 | MIT. The maintained **host** client for the same companion protocol Attadipa speaks, so it is prior art for request correlation and for what a real node answers. Cannot be a firmware dependency and is not treated as one. Read 2026-09-02: `req_telemetry_sync` serialises every mesh request behind one lock, mirroring the node's own single pending slot — and converts the node's millisecond `est_timeout` as `/ 800` here and `/ 1000 * 1.2` elsewhere, which is why the unit is taken from the firmware instead |
+| `zephyr` (GNSS subsystem) | github.com/zephyrproject-rtos/zephyr | `2f0bc11264a8e72e214f3db0a3fa221eb022453a` | 2026-09-02 | Apache-2.0. **A second revision of a project already in this table** — the power-management record pins v4.4.2 `671f64aa` — and deliberately a different one, because these are different files read on a different date. `include/zephyr/drivers/gnss.h`, `gnss_publish.h` and `drivers/gnss/gnss_emul.c`: the acquisition struct, the publish seam and the emulator pattern. `drivers/modem/vendor_standalone/hl78xx/hl78xx_gnss.c` is read as a **counter-example**: it wraps `gnss_publish_data()` in `if (fix_status != GNSS_FIX_STATUS_NO_FIX)`, so losing the fix produces silence rather than a transition |
 
 ### Upstream deltas being monitored, and not taken
 
@@ -1015,6 +1019,115 @@ reported to the user as an unsupported node; a telemetry response whose
 `LPP_GPS` record is absent because permission was denied, which is a normal
 outcome and not an error; and a position from a companion carrying no better
 provenance than "arrived at time T from key K".
+
+> **Amended 2026-09-02, [#412](https://github.com/hleserg/Attadipa/issues/412).**
+> The last two of those tests need a third case each, and it is not a variation
+> of the first two. A telemetry reply can also lack its `LPP_GPS` record because
+> the node's receiver is **switched off** — `EnvironmentSensorManager` gates on
+> `gps_active` as well as on the permission bit, and `gps_enabled` is `0` by
+> default. Same silence, different cause, and a client that reports "permission
+> denied" for both is wrong half the time. And *"arrived at time T from key K"*
+> is now understated rather than wrong: `CMD_GET_CUSTOM_VARS` adds whether a
+> receiver was detected and whether it is running, which is three origin states
+> instead of one. It is still not a fix flag and still not an age.
+> [NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md).
+
+---
+
+### Decoding a coordinate out of a MeshCore node
+
+**Problem:** a node reports a position. Something has to turn its bytes into
+`GnssObservation` without inventing the validity, the age or the provenance that
+none of those bytes carry. Researched under
+[#412](https://github.com/hleserg/Attadipa/issues/412); the full reading is
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md), which is where
+the byte layouts and the test matrix live.
+
+**Projects investigated:** MeshCore's own `LPPDataHelpers.h` and
+`EnvironmentSensorManager.cpp` at the pin and at current `main` ·
+`electroniccats/CayenneLPP` 1.6.1, the library MeshCore actually links ·
+`myDevicesIoT/CayenneLPP`, the original · `meshcore-dev/meshcore_py`, the
+maintained host client · Zephyr's GNSS subsystem, for the provider shape.
+
+**Useful implementation:** a layout, a lock and a struct. Not a subsystem.
+
+- `ElectronicCats/CayenneLPP@a83f3e4`, `src/CayenneLPP.cpp::addGPS` — **the
+  authoritative 9-byte layout**, because it is the code that writes the bytes a
+  node sends. It agrees with MeshCore's own `LPPWriter::writeGPS` and
+  `LPPReader::readGPS` exactly.
+- `meshcore_py@664ba0c9`, `src/meshcore/commands/binary.py` — one
+  `_mesh_request_lock` around every mesh request, mirroring the node's own
+  single `pending_*` slot. The idea, twelve lines.
+- Zephyr `2f0bc11264a8e72e214f3db0a3fa221eb022453a`,
+  `include/zephyr/drivers/gnss.h` and `gnss_publish.h`, plus
+  `drivers/gnss/gnss_emul.c` — one acquisition structure joining navigation data
+  and contemporaneous receiver state, a driver-to-consumer publish seam, and an
+  emulator built for the tests rather than after them.
+
+**Licence:** MIT for MeshCore, `meshcore_py` and both CayenneLPP repositories
+(ElectronicCats's terms are in `LICENSE.md`, not `LICENSE`); Apache-2.0 for
+Zephyr. Nothing is copied verbatim in any case.
+
+**Strengths:** the ElectronicCats library is maintained (2026-05-01), has a
+decoder and has an exact GPS vector in `test/aunit/main.cpp` — which is the
+single most useful artefact here, because a golden vector generated from the
+writer of record is not a guess. `meshcore_py` has the correlation problem
+already solved against a real node.
+
+**Weaknesses**, and they decide this record:
+
+- `LPPReader::readGPS` **dereferences nine bytes before its bounds check** — up
+  to 8 past the end of the buffer — and its cursor is a `uint8_t`, so `_pos += 9`
+  wraps and the trailing `return _pos <= _len` then reports **success** on a
+  frame it read out of bounds. `skipData`'s `default: _pos++` desynchronises the
+  parse on an unknown type instead of ending it. This is protocol evidence, not
+  a decoder;
+- ElectronicCats allocates `_buffer` on the heap and its ESP-IDF component
+  depends on **ArduinoJson**, which is two Attadipa constraints at once;
+- `myDevicesIoT/CayenneLPP`'s last commit is **2018-12-07**;
+- `meshcore_py` is Python, so it cannot enter an ESP-IDF image — and its timeout
+  handling must not be copied even as arithmetic: `est_timeout` is milliseconds
+  in the firmware (`calcFloodTimeoutMillisFor`), and the package converts it as
+  `/ 800` in one file and `/ 1000 * 1.2` in another. Two different margins on
+  one field;
+- Zephyr's `hl78xx_gnss.c` suppresses publication on no-fix. **That behaviour
+  must not be copied**: silence with no explicit transition preserves a stale
+  valid observation, which is exactly the MeshCore defect this record exists to
+  contain.
+
+**Decision:** `REIMPLEMENT` the decoder, bounded and float-free, behind one
+`PositionProvider`. `INSPIRE ARCHITECTURE` from Zephyr for the provider/publish
+/emulator shape. `REJECT` both CayenneLPP libraries **as dependencies** and keep
+ElectronicCats as the **writer of record for golden vectors**. Read
+`meshcore_py`, depend on none of it.
+
+**Reason.** The decoder is small — three signed 24-bit fields and a header — and
+every candidate fails a constraint the small version meets by construction. The
+conversion needs no floating point at all: LPP is `e4` and
+`core/include/attadipa/core/position.h:42` — "struct Position {" — is `e7`, so
+the ratio is exactly 1000 and the whole path is integer, provided the range
+check happens on the raw 24-bit value **before** the multiply. `raw × 1000`
+overflows `int32` above 2 147 483 and the field reaches 8 388 607.
+
+**Source revision:** MeshCore `d92964352441e53b93e8667b802e04f6e072b39e`,
+confirmed byte-identical to `0679dbeffc504d562d2f09eb072fdc223f8ffc2a` for all
+five relevant files on 2026-09-02 · `ElectronicCats/CayenneLPP@a83f3e4` (1.6.1)
+· `meshcore_py@664ba0c99e3eedd13d701fc58ed4b273670bf64b` (2.3.9.1) · Zephyr
+`2f0bc11264a8e72e214f3db0a3fa221eb022453a`.
+
+**Attadipa integration:** `NodePositionProvider` in `link/`, beside the
+companion client that already parses the frame; `LocationService` in `core/`,
+which knows no wire format. P0.3's shape, one contract, no second HAL.
+
+**Tests required:** golden vectors generated from **both** MeshCore's writer and
+ElectronicCats 1.6.1 and asserted equal; the encoder's **truncation toward
+zero** as an explicit case, since a vector built with round-to-nearest disagrees
+with a real device by one LSB ≈ 11.1 m; truncation of the frame at every byte
+offset; a 24-bit extreme rejected *before* the multiply; unknown type; channel 0;
+duplicate `LPP_GPS`; and the semantic ones, which matter more than any of the
+above — **no input may produce `PositionValidity::Valid`**, `age_at_source_ms`
+is never written as zero, and a coordinate that is identical to the last one
+does not refresh either age.
 
 ---
 
