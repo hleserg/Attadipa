@@ -442,26 +442,13 @@ void DebugServer::poll(std::uint32_t now_ms, debug::Bridge& bridge)
     for (int reads = 0; reads < 8; ++reads) {
         const ssize_t got = ::recv(client_fd_, chunk, sizeof(chunk), 0);
         if (got > 0) {
-            const std::size_t total = static_cast<std::size_t>(got);
-            std::size_t       at    = 0;
-            while (at < total) {
-                // Drain *first*, then offer. The other order -- push, and on a
-                // refusal drain and push the same bytes again -- counted them
-                // into `input_dropped` on every attempt, because
-                // `Decoder::push` adds `length - accepted` itself
-                // (`frame_codec.cpp:89-91`). So the bytes were never lost
-                // silently; they were reported several times over, which is the
-                // same statistic being wrong in the friendlier direction.
-                // Draining first means a zero take is a real refusal, counted
-                // once, and there is nothing left to try.
-                (void)dispatch_ready(now_ms, bridge);
-                const std::size_t taken = decoder_.push(chunk + at, total - at);
-                if (taken == 0) {
-                    break;
-                }
-                at += taken;
-            }
-            (void)dispatch_ready(now_ms, bridge);
+            // `feed` drains before every offer and once after. What it still
+            // cannot place after a drain is the one real refusal, and the
+            // decoder counts it there, once. This loop used to be written out
+            // here and again in the firmware, each with its own idea of what a
+            // refusal was; now there is one, in `link`, and it is tested.
+            decoder_.feed(chunk, static_cast<std::size_t>(got),
+                          [&] { (void)dispatch_ready(now_ms, bridge); });
             continue;
         }
         if (got == 0) {

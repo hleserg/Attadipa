@@ -178,7 +178,7 @@ struct DecoderStats {
     std::uint32_t resyncs       = 0;  // a byte discarded looking for a header
     std::uint32_t bad_length    = 0;  // header arrived with an impossible length
     std::uint32_t bad_crc       = 0;  // whole frame arrived corrupt
-    std::uint32_t input_dropped = 0;  // bytes refused because the buffer was full
+    std::uint32_t input_dropped = 0;  // bytes a caller gave up on after the buffer refused them
 };
 
 // A resynchronising decoder over a byte stream.
@@ -193,10 +193,36 @@ public:
     // the first byte of the next one can be held while the first is drained.
     static constexpr std::size_t kCapacity = kMaxFrame + 1;
 
-    // Feed bytes. Returns how many were accepted; anything refused is counted
-    // in `stats().input_dropped` rather than silently lost, because a transport
-    // that overruns us is a fact worth having.
+    // Feed bytes. Returns how many were accepted; the rest were refused because
+    // the buffer is full, and *refused is not lost*. The caller can drain and
+    // offer them again, and usually does -- so nothing is counted here. A byte
+    // is `stats().input_dropped` only once somebody gives up on it, which is
+    // what `feed()` does and what a hand-rolled loop must do itself.
     std::size_t push(const std::uint8_t* data, std::size_t length);
+
+    // Feed a whole read the way a transport should: drain, offer, repeat until
+    // everything is in or a drain freed nothing. `drain` runs before every
+    // offer and once after the last, so a burst longer than the buffer goes in
+    // whole as long as it is made of frames the drain consumes. What is still
+    // refused after a drain is the loss this transport actually suffered; it
+    // is counted in `stats().input_dropped` exactly once, here, and never per
+    // attempt. Returns how many bytes went in.
+    template <typename Drain>
+    std::size_t feed(const std::uint8_t* data, std::size_t length, Drain&& drain)
+    {
+        std::size_t at = 0;
+        while (at < length) {
+            drain();
+            const std::size_t taken = push(data + at, length - at);
+            if (taken == 0) {
+                break;
+            }
+            at += taken;
+        }
+        drain();
+        stats_.input_dropped += static_cast<std::uint32_t>(length - at);
+        return at;
+    }
 
     // Take the next complete frame, if there is one.
     //

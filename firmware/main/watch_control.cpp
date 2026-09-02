@@ -269,17 +269,10 @@ private:
     std::uint8_t bytes[1024]{};
     const int received = usb_serial_jtag_read_bytes(bytes, sizeof(bytes), 0);
     if (received > 0) {
-      std::size_t at = 0;
-      const std::size_t total = static_cast<std::size_t>(received);
-      while (at < total) {
-        dispatch(now_ms);
-        const std::size_t accepted = decoder_.push(bytes + at, total - at);
-        if (accepted == 0) {
-          break;
-        }
-        at += accepted;
-      }
-      dispatch(now_ms);
+      // Drain between offers, and count only what a drain could not make room
+      // for: the loop the simulator runs, in `link`, rather than a copy of it.
+      decoder_.feed(bytes, static_cast<std::size_t>(received),
+                    [&] { dispatch(now_ms); });
     }
 
     for (std::size_t i = 0;
