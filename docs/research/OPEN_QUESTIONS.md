@@ -347,7 +347,7 @@ is the record of what was true at `144459f` and what changed it:
   sequence compile in every image; its second gave a product image the caller:
   `firmware/main/waveshare_board.cpp:429` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
   is ungated and is reached from the entry screen a long press on the clock
-  opens (`firmware/main/waveshare_board.cpp:780` — "void long_press(lv_event_t *) {").
+  opens (`firmware/main/waveshare_board.cpp:788` — "void long_press(lv_event_t *) {").
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same

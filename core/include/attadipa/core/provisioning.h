@@ -17,7 +17,9 @@
 namespace attadipa::core {
 
 enum class ProvisionOutcome : std::uint8_t {
-    Accepted,  // Applied and, where it persists, persisted.
+    Accepted,  // Applied and, where it persists, persisted -- or, for a
+               // radio, handed to it: a stack that then refuses is not
+               // reported back here.
     Rejected,  // Not a value this watch takes. Nothing changed.
     Failed,    // Storage or hardware refused; part of it may have moved.
 };

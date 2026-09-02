@@ -461,7 +461,15 @@ public:
     if (!attadipa::firmware::is_pairing_passkey(passkey)) {
       return attadipa::core::ProvisionOutcome::Rejected;
     }
+    // The same NVS the clock refused on: a passkey the worker cannot store
+    // would arm one scan and be gone at the next boot, so it is refused
+    // before it is posted, as #405 does for the RTC one field earlier.
+    if (state.metadata_storage != ESP_OK) {
+      return attadipa::core::ProvisionOutcome::Failed;
+    }
 #if CONFIG_BT_NIMBLE_ENABLED
+    // `true` here is a post to the radio worker, not its answer: the stack's
+    // own refusal, if any, reaches only the serial log (`meshcore_ble.cpp`).
     return configure_meshcore_ble(passkey)
                ? attadipa::core::ProvisionOutcome::Accepted
                : attadipa::core::ProvisionOutcome::Failed;

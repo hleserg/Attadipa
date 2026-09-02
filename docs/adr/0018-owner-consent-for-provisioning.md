@@ -37,9 +37,9 @@ recorded here so that no option is credited with paying them.
    `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image. Its second gave the sequence an ungated caller,
    `firmware/main/waveshare_board.cpp:429` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
-   next to the HIL-only one that `firmware/main/waveshare_board.cpp:481` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   next to the HIL-only one that `firmware/main/waveshare_board.cpp:489` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates,
-   `firmware/main/waveshare_board.cpp:482` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
+   `firmware/main/waveshare_board.cpp:490` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side was always unconditional:
    `firmware/main/waveshare_board.cpp:255` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
@@ -320,7 +320,7 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:482` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  by `firmware/main/waveshare_board.cpp:490` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
   `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
@@ -363,6 +363,6 @@ Beyond B and C:
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
   `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:642` — "void build_mesh_screen() {" — is
+  `firmware/main/waveshare_board.cpp:650` — "void build_mesh_screen() {" — is
   full of literal colours. Building the entry screen where the mesh screen was
   built would silently opt it out of the check.
