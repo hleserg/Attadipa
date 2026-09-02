@@ -240,30 +240,39 @@ display returned with the panel up, LVGL running, the PMU programmed and
 nothing torn down — a partially initialised board reported as a failure.
 
 The owner contract's `prepare → commit → rollback` shape is the same shape
-boot needs, and boot has it now. Three steps are required — the bus, the
-rails and the display — and each failure calls
+boot needs, and boot has it now. Five steps roll back — the bus, the rails,
+the display, the LVGL lock and the input service — and each failure calls
 [`firmware/main/waveshare_board.cpp:1017`](../../firmware/main/waveshare_board.cpp) —
 "esp_err_t abandon_board(bool lvgl_reachable) {", which reads the journal
 off `BoardState`'s handles and undoes every step that succeeded, in reverse —
 except LVGL, which it can only ask to stop: `lvgl_port_deinit()` sets a flag
 and `lv_deinit()` runs later on the LVGL task, so the UI part is torn down
-under the lock first (timer, faces, display) and, when the failure *was* that
-lock, the display is left in place and logged rather than waited for through
-a `lvgl_port_remove_disp()` that has no timeout. RTC and touch
-failures are reported and boot continues: the clock shows unavailable, the
-input service runs without a touch controller and never names a touch wake
+under the lock first (timer, faces, display). RTC and touch failures are
+reported and boot continues: the clock shows unavailable, the input service
+runs without a touch controller and never names a touch wake
 ([`firmware/main/physical_input.cpp:181`](../../firmware/main/physical_input.cpp) —
-"A boot that got no touch controller").
+"A boot that got no touch controller"), and the face says `no touch`.
 
-The one thing the rollback does not undo is the rails. The bring-up wrote
-them, and switching any of them off is authorised by a measurement nobody has
-made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not a supply), so they stay
-as written and the log says so:
+Two things the rollback leaves behind, on purpose. The rails, always: the
+bring-up wrote them, and switching any of them off is authorised by a
+measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
+a supply), so they stay as written and the log says so:
 [`firmware/main/waveshare_board.cpp:1063`](../../firmware/main/waveshare_board.cpp) —
-"rails stay as written". **NOT EXECUTED — HARDWARE REQUIRED:** every path
-through `abandon_board()` is a boot-failure path; none has been provoked on a
-board, and whether a CO5300 whose `esp_lcd_panel_del` failed leaves the QSPI
-bus freeable is UNKNOWN.
+"rails stay as written". And the whole display stack — LVGL, the display, the
+panel, its IO and the QSPI host — when the failure *was* the LVGL lock: a task
+that has held it past a second is inside `lv_timer_handler()`, most plausibly
+a flush the panel never acknowledged; `lvgl_port_remove_disp()` would wait on
+that lock forever, and freeing the panel or the host under a flush in
+progress is a use-after-free on the next byte, so that path leaves all five
+where they are and logs it
+([`firmware/main/waveshare_board.cpp:1019`](../../firmware/main/waveshare_board.cpp) —
+"if (state.display != nullptr && !lvgl_reachable) {"). That leak is
+unbounded — the LVGL task and its buffers stay allocated for the life of the
+boot — and it is the trade made: a leak is recoverable and a hang or a panic
+is not. **NOT EXECUTED — HARDWARE REQUIRED:** every path through
+`abandon_board()` is a boot-failure path; none has been provoked on a board,
+and whether a CO5300 whose `esp_lcd_panel_del` failed leaves the QSPI bus
+freeable is UNKNOWN.
 
 ## 3. What the three upstream candidates actually give
 
