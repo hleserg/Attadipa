@@ -43,6 +43,9 @@ struct FakeBoard final : attadipa::core::Provisioner {
     // `Pending` is what the board does: reserve a slot, queue the request, and
     // let the worker finish it. `Rejected` and `Failed` refuse it outright.
     ProvisionOutcome passkey_answer = ProvisionOutcome::Pending;
+    // The worker queue refusing the post: the slot is reserved and given back,
+    // exactly as meshcore_ble.cpp does before it answers ESP_ERR_NO_MEM.
+    bool queue_full = false;
     int clocks = 0, passkeys = 0, polls = 0;
     attadipa::core::WallClockEntry clock{};
     std::uint32_t passkey = 0;
@@ -69,6 +72,10 @@ struct FakeBoard final : attadipa::core::Provisioner {
         // busy refusal leaves the in-flight one for mesh_passkey_outcome().
         std::uint32_t reserved = 0;
         if (!op.reserve(reserved)) return ProvisionOutcome::Failed;
+        if (queue_full) {
+            op.release(reserved);
+            return ProvisionOutcome::Failed;
+        }
         ticket_ = reserved;
         queued = reserved;
         return ProvisionOutcome::Pending;
@@ -439,6 +446,39 @@ int main()
         entry.press(EntryKey::Ok);
         board.worker(PasskeyOutcome::NotStored);
         CHECK(entry.poll());
+        for (int i = 0; i < 6; ++i) entry.press(EntryKey::Backspace);
+        entry.press(EntryKey::Ok);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
+    }
+    // A refusal after a failure does not forgive it. NotStored leaves the
+    // digits armed in the radio and the board without a ticket; an OK the
+    // worker queue then refuses is answered Failed over an idle slot, which
+    // says nothing about what this screen was already told. Cancel and the
+    // empty OK must still say Failed (#416, round 4).
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        type(entry, "123456");
+        entry.press(EntryKey::Ok);
+        board.worker(PasskeyOutcome::NotStored);
+        CHECK(entry.poll());
+        board.queue_full = true;
+        entry.press(EntryKey::Ok);
+        CHECK(!entry.finished() && entry.verdict() == EntryVerdict::Failed);
+        entry.press(EntryKey::Cancel);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
+    }
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        type(entry, "123456");
+        entry.press(EntryKey::Ok);
+        board.worker(PasskeyOutcome::NotStored);
+        CHECK(entry.poll());
+        board.queue_full = true;
+        entry.press(EntryKey::Ok);
         for (int i = 0; i < 6; ++i) entry.press(EntryKey::Backspace);
         entry.press(EntryKey::Ok);
         CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);

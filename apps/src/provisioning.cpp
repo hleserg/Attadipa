@@ -212,8 +212,11 @@ void ProvisioningEntry::accept() {
       // "no passkey; the clock is set" is honest only in the Failed case. A
       // screen that was cancelled with a passkey in flight is gone, and this
       // one is the only place left that can be told how that ended (#416,
-      // round 1).
+      // round 1). Latched, not assigned: the board's answer is about the
+      // radio now, and a refusal after an earlier failure cannot forgive it
+      // (#416, round 4).
       passkey_failed_ =
+          passkey_failed_ ||
           sink_.mesh_passkey_outcome() != core::ProvisionOutcome::Failed;
       verdict_ = EntryVerdict::Failed;
       return;
