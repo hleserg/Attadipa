@@ -3,6 +3,7 @@
 
 #include "attadipa/core/time_service.h"
 #include "pcf85063_time.h"
+#include "provision_time.h"
 
 namespace {
 
@@ -24,6 +25,164 @@ attadipa::core::TimeObservation sample(
 {
     return {utc, observed_at, fresh_for, age_at_source_ms, source, quality,
             false};
+}
+
+// ---- provision_time.h: the one sequence that sets the clock ----------------
+
+// The storage and the chip, as a test sees them. The store is one blob that is
+// there or is not -- `nvs_set_blob` either lands whole or leaves the old
+// value, which is why a refused save here changes nothing.
+struct FakeTimeOps {
+    bool has_blob = false;
+    attadipa::firmware::TimeMetadata blob{};
+    bool fail_read = false, fail_save = false, fail_rtc = false;
+    int saves = 0, erases = 0, rtc_writes = 0;
+
+    attadipa::firmware::MetadataRead read_metadata(
+        attadipa::firmware::TimeMetadata *out)
+    {
+        if (fail_read) return attadipa::firmware::MetadataRead::Unreadable;
+        if (!has_blob) return attadipa::firmware::MetadataRead::Absent;
+        *out = blob;
+        return attadipa::firmware::MetadataRead::Present;
+    }
+    bool save_metadata(const attadipa::firmware::TimeMetadata &m)
+    {
+        ++saves;
+        if (fail_save) return false;
+        blob = m;
+        has_blob = true;
+        return true;
+    }
+    bool erase_metadata()
+    {
+        ++erases;
+        has_blob = false;
+        blob = {};
+        return true;
+    }
+    bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &,
+                              std::int64_t)
+    {
+        ++rtc_writes;
+        return !fail_rtc;
+    }
+};
+
+const attadipa::core::MonotonicTime kProvisionNow{1000};
+// 2026-09-02T00:00:00Z, inside the years the PCF85063 can hold.
+const std::int64_t kProvisionUtc = 1788307200;
+
+attadipa::firmware::TimeProvisionRequest provision_request()
+{
+    attadipa::firmware::TimeProvisionRequest r;
+    r.utc_seconds = kProvisionUtc;
+    r.timezone_offset_minutes = 300;
+    r.valid_for_ms = 60000;
+    return r;
+}
+
+void test_provision_time()
+{
+    using attadipa::core::TimeService;
+    using attadipa::core::TimeSource;
+    using attadipa::firmware::ProvisionTimeResult;
+    using attadipa::firmware::provision_time;
+
+    // Accepted: the service moves and the blob holds this synchronization.
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Accepted);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::Manual);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == 300 &&
+              ops.blob.last_sync_utc == kProvisionUtc);
+        CHECK(ops.rtc_writes == 1 && ops.erases == 0);
+    }
+    // Rejected before anything is touched: no validity window ...
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        auto r = provision_request();
+        r.valid_for_ms = 0;
+        CHECK(provision_time(ops, r, svc, kProvisionNow) ==
+              ProvisionTimeResult::Rejected);
+        CHECK(ops.saves == 0 && ops.rtc_writes == 0);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // ... a window whose deadline overflows ...
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        auto r = provision_request();
+        r.valid_for_ms = 0xFFFFFFFFu;
+        CHECK(provision_time(ops, r, svc,
+                             attadipa::core::MonotonicTime{
+                                 0xFFFFFFFFFFFFFF00ull}) ==
+              ProvisionTimeResult::Rejected);
+        CHECK(ops.rtc_writes == 0);
+    }
+    // ... and a year the chip cannot hold.
+    {
+        FakeTimeOps ops;
+        TimeService svc;
+        auto r = provision_request();
+        r.utc_seconds = 0;  // 1970
+        CHECK(provision_time(ops, r, svc, kProvisionNow) ==
+              ProvisionTimeResult::Rejected);
+        CHECK(ops.rtc_writes == 0);
+    }
+    // Unreadable metadata stops the sequence before the chip: the fail-closed
+    // check, whose whole value is the order.
+    {
+        FakeTimeOps ops;
+        ops.fail_read = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.saves == 0 && ops.rtc_writes == 0);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // A refused save likewise stops before the chip, and the old blob stays.
+    {
+        FakeTimeOps ops;
+        ops.has_blob = true;
+        ops.blob = {-60, 42};
+        ops.fail_save = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.rtc_writes == 0 && ops.erases == 0);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
+              ops.blob.last_sync_utc == 42);
+    }
+    // The chip refuses and the store had a blob: it comes back exactly.
+    {
+        FakeTimeOps ops;
+        ops.has_blob = true;
+        ops.blob = {-60, 42};
+        ops.fail_rtc = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
+              ops.blob.last_sync_utc == 42);
+        CHECK(ops.saves == 2 && ops.erases == 0);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // The chip refuses and the store had nothing: it is absent again, not a
+    // zero. A watch that never synchronized must not boot holding an offset it
+    // never accepted.
+    {
+        FakeTimeOps ops;
+        ops.fail_rtc = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(!ops.has_blob && ops.erases == 1 && ops.saves == 1);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
 }
 
 }  // namespace
@@ -233,6 +392,8 @@ int main()
                                        TimeQuality::Trusted, Millis{1000},
                                        1000)));
     CHECK(stale_current.state({2000}).source == TimeSource::Gnss);
+
+    test_provision_time();
 
     return failures == 0 ? 0 : 1;
 }

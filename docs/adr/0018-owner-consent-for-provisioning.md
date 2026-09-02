@@ -27,15 +27,17 @@ of a cable or a radio can perform for itself.
 Four facts are the same under every option. They are shared cost, and they are
 recorded here so that no option is credited with paying them.
 
-1. **The RTC write path exists and is compiled out, not missing.**
-   `firmware/main/waveshare_board.cpp:430` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
-   gates `firmware/main/waveshare_board.cpp:431` — "class BoardTimeSink final : public attadipa::debug::TimeSink {",
-   and a second one — `firmware/main/waveshare_board.cpp:233` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
-   — gates `firmware/main/waveshare_board.cpp:307` — "esp_err_t save_time_metadata(std::int16_t offset, std::int64_t last_sync_utc) {".
-   Two blocks rather than one, which is the difference between ungating this and
-   thinking it is ungated.
+1. **The RTC write path exists and is compiled out, not missing.** When this
+   was decided, one `#if CONFIG_ATTADIPA_WATCH_CONTROL` gated `BoardTimeSink`
+   and a second one gated `save_time_metadata()` — two blocks rather than one,
+   which is the difference between ungating this and thinking it is ungated.
+   #356's first change removed the second: the sequence is
+   `firmware/main/provision_time.h:81` — "ProvisionTimeResult provision_time(Ops &ops,"
+   in every image, and `firmware/main/waveshare_board.cpp:381` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   still gates its one instantiation,
+   `firmware/main/waveshare_board.cpp:382` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side is already unconditional:
-   `firmware/main/waveshare_board.cpp:207` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
+   `firmware/main/waveshare_board.cpp:228` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
 2. **The passkey is RAM-only today, and the storage it needs is one key in a
@@ -134,9 +136,9 @@ six digits, not a key: `firmware/main/meshcore_ble.cpp:1721` —
 The clock half is likewise already anticipated by the ADR that owns time.
 `docs/adr/0014-time-source-and-synchronization.md` ranks sources "GNSS, network,
 companion, mesh, manual, RTC, simulated" — `manual` is in that list, above
-`RTC`, and it is built: `firmware/main/waveshare_board.cpp:461` —
-"             attadipa::core::TimeSource::Manual," — is what the existing sink
-tags its observation with. What no product image has is a caller for it.
+`RTC`, and it is built: `firmware/main/provision_time.h:103` —
+"core::TimeSource::Manual, core::TimeQuality::Trusted," — is what the clock
+sequence tags its observation with. What no product image has is a caller for it.
 A hand-typed UTC is minutes-accurate at best,
 which is precisely the quality `manual` denotes.
 
@@ -237,7 +239,7 @@ The Waveshare RTC's own rail is not resolved either —
 and the documented backup cell belongs to the other board.
 
 The persisted UTC offset does survive, because it is in NVS rather than in the
-chip: `firmware/main/waveshare_board.cpp:207` — "esp_err_t restore_time_metadata() {".
+chip: `firmware/main/waveshare_board.cpp:228` — "esp_err_t restore_time_metadata() {".
 
 If the RTC does not retain, hand entry is recurring rather than one-time, on the
 path the owner meets first, because GNSS has not landed. That makes GNSS more
@@ -297,10 +299,10 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:431` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
-  — which validates the request, tags it `firmware/main/waveshare_board.cpp:461`
-  — "             attadipa::core::TimeSource::Manual," — writes the PCF85063 and
-  persists the offset. The passkey's is
+  by `firmware/main/waveshare_board.cpp:382` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  — which hands the request to the sequence that validates it, tags it
+  `firmware/main/provision_time.h:103` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
+  — writes the PCF85063 and persists the offset. The passkey's is
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes
   and the firmware answers, which is the shape this needs. Neither is missing
@@ -340,6 +342,6 @@ Beyond B and C:
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
   `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:681` — "void build_mesh_screen() {" — is
+  `firmware/main/waveshare_board.cpp:542` — "void build_mesh_screen() {" — is
   full of literal colours. Building the entry screen where the mesh screen was
   built would silently opt it out of the check.

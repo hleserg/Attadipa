@@ -64,7 +64,7 @@ add_test(NAME clock COMMAND test_clock)
 
 add_executable(test_time_service test_time_service.cpp)
 target_include_directories(test_time_service PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
-target_link_libraries(test_time_service PRIVATE attadipa_core)
+target_link_libraries(test_time_service PRIVATE attadipa_core attadipa_apps)
 add_test(NAME time_service COMMAND test_time_service)
 set_tests_properties(time_service PROPERTIES LABELS time)
 

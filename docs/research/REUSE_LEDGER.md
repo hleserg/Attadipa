@@ -2388,7 +2388,7 @@ table as source-pinned board data **if and only if** the experiment proves it
 necessary; `REJECT` every vendor BSP as a link-time dependency.
 
 **Reason:** the shipping tree already exposes the right seam —
-`waveshare_board.cpp:107-108` — "esp_lcd_panel_handle_t panel" — hands on an
+`waveshare_board.cpp:111-112` — "esp_lcd_panel_handle_t panel" — hands on an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, and
 `physical_input.cpp:468-471` — "start_physical_input(esp_lcd_touch_handle_t touch"
 — takes exactly those.
