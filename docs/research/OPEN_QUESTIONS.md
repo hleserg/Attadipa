@@ -355,7 +355,7 @@ Everything that provisions a watch sits behind that symbol:
   #356's first change boot replays a stored passkey through the same
   `Configure` event, so a production image scans if a HIL image left one on
   flash; with nothing on flash the worker's
-  `firmware/main/meshcore_ble.cpp:1166` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1170` — "if (configured.load()) start_scan();"
   is false forever: the transport starts, is never configured, and never looks
   for a node.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has

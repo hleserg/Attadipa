@@ -28,7 +28,7 @@ namespace attadipa::firmware {
 enum class ProvisionTimeResult : std::uint8_t {
     Accepted,  // RTC written and verified, metadata stored, service moved.
     Rejected,  // Not a request this watch accepts. Nothing moved.
-    Failed,    // Storage or the chip refused. Nothing moved -- see below.
+    Failed,    // Storage or the chip refused, and what had moved was put back.
 };
 
 struct TimeProvisionRequest {
@@ -62,7 +62,7 @@ enum class MetadataRead : std::uint8_t { Present, Absent, Unreadable };
 // `Ops` is the storage and the chip:
 //
 //   MetadataRead read_metadata(TimeMetadata *out);
-//   bool save_metadata(const TimeMetadata &);      // atomic; false = untouched
+//   bool save_metadata(const TimeMetadata &);      // whole or not; false = see below
 //   bool erase_metadata();                          // absent = success
 //   bool write_and_verify_rtc(const RtcDateTime &, std::int64_t utc_seconds);
 //
@@ -72,11 +72,15 @@ enum class MetadataRead : std::uint8_t { Present, Absent, Unreadable };
 
 // Metadata first, chip second. The order is #396's: the write that boot can
 // already know is doomed -- an unusable NVS -- runs before the one that
-// rewrites hardware, so it fails closed. A refused save leaves the old blob
-// readable (see `TimeMetadata`) and needs no rollback. A refused chip write
-// comes after the new blob is on flash, and the product image restores that
-// blob into the time service on every boot, so `previous` goes back on that
-// path -- as the blob it was, or as no blob at all.
+// rewrites hardware, so it fails closed. A refused save is not a save that
+// did nothing: `Storage::writeItem` erases the old version *after* the new
+// one is written and indexed, and reports that erase failing as a failure
+// (`nvs_storage.cpp:546`-`:549` in VERIFIED_FACTS), so the store may already
+// hold the new blob for a synchronization this function is about to call
+// Failed. A refused chip write comes after the new blob is on flash for
+// certain. The product image restores that blob into the time service on
+// every boot, so on both paths `previous` goes back -- as the blob it was,
+// or as no blob at all.
 template <typename Ops>
 ProvisionTimeResult provision_time(Ops &ops, const TimeProvisionRequest &request,
                                    core::TimeService &service,
@@ -110,10 +114,8 @@ ProvisionTimeResult provision_time(Ops &ops, const TimeProvisionRequest &request
     if (had == MetadataRead::Unreadable) {
         return ProvisionTimeResult::Failed;
     }
-    if (!ops.save_metadata({request.timezone_offset_minutes, request.utc_seconds})) {
-        return ProvisionTimeResult::Failed;
-    }
-    if (!ops.write_and_verify_rtc(rtc, request.utc_seconds)) {
+    if (!ops.save_metadata({request.timezone_offset_minutes, request.utc_seconds}) ||
+        !ops.write_and_verify_rtc(rtc, request.utc_seconds)) {
         // Best effort: a rollback that fails is logged by the ops and leaves
         // an offset on flash for a synchronization that did not happen, which
         // the next successful one replaces.

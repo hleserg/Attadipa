@@ -30,12 +30,14 @@ attadipa::core::TimeObservation sample(
 // ---- provision_time.h: the one sequence that sets the clock ----------------
 
 // The storage and the chip, as a test sees them. The store is one blob that is
-// there or is not -- `nvs_set_blob` either lands whole or leaves the old
-// value, which is why a refused save here changes nothing.
+// there or is not -- `nvs_set_blob` lands whole or leaves the old value -- but
+// it can land *and* report failure, when the erase of the old version after
+// it fails, so a refused save has two shapes and the fake has both.
 struct FakeTimeOps {
     bool has_blob = false;
     attadipa::firmware::TimeMetadata blob{};
     bool fail_read = false, fail_save = false, fail_rtc = false;
+    bool save_lands_then_fails = false;  // once: the next save only
     int saves = 0, erases = 0, rtc_writes = 0;
 
     attadipa::firmware::MetadataRead read_metadata(
@@ -52,6 +54,10 @@ struct FakeTimeOps {
         if (fail_save) return false;
         blob = m;
         has_blob = true;
+        if (save_lands_then_fails) {
+            save_lands_then_fails = false;
+            return false;
+        }
         return true;
     }
     bool erase_metadata()
@@ -156,6 +162,31 @@ void test_provision_time()
         CHECK(ops.rtc_writes == 0 && ops.erases == 0);
         CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
               ops.blob.last_sync_utc == 42);
+    }
+    // A save that landed and then said it failed -- the old version's erase
+    // refused -- is put back too, or a reboot would restore an offset for a
+    // synchronization the host was told did not happen.
+    {
+        FakeTimeOps ops;
+        ops.has_blob = true;
+        ops.blob = {-60, 42};
+        ops.save_lands_then_fails = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.rtc_writes == 0 && ops.saves == 2 && ops.erases == 0);
+        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
+              ops.blob.last_sync_utc == 42);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    {
+        FakeTimeOps ops;
+        ops.save_lands_then_fails = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.rtc_writes == 0 && ops.saves == 1 && ops.erases == 1);
+        CHECK(!ops.has_blob);
     }
     // The chip refuses and the store had a blob: it comes back exactly.
     {

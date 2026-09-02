@@ -392,22 +392,22 @@ flashing back therefore works: the PCF85063 is battery-backed and the offset is
 in NVS.
 
 *MeshCore has no round trip at all.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1808` "bool configure_meshcore_ble") has exactly one caller,
+(`meshcore_ble.cpp:1812` "bool configure_meshcore_ble") has exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:416`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call sets is per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
 (`meshcore_ble.cpp:159` "std::atomic_bool configured", `meshcore_ble.cpp:161`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
-that sets `configured` **true** (`meshcore_ble.cpp:1448`
-"configured.store(true)", `meshcore_ble.cpp:1449`
+that sets `configured` **true** (`meshcore_ble.cpp:1452`
+"configured.store(true)", `meshcore_ble.cpp:1453`
 "reconnect_allowed.store(true)" — every other write clears them), and
-`start_scan()` returns unless both are true (`meshcore_ble.cpp:465`
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:469`
 "void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
 bond buys nothing without a scan.
 
 One other event re-arms `reconnect_allowed`: `ForgetBond`
-(`meshcore_ble.cpp:1567` "reconnect_allowed.store(true)"), which is #325's
+(`meshcore_ble.cpp:1571` "reconnect_allowed.store(true)"), which is #325's
 recovery from a stale bond. It changes nothing here — it is reached only
 through `MeshForgetBond`, inside the same `#if`, and it re-arms a scan that
 `configured` still gates. A product image cannot reach it and would gain
@@ -416,10 +416,12 @@ nothing if it could.
 When this boundary was drawn, that was the whole of it: provisioning over the
 HIL image did not survive a power cycle of the HIL image, let alone being
 flashed away, which is what showed the round trip never existed. #356's first
-change added the one thing that persists: an accepted passkey is written to
-NVS by the worker (`meshcore_ble.cpp:1443` "store_passkey(event.passkey)") and
-boot replays it through the same `Configure` event (`meshcore_ble.cpp:1793`
-"restore_passkey();"). So the MeshCore round trip now exists the way the
+change added the one thing that persists: an accepted six-digit passkey is
+written to NVS by the worker (`meshcore_ble.cpp:1447`
+"store_passkey(event.passkey)") and boot replays it through the same
+`Configure` event (`meshcore_ble.cpp:1797` "restore_passkey();"). The zero of
+`--unpaired-probe` is not a passkey and is not written: it turns pairing and
+link encryption off for one session, and a boot must not do that on its own. So the MeshCore round trip now exists the way the
 clock's does — flash the HIL image, configure, flash back, and the product
 image scans for and pairs with its node — and what a product image still
 cannot do is put that key there itself. Nothing on the watch can change its
@@ -432,9 +434,9 @@ never appears.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:1664` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:1668` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:1685` "xTaskCreate(mesh_task") for a subsystem that scans
+(`meshcore_ble.cpp:1689` "xTaskCreate(mesh_task") for a subsystem that scans
 only if a HIL image left a passkey behind. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
 gating the BLE start is a change to what the product does, and this change is

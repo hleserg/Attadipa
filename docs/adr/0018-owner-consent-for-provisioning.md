@@ -32,7 +32,7 @@ recorded here so that no option is credited with paying them.
    and a second one gated `save_time_metadata()` — two blocks rather than one,
    which is the difference between ungating this and thinking it is ungated.
    #356's first change removed the second: the sequence is
-   `firmware/main/provision_time.h:81` — "ProvisionTimeResult provision_time(Ops &ops,"
+   `firmware/main/provision_time.h:85` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image, and `firmware/main/waveshare_board.cpp:381` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates its one instantiation,
    `firmware/main/waveshare_board.cpp:382` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
@@ -42,16 +42,16 @@ recorded here so that no option is credited with paying them.
 
 2. **The passkey is RAM-only today, and the storage it needs is one key in a
    namespace that already exists.** Nothing persists the passkey:
-   `firmware/main/meshcore_ble.cpp:1808` — "bool configure_meshcore_ble(std::uint32_t passkey)"
-   reaches `firmware/main/meshcore_ble.cpp:1433` — "secure_pairing.store(event.passkey != 0);"
+   `firmware/main/meshcore_ble.cpp:1812` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   reaches `firmware/main/meshcore_ble.cpp:1437` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
    `firmware/main/meshcore_ble.cpp:159` — "std::atomic_bool configured{false};"
    and `firmware/main/meshcore_ble.cpp:161` — "std::atomic_bool reconnect_allowed{false};".
    But the seam that would hold it is already in this translation unit, put
    there by #304: `firmware/main/meshcore_ble.cpp:223` — "constexpr const char* kMeshNvsNamespace = ",
    read at `firmware/main/meshcore_ble.cpp:312` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
-   and written at `firmware/main/meshcore_ble.cpp:375` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:1755` —
+   and written at `firmware/main/meshcore_ble.cpp:379` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:1759` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
@@ -126,17 +126,17 @@ Consent is that a person is holding this watch and touching its screen. Nothing
 on a cable or a radio can do that.
 
 The decisive fact is one the firmware already asserts to its peer:
-`firmware/main/meshcore_ble.cpp:1672` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
+`firmware/main/meshcore_ble.cpp:1676` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:1808` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:1812` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.
 `docs/adr/0014-time-source-and-synchronization.md` ranks sources "GNSS, network,
 companion, mesh, manual, RTC, simulated" — `manual` is in that list, above
-`RTC`, and it is built: `firmware/main/provision_time.h:103` —
+`RTC`, and it is built: `firmware/main/provision_time.h:107` —
 "core::TimeSource::Manual, core::TimeQuality::Trusted," — is what the clock
 sequence tags its observation with. What no product image has is a caller for it.
 A hand-typed UTC is minutes-accurate at best,
@@ -172,8 +172,8 @@ Priced against the current build, B is **A plus a radio**:
   One qualifier, because the cost lands later than it looks: the watch only
   reaches the SMP path once a passkey has been armed —
   `firmware/main/meshcore_ble.cpp:160` — "std::atomic_bool secure_pairing{false};",
-  set at `firmware/main/meshcore_ble.cpp:1433` — "secure_pairing.store(event.passkey != 0);"
-  and read at `firmware/main/meshcore_ble.cpp:821` — "if (secure_pairing.load()) {". An image nobody has provisioned
+  set at `firmware/main/meshcore_ble.cpp:1437` — "secure_pairing.store(event.passkey != 0);"
+  and read at `firmware/main/meshcore_ble.cpp:825` — "if (secure_pairing.load()) {". An image nobody has provisioned
   writes no bond at all, so the eviction is a cost of the *second* provisioning
   and of bench images, not of every build. It is still B's cost, because B's
   whole purpose is to provision a second peer.
@@ -301,7 +301,7 @@ Beyond B and C:
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
   by `firmware/main/waveshare_board.cpp:382` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
-  `firmware/main/provision_time.h:103` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
+  `firmware/main/provision_time.h:107` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes

@@ -351,7 +351,11 @@ PasskeyRead load_passkey(std::uint32_t& out)
         ESP_LOGE(kTag, "MeshCore passkey: nvs_get_u32: %s", esp_err_to_name(err));
         return PasskeyRead::Unreadable;
     }
-    if (out > 999999) {
+    // Zero included: it is the unpaired probe, a diagnostic that turns pairing
+    // and link encryption off, and this image never stores it. A zero found
+    // here was not written by a `configure_meshcore_ble()` of this image and
+    // must not become a boot that scans in the clear.
+    if (out == 0 || out > 999999) {
         ESP_LOGE(kTag, "MeshCore passkey on flash is not six digits; ignored");
         return PasskeyRead::Unreadable;
     }
@@ -1810,7 +1814,13 @@ bool configure_meshcore_ble(std::uint32_t passkey)
     if (passkey > 999999) return false;
     Event event{EventKind::Configure};
     event.passkey = passkey;
-    event.persist_passkey = true;
+    // Only a pairing passkey outlives this boot. Zero is the unpaired probe
+    // (`mesh-configure --unpaired-probe`): a diagnostic that disables pairing
+    // and with it link encryption, asked for one session at a time by an
+    // operator who can see the console. Replaying it at boot would leave the
+    // product image scanning in the clear with nobody having asked, and the
+    // Room Server password crosses the air inside those frames.
+    event.persist_passkey = passkey != 0;
     return post(event);
 }
 

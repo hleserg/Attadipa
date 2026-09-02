@@ -254,13 +254,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:1671`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1675`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
   ([`firmware/main/meshcore_ble.cpp:160`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1433`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1437`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -2031,10 +2031,17 @@ ones that heading states.
   at a complete set of chunks, so the reader gets one whole value either way;
   that comment decides which wins, not whether a torn state exists.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
+- **Also read, and it cuts the other way:** the erase of the old version is
+  the last step and its failure is reported — `nvs_storage.cpp:546` —
+  `err = eraseMultiPageBlob(nsIndex, key, prevStart);` — then `:548`-`:549` —
+  `return ESP_ERR_NVS_REMOVE_FAILED;` — after the new version is written and
+  indexed. So a failed `nvs_set_blob` is one of two states, untouched or
+  replaced, and the caller cannot tell which.
 - **Consequence:** a sequence that writes one blob and then hardware needs no
-  rollback for a failed save — the old value is still the value — and no
-  torn-state check at boot. `firmware/main/provision_time.h` — "template
-  <typename Ops>" rolls back only after the chip refuses. `nvs_get_blob` with a
+  torn-state check at boot — but it does need a rollback for a failed save,
+  because "failed" may mean "replaced". `firmware/main/provision_time.h` —
+  "template <typename Ops>" puts the previous blob back on both refusals, the
+  store's and the chip's. `nvs_get_blob` with a
   buffer smaller than the stored value is `ESP_ERR_NVS_INVALID_LENGTH`
   (`nvs_api.cpp:522`-`:524`), and a larger buffer returns the stored size in
   `*length` (`:526`), which is what lets a reader reject a blob of another
