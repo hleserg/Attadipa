@@ -27,7 +27,8 @@ the image's own boot log instead, with no `# port`, `RAM boot` or `Downloading`
 line. That is a missing record of the loader step, not a different route:
 **none of the five prints `Partition Table:`, `esp_image: segment` or
 `Loaded app from partition`**, the lines a flash boot on this board does print
-([WAVESHARE_RUNNING_OUR_CODE.md:73-77](../WAVESHARE_RUNNING_OUR_CODE.md)), and
+([WAVESHARE_RUNNING_OUR_CODE.md:73-77](../WAVESHARE_RUNNING_OUR_CODE.md)
+"Loaded app from partition at offset 0xa00000"), and
 every capture's banner names `pedo`. The shared
 `compile time` string is *not* evidence here and is worth recording as a trap:
 `shake.log:6-10` and `walk.log:6-10` load demonstrably different images — 48112
@@ -82,8 +83,9 @@ text — this source does not reproduce the archived captures line for line:
    read-after-walk possible at all. No archived capture carries that line;
 3. **behaviour** — `CTRL3` is now read before the writes and written back
    afterwards. The shake run did neither, which is why
-   [`HARDWARE_MATRIX.md:514`](../HARDWARE_MATRIX.md) records `CTRL3 = 0x36` as
-   *"residue this session knowingly left on the part"*. That remains the correct
+   [`HARDWARE_MATRIX.md:550`](../HARDWARE_MATRIX.md)
+   *"residue this session knowingly left on the part"* is how it records
+   `CTRL3 = 0x36`. That remains the correct
    statement **about the run**; it is no longer what this source does;
 4. **behaviour** — `ACCEL_LSB_PER_G` is now derived from `CTRL2_VALUE`'s `aFS`
    field rather than written out beside it, and the parameter header prints it.

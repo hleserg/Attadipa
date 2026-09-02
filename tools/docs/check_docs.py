@@ -220,17 +220,26 @@ CITATION = re.compile(
     # COLUMN, quoted from a transcript nobody may edit, and it is not this
     # repository's citation syntax -- but `:9` matched, and the mandatory
     # fingerprint below then asked a build log to make a promise.
-    r"\)?:(\d+)(?:[-\u2013](\d+))?\b(?!:\d)"
+    #
+    # The backtick beside the paren is the third spelling this tree uses:
+    # `` `board_profile.h`:16 `` closes the code span BEFORE the line number.
+    # MAGNETOMETER_RETROFIT.md wrote ninety-eight citations that way, and to
+    # this pattern every one of them was prose -- not asked for a fingerprint,
+    # and not even checked for a blank line, which two of them pointed at
+    # while holding a retrofit blocker open. Found in review, the third time
+    # the same failure mode -- a spelling the grammar does not admit -- was.
+    r"[)`]?:(\d+)(?:[-\u2013](\d+))?\b(?!:\d)"
 )
 
-# An optional FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display
-# FPC"`. A bare line number rots every time anybody inserts a paragraph above
-# it, and it rots SILENTLY -- the line it lands on is real and non-blank, so
-# nothing here could see it. Two citations in this repository were thirteen
-# lines out and pointed at a real, wrong row for weeks. With a fingerprint the
-# check reads the cited line and says where the text actually went, which turns
-# drift from an undetectable defect into a one-line fix. Opt-in by design:
-# adding one is a promise this check then keeps.
+# The FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display FPC"`. A
+# bare line number rots every time anybody inserts a paragraph above it, and it
+# rots SILENTLY -- the line it lands on is real and non-blank, so nothing here
+# could see it. Two citations in this repository were thirteen lines out and
+# pointed at a real, wrong row for weeks. With a fingerprint the check reads the
+# cited line and says where the text actually went, which turns drift from an
+# undetectable defect into a one-line fix. Mandatory into any file this
+# repository tracks -- see `tracked_target` for the one place it is not -- and
+# a promise this check then keeps.
 # The optional `](...)` is the tail of a Markdown link: these documents write
 # `[HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md)`, and the citation match ends
 # inside it, so a fingerprint written after the link would otherwise be seen by
@@ -248,9 +257,29 @@ CITATION_HREF = re.compile(r"\A`?\]\(([^)#]+)")
 # the two cannot disagree about where a citation ends.
 FINGERPRINT_LEAD = re.compile(r'\A`?(?:\]\([^)]*\))?`?')
 
+# Everything that may sit between the citation and the opening quote. It
+# contains no letters, so it cannot step over a word: the quote still has to be
+# adjacent to the citation, which is what stops a quotation further down the
+# sentence from being read as this citation's fingerprint. Written as one class
+# rather than a fixed order because the tree writes all of them --
+# `` — "..." ``, `` : *"..."* ``, `` , "..." `` -- and an order is a thing to
+# get wrong. Three live citations were rejected for punctuation alone before
+# this was widened, and the rejection read as "no fingerprint given".
+FINGERPRINT_DECOR = r'[\s:,;\u2014\u2013*_-]*'
+
+# NO UPPER BOUND HERE, deliberately. `[^"]` cannot cross a quote, so this
+# matches exactly one quoted run and cannot swallow a paragraph. The length
+# limit is enforced below as its OWN complaint, because a cap inside the match
+# turns "your quote is too long" into "you wrote no quote" -- silence about
+# text the author can see. That is the failure this whole check exists to
+# prevent, and it had it.
 FINGERPRINT = re.compile(
-    FINGERPRINT_LEAD.pattern + r'\s*[\u2014-]?\s*"([^"]{3,80})"'
+    FINGERPRINT_LEAD.pattern + FINGERPRINT_DECOR + r'"([^"]{3,})"'
 )
+
+# A fingerprint is a handle, not a transcription: it has to be short enough to
+# read inline and long enough to be unique in the cited line.
+FINGERPRINT_MAX = 80
 
 # HOW TO WRITE AN EXAMPLE THAT IS NOT A CITATION. A fingerprint is an
 # assertion, and prose that merely ILLUSTRATES the syntax makes it by accident:
@@ -273,7 +302,8 @@ PLACEHOLDER = "EXAMPLE.md"
 # `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
 # this check was written for actually lived. Resolved against the tree rather
 # than a hardcoded list, and only when exactly one file answers to the name.
-BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,}):(\d+)(?:[-\u2013](\d+))?\b")
+# The same backtick-before-the-colon spelling as above: `` `HARDWARE_MATRIX`:318 ``.
+BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,})`?:(\d+)(?:[-\u2013](\d+))?\b")
 
 # A CONTINUATION: `:271` with no path, meaning "the file the citation before it
 # named". The empty group(1) keeps the group numbering every other citation form
@@ -372,17 +402,21 @@ def check_citation_lines(root: str) -> list[str]:
     by_basename = basename_index(root)
     tracked = tracked_files(root)
 
-    def source_target(resolved: str) -> str:
-        """Repo-relative path, when a citation lands in a source file we edit.
+    def tracked_target(resolved: str) -> str:
+        """Repo-relative path, when a citation lands in a file we edit.
 
-        Empty for a `.md`, for a path this repository does not track, and for
-        anything outside the tree -- those stay opt-in, which is what #331
-        settled. What is NOT opt-in is a line number in a file under active
-        edit: inserting a paragraph above it lands the citation on a line that
-        is real, non-blank and about something else, and nothing here could
-        see it.
+        Empty for a path this repository does not track and for anything
+        outside the tree. Those stay opt-in. Everything else is not --
+        `docs/upstream/` included, which #399 first exempted as somebody
+        else's copied text until review showed both files there are written
+        and edited here: inserting a paragraph above a cited line lands the citation on a
+        line that is real, non-blank and about something else, and nothing
+        here could see it. #331 exempted `.md` targets on the reasoning that
+        documentation lines are stable; #386 measured that reasoning against
+        the tree -- 28 of 53 such citations had already landed on a table
+        rule, a heading, a blank line or the wrong row -- and withdrew it.
         """
-        if not resolved or resolved.endswith(".md"):
+        if not resolved:
             return ""
         rel = os.path.relpath(resolved, root)
         return rel if rel in tracked else ""
@@ -442,7 +476,7 @@ def check_citation_lines(root: str) -> list[str]:
                             _report(
                                 problems, rel_self, lineno,
                                 os.path.relpath(anchor, root), match, body,
-                                line, nxt, source_target(anchor)
+                                line, nxt, tracked_target(anchor)
                             )
                     continue
                 cited, first, last = match.group(1), int(match.group(2)), match.group(3)
@@ -457,7 +491,7 @@ def check_citation_lines(root: str) -> list[str]:
                         anchor = resolved
                         _report(
                             problems, rel_self, lineno, cited, match, body,
-                            line, nxt, source_target(resolved)
+                            line, nxt, tracked_target(resolved)
                         )
                     continue
                 # Resolve beside the citing file first, then from the root. A
@@ -496,7 +530,7 @@ def check_citation_lines(root: str) -> list[str]:
                                 anchor = via
                                 _report(problems, rel_self, lineno, cited,
                                         match, body, line, nxt,
-                                        source_target(via))
+                                        tracked_target(via))
                             continue
                     resolved = by_basename.get(os.path.basename(cited), "")
                     if not resolved or "/" in cited.strip("./"):
@@ -561,12 +595,12 @@ def check_citation_lines(root: str) -> list[str]:
                     continue
                 anchor = resolved
                 _report(problems, rel_self, lineno, cited, match, body, line,
-                        nxt, source_target(resolved))
+                        nxt, tracked_target(resolved))
     return problems
 
 
 def _report(problems, rel_self, lineno, cited, match, body, line="",
-            next_line="", source="") -> None:
+            next_line="", tracked="") -> None:
     first = int(match.group(2))
     last = match.group(3)
     span = match.group(0).split(":", 1)[1]
@@ -609,30 +643,46 @@ def _report(problems, rel_self, lineno, cited, match, body, line="",
         # promise: that is the whole thesis of the issue this check comes from,
         # and the check had the defect in itself.
         #
-        # Only when the citation line ends there. Anything else after the
-        # citation means the author wrote prose, and a quotation further down
-        # that prose is not this citation's fingerprint.
+        # Only when the citation line ends there, allowing the same decoration
+        # a same-line fingerprint may wear -- one class, so the two paths
+        # cannot disagree again about what a colon before a quote means.
+        # Anything else after the citation means the author wrote prose, and a
+        # quotation further down that prose is not this citation's fingerprint.
         tail = FINGERPRINT_LEAD.sub("", line[match.end() :]).strip()
-        if tail in ("", "\u2014", "-"):
+        if re.fullmatch(FINGERPRINT_DECOR, tail):
             stamp = FINGERPRINT.match(next_line.strip())
     if not stamp:
-        if source:
-            # MANDATORY for a source file, opt-in everywhere else. Twice on one
-            # branch a source citation was moved onto different real code and
-            # this checker said `none` -- once onto the same function's
-            # `printf`, under a sentence quoting a formula that line does not
-            # contain. A reader following it lands on plausible, wrong code.
-            # Eighteen citations were in that state when the rule was written,
-            # which is what makes it affordable in one change where the blanket
-            # rule was not.
+        if tracked:
+            # MANDATORY into a file this repository edits. Twice on one branch
+            # a source citation was moved onto different real code and this
+            # checker said `none` -- once onto the same function's `printf`,
+            # under a sentence quoting a formula that line does not contain.
+            # Then a `.md` citation landed on a table rule `|---|---|---|`
+            # under a sentence about a flash part, and passed, because a rule
+            # is not blank. A reader following either lands on plausible,
+            # wrong text. Which files count is `tracked_target`'s decision,
+            # made once; this branch does not know what kind of file it is.
             problems.append(
                 "%s:%d: cites %s:%s into %s, a file this repository edits, "
                 "with no fingerprint -- a line number alone rots silently "
                 "there. Quote what it is cited for: `%s:%s` -- \"...\""
-                % (rel_self, lineno, cited, span, source, cited, span)
+                % (rel_self, lineno, cited, span, tracked, cited, span)
             )
         return
     snippet = stamp.group(1)
+    if len(snippet) > FINGERPRINT_MAX:
+        # Said as its own complaint rather than folded into "no fingerprint".
+        # Two citations in this tree were over the limit and were reported as
+        # carrying no quote at all -- an author reading that goes looking for
+        # the quote they can see on the line. Name the length and the limit,
+        # and the fix is obvious without reading this file.
+        problems.append(
+            '%s:%d: cites %s:%s with a %d-character fingerprint; the limit is '
+            "%d. Shorten it to a fragment unique to the cited line -- a "
+            "fingerprint is a handle, not a transcription."
+            % (rel_self, lineno, cited, span, len(snippet), FINGERPRINT_MAX)
+        )
+        return
     if any(snippet in body[n - 1] for n in wanted):
         return
     elsewhere = [n for n, text in enumerate(body, 1) if snippet in text]
@@ -902,7 +952,7 @@ CHECKS = (
     ("Unexpected files tracked at the repository root", "check_root_files"),
     (
         "Citations pointing at a blank line, past the end of a file, "
-        "into a source file with no fingerprint, "
+        "into a file this repository edits with no fingerprint, "
         "or at a path this repository no longer has",
         "check_citation_lines",
     ),

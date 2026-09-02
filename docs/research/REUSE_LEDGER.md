@@ -1649,7 +1649,8 @@ the clone and at
 [the commit-pinned raw URL](https://raw.githubusercontent.com/78/xiaozhi-esp32/bb9122ab08c3083eeb4f67b3974b7afe771723b8/LICENSE).
 Copyright holders, to be preserved in any substantial copy:
 `Copyright (c) 2025 Shenzhen Xinzhi Future Technology Co., Ltd.` and
-`Copyright (c) 2025 Project Contributors`. `README.md:159` agrees in prose.
+`Copyright (c) 2025 Project Contributors`. Upstream's own `README.md` (line 159
+at the pinned commit) agrees in prose.
 
 **One verdict for the project would be wrong. Per component, which is which:**
 

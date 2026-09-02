@@ -37,11 +37,11 @@ That is the only conclusion this document is currently entitled to draw.
 | Resource | T-Watch S3 Plus | Waveshare AMOLED 2.06 | Status |
 |---|---|---|---|
 | Flash | 16 MB (`W25Q128JW`) | **32 MB** (`GD25Q256EYIGR`, quad) | CEILING |
-| PSRAM | 8 MB — **quad or octal still open, D12b** | 8 MB **octal**, D12a | T-Watch CONFLICTING, Waveshare CEILING |
+| PSRAM | 8 MB **octal**, D12b — the factory image's octal init boots it, 2026-08-27 | 8 MB **octal**, D12a | CEILING, both MEASURED |
 | Internal SRAM | 512 KB (ESP32-S3) | 512 KB (ESP32-S3) | CEILING |
 | Display | 240 × 240 | 410 × 502 | CEILING |
 
-**The PSRAM conflict, half resolved.** The recollection this section rested on
+**The PSRAM conflict, resolved on both boards.** The recollection this section rested on
 has been checked: ESP32-S3 Series Datasheet v2.2 §1.2 Table 1-1 gives
 `ESP32-S3R8 | 8 MB (Octal SPI)`, and the table contains **no 8 MB quad
 in-package variant at all** — quad in-package exists only at 2 MB. Footnote 3
@@ -53,11 +53,19 @@ vendor examples shipping `CONFIG_SPIRAM_MODE_OCT=y` with
 `CONFIG_SPIRAM_IGNORE_NOTFOUND` unset, and by GPIO33–37 — octal's DQ4–DQ7 and
 DQS — sitting unrouted on the schematic.
 
-For the **T-Watch** it does not, and the shared `R8` marking is not enough to
-make it. The LilyGO vendor document describing that board's PSRAM as **QSPI** is
-a live conflicting source that nobody has read against Table 1-1, and one
-document beating another by inference is how a wrong `sdkconfig` gets pinned.
-D12b, and it wants that board's own `esptool.py flash_id`.
+For the **T-Watch** the shared `R8` marking was not enough to make it, and the
+LilyGO vendor document describing that board's PSRAM as **QSPI** was a live
+conflicting source — one document beating another by inference is how a wrong
+`sdkconfig` gets pinned. D12b was closed on the physical unit on 2026-08-27,
+and not by the leg its row asked for: there is no quad/octal eFuse, and
+`flash_id`'s "4 data lines" describes the flash. What discriminates is the
+factory firmware — it carries the **octal** PSRAM init and no quad one, and
+the watch boots and runs, where an octal init against a quad part bails out
+(`docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:146` — "The factory firmware contains the **octal** PSRAM implementation and no quad").
+The eFuses carry the rest: 8 MB, vendor `AP_3v3`, and Table 1-1 has no 8 MB
+quad in-package part. Octal, MEASURED, and the vendor document is wrong —
+`docs/research/HARDWARE_MATRIX.md:87` — "Closes D12b" and
+`docs/research/OPEN_QUESTIONS.md:126` — "RESOLVED 2026-08-27 — octal".
 
 Quad and octal differ by roughly a factor of two in bandwidth and need different
 `sdkconfig` settings; getting it wrong is not a performance nuance, it is a board

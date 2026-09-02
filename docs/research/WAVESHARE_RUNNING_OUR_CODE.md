@@ -332,8 +332,8 @@ Recorded precisely, because the distinction matters:
   There is no *the* Rev A datasheet: QST published **two**, both Rev A, both
   dated 20 June 2022, and this repository already listed them side by side at
   [`VERIFIED_FACTS.md:617`](VERIFIED_FACTS.md) "documents it fully" and
-  [`VERIFIED_FACTS.md:621`](VERIFIED_FACTS.md) "documents the identical
-  feature". Writing *"the Rev A datasheet"* unqualified is what made the two
+  [`VERIFIED_FACTS.md:621`](VERIFIED_FACTS.md) "documents the identical feature".
+  Writing *"the Rev A datasheet"* unqualified is what made the two
   collapse into one, so this tree does not write it any more.
   **The `0x7C` above is read from `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`**, a
   copy of which is held off-tree — 88 pages, md5

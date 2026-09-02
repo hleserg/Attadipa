@@ -286,7 +286,7 @@ of the two answers is not known.**
 
 | Board | RTC | Interrupt | Status |
 |---|---|---|---|
-| T-Watch S3 | PCF8563 | **INT → GPIO 17** | VERIFIED — [HARDWARE_MATRIX](HARDWARE_MATRIX.md):98 |
+| T-Watch S3 | PCF8563 | **INT → GPIO 17** | VERIFIED — [HARDWARE_MATRIX](HARDWARE_MATRIX.md):99 "main I2C, INT 17" |
 | Waveshare 2.06 | PCF85063ATL, `0x51` | **not recorded** — the row carries bus, address and rail, and no INT | **UNKNOWN** — HARDWARE_MATRIX:393 "PCF85063ATL" |
 
 So on the T-Watch a per-minute RTC alarm has a routed line; on the Waveshare

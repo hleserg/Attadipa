@@ -135,7 +135,7 @@ built on top of it.
 | M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7`. The right document for the ordered part — `AK09911C` is the only variant named, in the package line and again in the recommended-connection schematic. It is a *short* datasheet: it runs to §9 and contains **no register address map** (§4.4) |
 | M2 | **QST `QMC5883L` Datasheet Rev. B**, `13-52-04`, `QST-PD-B002-22`, md5 `d13221b15c034c3f9b24befa48c8f4ab`. Rev B, not the Rev 1.0 most of the internet mirrors |
 | M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5.6. Marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY` on every page; a pre-release document |
-| M5 | **QST `QMI8658A` Datasheet Rev A**, `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are verbatim identical to M3's. Used only for what the vendor did to the documentation — **never** for an electrical characteristic *of the magnetometer retrofit this document scopes*, which is what "here" means. That ruling was written while the PDF had been opened for lineage alone; on 2026-09-01 it was read in full under [#341](https://github.com/hleserg/Attadipa/issues/341) and [`VERIFIED_FACTS.md:592`](VERIFIED_FACTS.md) takes six of its figures — for the **A** column of a table whose whole point is that this board is the **C**, so nothing crosses into the retrofit |
+| M5 | **QST `QMI8658A` Datasheet Rev A**, `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are verbatim identical to M3's. Used only for what the vendor did to the documentation — **never** for an electrical characteristic *of the magnetometer retrofit this document scopes*, which is what "here" means. That ruling was written while the PDF had been opened for lineage alone; on 2026-09-01 it was read in full under [#341](https://github.com/hleserg/Attadipa/issues/341) and [`VERIFIED_FACTS.md:637-642`](VERIFIED_FACTS.md) "Gyroscope noise density" takes six of its figures — for the **A** column of a table whose whole point is that this board is the **C**, so nothing crosses into the retrofit |
 | M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and die marking only. A photograph of a module is evidence about *labels*, not about *nets* |
 | A46 | **NXP/Freescale AN4246 Rev 3/4.0**, *Calibrating an eCompass in the Presence of Hard and Soft-Iron Interference*, T. Ozyagcilar. The ten-parameter model |
 | A47 | **NXP/Freescale AN4247 Rev 3/4.0**, *Layout Recommendations for PCBs Using a Magnetometer Sensor*. The keep-out and current-trace arithmetic |
@@ -316,17 +316,20 @@ reachable.
 
 ### 3.1 The bus, checked against seven addresses rather than six
 
-The task brief and `HARDWARE_MATRIX`:327 both record six devices on the main
-I2C bus with *"nothing collides and `0x6A` is free"*. **That sentence is one
-scan away from being true and is not safe to rely on yet**, because
-`HARDWARE_MATRIX`:318 records the IMU address as `CONFLICTING`: the schematic
-prints `0x6B`, while QMI8658C Rev 0.6 — the PDF Waveshare's own wiki links —
-maps `SA0`-low to `0x6A`; revisions 0.8/0.9/A say `0x6B`. Exactly one of the two
-is occupied and **which is `UNKNOWN` until a bus scan runs**. The two lines in
-`HARDWARE_MATRIX` disagree with each other and that should be reconciled there.
+When this was written, the task brief and `HARDWARE_MATRIX` both recorded six
+devices on the main I2C bus with *"nothing collides and `0x6A` is free"*, while
+another row of the same file recorded the IMU address as `CONFLICTING`: the
+schematic prints `0x6B`, while QMI8658C Rev 0.6 — the PDF Waveshare's own wiki
+links — maps `SA0`-low to `0x6A`; revisions 0.8/0.9/A say `0x6B`. **The scan
+has since run (2026-08-23) and settled it:**
+`docs/research/HARDWARE_MATRIX.md:392` — "`0x6B`, MEASURED" — `0x6A` does not
+acknowledge, and the bus row `docs/research/HARDWARE_MATRIX.md:401` —
+"Scanned, 2026-08-23: five devices" — records `0x6A`, `0x0C`, `0x0D` and
+`0x1E` free, which is where a retrofit sits. The two rows no longer disagree.
 
-Every candidate below is therefore checked against the **superset**
-`{0x18, 0x34, 0x38, 0x40, 0x51, 0x6A, 0x6B}`:
+Every candidate below was checked against the **superset**
+`{0x18, 0x34, 0x38, 0x40, 0x51, 0x6A, 0x6B}`, which is stricter than the bus
+turned out to be and is left as it was:
 
 | 7-bit | Occupant |
 |---|---|
@@ -483,14 +486,19 @@ question.** Two terms dominate and neither is in the table.
 
 **The SoC floor.** `ESP32-S3` light sleep is **240 µA typ, plus 140 µA with 8 MB
 octal PSRAM at 3.3 V** (`PUBLISHED-SPEC`,
-[TAGS_TRACKS_RECKONING](TAGS_TRACKS_RECKONING.md):232; octal is `VERIFIED` at
-`HARDWARE_MATRIX`:303, and the die's own eFuses agree). That is **≈ 380 µA =
+[TAGS_TRACKS_RECKONING](TAGS_TRACKS_RECKONING.md):233 "8 MB octal PSRAM @ 3.3 V";
+octal is `VERIFIED` at [HARDWARE_MATRIX](HARDWARE_MATRIX.md):377 "8 MB **octal**" — the
+Waveshare row, not the T-Watch's — and the die's own eFuses carry the capacity
+and the 3.3 V rail, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md):62
+"The eFuse states *capacity* and *vendor" — bus width is still the datasheet
+table's step). That is **≈ 380 µA =
 9.12 mAh/day = 3.04 %/day**, four times the entire "cheapest" sensor figure,
 before a single wake-up occurs.
 
 **The display.** A compass is looked at with the screen on. The 410×502 AMOLED's
-supply currents are **`UNKNOWN` and unmeasured** — `HARDWARE_MATRIX`:315 records
-the CO5300 panel and no current figure exists anywhere in this repository. The
+supply currents are **`UNKNOWN` and unmeasured** —
+`docs/research/HARDWARE_MATRIX.md:389` — "**CO5300**" — records the panel and no
+current figure existed anywhere in this repository on 2026-08-22. The
 missing term is almost certainly the dominant one.
 
 **So the honest answer to "can this device run an always-on tilt-compensated
@@ -797,7 +805,7 @@ A47 names *"whether the RF power amplifier is active"* in its own worst case, an
 this board has Wi-Fi and BLE. The number is already in this repository:
 
 > `| ESP32-S3 peak current, BLE TX @ +9 dBm | 193 mA **peak** | PUBLISHED-SPEC |`
-> — [TAGS_TRACKS_RECKONING](TAGS_TRACKS_RECKONING.md):231
+> — [TAGS_TRACKS_RECKONING](TAGS_TRACKS_RECKONING.md):232 "BLE TX @ +9 dBm"
 
 **That is the same magnitude as the charge current this whole analysis is built
 on, and unlike charging it is switched.** The same file records the per-set
@@ -1028,7 +1036,7 @@ the first must stay true until a test runs.
 edits it.** The candidate-pairs table is **split by the rationale prose**: rows
 run 30–42, prose 44–58, then rows resume at 59–63 with no repeated header. And
 the file uses `NOT MEASURABLE` where final §29 defines the evidence level as
-`NOT MEASURABLE ON CURRENT HARDWARE`, while `COEXISTENCE_BACKLOG.md`:75 uses a
+`NOT MEASURABLE ON CURRENT HARDWARE`, while `COEXISTENCE_BACKLOG.md` line 75 uses a
 third spelling. The spec-mandated per-pair record also lists fields the table
 does not have.
 
@@ -1211,11 +1219,10 @@ behaviour the library is admired for is off until you turn it on. Licence remain
 MIT.
 
 **Two `REJECT` verdicts fire their own written revisit triggers**, not a proposal
-of ours: `REUSE_LEDGER`:659-661 — *"Revisit when: an external magnetometer is
-decided (OPEN_QUESTIONS A5)"* — and
-[`research-integration.md`](../upstream/research-integration.md):406 — *"Verdict:
-REJECT, and not deferred — the finding is inapplicable to this hardware rather
-than premature."* The Waveshare with a magnetometer has accel + gyro + mag, which
+of ours: `docs/research/REUSE_LEDGER.md:743` — "an external magnetometer is decided"
+(OPEN_QUESTIONS A5) — and
+`docs/upstream/research-integration.md:406` — "and not deferred — the finding is inapplicable"
+(*"to this hardware rather than premature"*). The Waveshare with a magnetometer has accel + gyro + mag, which
 is the full Madgwick/Mahony parts list. **The reason is now false for this unit;
 the verdict should stand, amended, for the different reasons above.**
 
@@ -1416,7 +1423,8 @@ expensive way.
 **Not the board case.** ADR-0007 §1 defines the hardware inventory as *"per
 **board**, contributed by the BSP"* and says of the predicate: *"`present()` is
 honest and narrow: it is a fact about a board, it does not change while running,
-and no node ever makes it true."* `board_profile.h`:16-18 says the same in code:
+and no node ever makes it true."* `platform/include/attadipa/platform/board_profile.h:40` — "It describes a board"
+says the same in code:
 *"It describes a board *variant*. A T-Watch S3 Plus with a CC1101 and one with an
 SX1262 are two profiles."* **A variant is a purchase-time SKU difference — a
 fact true of every unit that shipped that way.** `kWaveshareFeatures` is a
@@ -1447,16 +1455,16 @@ closed by answering a different one.** [ADR-0001](../adr/0001-capability-model.m
 **The struck-through question is this question.** ADR-0004 resolved the node case
 only. **The expansion-connector/soldered case has never been decided**, and the
 strike-through is why nobody noticed. Two other places enumerate the routes and
-omit this one: `research-integration.md`:416 — *"via an Attadipa node or a future
-board"* — and `MAGNETOMETER_BACKLOG`:90, where A5 offers *"a variant board, a
-daughterboard, a different unit"*. Three options, none of them "soldered onto
+omit this one: `docs/upstream/research-integration.md:416` — "via an Attadipa node or a future board"
+— and A5 at `docs/hardware/MAGNETOMETER_BACKLOG.md:89` — "a variant board, a daughterboard, a different unit".
+Three options, none of them "soldered onto
 the unit we already have".
 
 ### 8.2 What already works, and what the question is actually about
 
 **Everything from `Capability::Heading` upward needs no new concept.**
-`capability_registry.cpp`:103-104 already prefers a magnetometer over GNSS
-course-over-ground, and ADR-0009's Consequences already promised *"Adding a
+`core/src/capability_registry.cpp:106` — "if (inventory_->present(HardwareFeature::MagnetometerSensor))"
+already prefers a magnetometer over GNSS course-over-ground, and ADR-0009's Consequences already promised *"Adding a
 magnetometer later is a new `HeadingSource` and a calibration record; nothing
 above `LocationService` changes."*
 
@@ -1465,24 +1473,27 @@ the bit, and how the declaration survives being wrong.**
 
 ### 8.3 Constraints any answer must satisfy — verified in code, not inferred
 
+Read on 2026-08-22. The line numbers below are that tree's and are written as
+*line N* rather than as citations; the quoted code is what to look for.
+
 The obvious design is an add-only fitment overlay on the inventory, read at boot,
 with `present()` becoming `profile_->present(f) || (fitment.added_mask & bit)`.
 **It does not work as written, and the reasons were checked at source rather
 than reasoned about.**
 
 1. **Two of the three `present()` call sites bypass an overlay.**
-   `profile_inventory.cpp`:13 (constructor) reads
+   `profile_inventory.cpp` line 13 (constructor) reads
    `states_[i] = profile.present(feature) ? HardwareState::Untouched : HardwareState::Absent;`
    — `profile.present`, not `this->present`. Line 36 (`set_state`) reads
    `if (index >= kHardwareFeatureCount || !profile_->present(feature)) { return; }`.
    **A fitted unit would report `present() == true` and `state() == Absent`
    forever**, and the BSP's `set_state(MagnetometerSensor, Ready)` would silently
-   return. That pairing is explicitly illegal — `hardware_feature.h`:65:
+   return. That pairing is explicitly illegal — `hardware_feature.h` line 65:
    *"`Absent` — `present() == false`. There is no driver to have a state."* — and
-   `capability_registry.cpp`:46 maps `Absent → Unsupported`, the **terminal**
+   `capability_registry.cpp` line 46 maps `Absent → Unsupported`, the **terminal**
    value.
 2. **On a T-Watch that design would *remove* a working heading.**
-   `capability_registry.cpp`:103-106 is **first-present-wins**, not
+   `capability_registry.cpp` lines 103-106 is **first-present-wins**, not
    first-`Ready`-wins: it returns `by_feature(MagnetometerSensor)` whenever the
    part is present and never reaches the `GnssReceiver` line. A present-but-
    `Failed` magnetometer therefore suppresses course-over-ground entirely — which
@@ -1492,7 +1503,7 @@ than reasoned about.**
    receiver, and a `Ready` node still wins); that is luck, not structure. **This
    fix belongs with the ADR, not after it.**
 3. **The simulator cannot reach the new states, and the `--radio` precedent does
-   not transfer.** `sim/options.cpp`:210 writes `out.board.radio = ...` — a field
+   not transfer.** `sim/options.cpp` line 210 writes `out.board.radio = ...` — a field
    **inside** `BoardProfile`. A fitment record is deliberately **outside** it,
    which is the load-bearing premise of the whole design. `ProfileInventory`'s
    only constructor is `explicit ProfileInventory(const BoardProfile&)`, and
@@ -1504,7 +1515,7 @@ than reasoned about.**
    and that commitment is also the strongest argument against the Kconfig
    alternative.
 4. **There is no reason channel, and the retrofit's most probable fault class
-   needs one.** `hardware_inventory.h`:26 exposes
+   needs one.** `hardware_inventory.h` line 26 exposes
    `virtual HardwareState state(HardwareFeature) const = 0;` — a bare six-value
    enum. "Nothing answered at the address" and "something answered but the
    identity register does not match" would render identically, so Diagnostics
@@ -1520,7 +1531,7 @@ than reasoned about.**
 6. **A generic add-only mask is a hazard beyond the magnetometer.**
    `ProfileInventory::radio()` consults `this->present()`, so a record that set
    the `Radio` bit on a Waveshare would turn `radio()` from `nullptr` into a
-   pointer to a struct `board_profiles.cpp`:104 documents as *"no radio is
+   pointer to a struct `board_profiles.cpp` line 104 documents as *"no radio is
    fitted; the struct is meaningless"*. `MeshMessaging` happens to stay
    `Unsupported` because a zeroed `RadioInfo` has no modulations — **luck
    again.**
@@ -1535,7 +1546,7 @@ than reasoned about.**
    real — `apps/` does not link `attadipa_platform`, and
    `tests/boundary/app_reaches_for_hardware.cpp` checks it — but it protects
    `HardwareFeature` and `present()`, **not the `Availability` values derived
-   from them**, which `apps/` consumes directly. `capability_registry.cpp`:165-186
+   from them**, which `apps/` consumes directly. `capability_registry.cpp` lines 165-186
    shows `node_availability()` can never return `Failed` or `Off`, so for
    `Capability::Heading` on a Waveshare **those two states are reachable only
    from a locally fitted magnetometer**, and `availability()` surfaces them to
@@ -1648,8 +1659,10 @@ is T-Watch-and-BMA423-specific and remains true), **0012**.
 ## 9. Every place in this repository that asserts the board has no magnetometer
 
 **Listed so the retrofit does not leave half of them wrong.** Line numbers are
-from a fresh scan on 2026-08-22 and will drift; the quoted anchor is the durable
-part. **None of these should be edited until an ADR has answered §8.6**, because
+from a fresh scan on 2026-08-22 and have drifted since; the quoted anchor is the
+durable part, and it is what to search for. They are written as *line N*, not
+as `file:N`, on purpose: a citation promises today's tree, and these are a
+record of that day's. **None of these should be edited until an ADR has answered §8.6**, because
 several of them are correct about the *board* and wrong only about *this unit*,
 and the distinction is the thing being decided.
 
@@ -1661,109 +1674,109 @@ not "fixed" by mistake.
 
 | File | Note |
 |---|---|
-| `docs/master-prompt-final.md`:930 | *"Neither current target board appears to contain a magnetometer."* The hedge is the owner's own. Product requirements binding, technical claims not — its own §1. **Do not edit.** |
-| `docs/master-prompt.md`:507 | Superseded history. CLAUDE.md: *"Do not fix anything in them."* Listed for completeness. |
+| `docs/master-prompt-final.md` line 930 | *"Neither current target board appears to contain a magnetometer."* The hedge is the owner's own. Product requirements binding, technical claims not — its own §1. **Do not edit.** |
+| `docs/master-prompt.md` line 507 | Superseded history. CLAUDE.md: *"Do not fix anything in them."* Listed for completeness. |
 
 ### Canonical fact records
 
 | File:line | Verdict | Anchor |
 |---|---|---|
-| `docs/research/VERIFIED_FACTS.md`:357 | **FALSE** | *"### Neither board has a magnetometer"* — the record everything else cites |
-| `docs/research/VERIFIED_FACTS.md`:647 | **TRUE** | *"The T-Watch has no magnetometer — now from the schematic"*. Exhaustive part-family search of six sheets. T-Watch only |
-| `docs/research/VERIFIED_FACTS.md`:348-355 | **TRUE**, and it is the precedent | *"a fact about a board and a fact about a device are different claims, and this line turned one into the other without noticing"* |
-| `docs/research/HARDWARE_MATRIX.md`:31 | **UNIT** | `\| Magnetometer \| absent \| absent \|` — needs a retrofit column, not a correction |
-| `docs/research/HARDWARE_MATRIX.md`:46 | **UNIT** | *"Neither board has a magnetometer. The magnetometer work ... is therefore architectural only"* |
-| `docs/research/HARDWARE_MATRIX.md`:455 | **UNIT** | `\| MAGNETOMETER \| ❌ \| ❌ \| simulated \|` |
-| `docs/research/HARDWARE_MATRIX.md`:434 | **TRUE** | *"IMU / magnetometer \| scripted motion and field"* — simulator provision, unaffected |
+| `docs/research/VERIFIED_FACTS.md` line 357 | **FALSE** | *"### Neither board has a magnetometer"* — the record everything else cites |
+| `docs/research/VERIFIED_FACTS.md` line 647 | **TRUE** | *"The T-Watch has no magnetometer — now from the schematic"*. Exhaustive part-family search of six sheets. T-Watch only |
+| `docs/research/VERIFIED_FACTS.md` lines 348-355 | **TRUE**, and it is the precedent | *"a fact about a board and a fact about a device are different claims, and this line turned one into the other without noticing"* |
+| `docs/research/HARDWARE_MATRIX.md` line 31 | **UNIT** | `\| Magnetometer \| absent \| absent \|` — needs a retrofit column, not a correction |
+| `docs/research/HARDWARE_MATRIX.md` line 46 | **UNIT** | *"Neither board has a magnetometer. The magnetometer work ... is therefore architectural only"* |
+| `docs/research/HARDWARE_MATRIX.md` line 455 | **UNIT** | `\| MAGNETOMETER \| ❌ \| ❌ \| simulated \|` |
+| `docs/research/HARDWARE_MATRIX.md` line 434 | **TRUE** | *"IMU / magnetometer \| scripted motion and field"* — simulator provision, unaffected |
 
 ### ADRs
 
 | File:line | Verdict | Anchor |
 |---|---|---|
-| `docs/adr/0009-heading.md`:30 | **FALSE** | *"Neither board has a magnetometer ... so today the *only* possible source is GNSS course-over-ground"* |
-| `docs/adr/0009-heading.md`:178 | **FALSE** | *"Use the accelerometer for tilt-compensated heading. Not possible — it needs a magnetometer to compensate"*. §7.4 |
-| `docs/adr/0009-heading.md`:167 | **TRUE** | an argument about the enum, not a hardware claim |
-| `docs/adr/0009-heading.md`:110 | **TRUE** | the A6 paragraph — the *node* question is unaffected |
-| `docs/adr/0009-heading.md`:215-216 | requalify | A5 answered by events; **A6 remains open** |
-| `docs/adr/0007-two-capability-layers.md`:56-58 | **FALSE** | *"Heading would be gated on `Magnetometer`, which is `false` on both boards"* |
-| `docs/adr/0007-two-capability-layers.md`:217 | **FALSE** | `\| Heading \| MagnetometerSensor (neither board has one) · ... \|` |
-| `docs/adr/0007-two-capability-layers.md`:88-89 | requalify | the inventory layer is declared *per board* |
-| `docs/adr/0001-capability-model.md`:153 | **UNIT**, and it predicted this | *"`Magnetometer` exists in the enum even though neither board has one — so that adding one later changes an answer, not an interface"* |
-| `docs/adr/0001-capability-model.md`:220-229 | **the critical one** | the struck-through Open item, §8.1 |
-| `docs/adr/0001-capability-model.md`:147 | **TRUE** | illustrative sentence |
-| `docs/adr/0004-capability-sources.md`:196-200 | **TRUE** | and the retrofit now falls outside it — §8.1 |
-| `docs/adr/0004-capability-sources.md`:111-113 | **TRUE** | illustrative |
-| `docs/adr/0011-gnss-integrity.md`:37 | **TRUE** | T-Watch/BMA423-specific |
+| `docs/adr/0009-heading.md` line 30 | **FALSE** | *"Neither board has a magnetometer ... so today the *only* possible source is GNSS course-over-ground"* |
+| `docs/adr/0009-heading.md` line 178 | **FALSE** | *"Use the accelerometer for tilt-compensated heading. Not possible — it needs a magnetometer to compensate"*. §7.4 |
+| `docs/adr/0009-heading.md` line 167 | **TRUE** | an argument about the enum, not a hardware claim |
+| `docs/adr/0009-heading.md` line 110 | **TRUE** | the A6 paragraph — the *node* question is unaffected |
+| `docs/adr/0009-heading.md` lines 215-216 | requalify | A5 answered by events; **A6 remains open** |
+| `docs/adr/0007-two-capability-layers.md` lines 56-58 | **FALSE** | *"Heading would be gated on `Magnetometer`, which is `false` on both boards"* |
+| `docs/adr/0007-two-capability-layers.md` line 217 | **FALSE** | `\| Heading \| MagnetometerSensor (neither board has one) · ... \|` |
+| `docs/adr/0007-two-capability-layers.md` lines 88-89 | requalify | the inventory layer is declared *per board* |
+| `docs/adr/0001-capability-model.md` line 153 | **UNIT**, and it predicted this | *"`Magnetometer` exists in the enum even though neither board has one — so that adding one later changes an answer, not an interface"* |
+| `docs/adr/0001-capability-model.md` lines 220-229 | **the critical one** | the struck-through Open item, §8.1 |
+| `docs/adr/0001-capability-model.md` line 147 | **TRUE** | illustrative sentence |
+| `docs/adr/0004-capability-sources.md` lines 196-200 | **TRUE** | and the retrofit now falls outside it — §8.1 |
+| `docs/adr/0004-capability-sources.md` lines 111-113 | **TRUE** | illustrative |
+| `docs/adr/0011-gnss-integrity.md` line 37 | **TRUE** | T-Watch/BMA423-specific |
 
 ### Architecture, hardware and backlogs
 
 | File:line | Verdict | Anchor |
 |---|---|---|
-| `docs/architecture/ARCHITECTURE.md`:270 | **FALSE** | duplicate of the ADR-0007 mapping table — **both copies must change** |
-| `docs/architecture/ARCHITECTURE.md`:580-583 | **FALSE** for the compass half | *"cannot occur on either board, because neither board has a compass"*. The motor half stays true on this unit (T-097) |
-| `docs/architecture/ARCHITECTURE.md`:248-250 | **TRUE** | illustrative |
-| `docs/architecture/ARCHITECTURE.md`:444-447 | **TRUE**, and it is this file's own precedent | *"the same weak argument-from-absence the magnetometer claim used to rest on"* |
-| `docs/hardware/INTERFERENCE_MATRIX.md`:32,37,40,42 | row states change | §6 — two of four |
-| `docs/hardware/INTERFERENCE_MATRIX.md`:44-52 | **FALSE** | the four-`NOT MEASURABLE` rationale, which contains its own trigger |
-| `docs/hardware/INTERFERENCE_MATRIX.md`:54-58 | **FALSE** | *"the pair the master plan uses to motivate the whole coexistence architecture"* |
-| `docs/hardware/INTERFERENCE_MATRIX.md`:119-123 | **FALSE** | *"unlike the magnetometer rows, which cannot be measured on any targeted hardware at all"* |
-| `docs/hardware/INTERFERENCE_MATRIX.md`:103 | half false | *"Empty. No hardware has been measured. No board is present."* — sentence 2 is now false, sentence 1 must stay true |
-| `docs/hardware/MAGNETOMETER_BACKLOG.md`:7 | **FALSE** | *"Neither target board has a magnetometer."* |
-| `docs/hardware/MAGNETOMETER_BACKLOG.md`:10,13-17 | **UNIT** | the per-board IMU list |
-| `docs/hardware/MAGNETOMETER_BACKLOG.md`:41-49 | **FALSE** | *"design-only, and honest about why"* |
-| `docs/hardware/MAGNETOMETER_BACKLOG.md`:58-63 | gates change | G-06, G-07, G-09, G-10 unblock; **G-08 does not**; G-03 changes shape |
-| `docs/hardware/MAGNETOMETER_BACKLOG.md`:71-78 | **FALSE, and doubly stale** | *"Both boards have the buzz"* — this unit has **no motor fitted** either (T-097), and it conflates the motor with the `AAC210602A1` (T-105). §6 |
-| `docs/hardware/MAGNETOMETER_BACKLOG.md`:90,92-93,95-97 | A5 answered | G-14/G-15 become live; G-15's answer is yes — `IO15`/`IO14` |
-| `docs/hardware/COEXISTENCE_BACKLOG.md`:28,47,48,72-76 | **FALSE** | C-09 unblocks; **C-08 does not** |
+| `docs/architecture/ARCHITECTURE.md` line 270 | **FALSE** | duplicate of the ADR-0007 mapping table — **both copies must change** |
+| `docs/architecture/ARCHITECTURE.md` lines 580-583 | **FALSE** for the compass half | *"cannot occur on either board, because neither board has a compass"*. The motor half stays true on this unit (T-097) |
+| `docs/architecture/ARCHITECTURE.md` lines 248-250 | **TRUE** | illustrative |
+| `docs/architecture/ARCHITECTURE.md` lines 444-447 | **TRUE**, and it is this file's own precedent | *"the same weak argument-from-absence the magnetometer claim used to rest on"* |
+| `docs/hardware/INTERFERENCE_MATRIX.md` line 32,37,40,42 | row states change | §6 — two of four |
+| `docs/hardware/INTERFERENCE_MATRIX.md` lines 44-52 | **FALSE** | the four-`NOT MEASURABLE` rationale, which contains its own trigger |
+| `docs/hardware/INTERFERENCE_MATRIX.md` lines 54-58 | **FALSE** | *"the pair the master plan uses to motivate the whole coexistence architecture"* |
+| `docs/hardware/INTERFERENCE_MATRIX.md` lines 119-123 | **FALSE** | *"unlike the magnetometer rows, which cannot be measured on any targeted hardware at all"* |
+| `docs/hardware/INTERFERENCE_MATRIX.md` line 103 | half false | *"Empty. No hardware has been measured. No board is present."* — sentence 2 is now false, sentence 1 must stay true |
+| `docs/hardware/MAGNETOMETER_BACKLOG.md` line 7 | **FALSE** | *"Neither target board has a magnetometer."* |
+| `docs/hardware/MAGNETOMETER_BACKLOG.md` line 10,13-17 | **UNIT** | the per-board IMU list |
+| `docs/hardware/MAGNETOMETER_BACKLOG.md` lines 41-49 | **FALSE** | *"design-only, and honest about why"* |
+| `docs/hardware/MAGNETOMETER_BACKLOG.md` lines 58-63 | gates change | G-06, G-07, G-09, G-10 unblock; **G-08 does not**; G-03 changes shape |
+| `docs/hardware/MAGNETOMETER_BACKLOG.md` lines 71-78 | **FALSE, and doubly stale** | *"Both boards have the buzz"* — this unit has **no motor fitted** either (T-097), and it conflates the motor with the `AAC210602A1` (T-105). §6 |
+| `docs/hardware/MAGNETOMETER_BACKLOG.md` line 90,92-93,95-97 | A5 answered | G-14/G-15 become live; G-15's answer is yes — `IO15`/`IO14` |
+| `docs/hardware/COEXISTENCE_BACKLOG.md` line 28,47,48,72-76 | **FALSE** | C-09 unblocks; **C-08 does not** |
 
 ### Research notes
 
 | File:line | Verdict | Anchor |
 |---|---|---|
-| `docs/research/OPEN_QUESTIONS.md`:38 | A5 answered by events | and the row's premise is false |
-| `docs/research/OPEN_QUESTIONS.md`:39 | **TRUE** | A6 unaffected |
-| `docs/research/OPEN_QUESTIONS.md`:205 | Q2 answered by events | |
-| `docs/research/OPEN_QUESTIONS.md`:216-219 | **FALSE** | *"Either the node carries one ... or 'compass' means GNSS course-over-ground"* — a false dichotomy once a part is soldered on |
-| `docs/research/OPEN_QUESTIONS.md`:305 | **FALSE as written** | survey-findings list |
-| `docs/research/REUSE_LEDGER.md`:458 | requalify | *"### GNSS parsing and heading without a magnetometer"* |
-| `docs/research/REUSE_LEDGER.md`:630-661 | **revisit trigger fires** | *"Revisit when: an external magnetometer is decided"*. §7.4 |
-| `docs/research/REUSE_LEDGER.md`:513 | requalify | |
-| `docs/research/TAGS_TRACKS_RECKONING.md`:286-292 | **FALSE for the Waveshare** | *"neither board has one"* — a magnetometer **is** that absolute reference |
-| `docs/research/TAGS_TRACKS_RECKONING.md`:294-298 | **TRUE**, requalify | *"DR consumes odometry, an anchor and — where it exists — `Heading`. It never manufactures one."* The rule stands; *"where it exists"* now has a case |
-| `docs/research/OWNER_DECISIONS.md`:326 | **TRUE** | BMA423-specific |
-| `docs/research/PEDOMETER_PARTS.md`:351 | now larger | *"Neither board's IMU orientation is recorded yet"* — §5.10 |
-| `docs/research/RECONCILIATION_2026-08-21.md`:25,48 | **TRUE** | historical |
-| `docs/node/NODE_PROFILE.md`:43 | requalify | N3 — A5/Q2 answered by a route it does not contemplate |
-| `docs/upstream/research-integration.md`:389-405 | **basis FALSE for this unit** | the Madgwick/Mahony `REJECT` |
-| `docs/upstream/research-integration.md`:414-419 | incomplete | *"via an Attadipa node or a future board"* — two routes named, this one is not among them |
-| `docs/upstream/research-integration.md`:92 | gate changes | §11 *"not yet applicable"* |
+| `docs/research/OPEN_QUESTIONS.md` line 38 | A5 answered by events | and the row's premise is false |
+| `docs/research/OPEN_QUESTIONS.md` line 39 | **TRUE** | A6 unaffected |
+| `docs/research/OPEN_QUESTIONS.md` line 205 | Q2 answered by events | |
+| `docs/research/OPEN_QUESTIONS.md` lines 216-219 | **FALSE** | *"Either the node carries one ... or 'compass' means GNSS course-over-ground"* — a false dichotomy once a part is soldered on |
+| `docs/research/OPEN_QUESTIONS.md` line 305 | **FALSE as written** | survey-findings list |
+| `docs/research/REUSE_LEDGER.md` line 458 | requalify | *"### GNSS parsing and heading without a magnetometer"* |
+| `docs/research/REUSE_LEDGER.md` lines 630-661 | **revisit trigger fires** | *"Revisit when: an external magnetometer is decided"*. §7.4 |
+| `docs/research/REUSE_LEDGER.md` line 513 | requalify | |
+| `docs/research/TAGS_TRACKS_RECKONING.md` lines 286-292 | **FALSE for the Waveshare** | *"neither board has one"* — a magnetometer **is** that absolute reference |
+| `docs/research/TAGS_TRACKS_RECKONING.md` lines 294-298 | **TRUE**, requalify | *"DR consumes odometry, an anchor and — where it exists — `Heading`. It never manufactures one."* The rule stands; *"where it exists"* now has a case |
+| `docs/research/OWNER_DECISIONS.md` line 326 | **TRUE** | BMA423-specific |
+| `docs/research/PEDOMETER_PARTS.md` line 351 | now larger | *"Neither board's IMU orientation is recorded yet"* — §5.10 |
+| `docs/research/RECONCILIATION_2026-08-21.md` line 25,48 | **TRUE** | historical |
+| `docs/node/NODE_PROFILE.md` line 43 | requalify | N3 — A5/Q2 answered by a route it does not contemplate |
+| `docs/upstream/research-integration.md` lines 389-405 | **basis FALSE for this unit** | the Madgwick/Mahony `REJECT` |
+| `docs/upstream/research-integration.md` lines 414-419 | incomplete | *"via an Attadipa node or a future board"* — two routes named, this one is not among them |
+| `docs/upstream/research-integration.md` line 92 | gate changes | §11 *"not yet applicable"* |
 
 ### Code, tests and agent instructions
 
 | File:line | Verdict | Anchor |
 |---|---|---|
-| `platform/include/attadipa/platform/hardware_feature.h`:37 | **FALSE** | *"neither shipping board has one; the seat exists anyway"* |
-| `platform/src/board_profiles.cpp`:21 | **TRUE** | T-Watch block |
-| `platform/src/board_profiles.cpp`:44-60 | **UNIT** | `kWaveshareFeatures` — the executable assertion, and §8.1 argues it should **not** change |
-| `core/src/capability_registry.cpp`:96,103-106 | not an assertion | the already-correct preference — **but see §8.3 item 2** |
-| `core/include/attadipa/core/trust.h`:239 | **TRUE** | BMA423-specific |
-| `core/include/attadipa/core/availability.h`:10 | **TRUE** | illustrative |
-| `sim/labels.cpp`:65 | not an assertion | the label already renders |
-| `tests/test_capability_registry.cpp`:111-113 | **UNIT** | comment at 111, assertions at 112-113. **Under §8.1's reading this test never fails**, because `kWaveshareFeatures` never gains the bit; the comment narrows to *"neither board **type**"* |
-| `tests/test_capability_registry.cpp`:275,282,296 | premise and value change | *"Waveshare: a six-axis IMU ... but no magnetometer"*, and `CHECK_AVAIL(..., Heading, Unprovisioned)` at 296 |
-| `tests/test_position.cpp`:186 | **FALSE as written** | the dead-reckoning caveat comment |
-| `CLAUDE.md`:41 | **FALSE** | *"neither board has a magnetometer;"* — in the never-trust-verify list every agent reads first |
-| `.claude/agents/hardware-fact-checker.md`:45 | **FALSE** | this agent would **enforce the stale fact against a correct change** |
-| `.claude/agents/researcher.md`:53 | **FALSE** | |
+| `platform/include/attadipa/platform/hardware_feature.h` line 37 | **FALSE** | *"neither shipping board has one; the seat exists anyway"* |
+| `platform/src/board_profiles.cpp` line 21 | **TRUE** | T-Watch block |
+| `platform/src/board_profiles.cpp` lines 44-60 | **UNIT** | `kWaveshareFeatures` — the executable assertion, and §8.1 argues it should **not** change |
+| `core/src/capability_registry.cpp` line 96,103-106 | not an assertion | the already-correct preference — **but see §8.3 item 2** |
+| `core/include/attadipa/core/trust.h` line 239 | **TRUE** | BMA423-specific |
+| `core/include/attadipa/core/availability.h` line 10 | **TRUE** | illustrative |
+| `sim/labels.cpp` line 65 | not an assertion | the label already renders |
+| `tests/test_capability_registry.cpp` lines 111-113 | **UNIT** | comment at 111, assertions at 112-113. **Under §8.1's reading this test never fails**, because `kWaveshareFeatures` never gains the bit; the comment narrows to *"neither board **type**"* |
+| `tests/test_capability_registry.cpp` line 275,282,296 | premise and value change | *"Waveshare: a six-axis IMU ... but no magnetometer"*, and `CHECK_AVAIL(..., Heading, Unprovisioned)` at 296 |
+| `tests/test_position.cpp` line 186 | **FALSE as written** | the dead-reckoning caveat comment |
+| `CLAUDE.md` line 41 | **FALSE** | *"neither board has a magnetometer;"* — in the never-trust-verify list every agent reads first |
+| `.claude/agents/hardware-fact-checker.md` line 45 | **FALSE** | this agent would **enforce the stale fact against a correct change** |
+| `.claude/agents/researcher.md` line 53 | **FALSE** | |
 
 ### Public-facing, and the bilingual rule applies
 
 | File:line | Verdict | Anchor |
 |---|---|---|
-| `README.md`:120-121,128 | **FALSE as written** | *"neither has a magnetometer"* |
-| `README.ru.md`:125-128 | **FALSE as written** | *"магнитометра нет ни у одной"* |
-| `docs/community/seed-discussions/1-offline-friend-location.md`:134-135,151 | **FALSE as written** | both languages |
-| `docs/community/seed-discussions/2-find-my-camp.md`:107,123,137 | **FALSE as written** | both languages, one file |
+| `README.md` lines 120-121,128 | **FALSE as written** | *"neither has a magnetometer"* |
+| `README.ru.md` lines 125-128 | **FALSE as written** | *"магнитометра нет ни у одной"* |
+| `docs/community/seed-discussions/1-offline-friend-location.md` lines 134-135,151 | **FALSE as written** | both languages |
+| `docs/community/seed-discussions/2-find-my-camp.md` line 107,123,137 | **FALSE as written** | both languages, one file |
 
 > **`README.md` and `README.ru.md` change in the same commit.** CLAUDE.md:
 > *"A README that is current in one language and stale in the other is worse
@@ -1774,11 +1787,11 @@ not "fixed" by mistake.
 
 | File:line | Note |
 |---|---|
-| `STATUS.md`:463 | **FALSE as written** — *"arriving hardware does not help ... not measurable on either of them in any configuration"*. It **does** help, for two of four rows (§6) |
-| `STATUS.md`:470-471 | A5 answered; A6 unaffected |
-| `STATUS.md`:690 | historical record of #21; true as history, premise narrows |
-| `TASKS.md`:410 | **FALSE as written** — the Fusion reuse-ledger task |
-| `TASKS.md`:1704 | **FALSE** — T-014's *"cannot be run on either target board"* |
+| `STATUS.md` line 463 | **FALSE as written** — *"arriving hardware does not help ... not measurable on either of them in any configuration"*. It **does** help, for two of four rows (§6) |
+| `STATUS.md` lines 470-471 | A5 answered; A6 unaffected |
+| `STATUS.md` line 690 | historical record of #21; true as history, premise narrows |
+| `TASKS.md` line 410 | **FALSE as written** — the Fusion reuse-ledger task |
+| `TASKS.md` line 1704 | **FALSE** — T-014's *"cannot be run on either target board"* |
 | `TASKS.md` T-011 blocker | **FALSE as written** — *"neither board has a magnetometer, so the haptics-versus-compass case cannot be measured"*. **The conclusion for that one pair survives by accident and for a different reason** (no motor, T-097); the sentence does not |
 | `TASKS.md` T-012, T-071 | requalify — A5 answered; T-071's rule stands, its factual basis narrows |
 
@@ -1789,7 +1802,7 @@ not "fixed" by mistake.
 | Claim | Status |
 |---|---|
 | Main I2C bus is SDA = IO15, SCL = IO14; six devices ACK | **VERIFIED** — schematic and physical unit |
-| Which of `0x6A`/`0x6B` the IMU occupies | **CONFLICTING** — schematic says `0x6B`, QMI8658C Rev 0.6 says `0x6A`. One bus scan settles it. `HARDWARE_MATRIX`:318 and :327 disagree with each other |
+| Which of `0x6A`/`0x6B` the IMU occupies | **VERIFIED — `0x6B`, MEASURED** by the 2026-08-23 bus scan, `docs/research/HARDWARE_MATRIX.md:392` — "`0x6B`, MEASURED". Was `CONFLICTING` when this document was written: schematic `0x6B`, QMI8658C Rev 0.6 `0x6A` |
 | Both I2C pins brought out on the ten-pad expansion row, with GND and 3V3 | **VERIFIED** |
 | Whether the `+3V3` pad is always-on or `ALDO1`-switched | **UNKNOWN** — decides whether `Availability::Off` is physically reachable |
 | QMI8658 is 6-axis, no magnetometer; board-frame axes silkscreened | **VERIFIED** |
@@ -1904,7 +1917,7 @@ which is the argument ADR-0004 §2a already makes: *"the cost of runtime-
 extensible capabilities is almost entirely in the *contracts* around them ...
 cheap to decide with no code and expensive to retrofit."* `design`.
 
-**Q12 · Fix first-present-wins in `capability_registry.cpp`:103-106.**
+**Q12 · Fix first-present-wins at `core/src/capability_registry.cpp:106` — "if (inventory_->present(HardwareFeature::MagnetometerSensor))".**
 A present-but-`Failed` magnetometer suppresses the GNSS course-over-ground
 fallback. Invisible on the Waveshare, a real regression on a T-Watch retrofit.
 **Belongs with Q11, not after it.** `bug`.
@@ -1920,10 +1933,12 @@ to size. Removing it costs `Capability::AudioOut` — or `Capability::Haptics`, 
 T-105 says it is an actuator, in which case this unit has neither. **Owner
 decision**, coupled to T-105, T-097 and #64. `needs-owner`.
 
-**Q15 · Reconcile `HARDWARE_MATRIX`:318 against :327.**
-One says the IMU address is `CONFLICTING` between `0x6A` and `0x6B`; the other
-says *"nothing collides and `0x6A` is free"*. Both cannot be relied on. One bus
-scan settles it and the file should say so until then. `docs`.
+**Q15 · Reconcile the two `HARDWARE_MATRIX` rows on the IMU address.**
+**Answered by the 2026-08-23 bus scan.** One row said the address was
+`CONFLICTING` between `0x6A` and `0x6B`; the other said *"nothing collides and
+`0x6A` is free"*. Both now say `0x6B`, MEASURED, `0x6A` free:
+`docs/research/HARDWARE_MATRIX.md:392` — "was address CONFLICTING" and
+`docs/research/HARDWARE_MATRIX.md:401` — "`0x6A` is free". Nothing left to do. `docs`.
 
 **Still open and untouched by any of this: A6 — does the Attadipa node carry a
 magnetometer?** A5 and Q2 are answered by events, by a route none of the three

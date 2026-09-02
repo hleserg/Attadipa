@@ -75,8 +75,9 @@ not enter the queue automatically.
   `` `core/include/attadipa/core/clock.h:86` — "struct WallTime {" ``. A bare
   line number rots the next time anybody inserts a paragraph above it, and it
   rots silently, because the line it lands on is real. `check_docs.py` requires
-  the quote for a source target and then keeps it — that example is itself a
-  live citation, checked like any other. For a `.md` target it stays optional.
+  the quote for any tracked target and then keeps it — that example is itself a
+  live citation, checked like any other. `docs/upstream/` included: what is
+  there is written and edited here, whatever its subject.
 - A line number with no path — `:265` — continues the citation before it **on
   the same line**, and nowhere else. Further off it is checked by nothing and a
   reader has to guess which file it meant, so spell the path out there.

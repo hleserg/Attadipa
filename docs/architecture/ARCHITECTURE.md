@@ -662,7 +662,7 @@ budget on a device where internal RAM is the scarce resource.
 | 3 | Radio abstraction, and what MeshCore actually supports | [ADR-0003](../adr/0003-radio-not-lora.md) (TASKS T-013) | **accepted** |
 | 4 | Partition layout and OTA scheme | ADR (TASKS T-025) | open |
 | 5 | ESP-IDF and LVGL versions | DEPENDENCIES (TASKS T-004, T-032) | **decided** — ESP-IDF v5.5.5 and LVGL v9.5.0 are pinned; CI builds both firmware variants and the simulator |
-| 6 | Whether to depend on the vendor BSPs or take only their pin facts | REUSE_LEDGER (OPEN_QUESTIONS T6) | open |
+| 6 | Whether to depend on the vendor BSPs or take only their pin facts | [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md) (OPEN_QUESTIONS T6) | **decided** — a board backend composes ESP-IDF components; a vendor BSP is read at a revision and never linked |
 | 7 | Capability sources and their runtime lifecycle | [ADR-0004](../adr/0004-capability-sources.md) (TASKS T-015) | **accepted** |
 | 8 | The watch↔node protocol | [ADR-0005](../adr/0005-node-protocol.md) (TASKS T-016) | **provisional** — encoding pending benchmark |
 | 9 | Settings, and values bounded by a regulatory profile | [ADR-0006](../adr/0006-settings-and-bounded-values.md) (TASKS T-017) | **accepted** |

@@ -105,10 +105,9 @@ That entry is read from the **T-Watch** schematic —
 `docs/research/VERIFIED_FACTS.md:852` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
-`docs/research/HARDWARE_MATRIX.md:399`, which records the same wiring for the
-product board and whose evidence is a measurement taken on one — "physical BOOT
-and PWR edge pairs measured through `core::InputQueue`" — rather than a reading
-of another board's sheet.
+`docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
+— which records the same wiring for the product board and whose evidence is a
+measurement taken on one rather than a reading of another board's sheet.
 
 **UNKNOWN:** whether the AXP2101 can be configured to report a long press to
 firmware as an event instead of acting on it. That is traceable — a
@@ -282,7 +281,7 @@ Beyond B and C:
   project builds with no flash or NVS encryption and will not — `AGENTS.md`
   forbids burning eFuses — and a full flash read over that same port is
   documented on this unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:314` —
-  "esptool.py --port <port> --baud 921600 read_flash 0 0x2000000 waveshare-2.06-factory.bin".
+  "read_flash 0 0x2000000 waveshare-2.06-factory.bin".
   esptool writes as well as reads, and the bond store
   is in the same unencrypted NVS: `firmware/sdkconfig.defaults:108` —
   "CONFIG_BT_NIMBLE_NVS_PERSIST=y". So what a cable reaches is not only the
