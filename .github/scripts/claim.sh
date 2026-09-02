@@ -4,15 +4,36 @@ set -uo pipefail
 
 claim_ref() { printf 'refs/tags/attadipa-claims/%s' "$1"; }
 
+# Three answers, not two. 0: the tag sha, on stdout. 1: there is no such ref
+# (GitHub said 404). 2: the answer is unknown -- a 5xx, a rate limit, a body
+# jq cannot read. Only the first two are knowledge. Collapsing the third into
+# the second is how a lease that was legitimately won got deleted by its own
+# winner: the read-back of a ref created milliseconds earlier lags, and the
+# caller undid a claim that was there (#392).
 attadipa_claim_tag_sha() {
-  gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>/dev/null |
-    jq -er '.object.sha' 2>/dev/null
+  local err_file body rc err
+  err_file="$(mktemp)" || return 2
+  body="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>"$err_file")"
+  rc=$?
+  err="$(cat "$err_file")"
+  rm -f "$err_file"
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$body" | jq -er '.object.sha' 2>/dev/null && return 0
+    return 2
+  fi
+  case "$err" in
+    *'HTTP 404'*) return 1 ;;
+    *) return 2 ;;
+  esac
 }
 
+# Same three answers. The tag object behind a readable ref is as new as the
+# ref, so a failure to read it is "unknown", never "no claim".
 attadipa_claim_message() {
-  local tag_sha
-  tag_sha="$(attadipa_claim_tag_sha "$1" "$2")" || return 1
-  gh api "repos/$1/git/tags/$tag_sha" 2>/dev/null | jq -er '.message' 2>/dev/null
+  local tag_sha body
+  tag_sha="$(attadipa_claim_tag_sha "$1" "$2")" || return $?
+  body="$(gh api "repos/$1/git/tags/$tag_sha" 2>/dev/null)" || return 2
+  printf '%s' "$body" | jq -er '.message' 2>/dev/null || return 2
 }
 
 # The holder is the first line of the tag message; the lines under it are this
@@ -20,7 +41,7 @@ attadipa_claim_message() {
 # existed is one line and nothing else, and reads back the same way here.
 attadipa_claim_owner() {
   local message
-  message="$(attadipa_claim_message "$1" "$2")" || return 1
+  message="$(attadipa_claim_message "$1" "$2")" || return $?
   printf '%s\n' "${message%%$'\n'*}"
 }
 
@@ -75,11 +96,18 @@ edit_label() {
 # "gone" out of an unknown answer is how a claim gets reported cleared while it
 # still holds the queue (#254). Every caller inherits this: release, break, reap.
 delete_ref() {
-  local err
+  local err attempt
   gh api --method DELETE "repos/$1/git/refs/tags/attadipa-claims/$2" >/dev/null 2>&1
-  err="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>&1 >/dev/null)"
+  # The confirmation reads a ref deleted milliseconds ago, and GitHub's reads
+  # lag its writes: a replica still serving it answers "exists" for a DELETE
+  # that worked. Look again before saying so, because release re-adds the label
+  # and reap abandons its sweep on that answer (#392, round 2).
+  for attempt in 1 2 3; do
+    err="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>&1 >/dev/null)"
+    case "$err" in *'HTTP 404'*) return 0 ;; esac
+    [ "$attempt" -eq 3 ] || sleep 2
+  done
   case "$err" in
-    *'HTTP 404'*) return 0 ;;
     '') printf '%s still exists after DELETE\n' "$(claim_ref "$2")" >&2 ;;
     *) printf 'cannot confirm %s is gone: %s\n' "$(claim_ref "$2")" \
          "$(printf '%s' "$err" | tr '\n' ' ')" >&2 ;;
@@ -92,12 +120,33 @@ delete_ref() {
 # the same task. A ref this attempt cannot remove is named on stderr, because a
 # claim nobody can see is exactly the stall #254 reports.
 discard_own_ref() {
-  local repo="$1" number="$2" tag_sha="$3" live
-  live="$(attadipa_claim_tag_sha "$repo" "$number")" || live=""
-  [ -z "$live" ] || [ "$live" = "$tag_sha" ] || return 0
-  delete_ref "$repo" "$number" && return 0
+  local repo="$1" number="$2" tag_sha="$3" live rc attempt
+  # Delete only what is positively this attempt's ref. Both callers run after
+  # the create returned 201, so the ref IS there: a 404 seconds later is the
+  # read lagging the write, so look again, and three of them are still not
+  # proof of absence -- they are an answer that never settled, and the ref is
+  # left where it is and named, like any other unreadable answer. Deleting on
+  # "unknown" is the bug this file had (#392); returning quietly on "not
+  # found" would be its silent twin, a lock with no holder and no label.
+  for attempt in 1 2 3; do
+    live="$(attadipa_claim_tag_sha "$repo" "$number")"
+    rc=$?
+    if [ "$rc" -ne 1 ] || [ "$attempt" -eq 3 ]; then break; fi
+    sleep 2
+  done
+  if [ "$rc" -eq 0 ] && [ "$live" = "$tag_sha" ] && delete_ref "$repo" "$number"; then
+    return 0
+  fi
+  # Every other answer leaves the ref where it is and names it -- including a
+  # read that names some other tag. After a 201 the ref is this attempt's, so
+  # that read is the same lagging replica as a 404, or a writer that took the
+  # ref since; either way it is not ours to delete unseen, and a lock nobody
+  # names is the invisible one. The operator confirms before breaking.
   printf 'left behind: %s -- clear it with: claim.sh break %s %s\n' \
     "$(claim_ref "$number")" "$repo" "$number" >&2
+  [ "$rc" -ne 0 ] || [ "$live" = "$tag_sha" ] || printf \
+    '  (it read back as tag %s, not this attempt'"'"'s %s: a replica behind the create, or a later writer -- check claim.sh owner %s %s first)\n' \
+    "$live" "$tag_sha" "$repo" "$number" >&2
 }
 
 # The holder id is published: claim.sh puts it in the tag message and in the tag
@@ -122,7 +171,7 @@ reject_unsafe_holder() {
 }
 
 acquire() {
-  local repo="$1" number="$2" holder="$3" branch head tag_json tag_sha winner existing now
+  local repo="$1" number="$2" holder="$3" branch head tag_json tag_sha winner existing now attempt
   reject_unsafe_holder "$holder" || {
     printf 'pass an agent id such as local-<who>-<n>; see AGENTS.md\n' >&2
     return 64
@@ -143,20 +192,50 @@ acquire() {
   tag_sha="$(printf '%s' "$tag_json" | jq -er '.sha')" || return 2
 
   if ! attadipa_claim_create_ref "$repo" "$number" "$tag_sha"; then
-    existing="$(attadipa_claim_owner "$repo" "$number")"
-    if [ -n "$existing" ]; then
-      printf 'held by %s\n' "$existing" >&2
-      return 3
-    fi
+    # The ref that refused this create is the winner's, milliseconds old, and
+    # a read of it lags the same way the read-back below does. Held is exit 3
+    # and every caller exits clean on it; unknown is 2 and goes red (#392).
+    for attempt in 1 2 3; do
+      if existing="$(attadipa_claim_owner "$repo" "$number")" && [ -n "$existing" ]; then
+        printf 'held by %s\n' "$existing" >&2
+        return 3
+      fi
+      [ "$attempt" -eq 3 ] || sleep 2
+    done
     printf 'claim creation failed and ownership is unknown\n' >&2
     return 2
   fi
 
-  winner="$(attadipa_claim_owner "$repo" "$number")"
-  if [ "$winner" != "$holder" ]; then
-    printf 'claim verification failed\n' >&2
+  # The create above is the compare-and-set: GitHub refuses a ref that exists,
+  # so its success is the claim won. The read-back confirms it and can only
+  # add one fact -- that another holder is there after all. It cannot un-win
+  # the claim by failing: the ref is milliseconds old and GitHub's reads lag
+  # its writes, so an unreadable answer is retried and, if it never settles,
+  # reported and trusted (#392). A read naming somebody else is retried the
+  # same way: the writer lease is released and re-acquired seconds apart, and
+  # a replica behind that DELETE still serves the previous holder's tag. Only
+  # a different holder that survives every read is a claim to undo. What the
+  # loop knows is its last READABLE answer, not its last answer: a 500 on the
+  # fourth read does not unsay three reads that named somebody.
+  local read_rc known=
+  attempt=1
+  while :; do
+    winner="$(attadipa_claim_owner "$repo" "$number")"
+    read_rc=$?
+    [ "$read_rc" -ne 0 ] || known="$winner"
+    if { [ "$read_rc" -eq 0 ] && [ "$winner" = "$holder" ]; } || [ "$attempt" -eq 4 ]; then break; fi
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  if [ -z "$known" ]; then
+    printf 'claim created but not readable back after %s attempts; trusting the create -- confirm with: claim.sh owner %s %s\n' \
+      "$attempt" "$repo" "$number" >&2
+  elif [ "$known" != "$holder" ]; then
+    printf 'claim verification failed: held by %s\n' "$known" >&2
     discard_own_ref "$repo" "$number" "$tag_sha"
     return 2
+  elif [ "$attempt" -gt 1 ]; then
+    printf 'claim read back after %s attempts\n' "$attempt" >&2
   fi
   if [ "$number" != writer ] && ! edit_label "$repo" "$number" --add-label agent:working; then
     discard_own_ref "$repo" "$number" "$tag_sha"
@@ -166,10 +245,37 @@ acquire() {
 }
 
 release() {
-  local repo="$1" number="$2" holder="$3" winner
-  winner="$(attadipa_claim_owner "$repo" "$number")" || return 3
-  if [ "$winner" != "$holder" ]; then
-    printf 'held by %s\n' "$winner" >&2
+  local repo="$1" number="$2" holder="$3" winner rc attempt
+  # The read is retried as acquire's is: a release seconds after the create
+  # meets the same lag, and a replica behind the previous DELETE serves the
+  # previous holder's tag, so a read naming somebody else is retried too. An
+  # answer that never settles is said out loud, because every caller writes
+  # `|| true` -- this line is the whole signal that a lease trusted at its
+  # create is still there (#392). A settled 404 says only what it knows: no
+  # readable claim, nothing deleted -- acquire may have trusted a create this
+  # read has not caught up with yet. As in the read-back, the loop's
+  # knowledge is its last readable answer: a read that named another writer
+  # is not unsaid by a 500 after it, and "left behind -- break it" must never
+  # be printed over a ref a read named as somebody else's.
+  local known=
+  for attempt in 1 2 3; do
+    winner="$(attadipa_claim_owner "$repo" "$number")"
+    rc=$?
+    [ "$rc" -ne 0 ] || known="$winner"
+    if { [ "$rc" -eq 0 ] && [ "$winner" = "$holder" ]; } || [ "$attempt" -eq 3 ]; then break; fi
+    sleep 2
+  done
+  if [ -z "$known" ]; then
+    case "$rc" in
+      1) printf 'no readable claim at %s after %s attempts; nothing deleted -- confirm with: claim.sh owner %s %s\n' \
+           "$(claim_ref "$number")" "$attempt" "$repo" "$number" >&2 ;;
+      *) printf 'cannot read who holds %s; left behind -- clear it with: claim.sh break %s %s\n' \
+           "$(claim_ref "$number")" "$repo" "$number" >&2 ;;
+    esac
+    return 3
+  fi
+  if [ "$known" != "$holder" ]; then
+    printf 'held by %s\n' "$known" >&2
     return 3
   fi
   if [ "$number" != writer ]; then
@@ -236,8 +342,10 @@ claim_finished() {
 }
 
 reap() {
-  local repo="$1" number="$2" max_age="$3" tag_sha tag_json message holder date claimed_epoch now
-  if tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"; then
+  local repo="$1" number="$2" max_age="$3" tag_sha tag_json message holder date claimed_epoch now rc
+  tag_sha="$(attadipa_claim_tag_sha "$repo" "$number")"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
     tag_json="$(gh api "repos/$repo/git/tags/$tag_sha")" || return 2
     date="$(printf '%s' "$tag_json" | jq -er '.tagger.date')" || return 2
     message="$(printf '%s' "$tag_json" | jq -er '.message')" || return 2
@@ -247,7 +355,7 @@ reap() {
         "$(claim_ref "$number")" "$holder" "$repo" "$number" >&2
       return 3
     fi
-  else
+  elif [ "$rc" -eq 1 ]; then
     # Migration path for labels created before repository refs became the lock.
     # Age still decides here, and may: every claim a live writer holds, hosted
     # or local, creates the ref this branch did not find.
@@ -255,6 +363,12 @@ reap() {
       | jq -er 'if (length > 0 and (.[0] | type) == "array") then add else . end
                   | [.[] | select(.event == "labeled" and .label.name == "agent:working")]
                   | last.created_at')" || return 3
+  else
+    # "Could not read" is not "not there". The path above reaps by age and
+    # `break_claim` deletes before it confirms, so an unreadable ref has to stop
+    # here or a live local writer's lock goes with it (#392).
+    printf '%s could not be read; nothing is reaped behind that answer\n' "$(claim_ref "$number")" >&2
+    return 3
   fi
   claimed_epoch="$(date -u -d "$date" +%s 2>/dev/null)" || return 2
   now="$(date -u +%s)"
