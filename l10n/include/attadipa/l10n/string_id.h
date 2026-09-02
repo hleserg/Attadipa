@@ -97,10 +97,27 @@ enum class StringId : std::uint16_t {
     MeshcoreUntested = 79,
     No = 80,
     ProductName = 81,
-    RadioChipUnknown = 82,
-    Yes = 83,
+    ProvisionCancelled = 82,
+    ProvisionDone = 83,
+    ProvisionFailed = 84,
+    ProvisionHintDate = 85,
+    ProvisionHintOffset = 86,
+    ProvisionHintPasskey = 87,
+    ProvisionHintTime = 88,
+    ProvisionKeyCancel = 89,
+    ProvisionKeyErase = 90,
+    ProvisionKeyOk = 91,
+    ProvisionRejected = 92,
+    ProvisionSkipped = 93,
+    ProvisionTitleDate = 94,
+    ProvisionTitleDone = 95,
+    ProvisionTitleOffset = 96,
+    ProvisionTitlePasskey = 97,
+    ProvisionTitleTime = 98,
+    RadioChipUnknown = 99,
+    Yes = 100,
 };
-inline constexpr std::uint16_t kStringIdCount = 84;
+inline constexpr std::uint16_t kStringIdCount = 101;
 
 // Counted strings are a separate type on purpose. `tr(StringId)` on an entry
 // that needs a number, or `tr_plural` on one that does not, is then a compile

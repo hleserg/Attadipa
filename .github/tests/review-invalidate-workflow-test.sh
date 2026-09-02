@@ -305,5 +305,41 @@ else
      "its condition does not name 'synchronize'; on reopened or ready_for_review the head is unchanged and the label is still this head's"
 fi
 
+# ---------------------------------------------------------------------------
+echo
+echo "The publication read is retried, and an answer it cannot get is red (#391)"
+
+# `review-published.sh` answers `unknown` when the comments it was handed are
+# not a list, and no step in the job matches `unknown`: on #382 the ledger
+# froze at round 5 through four further publications with every run green.
+# The step must therefore try again, and then fail rather than fall through.
+# The read, the retry and the failure are `review-published.sh step`, run here
+# as the shipping script; the workflow's own body is checked to call it.
+# shellcheck disable=SC2016  # the literal $ATTADIPA_TRUSTED_SCRIPTS is the thing sought.
+say 'the publication step is the script, not a body of its own' \
+  "$(printf '%s\n' "$PUBLISHED_STEP" | grep -c 'run: bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" step$')" 1
+state() { sed -n 's/^state=//p' "$sandbox/output" | tail -1; }
+reads() { grep -c '^api ' "$sandbox/log"; }
+pub() {
+  : > "$sandbox/output"
+  GITHUB_OUTPUT="$sandbox/output" STARTED=2026-08-25T00:00:00Z OUTCOME=success \
+    step "bash '$PWD/.github/scripts/review-published.sh' step" "$sandbox/trusted"
+}
+
+rc=$(FAIL_API=1 pub)
+say 'a comment read that keeps failing is tried three times' "$(reads)" 3
+say '...and records unknown, not silent: nothing proved the review said nothing' "$(state)" unknown
+say '...and the step is red, so the run cannot end green having converged nothing' "$(sign "$rc")" nonzero
+say '...and says why' "$(grep -c '::error::.*could not be read back' "$sandbox/out")" 1
+
+rc=$(BODIES='[[]]' pub)
+say 'an empty comment list is silent, not unknown' "$(state)" silent
+say '...read once' "$(reads)" 1
+say '...and green here; the silent step carries that verdict' "$(sign "$rc")" zero
+
+rc=$(BODIES='[[{"user":{"login":"claude[bot]"},"created_at":"2026-08-25T00:10:00Z","updated_at":"2026-08-25T00:10:00Z","body":"review"}]]' pub)
+say 'a reviewer comment written during the run is published' "$(state)" published
+say '...and green' "$(sign "$rc")" zero
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

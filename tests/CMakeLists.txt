@@ -58,6 +58,10 @@ add_executable(test_l10n test_l10n.cpp)
 target_link_libraries(test_l10n PRIVATE attadipa_l10n)
 add_test(NAME l10n COMMAND test_l10n)
 
+add_executable(test_provisioning test_provisioning.cpp)
+target_link_libraries(test_provisioning PRIVATE attadipa_apps)
+add_test(NAME provisioning COMMAND test_provisioning)
+
 add_executable(test_clock test_clock.cpp)
 target_link_libraries(test_clock PRIVATE attadipa_apps)
 add_test(NAME clock COMMAND test_clock)

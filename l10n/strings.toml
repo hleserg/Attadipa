@@ -395,3 +395,78 @@ ru = "нужна доработка"
 # The silicon cannot: no LoRa modulator, so no wrapper will help — ADR-0003.
 en = "impossible"
 ru = "невозможно"
+
+# --- The provisioning entry screen (ADR-0018, OD-26) -----------------------
+#
+# What a holder types into the watch with a finger: the clock, then the
+# passkey the MeshCore node shows. Titles name the field; hints say what to
+# type, and are replaced by the verdict on the last OK until the next key.
+# The keypad's digits are digits and are not in the catalogue.
+
+[provision_title_date]
+en = "Date"
+ru = "Дата"
+
+[provision_title_time]
+en = "Time, UTC"
+ru = "Время, UTC"
+
+[provision_title_offset]
+en = "Local offset"
+ru = "Местный сдвиг"
+
+[provision_title_passkey]
+en = "Node passkey"
+ru = "Код узла"
+
+[provision_title_done]
+en = "Done"
+ru = "Готово"
+
+[provision_hint_date]
+en = "year, month, day"
+ru = "год, месяц, день"
+
+[provision_hint_time]
+en = "hours and minutes, in UTC"
+ru = "часы и минуты по UTC"
+
+[provision_hint_offset]
+en = "local time minus UTC; ± flips it"
+ru = "местное время минус UTC; ± меняет знак"
+
+[provision_hint_passkey]
+en = "six digits from the node; OK alone skips"
+ru = "шесть цифр с узла; OK без цифр — пропустить"
+
+[provision_rejected]
+en = "not accepted — check it"
+ru = "не принято — проверьте"
+
+[provision_failed]
+en = "could not be stored"
+ru = "не удалось сохранить"
+
+[provision_skipped]
+en = "no passkey; the clock is set"
+ru = "без кода; часы установлены"
+
+[provision_done]
+en = "the watch is set up"
+ru = "часы настроены"
+
+[provision_cancelled]
+en = "nothing changed"
+ru = "ничего не изменено"
+
+[provision_key_ok]
+en = "OK"
+ru = "OK"
+
+[provision_key_erase]
+en = "Erase"
+ru = "Стереть"
+
+[provision_key_cancel]
+en = "Cancel"
+ru = "Отмена"
