@@ -226,11 +226,11 @@ constexpr const char* kNodeKeyNvsKey    = "node";
 // refusal has to terminate a connection, so it cannot run under that lock.
 std::atomic<std::uint64_t> connecting_addr{0};
 std::atomic<std::uint64_t> refused_addr{0};
-std::atomic<std::uint32_t> refused_until_ms{0};
+std::atomic<std::uint64_t> refused_until_ms{0};  // 64-bit, like the addresses
 // The floor `after_refusal()` raises when a second address is refused while the
 // first is still cooling down. See `firmware/main/meshcore_node_pin.h` --
 // "struct RefusalState {" for why one slot alone is not a cooldown.
-std::atomic<std::uint32_t> hold_all_until_ms{0};
+std::atomic<std::uint64_t> hold_all_until_ms{0};
 
 
 std::uint64_t packed_addr(const ble_addr_t& addr)
@@ -242,9 +242,9 @@ std::uint64_t packed_addr(const ble_addr_t& addr)
     return packed;
 }
 
-std::uint32_t uptime_ms()
+std::uint64_t uptime_ms()  // the full count: truncating it to 32 bits was #398
 {
-    return static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
+    return static_cast<std::uint64_t>(esp_timer_get_time() / 1000);
 }
 
 // The three atomics read as one value. They are read and written separately, so

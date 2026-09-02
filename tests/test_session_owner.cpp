@@ -1236,7 +1236,7 @@ void resetting_the_provider_under_a_live_session_is_what_wedged_it()
 //
 // The rule lives in firmware/main/meshcore_node_pin.h for the reason the boot
 // sequence above does: `settle_node_identity()` is ESP-IDF-only, so the four
-// outcomes, the cooldown and the millisecond wrap are unreachable from a host
+// outcomes, the cooldown and its deadlines are unreachable from a host
 // unless the decision itself is compiled here. These cases drive the shipping
 // header, not a copy of it.
 //
@@ -1396,24 +1396,68 @@ void a_handshake_with_no_key_settles_nothing()
     CHECK(ops.session_reads == 0);
 }
 
-void a_refusal_outlives_a_millisecond_wrap_by_expiring_rather_than_by_lasting()
+void an_unarmed_or_expired_refusal_never_comes_back_into_force()
 {
-    // esp_timer's millisecond count wraps every 49 days. A refusal recorded
-    // just before the wrap must expire just after it, not run for another 49.
-    const std::uint32_t before_wrap = 0xFFFFFFF0U;
-    const std::uint32_t until = before_wrap + kRefusedNodeCooldownMs;  // wraps
-    CHECK(until < before_wrap);
-    CHECK(refusal_active(until, before_wrap));
-    CHECK(refusal_active(until, 0x00000005U));
-    CHECK(!refusal_active(until, until));
-    CHECK(!refusal_active(until, until + 1U));
-    // And the ordinary case, away from the boundary, both ways.
-    CHECK(refusal_active(60000U, 1U));
-    CHECK(!refusal_active(60000U, 60001U));
-    // A counter that has run for 25 days is not "before" a refusal recorded at
-    // 5 seconds: half the range apart is the one distance the sign cannot tell
-    // apart, and the rule is that a stale refusal expires rather than sticks.
-    CHECK(!refusal_active(5000U, 5000U + 0x80000000U));
+    // #398. The deadlines were 32-bit and compared by signed difference, so an
+    // empty RefusalState -- both deadlines zero -- refused every address once
+    // uptime passed 2^31 ms, and an expired deadline came back into force 2^31
+    // ms after it lapsed. The shipping header, compiled on a host:
+    // `empty_state@0x80000000=0 empty_state@0x80000001=1`.
+    using attadipa::firmware::RefusalState;
+    using attadipa::firmware::after_refusal;
+    using attadipa::firmware::connect_is_refused;
+    constexpr std::uint64_t kA = 0x0100AAAAAAAAAAAAULL;
+    constexpr std::uint64_t kB = 0x0100BBBBBBBBBBBBULL;
+    constexpr std::uint64_t kPinned = 0x0100CCCCCCCCCCCCULL;
+
+    // Unarmed: at no uptime, and these are the ones the old arithmetic got
+    // wrong -- the millisecond the issue names, both old wrap points, and past.
+    const RefusalState none{};
+    const std::uint64_t uptimes[] = {0, 0x7FFFFFFF, 0x80000000, 0x80000001, 0xFFFFFFFF,
+                                     0x100000000, 0x180000001, ~std::uint64_t{0}};
+    for (const std::uint64_t now : uptimes) {
+        CHECK(!refusal_active(0, now));
+        CHECK(!connect_is_refused(none, kA, now));
+        CHECK(!connect_is_refused(none, kPinned, now));
+    }
+
+    // Armed at one second: in force until exactly one cooldown later, and not
+    // again 2^31 or 2^32 ms after that.
+    // `lapsed` is 64-bit so the sums below are: `1000 + kRefusedNodeCooldownMs
+    // + 0xFFFFFFFF` is unsigned-int arithmetic and wraps in the test itself.
+    const RefusalState  one    = after_refusal(none, kA, 1000);
+    const std::uint64_t lapsed = 1000 + kRefusedNodeCooldownMs;
+    CHECK(connect_is_refused(one, kA, 1000));
+    CHECK(connect_is_refused(one, kA, lapsed - 1));
+    CHECK(!connect_is_refused(one, kA, lapsed));
+    // The old arithmetic read an expired deadline as in force again from
+    // +2^31+1 ms to +2^32-1 ms after it lapsed; +2^31 and +2^32 exactly were
+    // the two points it got right, and a test that stops at those passes with
+    // the bug in place. The issue said so of the old wrap test.
+    CHECK(!connect_is_refused(one, kA, lapsed + 0x80000000));
+    CHECK(!connect_is_refused(one, kA, lapsed + 0x80000001));
+    CHECK(!connect_is_refused(one, kA, lapsed + 0xC0000000));
+    CHECK(!connect_is_refused(one, kA, lapsed + 0xFFFFFFFF));
+    CHECK(!connect_is_refused(one, kA, lapsed + 0x100000000));
+
+    // A refusal recorded where the 32-bit count used to wrap runs for exactly
+    // one cooldown, because nothing wraps.
+    const std::uint64_t late = 0xFFFFFFF0;
+    const RefusalState edge = after_refusal(none, kA, late);
+    CHECK(connect_is_refused(edge, kA, late));
+    CHECK(connect_is_refused(edge, kA, 0x100000005));
+    CHECK(connect_is_refused(edge, kA, late + kRefusedNodeCooldownMs - 1));
+    CHECK(!connect_is_refused(edge, kA, late + kRefusedNodeCooldownMs));
+
+    // The floor is the branch that refused the pinned node. Raised there, it
+    // holds for one cooldown and never comes back.
+    const RefusalState two = after_refusal(edge, kB, late + 1);
+    CHECK(connect_is_refused(two, kPinned, late + 1));
+    CHECK(connect_is_refused(two, kPinned, late + kRefusedNodeCooldownMs));
+    CHECK(!connect_is_refused(two, kPinned, late + 1 + kRefusedNodeCooldownMs));
+    CHECK(!connect_is_refused(two, kPinned, late + 1 + kRefusedNodeCooldownMs + 0x80000001));
+    CHECK(!connect_is_refused(two, kPinned, late + 1 + kRefusedNodeCooldownMs + 0xC0000000));
+    CHECK(!connect_is_refused(two, kPinned, late + 1 + kRefusedNodeCooldownMs + 0x100000000));
 }
 
 void two_wrong_nodes_in_range_stop_the_loop_one_slot_could_not()
@@ -1517,7 +1561,7 @@ int main()
     another_node_is_cooled_down_and_disconnected_and_nothing_is_written();
     a_refusal_for_a_session_that_is_over_touches_nothing();
     a_handshake_with_no_key_settles_nothing();
-    a_refusal_outlives_a_millisecond_wrap_by_expiring_rather_than_by_lasting();
+    an_unarmed_or_expired_refusal_never_comes_back_into_force();
     two_wrong_nodes_in_range_stop_the_loop_one_slot_could_not();
 
     if (failures != 0) {

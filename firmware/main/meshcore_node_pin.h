@@ -69,14 +69,21 @@ enum class PinOutcome : std::uint8_t {
 constexpr std::uint32_t kRefusedNodeCooldownMs = 60000;
 
 // Whether a refusal recorded to expire at `until_ms` is still in force at
-// `now_ms`, on a counter that wraps every 49 days.
+// `now_ms`. Both are the 64-bit millisecond count `esp_timer_get_time()` keeps,
+// which does not wrap in the life of a device, so this is a plain comparison,
+// and an unarmed deadline -- zero -- is never in force.
 //
-// Unsigned difference, so the wrap reads as "expired" rather than as another 49
-// days of refusal. Signed subtraction of the two `std::uint32_t` would be the
-// same arithmetic with undefined behaviour on the overflow it exists to handle.
-inline bool refusal_active(std::uint32_t until_ms, std::uint32_t now_ms)
+// It used to be the signed difference of two `std::uint32_t` on a count that
+// wrapped every 49.7 days. That reads "expired" for a deadline just behind
+// `now` and "in force" for one just ahead -- and also "in force" for *any*
+// deadline `now` has passed by more than 2^31 ms, zero included. So at 24.86
+// days of uptime an empty `RefusalState` refused every node, the pinned one
+// first, and an expired deadline came back into force 24.86 days after it
+// lapsed (#398). Checking `!= 0` would have closed the first case and not the
+// second; the width is the fix, the comparison only follows from it.
+inline bool refusal_active(std::uint64_t until_ms, std::uint64_t now_ms)
 {
-    return static_cast<std::int32_t>(until_ms - now_ms) > 0;
+    return until_ms > now_ms;
 }
 
 // What the transport remembers about refused nodes, and the two decisions over
@@ -107,14 +114,14 @@ struct RefusalState {
     // Zero is "none" -- the sentinel the transport has always used, and the
     // address it cannot distinguish from none is the all-zero public address.
     std::uint64_t addr = 0;
-    std::uint32_t addr_until_ms = 0;
+    std::uint64_t addr_until_ms = 0;
     // Every address is refused until here. Written only by a refusal that
     // arrived while a *different* address was still cooling down.
-    std::uint32_t hold_all_until_ms = 0;
+    std::uint64_t hold_all_until_ms = 0;
 };
 
 inline bool connect_is_refused(const RefusalState& state, std::uint64_t addr,
-                               std::uint32_t now_ms)
+                               std::uint64_t now_ms)
 {
     if (refusal_active(state.hold_all_until_ms, now_ms)) return true;
     return state.addr != 0 && state.addr == addr &&
@@ -129,9 +136,9 @@ inline bool connect_is_refused(const RefusalState& state, std::uint64_t addr,
 // the scan outright and the radio idles until the floor lapses -- which is the
 // point, and is why the value is a minute rather than an hour.
 inline RefusalState after_refusal(RefusalState state, std::uint64_t addr,
-                                  std::uint32_t now_ms)
+                                  std::uint64_t now_ms)
 {
-    const std::uint32_t until = now_ms + kRefusedNodeCooldownMs;
+    const std::uint64_t until = now_ms + kRefusedNodeCooldownMs;
     if (state.addr == 0 || state.addr == addr ||
         !refusal_active(state.addr_until_ms, now_ms)) {
         state.addr = addr;
