@@ -72,14 +72,16 @@ CRC32_CHECK = 0xCBF43926
 #
 # Every field below is a distinct value on purpose, so a transposed pair cannot
 # survive: `x` is negative so the sign crosses the wire, `width` and `height`
-# differ, and `frame_id` is `0x11223344`.
+# differ, `frame_id` is `0x11223344` and the session `HelloOk` echoes is
+# `0xA5B6C7D8`. All three begin with the version byte, so a version bump
+# re-pins all three: v2 added the session to Hello.
 MSG_HELLO_OK = bytes.fromhex(
-    "01023412018031007b28017761766573686172652d616d6f6c65642d3230360000"
-    "000073696d20302e302e31000000000000000000000000000000")
+    "020234120180350016bb027761766573686172652d616d6f6c65642d3230360000"
+    "000073696d20302e302e31000000000000000000000000000000d8c7b6a5")
 MSG_SCREEN_INFO = bytes.fromhex(
-    "01027856108016008e4b443322119a01f6010201144b06002639f4cb4e61bc00")
+    "0202785610801600af50443322119a01f6010201144b06002639f4cb4e61bc00")
 MSG_INPUT_EVENT = bytes.fromhex(
-    "0102bc9a20000b00a1a00301feff2c0107feff0000")
+    "0202bc9a20000b00a1d20301feff2c0107feff0000")
 
 # The two numbering tables, spelled out rather than read from the enums, so a
 # renumber fails here instead of silently mistranslating an operator's error
@@ -119,7 +121,7 @@ def fixed_vectors() -> None:
     hello = p.Envelope(op=p.Op.HELLO_OK, req_id=0x1234,
                        body=p.Hello(protocol_version=p.PROTOCOL_VERSION,
                                     board_id="waveshare-amoled-206",
-                                    build="sim 0.0.1").encode())
+                                    build="sim 0.0.1", session=0xA5B6C7D8).encode())
     check(p.envelope_encode(hello) == MSG_HELLO_OK,
           "a whole HelloOk message is the literal the C++ suite asserts")
 
@@ -1371,75 +1373,200 @@ def a_connection_out_of_ids_refuses_rather_than_reusing_one() -> None:
           "a later request never lands on a blacklisted id")
 
 
+def _capabilities_body(width: int = 4, height: int = 3) -> bytes:
+    """A CAPABILITIES_OK the host decodes; the device sends it, so the Python
+    side has no encoder and this spells the layout out once."""
+    return (struct.pack("<HHBBBB", width, height, int(p.PixelFormat.RGB888),
+                        int(p.Orientation.DEG0), 1, 0)
+            + b"\0" * (4 * p.BUTTON_BYTES) + struct.pack("<HIH", 180, 30000, 0))
+
+
+def _session_device(reply=None):
+    """A device that opens sessions: echoes the HELLO's generation and answers
+    CAPABILITIES. Anything else goes to `reply`."""
+    def answer(envelope):
+        if envelope.op is p.Op.HELLO:
+            asked = p.Hello.decode(envelope.body)
+            return [_reply_to(envelope, p.Op.HELLO_OK,
+                              p.Hello(board_id="scripted", build="sim 0.0.1",
+                                      session=asked.session).encode())]
+        if envelope.op is p.Op.CAPABILITIES:
+            return [_reply_to(envelope, p.Op.CAPABILITIES_OK, _capabilities_body())]
+        return reply(envelope) if reply else []
+    return ScriptedDevice(answer)
+
+
+def _left_on_the_port(device: ScriptedDevice, *leftovers) -> ScriptedDevice:
+    """Process A's late replies, already in the port's read buffer when process
+    B opens it. Each is (op, req_id, body): A's ids were 1, 2, 3, exactly the
+    ids B is about to use."""
+    for op, req_id, body in leftovers:
+        device._out += p.frame_encode(p.envelope_encode(  # noqa: SLF001 - the rig
+            p.Envelope(op=op, req_id=req_id, body=body)))
+    return device
+
+
+STALE_SESSION = 0xDEAD0001  # what process A drew; B draws its own
+
+
+def _stale_hello_ok() -> bytes:
+    return p.Hello(board_id="scripted", build="sim 0.0.1", session=STALE_SESSION).encode()
+
+
 def a_previous_invocations_reply_is_not_this_ones_answer() -> None:
     """The id space restarts at 1 in every process, so ids collide across them.
 
-    `Watch`'s docstring promises that "a stale answer to a timed-out request
-    cannot be read as the answer to the next one". That held while it was only
-    ever true within a connection: until #378 the bridge emitted nothing from
-    `tick`, so a terminal forget-bond reply could only be written while the
-    host that asked was still there.
+    On USB Serial/JTAG closing the tty is not a bus disconnect: nothing on the
+    watch ran `on_disconnect` when process A exited, and A's late replies are
+    in the port's read buffer when process B opens it. B's sequence is
+    deterministic -- HELLO 1, CAPABILITIES 2, then the command as 3 -- so
+    every one of A's numbers is one B is about to use. Not a coincidence but
+    the ordinary case.
 
-    Now it can be written after that host has timed out and exited -- the cable
-    is still in, so nothing calls `on_disconnect` -- and the frame is read by
-    whoever opens the port next. The sequence is deterministic, HELLO 1 and
-    CAPABILITIES 2, so `mesh-forget-bond` is req_id 3 in every invocation and
-    the collision is not a coincidence but the ordinary case.
-
-    Read as the new request's answer, a stale `MESH_OK` prints
-    `{"forgotten": true}` before the bond store has been touched for the second
-    conflict, which is #378 with the whole of the fix in place. Reversed, a
-    stale `ERROR` says a bond survived a deletion the watch has just accepted.
+    Until #348 the host evicted a stale reply under the id it was about to
+    issue, which closed the frame that had arrived before the request and
+    nothing else: a `HELLO_OK` under A's id 1 confirmed B's handshake on its
+    own, and a `STABLE_OK` A had been waiting on answered B's first poll.
+    Now the handshake carries a generation the device echoes, and nothing
+    read ahead of the echo is B's -- that one check is what every case below
+    turns on, and removing it turns every one of them red.
     """
     from watch.client import Watch  # noqa: PLC0415
 
-    # The previous process's late `MESH_OK(3)` lands while this one is shaking
-    # hands -- ahead of the request it will be mistaken for, which is what
-    # makes `_await` find it first.
-    def answer(envelope):
-        out = [_reply_to(envelope, {
-            p.Op.HELLO: p.Op.HELLO_OK,
-            p.Op.CAPABILITIES: p.Op.CAPABILITIES_OK,
-        }.get(envelope.op, p.Op.MESH_OK))]
-        if envelope.op is p.Op.HELLO:
-            out.append(p.envelope_encode(p.Envelope(
-                op=p.Op.MESH_OK, req_id=3, body=b"")))
-        if envelope.op is p.Op.MESH_FORGET_BOND:
-            out = [p.envelope_encode(p.Envelope(
-                op=p.Op.ERROR, req_id=envelope.req_id,
-                body=bytes((p.ErrorCode.OPERATION_FAILED, 0))))]
-        return out
-
-    device = ScriptedDevice(answer)
+    # --- 1. A's handshake and a late STABLE_OK are all on the port ----------
+    device = _left_on_the_port(
+        _session_device(lambda e: [_reply_to(e, p.Op.STABLE_OK, b"\x00")]),
+        (p.Op.HELLO_OK, 1, _stale_hello_ok()),
+        (p.Op.CAPABILITIES_OK, 2, _capabilities_body(99, 99)),
+        (p.Op.STABLE_OK, 3, b"\x01"),
+        (p.Op.MESH_OK, 3, b""))
     watch = Watch(device, timeout=0.5)
-    watch.request(p.Op.HELLO, b"", (p.Op.HELLO_OK,))
-    watch.request(p.Op.CAPABILITIES, b"", (p.Op.CAPABILITIES_OK,))
+    watch.connect()
 
-    stale = [e for e in watch._pending if e.req_id == 3]  # noqa: SLF001
-    check(len(stale) == 1 and stale[0].op is p.Op.MESH_OK,
-          "the previous invocation's reply is sitting there under the next id")
+    drawn = p.Hello.decode(next(body for op, body in device.asked if op is p.Op.HELLO)).session
+    check(drawn not in (0, STALE_SESSION), "the host drew its own generation")
+    check(watch.hello is not None and watch.hello.session == drawn,
+          "and the handshake it accepted carries that generation, not A's")
+    check(watch.capabilities is not None and watch.capabilities.width == 4,
+          "the capabilities are the fresh answer, not A's 99x99")
+    check(watch._pending == [],  # noqa: SLF001
+          "and nothing A left on the port is still queued as an answer")
+    check([op for op, _ in device.asked] == [p.Op.HELLO, p.Op.CAPABILITIES],
+          "the device was asked, rather than the queue")
 
-    # The real request goes out as 3 and the device refuses it. Without the
-    # eviction the stale `MESH_OK` is earlier in `_pending`, so `_await`
-    # returns it and the refusal is never seen.
+    # --- 1b. A was a pre-#348 host ------------------------------------------
+    # Its HELLO carried no generation, so the device echoed 0, and that 0 is
+    # on the port when B opens it. It records what A was, not what the
+    # device is; B's own echo is what settles that. Before round 1 of #403
+    # this refused a correctly flashed watch as v1.
+    no_generation = p.Hello(board_id="scripted", build="sim 0.0.1", session=0).encode()
+    device_after_v1_host = _left_on_the_port(
+        _session_device(),
+        (p.Op.HELLO_OK, 1, no_generation),
+        (p.Op.CAPABILITIES_OK, 2, _capabilities_body(99, 99)))
+    after_v1_host = Watch(device_after_v1_host, timeout=0.5)
+    after_v1_host.connect()
+    drawn_after = p.Hello.decode(next(
+        body for op, body in device_after_v1_host.asked if op is p.Op.HELLO)).session
+    check(after_v1_host.hello is not None and after_v1_host.hello.session == drawn_after,
+          "a pre-#348 host's leftover does not make a v2 device look like v1")
+    check(after_v1_host.capabilities is not None and after_v1_host.capabilities.width == 4,
+          "and B's capabilities are the fresh answer, not A's 99x99")
+
+    # --- 1c. A real v1 device -----------------------------------------------
+    # It echoes nothing, so 0 is all it ever sends. Named as v1 when the wait
+    # runs out -- the one moment that tells it from a leftover -- rather than
+    # reported as a device that did not answer.
+    v1_device = ScriptedDevice(lambda e: [_reply_to(e, p.Op.HELLO_OK, no_generation)]
+                               if e.op is p.Op.HELLO else [])
+    try:
+        Watch(v1_device, timeout=0.1).connect()
+        check(False, "a v1 device does not open a session")
+    except p.ProtocolError as refusal:
+        check("protocol v1" in str(refusal), "and it is named as v1, not as silent")
+
+    # --- 2. A's `STABLE_OK = true` does not settle B's wait -----------------
+    # B's first WAIT_STABLE is req_id 3, the number A's `true` is addressed
+    # to. The device says `false`; B must say so and keep polling.
+    check(watch.wait_stable(100, timeout=0.15, poll=0.0) is False,
+          "an interface that is not quiet is not reported quiet by A's reply")
+
+    # --- 3. A's success does not mask B's refusal ---------------------------
+    device = _left_on_the_port(
+        _session_device(lambda e: [p.envelope_encode(p.Envelope(
+            op=p.Op.ERROR, req_id=e.req_id,
+            body=bytes((p.ErrorCode.OPERATION_FAILED, 0))))]),
+        (p.Op.HELLO_OK, 1, _stale_hello_ok()),
+        (p.Op.CAPABILITIES_OK, 2, _capabilities_body()),
+        (p.Op.MESH_OK, 3, b""))
+    watch = Watch(device, timeout=0.5)
+    watch.connect()
     check_raises(p.ProtocolError,
-                 "a stale reply under the same id is not this request's answer",
+                 "a stale MESH_OK under the same id is not this request's answer",
                  lambda: watch.request(p.Op.MESH_FORGET_BOND, b"", (p.Op.MESH_OK,),
                                        retries=0))
     check(any(op is p.Op.MESH_FORGET_BOND for op, _ in device.asked),
           "and the request did reach the device rather than being answered from the queue")
 
-    # Not a blanket flush: a reply under a *different* id is somebody else's
-    # and stays queued. The screenshot path depends on that -- its chunks are
-    # pumped in while other ids are being allocated.
-    watch._pending.append(p.Envelope(op=p.Op.MESH_OK, req_id=9, body=b""))  # noqa: SLF001
-    watch._allocate_req_id()  # noqa: SLF001
-    check(any(e.req_id == 9 for e in watch._pending),  # noqa: SLF001
-          "and a reply under another id is left alone")
+
+def an_aborted_screenshots_chunks_do_not_enter_the_next_processs_frame() -> None:
+    """Regression 4 of #348: process A gave up on a screenshot mid-transfer and
+    exited; its chunks and SCREEN_END are on the port under req_id 3, which
+    is exactly the id B's first screenshot gets."""
+    from watch.client import Watch  # noqa: PLC0415
+
+    width, height = 4, 3
+    fresh = bytes((i * 37 + 11) & 0xFF for i in range(width * height * 3))
+    stale = bytes(0xEE for _ in fresh)
+
+    def screen(envelope, image):
+        info = struct.pack("<IHHBBIII", 1, width, height,
+                           int(p.PixelFormat.RGB888), int(p.Orientation.DEG0),
+                           len(image), p.crc32_of(image), 0)
+        out = [(p.Op.SCREEN_INFO, info)]
+        for offset in range(0, len(image), 16):
+            out.append((p.Op.SCREEN_DATA, struct.pack("<I", offset) + image[offset:offset + 16]))
+        out.append((p.Op.SCREEN_END, b""))
+        return out
+
+    device = _session_device(
+        lambda e: [_reply_to(e, op, body) for op, body in screen(e, fresh)]
+        if e.op is p.Op.SCREEN_REQUEST else [])
+    _left_on_the_port(device, *((op, 3, body) for op, body in screen(None, stale)))
+
+    watch = Watch(device, timeout=2.0)
+    watch.connect()
+    shot = watch.screenshot()
+    check(shot.rgb == fresh, "the frame B assembles is B's, with none of A's pixels in it")
+    check(watch._abandoned == {},  # noqa: SLF001
+          "and B abandoned nothing to get there")
+
+
+def a_device_without_a_session_generation_is_refused_as_such() -> None:
+    """A v1 device answers HELLO with 49 bytes and no session. That is not a
+    timeout and not a stale reply: it is a device this tool cannot open a
+    session with, and it should say so once, by name."""
+    from watch.client import Watch  # noqa: PLC0415
+
+    device = ScriptedDevice(lambda e: [_reply_to(
+        e, p.Op.HELLO_OK, p.Hello(board_id="old", build="sim 0.0.0").encode()[:p.HELLO_V1_BYTES])]
+        if e.op is p.Op.HELLO else [])
+    watch = Watch(device, timeout=0.5)
+    try:
+        watch.connect()
+    except p.ProtocolError as exc:
+        check("v1" in str(exc) and "generation" in str(exc),
+              f"the refusal names the version and the missing field: {exc}")
+    else:
+        failures.append("a v1 HELLO_OK opened a session")
+    check(sum(op is p.Op.HELLO for op, _ in device.asked) == 1,
+          "and it was not retried: the answer was an answer")
 
 
 CASES = (
     a_previous_invocations_reply_is_not_this_ones_answer,
+    an_aborted_screenshots_chunks_do_not_enter_the_next_processs_frame,
+    a_device_without_a_session_generation_is_refused_as_such,
     fixed_vectors,
     framing_round_trip,
     framing_survives_any_fragmentation,

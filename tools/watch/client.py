@@ -239,9 +239,11 @@ class Watch:
     Requests carry a `req_id` and replies are matched against it, so a stale
     answer to a timed-out request cannot be read as the answer to the next one.
     That holds because an id is issued once per connection and never again --
-    the space is not a ring, and `_allocate_req_id` says why.
-    MeshCore's companion protocol has no correlation at all, which ADR-0005
-    section 4 records as the reason this field exists.
+    the space is not a ring, and `_allocate_req_id` says why -- and because
+    the connection itself opens with a generation the device echoes, so a
+    reply to the previous *process* is not read as one either; `connect` says
+    how. MeshCore's companion protocol has no correlation at all, which
+    ADR-0005 section 4 records as the reason this field exists.
     """
 
     def __init__(self, transport: Transport, timeout: float = DEFAULT_TIMEOUT) -> None:
@@ -287,10 +289,10 @@ class Watch:
         use's reply, and a reused abandoned id would drop the new screenshot's
         chunks as the old transfer's tail.
 
-        The envelope carries no session generation, so the device cannot reject
-        an old-generation reply and the host cannot tell one from a fresh one.
-        That leaves the id space as the session: it runs out, and a new
-        connection is the only way to get another.
+        The envelope carries no generation -- only the handshake does, and
+        `connect` uses it to discard what the previous process left on the
+        wire. Within a connection the id space is the session: it runs out,
+        and a new connection is the only way to get another.
         """
         if self._next_req_id is None:
             raise WatchIdsExhausted(
@@ -301,32 +303,6 @@ class Watch:
         # 0 is reserved for an unsolicited message, so the space starts at 1 and
         # ends rather than returning to it.
         self._next_req_id = req_id + 1 if req_id < 0xFFFF else None
-        # AND A REPLY ALREADY CARRYING THIS ID IS NOT AN ANSWER TO IT. Within
-        # one connection an id is issued once, so an entry in `_pending`
-        # bearing the number we are about to send arrived *before* the request
-        # -- it belongs to the previous process, whose id space started at 1
-        # exactly as this one does. The command sequence is deterministic
-        # (HELLO 1, CAPABILITIES 2), so `mesh-forget-bond` is req_id 3 in every
-        # invocation.
-        #
-        # That became reachable with #378 and not before: until this change
-        # `tick` emitted nothing, so a terminal forget-bond reply could only be
-        # written while the host that asked was still connected. Now the worker
-        # finishes after the host has timed out and exited, `on_disconnect` has
-        # not fired because the cable is still in, and the frame reaches
-        # whoever opens the port next. Read as the new request's answer it
-        # prints `{"forgotten": true}` before `ble_store_util_delete_peer()`
-        # has run for the second conflict -- which is #378 itself, with the
-        # whole of the fix in place.
-        #
-        # What this closes is the frame that had already arrived; the handshake
-        # pumps it in, so that is the one the reproduction turns on. It does
-        # **not** close a frame still sitting in the watch's output queue when
-        # we send: nothing in the envelope distinguishes it from a fresh reply,
-        # and the field that would is the session generation the paragraph
-        # above records as absent. Narrower than the docstring's promise, and
-        # said here rather than left to be discovered.
-        self._pending = [e for e in self._pending if e.req_id != req_id]
         return req_id
 
     def _pump(self, timeout: float) -> None:
@@ -348,21 +324,51 @@ class Watch:
                 # fields that failed to parse.
                 continue
 
-    def _await(self, req_id: int, ops: tuple[p.Op, ...], timeout: float | None = None):
+    def _await(self, req_id: int, ops: tuple[p.Op, ...], timeout: float | None = None,
+               session: int | None = None):
         waited = timeout if timeout is not None else self._timeout
         deadline = time.monotonic() + waited
         previous, self._awaiting = self._awaiting, req_id
         try:
-            return self._await_locked(req_id, ops, deadline, waited)
+            return self._await_locked(req_id, ops, deadline, waited, session)
         finally:
             self._awaiting = previous
 
     def _await_locked(self, req_id: int, ops: tuple[p.Op, ...], deadline: float,
-                      waited: float):
+                      waited: float, session: int | None = None):
+        saw_no_generation = False
         while True:
             for index, envelope in enumerate(self._pending):
                 if envelope.req_id != req_id:
                     continue
+                if session is not None:
+                    # The handshake, which is the one wait that matches on more
+                    # than the number. Until the device has echoed the
+                    # generation we drew, nothing under this id is ours -- not
+                    # a `HELLO_OK` carrying another generation, and not an
+                    # `ERROR`: both were written to a process that is gone.
+                    if envelope.op is not p.Op.HELLO_OK:
+                        continue
+                    try:
+                        echoed = p.Hello.decode(envelope.body).session
+                    except p.ProtocolError:
+                        continue
+                    if echoed == 0:
+                        # What a v1 device sends -- and also what a v2 device
+                        # echoed to a pre-#348 host, which is then on the
+                        # port when this process opens it. One of these says
+                        # nothing about the device; only the wait running
+                        # out with no echo of our own does, and it is named
+                        # there. Nothing in the envelope tells the two apart.
+                        saw_no_generation = True
+                        continue
+                    if echoed != session:
+                        continue
+                    # Everything ahead of the echo was written before the
+                    # device ended the previous session. Everything after it
+                    # was written to us.
+                    del self._pending[:index + 1]
+                    return envelope
                 if envelope.op is p.Op.ERROR:
                     del self._pending[index]
                     raise self._refusal(envelope)
@@ -370,13 +376,20 @@ class Watch:
                     del self._pending[index]
                     return envelope
             if time.monotonic() >= deadline:
+                if saw_no_generation:
+                    raise p.ProtocolError(
+                        "the device answered the handshake without a session "
+                        "generation: it speaks debug protocol v1, and this tool "
+                        "needs v2 to tell its replies from a previous "
+                        "invocation's. Update the firmware or the simulator")
                 raise WatchError(
                     f"the device did not answer within {waited:.1f}s. "
                     f"Is it still running, and is anything else connected to it?")
             self._pump(0.05)
 
     def request(self, op: p.Op, body: bytes, expect: tuple[p.Op, ...],
-                timeout: float | None = None, retries: int = 1):
+                timeout: float | None = None, retries: int = 1,
+                session: int | None = None):
         """One request, one reply, with a retry.
 
         The retry is not optimism: on a byte stream a request can be lost to a
@@ -390,7 +403,7 @@ class Watch:
             self._transport.send(p.frame_encode(p.envelope_encode(
                 p.Envelope(op=op, req_id=req_id, body=body))))
             try:
-                return self._await(req_id, expect, timeout)
+                return self._await(req_id, expect, timeout, session)
             except WatchError as exc:
                 last = exc
                 if attempt < retries:
@@ -400,8 +413,33 @@ class Watch:
     # --- handshake --------------------------------------------------------
 
     def connect(self) -> None:
-        reply = self.request(p.Op.HELLO, p.Hello(board_id="host", build="watch_control").encode(),
-                             (p.Op.HELLO_OK,))
+        """Open a session, and take nothing from before it as an answer.
+
+        The device cannot see this process start. On USB Serial/JTAG closing
+        the tty is not a bus disconnect, so nothing on the watch ran
+        `on_disconnect` when the previous invocation exited, and its late
+        replies -- a `STABLE_OK`, a `MESH_OK`, the tail of a screenshot -- are
+        still on the wire when this one opens the port and restarts its ids
+        at 1. Every one of them is addressed to a number this process is about
+        to use, and the sequence is deterministic, so the collision is the
+        ordinary case rather than a coincidence. Widening the id, or starting
+        it at random, would only make it rarer.
+
+        So the handshake carries a generation the device echoes, and
+        `_await_locked` accepts a `HELLO_OK` as ours only when it carries the
+        one we drew, discarding everything read ahead of it as the previous
+        holder's. From then on `req_id` alone is enough: the device ended the
+        old session before it wrote the echo, it writes in order, and an id is
+        issued once (`_allocate_req_id`). ADR-0005 section 5 calls this the
+        session epoch and asks the HELLO reply to carry it; this is that.
+        """
+        # Non-zero: 0 is what a v1 peer means by not sending one. `hello`
+        # keeps the echoed value, which is the same number once this returns.
+        session = int.from_bytes(os.urandom(4), "little") or 1
+        reply = self.request(p.Op.HELLO,
+                             p.Hello(board_id="host", build="watch_control",
+                                     session=session).encode(),
+                             (p.Op.HELLO_OK,), session=session)
         self.hello = p.Hello.decode(reply.body)
         if self.hello.protocol_version != p.PROTOCOL_VERSION:
             # Reported, not fatal. ADR-0005 section 5 keeps version and

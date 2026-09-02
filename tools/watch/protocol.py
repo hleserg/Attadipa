@@ -155,7 +155,7 @@ class FrameDecoder:
 ENVELOPE_BYTES = 10
 CLASS_NODE = 0x01
 CLASS_DEBUG = 0x02
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 MAX_BODY = MAX_PAYLOAD - ENVELOPE_BYTES
 
 
@@ -289,7 +289,8 @@ def envelope_decode(payload: bytes) -> Envelope:
 
 # --- bodies ---------------------------------------------------------------
 
-HELLO_BYTES = 1 + 24 + 24
+HELLO_V1_BYTES = 1 + 24 + 24
+HELLO_BYTES = HELLO_V1_BYTES + 4
 SCREEN_INFO_BYTES = 4 + 2 + 2 + 1 + 1 + 4 + 4 + 4
 INPUT_EVENT_BYTES = 1 + 1 + 2 + 2 + 1 + 4
 TIME_SYNC_BYTES = 8 + 2 + 4 + 1
@@ -346,15 +347,21 @@ class Hello:
     protocol_version: int = PROTOCOL_VERSION
     board_id: str = ""
     build: str = ""
+    # The session generation, drawn by the host per connection and echoed by
+    # the device -- `client.py`'s `connect` says what it is for. 0 means a v1
+    # peer that does not send one.
+    session: int = 0
 
     def encode(self) -> bytes:
-        return bytes([self.protocol_version]) + _fixed(self.board_id, 24) + _fixed(self.build, 24)
+        return (bytes([self.protocol_version]) + _fixed(self.board_id, 24)
+                + _fixed(self.build, 24) + struct.pack("<I", self.session))
 
     @staticmethod
     def decode(body: bytes) -> "Hello":
-        if len(body) < HELLO_BYTES:
+        if len(body) < HELLO_V1_BYTES:
             raise ProtocolError("a short hello body")
-        return Hello(body[0], _unfixed(body[1:25]), _unfixed(body[25:49]))
+        session = struct.unpack_from("<I", body, HELLO_V1_BYTES)[0] if len(body) >= HELLO_BYTES else 0
+        return Hello(body[0], _unfixed(body[1:25]), _unfixed(body[25:49]), session)
 
 
 @dataclass

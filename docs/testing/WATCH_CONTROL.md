@@ -143,16 +143,16 @@ real transport; this host-only change deliberately invents neither.
 **`0` is a host convention and not a device declaration, and the two do not
 agree.** A device that advertises `0` has given the tool no bound to enforce,
 so the tool does not invent one and lets the gesture through. The bridge reads
-the same `0` as *expire immediately*: `debug/src/bridge.cpp:868` —
+the same `0` as *expire immediately*: `debug/src/bridge.cpp:877` —
 "now_ms - pointer_down_at_ > limits_.max_hold_ms" — releases when that is true,
 which it already is one millisecond after the `PointerDown`, and
-`debug/src/bridge.cpp:854` — "now_ms - button_down_at_[i] > limits_.max_hold_ms"
+`debug/src/bridge.cpp:863` — "now_ms - button_down_at_[i] > limits_.max_hold_ms"
 — does the same for buttons.
 `info` says so out loud — it prints `hold released after 0 ms`. So `0` is not a
 way to ask for an unbounded hold; a firmware that wants one has to raise the
 limit, not zero it. The default is `30000`
 (`debug/include/attadipa/debug/bridge.h:148` — "max_hold_ms = 30000"), and
-`bridge.cpp:450` — "caps.max_hold_ms" — copies the enforced limit into the
+`bridge.cpp:458` — "caps.max_hold_ms" — copies the enforced limit into the
 capabilities verbatim, so what is advertised and what
 is enforced are one number.
 
@@ -282,7 +282,7 @@ the expectation would move together.
 |---|---|---|
 | `no watch found` | nothing is listening | start the simulator **with** `--debug-socket`; the feature is off by default |
 | `could not connect to …` | the path is wrong, or the simulator died | check the path; `ls -l` the socket |
-| `the device did not answer within 10.0s` | the device is wedged | `--timeout` to wait longer. This is **not** what a second client sees — see the next row |
+| `the device did not answer within 10.0s` | the device is wedged — or, for `mesh-forget-bond`, the deletion outlived the timeout: since #378 it runs on the mesh worker and answers when it finishes, which can be after the tool has given up | `--timeout` to wait longer. For forget-bond the deletion is still running, not lost: a re-run answers `already running` until it completes. This is **not** what a second client sees — see the next row |
 | `the device closed the connection…` | the simulator exited, or it already had a client | only one is served at a time; close the other. The refusal is immediate, not a timeout |
 | `that input is impossible from the current state` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. A `release` in its own invocation always lands here: the previous one released it on exit |
 | `this stack is single-touch` | a second finger was requested | there is no multitouch; use one-point gestures |
@@ -296,7 +296,8 @@ the expectation would move together.
 | `the frame is incomplete: N bytes never arrived` | a torn transfer | **not retried automatically** — run the command again. The retry in `request()` covers a lost request, not a torn stream, and a screenshot does not go through it |
 | `the assembled frame does not match its checksum` | chunks assembled wrongly | same — the framing already proved each chunk was intact, so this is an assembly bug |
 | `this build of the firmware cannot do that` | the debug channel is compiled out, **or** the frame buffer is smaller than the panel, **or** the button is one this board will not simulate | for a button, `info` prints which are simulated; `boot` is intentionally not injectable |
-| `this connection has used all 65535 request ids` | one connection — a long `live` session, or a very long scenario — asked for more requests than the correlation space holds | reconnect. The `req_id` is the only thing tying a reply to its request and the envelope carries no session generation, so reusing one could let a late reply to its first use answer the second, or let a given-up screenshot's id swallow a new transfer's chunks. The tool refuses **before** anything goes on the wire rather than risk it |
+| `the device answered the handshake without a session generation…` | the handshake wait ran out and the only `HELLO_OK` seen carried no generation. A firmware or simulator built before #348 speaks debug protocol v1 and has no generation to echo, so this tool cannot tell its replies from a previous invocation's | rebuild the simulator, or reflash the watch, from a checkout that has #348. Named only when the wait expires, because a generation of `0` is also what a v2 device echoed to a *pre-#348 host* that exited with the cable in — that leftover is skipped, and this device's own echo settles it. So if the running build does have #348, the device did not answer at all: treat it as the timeout row above, and run once more before reflashing |
+| `this connection has used all 65535 request ids` | one connection — a long `live` session, or a very long scenario — asked for more requests than the correlation space holds | reconnect. Within a connection the `req_id` is the only thing tying a reply to its request — the session generation lives in the handshake, not in the envelope — so reusing one could let a late reply to its first use answer the second, or let a given-up screenshot's id swallow a new transfer's chunks. The tool refuses **before** anything goes on the wire rather than risk it. A new connection is a new generation, so what the old one left on the wire is discarded, not reused |
 | the screen is stuck mid-gesture | a crashed run left a finger down | `input-reset` |
 
 `input-reset` lifts only what the **remote** is holding, never what a person is
@@ -341,8 +342,9 @@ serial `28:84:85:B2:18:A4`; simulator figures are labelled separately.
 **This protocol has no authentication, and it is not going to grow one here.**
 CRC-32 and the version byte establish that a frame is well formed and that the
 peer speaks this revision. Neither establishes *who* the peer is. `Hello` is
-deliberately exempt from the version gate and carries no nonce, no proof and no
-host identity, so every privileged opcode below it — screenshot, input
+deliberately exempt from the version gate and carries no proof and no host
+identity — the session generation it does carry (#348) is a correlation the
+device echoes back, not a credential — so every privileged opcode below it — screenshot, input
 injection, `TimeSync` writing host time as `Manual`/`Trusted`, and the MeshCore
 operations that reach a live BLE session — is available to whatever process the
 host OS lets open the CDC device. Host-side file permissions constrain
