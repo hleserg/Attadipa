@@ -1917,6 +1917,24 @@ constants.
   measured 2026-08-26 on USB serial `28:84:85:B2:18:A4` at source commit
   `1e51897`.
 
+### One host write larger than the USB receive ring loses its tail before the decoder
+
+- **MEASURED:** on the physical Waveshare, 60 pipelined `WAIT_STABLE` requests
+  sent as one 1 140-byte host write were all answered, in order, in 117 ms;
+  220 sent as one 4 180-byte write were answered 215/220, the last five never,
+  and 4 180 − 4 096 = 84 bytes is exactly the tail past the receive ring
+  (`firmware/main/watch_control.cpp:340` — "usb.rx_buffer_size = 4096;"). The
+  loss is inside the USB-Serial/JTAG driver, so no counter sees it: not the
+  decoder's `input_dropped`, which counts bytes the decoder abandoned, and not
+  the host's `DecoderStats`. The 211 host-side resyncs in the same run were the
+  console heartbeat lines the firmware prints on the shared port, not loss.
+- **Boundary:** this is the ceiling of one write, not of throughput; the
+  shipped client sends one framed request per write and never reaches it. It
+  says nothing about the simulator's Unix socket, which has no such ring.
+- **Source:** [PR #404, bench comment](https://github.com/hleserg/Attadipa/pull/404#issuecomment-5503429048),
+  measured 2026-09-02 on USB serial `28:84:85:B2:18:A4` with that branch's HIL
+  image at `cedfdfa` and its own `tools/watch` client.
+
 ### MeshCore Companion discovery and connected status run on the physical Waveshare
 
 - **Claim:** the Waveshare watch at USB serial `28:84:85:B2:18:A4` discovered

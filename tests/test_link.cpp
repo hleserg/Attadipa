@@ -1580,7 +1580,11 @@ void feed_in_reads(const Burst& burst, std::size_t read, FedBurst& fed)
                 break;
             }
             if (!got) {
-                continue;  // counted by the decoder, delivered to nobody
+                // Only OutputTooSmall reaches here -- a bad CRC never surfaces
+                // -- and `next()` would answer it again for ever, so a loop
+                // that continues past it hangs the suite instead of failing.
+                fed.in_order = false;
+                break;
             }
             const std::size_t frame = fed.frames_out++;
             if (frame >= kBurstFrames || got.length != burst_size(frame)) {
@@ -1698,7 +1702,11 @@ void test_what_a_drain_could_not_make_room_for_is_counted_once()
     CHECK(same(out, payload, kMaxPayload));
     const std::uint32_t lost = decoder.stats().input_dropped;
     auto drain = [&] {
-        while (!decoder.next(out, sizeof out).exhausted()) {
+        for (FrameResult got = decoder.next(out, sizeof out); !got.exhausted();
+             got = decoder.next(out, sizeof out)) {
+            if (!got) {
+                break;  // OutputTooSmall would repeat for ever; see :1371
+            }
         }
     };
     CHECK(decoder.feed(more, sizeof more, drain) == sizeof more);
@@ -1733,9 +1741,10 @@ void test_corrupt_frames_in_a_burst_are_not_counted_as_loss()
         auto drain = [&] {
             for (FrameResult got = decoder.next(out, sizeof out); !got.exhausted();
                  got = decoder.next(out, sizeof out)) {
-                if (got) {
-                    ++good;
+                if (!got) {
+                    break;  // OutputTooSmall would repeat for ever; see :1371
                 }
+                ++good;
             }
         };
         for (std::size_t at = 0; at < used; at += read) {
