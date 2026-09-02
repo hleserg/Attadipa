@@ -194,6 +194,37 @@ this board's schematic and from register reads made elsewhere — `0x18` ES8311,
 `0x40` ES7210, `0x6b` QMI8658 — so `UNKNOWN` here means "not established *by
 this instrument*", and the matrix is the canonical source.
 
+## Two GNSS modules, delivered 2026-09-02 — NOT YET READ
+
+The owner ordered two GNSS receiver boards for the wearable-node experiments
+that [OD-1](OWNER_DECISIONS.md#od-1--there-is-a-separate-attadipa-node-and-the-watch-uses-it)
+opens — a node carrying LoRa, GNSS and an ESP32, which the watch connects to.
+They arrived on 2026-09-02. **Nothing below has been read off the hardware.**
+Every value is the seller's listing, and the listing is an advertisement, not a
+datasheet; until a module has been powered, its NMEA read on a host and its
+chip identified from its own version sentence, each row is `UNKNOWN` in the
+sense AGENTS.md means. This section exists so the next session knows the boards
+are on the bench and does not order or assume a third.
+
+| | "GT-U12" | QUESCAN "AN3126" |
+|---|---|---|
+| Listing claims | dual-band GNSS; "new BDS SoC"; BDS, GPS, GLONASS, Galileo, IRNSS, QZSS, SBAS | u-blox **M10** platform; L1 only; GPS, GLONASS, Galileo, BeiDou; QZSS/SBAS; up to 25 Hz "in high-performance mode" |
+| Chip | **UNKNOWN** — the listing names no part; "dual-band" and "BDS SoC" suggest an Allystar or Unicore die, and that is a guess | claimed u-blox M10 (MIA-M10Q or MAX-M10S would fit the footprint); **UNKNOWN** until `$GNTXT` / `UBX-MON-VER` is read |
+| Header, as printed | `VCC GND TX RX PPS` (5 pins, photographed) | 5 pins; silkscreen not legible in the listing — **UNKNOWN** |
+| Antenna | external: a separate active patch on its own carrier, on a u.FL pigtail | ceramic patch soldered to the board |
+| Interface | UART presumed from the header; baud, protocol and level **UNKNOWN** | UART presumed; baud and level **UNKNOWN** |
+| Datasheet | none found yet | none found yet; u-blox publishes MIA-M10Q / MAX-M10S sheets, which apply only once the part is identified |
+| Price paid | 1 596 ₽ | 791 ₽ |
+
+What these are for, and what they are not: OD-1 puts GNSS on the **node**, not
+the watch, and [HARDWARE_MATRIX](HARDWARE_MATRIX.md) already records the
+T-Watch's own on-board receiver. These two boards are for bench experiments on
+the node side — a first `PositionProvider` fed by a real receiver over UART, and
+the questions OD-5 raises about a receiver's own integrity protection — and the
+first thing owed is the read-off: power each from 3.3 V on a USB-UART bridge,
+capture a minute of NMEA, and replace the `UNKNOWN`s above with what the module
+says about itself. Until then no code depends on either.
+
 ## What this does not say
 
 The USB serial of an ESP32-S3's USB-Serial/JTAG peripheral is derived from the
