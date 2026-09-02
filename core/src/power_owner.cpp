@@ -41,6 +41,7 @@ const char* to_string(LeaseError error)
         case LeaseError::NoDomains:      return "NoDomains";
         case LeaseError::Exhausted:      return "Exhausted";
         case LeaseError::NotHeld:        return "NotHeld";
+        case LeaseError::Retired:        return "Retired";
         case LeaseError::HardwareFailed: return "HardwareFailed";
     }
     return "?";
@@ -79,25 +80,37 @@ LeaseId PowerLeases::acquire(std::uint16_t domains, MonotonicTime deadline,
     // The slot comes first, and every counter after it. Invariant 1 is then
     // structural rather than a restore path that has to be got right: there is
     // no point between the two at which a refusal can leave a count raised.
+    // A free slot whose generations are spent is retired, not reused. This is
+    // the whole of #367's fix: the old loop took any free slot and the line
+    // after it forced the generation back to 1 past the twelve-bit limit, so
+    // the 4096th grant on a slot was the first grant's handle again.
     std::uint8_t slot = kCapacity;
     for (std::uint8_t i = 0; i < kCapacity; ++i) {
-        if (entries_[i].generation == 0) {
+        if (entries_[i].generation == 0 && next_generation_[i] < grants_per_slot_) {
             slot = i;
             break;
         }
     }
     if (slot == kCapacity) {
-        why = LeaseError::Exhausted;
+        // Two answers, because they call for opposite actions. A table whose
+        // slots still have generations left is full: the next release() clears
+        // it and outstanding() names the leak. A table whose slots have all
+        // spent their generations is dead until reboot, and can say so with
+        // nothing outstanding at all.
+        bool retired = true;
+        for (std::uint8_t i = 0; i < kCapacity; ++i) {
+            if (next_generation_[i] < grants_per_slot_) {
+                retired = false;
+                break;
+            }
+        }
+        why = retired ? LeaseError::Retired : LeaseError::Exhausted;
         return kNoLease;
     }
 
-    std::uint16_t generation = static_cast<std::uint16_t>(next_generation_[slot] + 1u);
-    // Generation zero means "free", so it is never handed out; the wrap skips it.
-    const std::uint16_t kGenerationLimit =
-        static_cast<std::uint16_t>(0xFFFFU >> kSlotBits);
-    if (generation == 0 || generation > kGenerationLimit) {
-        generation = 1;
-    }
+    // Generation zero means "free", so the first grant is 1; nothing here ever
+    // comes back round to it.
+    const LeaseId generation = next_generation_[slot] + 1u;
     next_generation_[slot] = generation;
 
     entries_[slot].generation = generation;
@@ -116,8 +129,8 @@ LeaseId PowerLeases::acquire(std::uint16_t domains, MonotonicTime deadline,
 
 bool PowerLeases::release(LeaseId id, LeaseError& why)
 {
-    const std::uint16_t slot       = static_cast<std::uint16_t>(id & kSlotMask);
-    const std::uint16_t generation = static_cast<std::uint16_t>(id >> kSlotBits);
+    const LeaseId slot       = id & kSlotMask;
+    const LeaseId generation = id >> kSlotBits;
     if (id == kNoLease || slot >= kCapacity || generation == 0 ||
         entries_[slot].generation != generation) {
         // Invariant 2. A second release of the same handle lands here, because
