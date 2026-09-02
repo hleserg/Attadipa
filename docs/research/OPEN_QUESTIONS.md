@@ -401,7 +401,7 @@ shipping a watch to a person who is not holding a build environment.
 ### Q5 — a lease taken on one task, read by another, and a sleep decision in between
 
 `PowerOwner` is single-task by contract
-([`core/include/attadipa/core/power_owner.h:297`](../../core/include/attadipa/core/power_owner.h) —
+([`core/include/attadipa/core/power_owner.h:308`](../../core/include/attadipa/core/power_owner.h) —
 "// **Not thread-safe, and deliberately so.** Every `acquire()`, `release()` and").
 Issue [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 asks the BLE
 transport to declare a lease, and the transport does not run on the task that
@@ -422,7 +422,7 @@ nothing else
 ([`firmware/main/physical_input.cpp:183`](../../firmware/main/physical_input.cpp) —
 "plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
 trip is an intersection
-([`core/src/power_owner.cpp:369`](../../core/src/power_owner.cpp) —
+([`core/src/power_owner.cpp:382`](../../core/src/power_owner.cpp) —
 "static_cast<std::uint16_t>(leases_.held() & (plan.suspend | plan.rails_off));").
 A `NodeLink` lease does not intersect `Display`, so the check that could be
 raced cannot fire whichever way the race lands. The gap is real and its

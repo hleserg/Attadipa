@@ -126,7 +126,7 @@ wake, so the board's derived `Button` is now reported alongside the SoC's own
 ([`firmware/main/board_power.cpp:352-354`](../../firmware/main/board_power.cpp) —
 "attadipa::core::wake_bit(attadipa::core::WakeSource::Button);")
 rather than replacing it — the owner publishes the union of the two halves
-([`core/src/power_owner.cpp:461`](../../core/src/power_owner.cpp) —
+([`core/src/power_owner.cpp:474`](../../core/src/power_owner.cpp) —
 "causes.from_soc | causes.derived);"). `main` picked one answer from a
 three-way ladder; this branch reports a bitmap, and the line reads
 `by Timer+Button`. So a repeat grepped for `by Button` also finds nothing.

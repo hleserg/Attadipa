@@ -75,9 +75,12 @@ inline constexpr LeaseId kNoLease = 0;
 enum class LeaseError : std::uint8_t {
     None,
     NoDomains,       // an empty lease holds nothing, and would never be released
-    Exhausted,       // no slot is free, or every free slot is retired (spent its
-                     // generations). Nothing was granted, no count moved
+    Exhausted,       // every slot is held. Recoverable: one release() clears it,
+                     // and outstanding() == kCapacity names the leak
     NotHeld,         // an id that is not outstanding: unknown, stale, or already released
+    Retired,         // every slot has spent its generations (kGrantsPerSlot).
+                     // Permanent until reboot: no release() helps, and it can
+                     // arrive with outstanding() == 0. Nothing granted, no count moved
     HardwareFailed,  // the owner does not know what the hardware is doing (ADR-0016 §4)
 };
 
@@ -110,7 +113,7 @@ public:
     // 4096th grant on one slot repeated the first one's handle and the first
     // consumer's stale `release()` freed the live lease. A wrap is the exact
     // collision the generation exists to prevent, so past the last generation
-    // the answer is `Exhausted`, not a smaller version of the same bug. 2^28
+    // the answer is `Retired`, not a smaller version of the same bug. 2^28
     // grants per slot is 8.5 years at one lease per second on a slot that is
     // reused every time, and a reboot resets the table.
     //
@@ -119,8 +122,16 @@ public:
     // is a boundary nobody has checked. Production takes the default.
     static constexpr LeaseId kGrantsPerSlot = (LeaseId{1} << 28) - 1u;
 
+    //
+    // Clamped, not trusted: a budget past the encoding would let a generation
+    // carry into the slot bits, and acquire() would hand back kNoLease with the
+    // counters already raised -- invariant 1 broken by the argument that exists
+    // to test the boundary.
     explicit PowerLeases(LeaseId grants_per_slot = kGrantsPerSlot)
-        : grants_per_slot_(grants_per_slot) {}
+        : grants_per_slot_(grants_per_slot < kGrantsPerSlot ? grants_per_slot
+                                                            : kGrantsPerSlot) {}
+
+    LeaseId grants_per_slot() const { return grants_per_slot_; }
 
     // Grant a lease over every domain in `domains`, or grant nothing.
     LeaseId acquire(std::uint16_t domains, MonotonicTime deadline, LeaseError& why);

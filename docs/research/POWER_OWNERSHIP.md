@@ -612,7 +612,8 @@ lease past its deadline reported and not reclaimed; the fixed array exhausted.
 And, since #367's reproduction: a handle from a slot's first generation is
 still `NotHeld` when that slot is at its last one; a slot whose generations are
 spent is retired rather than wrapped, so no two handles in a table's lifetime
-are equal; the id space exhausted is `Exhausted` with no count moved.
+are equal; a table with every slot spent answers `Retired` with no count moved,
+which is not the recoverable `Exhausted` of a full one.
 
 **Transaction.** Dependency order observed; a consumer refusing at prepare
 aborts before any hardware is touched; suspend failure at step *n* rolls back

@@ -41,6 +41,7 @@ const char* to_string(LeaseError error)
         case LeaseError::NoDomains:      return "NoDomains";
         case LeaseError::Exhausted:      return "Exhausted";
         case LeaseError::NotHeld:        return "NotHeld";
+        case LeaseError::Retired:        return "Retired";
         case LeaseError::HardwareFailed: return "HardwareFailed";
     }
     return "?";
@@ -91,7 +92,19 @@ LeaseId PowerLeases::acquire(std::uint16_t domains, MonotonicTime deadline,
         }
     }
     if (slot == kCapacity) {
-        why = LeaseError::Exhausted;
+        // Two answers, because they call for opposite actions. A table whose
+        // slots still have generations left is full: the next release() clears
+        // it and outstanding() names the leak. A table whose slots have all
+        // spent their generations is dead until reboot, and can say so with
+        // nothing outstanding at all.
+        bool retired = true;
+        for (std::uint8_t i = 0; i < kCapacity; ++i) {
+            if (next_generation_[i] < grants_per_slot_) {
+                retired = false;
+                break;
+            }
+        }
+        why = retired ? LeaseError::Retired : LeaseError::Exhausted;
         return kNoLease;
     }
 
