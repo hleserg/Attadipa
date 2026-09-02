@@ -1069,7 +1069,7 @@ esp_err_t abandon_board_after(esp_err_t err, const char *step,
 // and returns that error. The rest is reported, never fatal: a watch with a
 // dead RTC shows an unavailable clock, and a watch with dead touch still shows
 // the clock and answers its buttons, which is more use than a dark one
-// (TWATCH_S3_PLUS_BSP_REUSE §10.4, rules 3 and 6).
+// (TWATCH_S3_PLUS_BSP_REUSE §10, rules 3 and 6).
 esp_err_t start_waveshare_ui() {
   esp_err_t err = initialize_i2c();
   if (err != ESP_OK) {
