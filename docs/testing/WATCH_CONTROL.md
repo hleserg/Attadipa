@@ -385,7 +385,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:902` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:915` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because the one caller of that
 sequence, `BoardTimeSink`, is inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
@@ -393,7 +393,7 @@ in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:1839` "bool configure_meshcore_ble") has exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:479`
+`BoardMeshSink::configure` (`waveshare_board.cpp:487`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call set was per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
@@ -430,11 +430,11 @@ clock's does — flash the HIL image, configure, flash back, and the product
 image scans for and pairs with its node until the HIL image is flashed back
 and told to stop — and since #356's second change a product image can also
 put that key there itself, though not take it away: the entry screen a long
-press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:423`
+press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:431`
 "set_mesh_passkey(std::uint32_t passkey) override {" sends the same `Configure`
 event. What stays HIL-only is watching it happen: the mesh screen's
-`mesh_screen_requested` (`waveshare_board.cpp:135`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:482`
+`mesh_screen_requested` (`waveshare_board.cpp:136`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:490`
 "mesh_screen_requested.store(true)", inside the `#if`, so a product image
 scans without showing that it does.
 

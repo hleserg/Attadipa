@@ -42,6 +42,7 @@
 
 #if CONFIG_BT_NIMBLE_ENABLED
 #include "meshcore_ble.h"
+#include "meshcore_passkey.h"
 #endif
 
 #include "physical_input.h"
@@ -419,9 +420,16 @@ public:
     return attadipa::core::ProvisionOutcome::Accepted;
   }
 
+  // Only a pairing passkey, and the rule is the one `meshcore_passkey.h`
+  // states rather than a copy of it: 000000 is not a pin the node could
+  // show, it is what the firmware reads as "do not pair" -- the unpaired
+  // probe the HIL opcode below accepts on purpose and never stores. A
+  // product screen must not be able to start an unpaired scan, so it is
+  // refused here, and the hint says "check it" because six zeros typed on a
+  // watch are a typo before they are anything else.
   attadipa::core::ProvisionOutcome
   set_mesh_passkey(std::uint32_t passkey) override {
-    if (passkey == 0 || passkey > 999999) {
+    if (!attadipa::firmware::is_pairing_passkey(passkey)) {
       return attadipa::core::ProvisionOutcome::Rejected;
     }
 #if CONFIG_BT_NIMBLE_ENABLED
@@ -762,6 +770,11 @@ void long_press(lv_event_t *) {
 void refresh_ui(lv_timer_t *timer) {
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
+    // The mesh screen cleans the LVGL screen under whatever is on it. An
+    // entry in progress goes with its objects, or it would pin every later
+    // long press behind a face that no longer exists.
+    state.provision_face.clear();
+    state.entry.reset();
     refresh_mesh();
     if (timer != nullptr) {
       lv_timer_set_period(timer, 500);
