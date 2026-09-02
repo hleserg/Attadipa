@@ -1,0 +1,18 @@
+# T-Watch S3 Plus overlay. Stack it on sdkconfig.defaults:
+#
+#   idf.py -B build-twatch -DSDKCONFIG=build-twatch/sdkconfig \
+#       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch" build
+#
+# -B and -DSDKCONFIG together for the reason sdkconfig.hil gives: idf.py keeps
+# sdkconfig in the project directory, and a second build silently reuses it.
+
+CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y
+
+# Flash: Winbond W25Q128JW (JEDEC 0xEF 0x4018), 16 MB. The factory image's own
+# header says DIO at 80 MHz — esptool image-info on the 2026-08-27 backup,
+# MEASURED (docs/research/TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md). Whether
+# this part takes QIO is UNKNOWN, so the mode the vendor shipped is the mode
+# used. Size, PSRAM (8 MB octal) and console are the Waveshare's and stay.
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

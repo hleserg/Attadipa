@@ -1,5 +1,7 @@
 #include "board_power.h"
 
+#include "sdkconfig.h"
+
 #include "power_button_edges.h"
 
 #include <new>
@@ -46,6 +48,38 @@ struct Rail {
   const char *why;
 };
 
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+// T-Watch S3 Plus. Loads per HARDWARE_MATRIX.md "AXP2101 rail map"; the ALDO1
+// row is the one the schematic and the vendor document disagree on (H8), and
+// a rail whose load is disputed is never gated.
+constexpr Rail kRails[] = {
+    {0x82, "DC1", RailPolicy::Never, "the SoC supply this image is running from"},
+    {0x92, "ALDO1", RailPolicy::Never,
+     "CONFLICTING: the schematic puts net +3V3 — SoC I/O, BMA423, PCF8563, "
+     "DRV2605 VDD — on it, the vendor document calls it unused (HARDWARE_MATRIX "
+     "H8)"},
+    {0x93, "ALDO2", RailPolicy::NotAuthorised,
+     "backlight supply; GPIO 45 already gates the LED, so a second-order saving"},
+    {0x94, "ALDO3", RailPolicy::NotAuthorised,
+     "panel and touch controller; cycling it is also the only recovery for a "
+     "wedged FT6336U (TWATCH_S3_PLUS_BSP_REUSE.md §8)"},
+    {0x95, "ALDO4", RailPolicy::NotAuthorised,
+     "radio; gateable when the radio holds no lease"},
+    {0, "BLDO1/BLDO2/DLDO1", RailPolicy::NotAuthorised,
+     "GNSS, haptic enable, amplifier; nothing has measured them"},
+};
+
+const Rail *rail_for(attadipa::core::PowerDomain domain) {
+  switch (domain) {
+  case attadipa::core::PowerDomain::Display:
+    return &kRails[3];
+  case attadipa::core::PowerDomain::Radio:
+    return &kRails[4];
+  default:
+    return nullptr;
+  }
+}
+#else
 constexpr Rail kRails[] = {
     {0x82, "DC1", RailPolicy::Never,
      "the main 3.3 V supply the board is brought up on"},
@@ -79,6 +113,7 @@ static_assert(kRails[2].voltage_register == 0x93 &&
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   return domain == attadipa::core::PowerDomain::Display ? &kRails[2] : nullptr;
 }
+#endif
 
 esp_err_t write_reg(i2c_master_dev_handle_t device, std::uint8_t reg,
                     std::uint8_t value) {
@@ -405,6 +440,24 @@ attadipa::core::PowerOwner owner(hardware);
 esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
 
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+  // ALDO3 feeds the panel and the touch controller, ALDO2 the backlight, both
+  // at 3.3 V — HARDWARE_MATRIX.md rows "Display"/"Touch", and the vendor's own
+  // bring-up (LilyGoLib@38e6f8d LilyGoWatchS3.cpp:443-444, 3300 mV). Encoding:
+  // 0x1C = 0.5 V + 28 × 100 mV (AXP2101 datasheet V1.4 §6.13.2.78–79); the
+  // enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and
+  // ALDO1 are not touched: this image is running from them.
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x94, 0x1C), kTag, "ALDO3 3.3 V");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, "ALDO2 3.3 V");
+  std::uint8_t aldo = 0;
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "read LDO enables");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x06), kTag,
+                      "enable ALDO2/3");
+  ESP_LOGI(kTag, "AXP2101: LDO enable 0x%02x -> 0x%02x (ALDO3 panel+touch, "
+                 "ALDO2 backlight)",
+           aldo, aldo | 0x06);
+  return ESP_OK;
+#else
   // Preserve unrelated rails. The known-working board implementation needs
   // DC1 plus ALDO1/2, so own only those outputs instead of blanking the PMU.
   ESP_RETURN_ON_ERROR(write_reg(pmu, 0x82, 0x12), kTag, "DC1 3.3 V");
@@ -422,6 +475,7 @@ esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x, LDO enable 0x%02x", dcdc | 0x01,
            aldo | 0x03);
   return ESP_OK;
+#endif
 }
 
 esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,

@@ -1,7 +1,53 @@
 menu "Attadipa firmware"
 
+choice ATTADIPA_BOARD
+    prompt "Board this image is composed for"
+    default ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    help
+        main/ is the composition root (CMakeLists.txt): the one place that
+        may know which board answers, so this is where it is chosen.
+        Everything above it asks the board profile what the device can do.
+
+config ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    bool "Waveshare ESP32-S3-Touch-AMOLED-2.06"
+
+config ATTADIPA_BOARD_TWATCH_S3_PLUS
+    bool "LilyGO T-Watch S3 Plus (bring-up: panel, touch, rails)"
+    help
+        First slice (#417): ST7789 panel, FT6336U touch and ALDO2/ALDO3.
+        No RTC, NVS, physical input or sleep yet. Stack sdkconfig.twatch on
+        sdkconfig.defaults; it also sets the flash mode the factory image
+        uses.
+
+endchoice
+
+config ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS
+    int "Extra wait after the ST7789 software reset, ms"
+    depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default 100
+    range 0 1000
+    help
+        ESP-IDF waits 20 ms after SWRESET; the ST7789V3 datasheet asks for
+        120 ms before SLPOUT from sleep-in. 100 is arm C of the experiment
+        in docs/research/TWATCH_S3_PLUS_BSP_REUSE.md section 11; 0 is arm
+        A, the driver as shipped.
+
+config ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
+    bool "Send LilyGO's panel command table after init (arm B)"
+    depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default n
+    help
+        The MIT-licensed table transcribed in TWATCH_S3_PLUS_BSP_REUSE.md
+        section 5, sent as data over esp_lcd_panel_io_tx_param(). Only if
+        arm C shows nothing; whether it is needed is UNKNOWN until the
+        photograph.
+
 config ATTADIPA_WATCH_CONTROL
     bool "USB watch-control endpoint"
+    # The endpoint is wired through the Waveshare backend and physical_input;
+    # the T-Watch slice has neither yet, so the choice is refused rather than
+    # failing at the link.
+    depends on ATTADIPA_BOARD_WAVESHARE_AMOLED_206
     default n
     # The screenshot opcode calls lv_snapshot_take_to_draw_buf(), which LVGL
     # compiles out under LV_USE_SNAPSHOT=n -- and n is its own default. Without
