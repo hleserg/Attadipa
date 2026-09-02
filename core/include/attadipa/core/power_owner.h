@@ -64,15 +64,19 @@ const char* to_string(PowerDomain domain);
 // Leases.
 
 // A grant. Zero is never one, so a default-constructed handle cannot release
-// somebody else's lease by accident.
-using LeaseId = std::uint16_t;
+// somebody else's lease by accident. Thirty-two bits, of which the slot takes
+// four: the rest is a generation that is spent once and never comes round
+// again, which is what makes "stale" a property of the handle rather than of
+// how long ago it was cut (see PowerLeases::kGrantsPerSlot).
+using LeaseId = std::uint32_t;
 
 inline constexpr LeaseId kNoLease = 0;
 
 enum class LeaseError : std::uint8_t {
     None,
     NoDomains,       // an empty lease holds nothing, and would never be released
-    Exhausted,       // the table is full. Nothing was granted, no count moved
+    Exhausted,       // no slot is free, or every free slot is retired (spent its
+                     // generations). Nothing was granted, no count moved
     NotHeld,         // an id that is not outstanding: unknown, stale, or already released
     HardwareFailed,  // the owner does not know what the hardware is doing (ADR-0016 §4)
 };
@@ -100,6 +104,24 @@ public:
     // reporting rather than absorbing.
     static constexpr std::uint8_t kCapacity = 8;
 
+    // A slot hands out this many generations and is then retired for the life
+    // of the table: it is never reused and the generation never wraps. #367's
+    // reproduction is why -- with a twelve-bit generation that wrapped, the
+    // 4096th grant on one slot repeated the first one's handle and the first
+    // consumer's stale `release()` freed the live lease. A wrap is the exact
+    // collision the generation exists to prevent, so past the last generation
+    // the answer is `Exhausted`, not a smaller version of the same bug. 2^28
+    // grants per slot is 8.5 years at one lease per second on a slot that is
+    // reused every time, and a reboot resets the table.
+    //
+    // The budget is a constructor argument for one reason: no host test can
+    // drive 268 million grants, and a boundary that cannot be reached in a test
+    // is a boundary nobody has checked. Production takes the default.
+    static constexpr LeaseId kGrantsPerSlot = (LeaseId{1} << 28) - 1u;
+
+    explicit PowerLeases(LeaseId grants_per_slot = kGrantsPerSlot)
+        : grants_per_slot_(grants_per_slot) {}
+
     // Grant a lease over every domain in `domains`, or grant nothing.
     LeaseId acquire(std::uint16_t domains, MonotonicTime deadline, LeaseError& why);
 
@@ -118,21 +140,24 @@ public:
 
 private:
     // A handle is `slot | generation << kSlotBits`. Four bits of slot leaves
-    // room to double the capacity without changing the encoding, and twelve
-    // bits of generation is what makes a stale handle detectable rather than a
-    // collision waiting for the 65536th acquire.
+    // room to double the capacity without changing the encoding; the other
+    // twenty-eight are the generation, and a slot that has used all of them is
+    // retired rather than wrapped -- kGrantsPerSlot says why.
     static constexpr std::uint16_t kSlotBits = 4;
-    static constexpr std::uint16_t kSlotMask = (1u << kSlotBits) - 1u;
+    static constexpr LeaseId       kSlotMask = (LeaseId{1} << kSlotBits) - 1u;
     static_assert(kCapacity <= kSlotMask + 1, "a slot index must fit the handle");
+    static_assert(kGrantsPerSlot <= (~LeaseId{0} >> kSlotBits),
+                  "a generation must fit the handle beside its slot");
 
     struct Entry {
-        std::uint16_t generation = 0;  // zero means free
+        LeaseId       generation = 0;  // zero means free
         std::uint16_t domains    = 0;
         MonotonicTime deadline{};
     };
 
     Entry         entries_[kCapacity]{};
-    std::uint16_t next_generation_[kCapacity]{};
+    LeaseId       next_generation_[kCapacity]{};
+    LeaseId       grants_per_slot_;
     std::uint8_t  holders_[kPowerDomainCount]{};
     std::uint8_t  outstanding_ = 0;
 };

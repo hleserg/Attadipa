@@ -234,6 +234,81 @@ void test_a_handle_whose_slot_was_reused_does_not_release_the_new_lease()
     CHECK(leases.holders(PowerDomain::Radio) == 0);
 }
 
+void test_a_spent_slot_is_retired_and_a_stale_handle_stays_stale()
+{
+    // #367. With a twelve-bit generation that wrapped, the 4096th grant on slot
+    // 0 was the first grant's handle again, and release(stale) freed the live
+    // lease: `stale=16 current=16 ... release(stale)=true outstanding=0`. The
+    // budget is three here because no test can drive 2^28 grants, and the
+    // property does not depend on the number.
+    PowerLeases leases{/*grants_per_slot=*/3};
+    LeaseError  why = LeaseError::None;
+    const std::uint16_t radio = domain_bit(PowerDomain::Radio);
+
+    const LeaseId first = leases.acquire(radio, {}, why);
+    CHECK(first != kNoLease);
+    CHECK(leases.release(first, why));
+    const LeaseId second = leases.acquire(radio, {}, why);
+    CHECK(second != kNoLease && second != first);
+    CHECK(leases.release(second, why));
+
+    // The slot's last generation, held. This is where the old code aliased.
+    const LeaseId last = leases.acquire(radio, {}, why);
+    CHECK(last != kNoLease && last != first && last != second);
+    CHECK(leases.holders(PowerDomain::Radio) == 1);
+    CHECK(leases.outstanding() == 1);
+
+    // 1. the old handle is NotHeld, 2. the live lease stays held,
+    // 3. no counter moved.
+    CHECK(!leases.release(first, why));
+    CHECK(why == LeaseError::NotHeld);
+    CHECK(!leases.release(second, why));
+    CHECK(why == LeaseError::NotHeld);
+    CHECK(leases.holders(PowerDomain::Radio) == 1);
+    CHECK((leases.held() & radio) != 0);
+    CHECK(leases.outstanding() == 1);
+
+    // The slot is spent: releasing its last lease frees the domain but the
+    // next grant comes from another slot, and the retired slot's handles are
+    // never live again.
+    CHECK(leases.release(last, why));
+    CHECK(leases.holders(PowerDomain::Radio) == 0);
+    const LeaseId fourth = leases.acquire(radio, {}, why);
+    CHECK(fourth != kNoLease);
+    CHECK(fourth != first && fourth != second && fourth != last);
+    CHECK(!leases.release(first, why));
+    CHECK(!leases.release(last, why));
+    CHECK(leases.holders(PowerDomain::Radio) == 1);
+    CHECK(leases.release(fourth, why));
+
+    // 4. Exhaustion is defined: kCapacity slots times the budget is every
+    // handle the table will ever cut, no two of them equal, and the grant
+    // after the last one is Exhausted with nothing counted.
+    const std::size_t    budget = static_cast<std::size_t>(PowerLeases::kCapacity) * 3u;
+    std::vector<LeaseId> every{first, second, last, fourth};
+    // Bounded, so a table that never exhausts fails here instead of hanging.
+    for (std::size_t n = 0; n <= budget && every.size() <= budget; ++n) {
+        const LeaseId id = leases.acquire(radio, {}, why);
+        if (id == kNoLease) {
+            break;
+        }
+        every.push_back(id);
+        CHECK(leases.release(id, why));
+    }
+    CHECK(why == LeaseError::Exhausted);
+    CHECK(every.size() == budget);
+    CHECK(leases.holders(PowerDomain::Radio) == 0);
+    CHECK(leases.outstanding() == 0);
+    for (std::size_t i = 0; i < every.size(); ++i) {
+        for (std::size_t j = i + 1; j < every.size(); ++j) {
+            CHECK(every[i] != every[j]);
+        }
+        CHECK(!leases.release(every[i], why));
+    }
+    CHECK(leases.acquire(radio, {}, why) == kNoLease);
+    CHECK(why == LeaseError::Exhausted);
+}
+
 void test_exhaustion_grants_nothing_and_moves_no_count()
 {
     PowerLeases leases;
@@ -832,6 +907,7 @@ int main()
     test_a_lease_over_several_domains_is_all_or_nothing();
     test_a_second_release_is_reported_and_never_wraps();
     test_a_handle_whose_slot_was_reused_does_not_release_the_new_lease();
+    test_a_spent_slot_is_retired_and_a_stale_handle_stays_stale();
     test_exhaustion_grants_nothing_and_moves_no_count();
     test_an_overdue_lease_is_reported_and_not_reclaimed();
 
