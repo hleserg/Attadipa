@@ -75,8 +75,10 @@ inline constexpr LeaseId kNoLease = 0;
 enum class LeaseError : std::uint8_t {
     None,
     NoDomains,       // an empty lease holds nothing, and would never be released
-    Exhausted,       // every slot is held. Recoverable: one release() clears it,
-                     // and outstanding() == kCapacity names the leak
+    Exhausted,       // no slot can grant, and at least one is held rather than
+                     // spent. Recoverable: releasing a held one clears it, and
+                     // outstanding() names the holders -- kCapacity only when
+                     // no slot is spent, fewer once some are
     NotHeld,         // an id that is not outstanding: unknown, stale, or already released
     Retired,         // every slot has spent its generations (kGrantsPerSlot).
                      // Permanent until reboot: no release() helps, and it can

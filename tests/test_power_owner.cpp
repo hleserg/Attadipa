@@ -922,9 +922,9 @@ void test_every_new_name_is_readable()
     for (std::uint8_t i = 0; i < kPowerDomainCount; ++i) {
         CHECK(std::strcmp(to_string(static_cast<PowerDomain>(i)), "?") != 0);
     }
-    const LeaseError errors[] = {LeaseError::None, LeaseError::NoDomains,
+    const LeaseError errors[] = {LeaseError::None,    LeaseError::NoDomains,
                                  LeaseError::Exhausted, LeaseError::NotHeld,
-                                 LeaseError::HardwareFailed};
+                                 LeaseError::Retired, LeaseError::HardwareFailed};
     for (const LeaseError error : errors) {
         CHECK(std::strcmp(to_string(error), "?") != 0);
     }
