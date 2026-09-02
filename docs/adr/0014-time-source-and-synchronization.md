@@ -57,9 +57,9 @@ cannot honestly resume where it left off.
 - Default NVS is initialised once per boot and its verdict kept
   (`firmware/main/waveshare_board.cpp:245` — "state.metadata_storage = nvs_flash_init();").
   A verdict other than success is logged once and every
-  synchronization of that boot is refused before the RTC is touched, with the
-  same `Rejected` the host gets for a request it cannot accept; the boot log
-  carries the reason. This firmware never calls `nvs_flash_erase()` on its
+  synchronization of that boot fails before the RTC is touched, with the same
+  `Failed` (the host's `OperationFailed`) as a store that cannot be read: the
+  device is at fault, not the request, and the boot log carries the reason. This firmware never calls `nvs_flash_erase()` on its
   own, whatever the verdict — `ESP_ERR_NVS_NO_FREE_PAGES` and
   `ESP_ERR_NVS_NEW_VERSION_FOUND` are the two ESP-IDF answers with "erase the
   partition and try again" — because default NVS is also the BLE bond store

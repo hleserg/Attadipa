@@ -36,7 +36,6 @@ attadipa::core::TimeObservation sample(
 struct FakeTimeOps {
     bool has_blob = false;
     attadipa::firmware::TimeMetadata blob{};
-    bool not_ready = false;  // boot's verdict on the store
     bool fail_read = false, fail_save = false, fail_rtc = false;
     bool save_lands_then_fails = false;  // once: the next save only
     int saves = 0, erases = 0, rtc_writes = 0;
@@ -44,7 +43,6 @@ struct FakeTimeOps {
     attadipa::firmware::MetadataRead read_metadata(
         attadipa::firmware::TimeMetadata *out)
     {
-        if (not_ready) return attadipa::firmware::MetadataRead::NotReady;
         if (fail_read) return attadipa::firmware::MetadataRead::Unreadable;
         if (!has_blob) return attadipa::firmware::MetadataRead::Absent;
         *out = blob;
@@ -150,21 +148,6 @@ void test_provision_time()
         CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
               ProvisionTimeResult::Failed);
         CHECK(ops.saves == 0 && ops.rtc_writes == 0);
-        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
-    }
-    // A store found unusable at boot is a refusal, not a failure: nothing is
-    // attempted, so nothing is put back and whatever the blob held stays.
-    {
-        FakeTimeOps ops;
-        ops.not_ready = true;
-        ops.has_blob = true;
-        ops.blob = {-60, 42};
-        TimeService svc;
-        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
-              ProvisionTimeResult::Rejected);
-        CHECK(ops.saves == 0 && ops.rtc_writes == 0 && ops.erases == 0);
-        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
-              ops.blob.last_sync_utc == 42);
         CHECK(svc.state(kProvisionNow).source == TimeSource::None);
     }
     // A refused save likewise stops before the chip, and the old blob stays.

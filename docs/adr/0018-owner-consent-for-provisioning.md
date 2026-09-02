@@ -34,7 +34,7 @@ recorded here so that no option is credited with paying them.
    and a second one gated `save_time_metadata()` — two blocks rather than one,
    which is the difference between ungating this and thinking it is ungated.
    #356's first change removed the second: the sequence is
-   `firmware/main/provision_time.h:126` — "ProvisionTimeResult provision_time(Ops &ops,"
+   `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image, and `firmware/main/waveshare_board.cpp:414` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates its one instantiation,
    `firmware/main/waveshare_board.cpp:415` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
@@ -149,7 +149,7 @@ six digits, not a key: `firmware/main/meshcore_ble.cpp:1840` —
 The clock half is likewise already anticipated by the ADR that owns time.
 `docs/adr/0014-time-source-and-synchronization.md` ranks sources "GNSS, network,
 companion, mesh, manual, RTC, simulated" — `manual` is in that list, above
-`RTC`, and it is built: `firmware/main/provision_time.h:148` —
+`RTC`, and it is built: `firmware/main/provision_time.h:143` —
 "core::TimeSource::Manual, core::TimeQuality::Trusted," — is what the clock
 sequence tags its observation with. What no product image has is a caller for it.
 A hand-typed UTC is minutes-accurate at best,
@@ -320,7 +320,7 @@ Beyond B and C:
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
   by `firmware/main/waveshare_board.cpp:415` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
-  `firmware/main/provision_time.h:148` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
+  `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes

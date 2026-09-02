@@ -340,8 +340,8 @@ bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
 struct BoardTimeOps {
   attadipa::firmware::MetadataRead
   read_metadata(attadipa::firmware::TimeMetadata *out) {
-    if (state.metadata_storage != ESP_OK) {
-      return attadipa::firmware::MetadataRead::NotReady;
+    if (state.metadata_storage != ESP_OK) {  // boot's verdict: not opened, so not read
+      return attadipa::firmware::MetadataRead::Unreadable;
     }
     bool present = false;
     if (read_time_metadata(out, &present) != ESP_OK) {
