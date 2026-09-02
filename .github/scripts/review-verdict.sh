@@ -505,9 +505,10 @@ _attadipa_render_deferred() {
 # TWO NUMBERS, AND THE LARGER WINS, BECAUSE THE LEDGER'S ONE STOPS COUNTING.
 # `Converge the published reviewer verdict` is what advances `round=`, and it is
 # skipped whenever `review-published.sh` answers `unknown` -- which it does when
-# the comment read behind it comes back empty, a read the workflow silences with
-# `2>/dev/null`. Nothing is then written and nothing is said: the run stays
-# green and the ledger keeps the round it had. #382 is the worked example. Its
+# the comment read behind it comes back empty, a read the workflow used to
+# silence with `2>/dev/null` (retried, and red when it stays empty, since #391).
+# Nothing was then written and nothing said: the run stayed green and the
+# ledger kept the round it had. #382 is the worked example. Its
 # ledger says `round=5`, last edited 15:35:45; the reviewer published findings
 # four more times, at 16:08, 16:34, 17:26 and 17:59, and converge was `skipped`
 # on every one of them. Nine paid rounds, a ledger that says five.
