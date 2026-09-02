@@ -45,6 +45,12 @@ bool g_clock_live = false;
 
 // A board that takes whatever it is given. The simulator has no RTC and no
 // radio to hand a value to, so the seam ends here, out loud.
+//
+// The passkey is answered the way the board answers it and not one step
+// earlier: taken now, terminal on a later tick. There is no worker behind it
+// here, so the wait is one poll long -- but a screen that never saw `Pending`
+// in the simulator is a screen nobody looked at in the state the watch spends
+// real milliseconds in (#416).
 struct AcceptingProvisioner final : core::Provisioner {
   core::ProvisionOutcome
   set_wall_clock(const core::WallClockEntry &entry) override {
@@ -54,9 +60,24 @@ struct AcceptingProvisioner final : core::Provisioner {
     return core::ProvisionOutcome::Accepted;
   }
   core::ProvisionOutcome set_mesh_passkey(std::uint32_t passkey) override {
-    std::printf("provision: passkey %06u\n", static_cast<unsigned>(passkey));
+    std::printf("provision: passkey %06u queued\n",
+                static_cast<unsigned>(passkey));
+    in_flight_ = true;
+    return core::ProvisionOutcome::Pending;
+  }
+  core::ProvisionOutcome mesh_passkey_outcome() override {
+    if (!in_flight_) {
+      // Nothing outstanding. `Failed` and not `Pending`, or a screen that asks
+      // without having been told `Pending` waits for ever.
+      return core::ProvisionOutcome::Failed;
+    }
+    in_flight_ = false;
+    std::printf("provision: passkey armed\n");
     return core::ProvisionOutcome::Accepted;
   }
+
+private:
+  bool in_flight_ = false;
 };
 
 void rebuild_clock_screen();
@@ -81,6 +102,14 @@ ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
 // back. Here it is an LVGL timer that deletes itself; there it is the
 // clock's own refresh timer counting ticks.
 void leave_provisioning(lv_timer_t *timer) {
+  // The board polls the passkey on its clock tick; here it is this timer, and
+  // it is the only thing that can end the wait. The tick that hears the answer
+  // draws it and stops there: leaving on the same tick would put Done on the
+  // screen for no frames at all. The board spends three ticks on it.
+  if (g_entry->poll()) {
+    g_provision_face.update();
+    return;
+  }
   if (!g_entry->finished()) {
     return;
   }

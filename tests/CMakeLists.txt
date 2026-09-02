@@ -59,6 +59,11 @@ target_link_libraries(test_l10n PRIVATE attadipa_l10n)
 add_test(NAME l10n COMMAND test_l10n)
 
 add_executable(test_provisioning test_provisioning.cpp)
+# The passkey crosses a task boundary on the board, and the slot it crosses in
+# is a header in firmware/main with no ESP-IDF dependency. Compiling the
+# shipping file rather than a copy of the rule is the pattern test_time_service
+# and test_session_owner already use.
+target_include_directories(test_provisioning PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 target_link_libraries(test_provisioning PRIVATE attadipa_apps)
 add_test(NAME provisioning COMMAND test_provisioning)
 
