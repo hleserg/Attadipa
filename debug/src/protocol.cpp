@@ -150,12 +150,17 @@ std::size_t encode_hello(const HelloBody& in, std::uint8_t* out, std::size_t cap
     out[0] = in.protocol_version;
     std::memcpy(out + 1, in.board_id, sizeof(in.board_id));
     std::memcpy(out + 1 + sizeof(in.board_id), in.build, sizeof(in.build));
+    put_u32(out + kHelloV1BodyBytes, in.session);
     return kHelloBodyBytes;
 }
 
 bool decode_hello(const std::uint8_t* body, std::size_t len, HelloBody& out)
 {
-    if (body == nullptr || len < kHelloBodyBytes) {
+    // The v1 body, without the session, is still accepted and reads as
+    // session 0. `Bridge::handle` exempts Hello from the version gate so that
+    // a host one version behind learns what it is talking to, and that
+    // exemption buys nothing if the body it lets through fails to decode.
+    if (body == nullptr || len < kHelloV1BodyBytes) {
         return false;
     }
     out.protocol_version = body[0];
@@ -165,6 +170,7 @@ bool decode_hello(const std::uint8_t* body, std::size_t len, HelloBody& out)
     // print it without reading past the array.
     out.board_id[sizeof(out.board_id) - 1] = '\0';
     out.build[sizeof(out.build) - 1]       = '\0';
+    out.session = len >= kHelloBodyBytes ? get_u32(body + kHelloV1BodyBytes) : 0;
     return true;
 }
 

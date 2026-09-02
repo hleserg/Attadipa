@@ -230,6 +230,13 @@ private:
     }
   }
 
+  // A HELLO from the host is the other session boundary, and it does not come
+  // through here: `Bridge::handle_hello` ends the bridge's session itself and
+  // echoes the host's generation. This queue and the driver's TX ring are
+  // deliberately left alone for it. Everything in them was written before the
+  // `HelloOk`, and the host discards whatever it reads ahead of the `HelloOk`
+  // carrying its generation -- so bytes the driver has already accepted need
+  // no discarding, atomic or otherwise (#348).
   void reset_remote(std::uint32_t now_ms, const char *reason) {
     decoder_.reset();
     output_head_ = 0;

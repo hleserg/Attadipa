@@ -297,8 +297,10 @@ public:
     // or one that only ticks while a client is attached will lose that reply.
     void tick(std::uint32_t now_ms, Emit emit, void* ctx);
 
-    // The transport dropped. Lifts everything the remote was holding, and
-    // nothing a person is holding, then abandons any transfer in flight.
+    // The session ended: the transport dropped, or a new HELLO arrived, which
+    // `handle` treats as the disconnect the bus never reported. Lifts
+    // everything the remote was holding, and nothing a person is holding,
+    // then abandons any transfer in flight and any forget-bond correlation.
     void on_disconnect(std::uint32_t now_ms);
 
     bool transfer_in_progress() const { return transfer_.active; }
@@ -319,8 +321,8 @@ private:
               void* ctx);
     void send_error(std::uint16_t req_id, ErrorCode code, Emit emit, void* ctx);
 
-    void handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::size_t len, Emit emit,
-                      void* ctx);
+    void handle_hello(std::uint16_t req_id, const std::uint8_t* body, std::size_t len,
+                      std::uint32_t now_ms, Emit emit, void* ctx);
     void handle_capabilities(std::uint16_t req_id, Emit emit, void* ctx);
     void handle_screen(std::uint16_t req_id, std::uint32_t now_ms, Emit emit, void* ctx);
     void handle_input(std::uint16_t req_id, const std::uint8_t* body, std::size_t len,

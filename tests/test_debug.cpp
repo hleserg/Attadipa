@@ -341,14 +341,16 @@ void the_wire_bytes_are_pinned_to_a_literal()
 // from the other at review time: it was produced here and then decoded by the
 // Python implementation, which arrived at the same field values through its own
 // `struct` formats. Every field is a distinct value on purpose, so a transposed
-// pair cannot survive -- `x` is negative, `width` and `height` differ.
+// pair cannot survive -- `x` is negative, `width` and `height` differ, and the
+// session `HelloOk` echoes is `0xA5B6C7D8`. All three begin with the version
+// byte, so a version bump re-pins all three: v2 added the session to Hello.
 const char* const kHelloOkHex =
-    "01023412018031007b28017761766573686172652d616d6f6c65642d3230360000"
-    "000073696d20302e302e31000000000000000000000000000000";
+    "020234120180350016bb027761766573686172652d616d6f6c65642d3230360000"
+    "000073696d20302e302e31000000000000000000000000000000d8c7b6a5";
 const char* const kScreenInfoHex =
-    "01027856108016008e4b443322119a01f6010201144b06002639f4cb4e61bc00";
+    "0202785610801600af50443322119a01f6010201144b06002639f4cb4e61bc00";
 const char* const kInputEventHex =
-    "0102bc9a20000b00a1a00301feff2c0107feff0000";
+    "0202bc9a20000b00a1d20301feff2c0107feff0000";
 
 std::vector<std::uint8_t> from_hex(const char* hex)
 {
@@ -370,6 +372,7 @@ void whole_messages_are_pinned_to_literals_the_other_implementation_also_holds()
     hello.protocol_version = kDebugProtocolVersion;
     std::strncpy(hello.board_id, "waveshare-amoled-206", sizeof(hello.board_id) - 1);
     std::strncpy(hello.build, "sim 0.0.1", sizeof(hello.build) - 1);
+    hello.session = 0xA5B6C7D8;
     std::uint8_t hello_body[kHelloBodyBytes] = {};
     const std::size_t hn = encode_hello(hello, hello_body, sizeof(hello_body));
     Envelope he;
@@ -486,6 +489,7 @@ void the_bodies_survive_a_round_trip()
     HelloBody hello;
     std::strncpy(hello.board_id, "t-watch-s3-plus", sizeof(hello.board_id) - 1);
     std::strncpy(hello.build, "simulator", sizeof(hello.build) - 1);
+    hello.session = 0x5E551011;
 
     std::uint8_t buffer[kHelloBodyBytes] = {};
     CHECK(encode_hello(hello, buffer, sizeof(buffer)) == kHelloBodyBytes);
@@ -494,7 +498,16 @@ void the_bodies_survive_a_round_trip()
     CHECK(decode_hello(buffer, kHelloBodyBytes, back));
     CHECK(std::strcmp(back.board_id, "t-watch-s3-plus") == 0);
     CHECK(std::strcmp(back.build, "simulator") == 0);
-    CHECK(!decode_hello(buffer, kHelloBodyBytes - 1, back));
+    CHECK(back.session == 0x5E551011);
+    // A v1 host sends 49 bytes and no session. It still decodes -- `handle`
+    // exempts Hello from the version gate so that such a host is told what it
+    // is talking to -- and reads as session 0, which the host side treats as
+    // "this device cannot open a session".
+    HelloBody v1;
+    CHECK(decode_hello(buffer, kHelloV1BodyBytes, v1));
+    CHECK(std::strcmp(v1.board_id, "t-watch-s3-plus") == 0);
+    CHECK(v1.session == 0);
+    CHECK(!decode_hello(buffer, kHelloV1BodyBytes - 1, back));
 
     ScreenInfoBody info;
     info.frame_id    = 7;
@@ -1456,6 +1469,57 @@ void a_physical_press_survives_a_remote_disconnect()
     CHECK(!rig.state.button_down(1));  // released for the remote
 }
 
+void a_hello_ends_the_session_before_it_and_echoes_the_hosts_generation()
+{
+    // #348. On USB Serial/JTAG a host process that exits with the cable in is
+    // never a disconnect, so the next process's HELLO is the only boundary the
+    // device ever sees. Host A left a button held and a screen transfer half
+    // sent; a person is holding button 0 throughout.
+    Rig rig;
+    core::InputEvent physical;
+    physical.type   = core::InputEventType::ButtonDown;
+    physical.origin = core::InputOrigin::Physical;
+    physical.button = 0;
+    CHECK(rig.state.apply(physical, 2));
+
+    rig.send(input_request(core::InputEventType::ButtonDown, 1, 0, 0, 1), 10);
+    rig.send(request(Opcode::ScreenRequest, 2), 20);
+    CHECK(rig.bridge.transfer_in_progress());
+    CHECK(rig.bridge.pump(&Collector::emit, &rig.sink));
+    rig.queue.clear();
+    rig.sink.clear();
+
+    // Host B opens the port and draws a generation.
+    HelloBody hello;
+    hello.session = 0x0B0B0B01;
+    std::uint8_t body[kHelloBodyBytes] = {};
+    encode_hello(hello, body, sizeof(body));
+    rig.send(request(Opcode::Hello, 1, body, sizeof(body)), 3000);
+
+    // The reply carries B's generation unchanged: that is what B matches on,
+    // and the one thing a reply written to A cannot carry.
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::HelloOk));
+    Envelope            reply;
+    const std::uint8_t* reply_body = nullptr;
+    CHECK(decode_message(rig.sink.messages.back().data(), rig.sink.messages.back().size(), reply,
+                         reply_body));
+    HelloBody back;
+    CHECK(decode_hello(reply_body, reply.body_len, back));
+    CHECK(back.session == 0x0B0B0B01);
+
+    // And A's session ended before that reply was written: nothing of A's can
+    // follow it on the wire. The transfer is gone, so `pump` writes no chunk
+    // of A's frame under an id B is about to reuse...
+    CHECK(!rig.bridge.transfer_in_progress());
+    CHECK(!rig.bridge.pump(&Collector::emit, &rig.sink));
+    CHECK(rig.sink.messages.size() == 1);
+    // ...A's hold is released, as a disconnect would have released it...
+    CHECK(!rig.state.button_down(1));
+    // ...and the person's finger is not A's to lose.
+    CHECK(rig.state.button_down(0));
+}
+
 }  // namespace
 
 
@@ -2166,6 +2230,7 @@ int main()
     the_stability_answer_is_measured_against_the_duration_that_was_asked_for();
     an_event_still_in_the_queue_is_not_a_settled_interface();
     a_hold_the_client_left_behind_is_still_released_once_it_is_gone();
+    a_hello_ends_the_session_before_it_and_echoes_the_hosts_generation();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d debug-channel check(s) failed\n", failures);
