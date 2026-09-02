@@ -439,6 +439,49 @@ ru = "местное время минус UTC; ± меняет знак"
 en = "six digits from the node; OK alone skips"
 ru = "шесть цифр с узла; OK без цифр — пропустить"
 
+# The node field (#411): shown only on a watch that is pinned to a node, as
+# the first eight hex digits of its key, so it can be held against the node's
+# own screen. OK keeps it; the erase key, relabelled Forget, drops it with its
+# bond. What the radio answers is one of five things, and the hint names the
+# one that happened rather than the first that started.
+[provision_title_node]
+en = "Node"
+ru = "Узел"
+
+[provision_hint_node]
+en = "OK keeps it; Forget drops it"
+ru = "OK оставит; Забыть сбросит"
+
+[provision_key_forget]
+en = "Forget"
+ru = "Забыть"
+
+[provision_node_pending]
+en = "still forgetting the node"
+ru = "узел ещё забывается"
+
+# Also the passkey hint from then on: a reset node shows new digits, and the
+# old six would fail with nothing on the screen to say why.
+[provision_node_forgotten]
+en = "forgotten; type its new digits"
+ru = "узел забыт; введите цифры"
+
+[provision_node_forgotten_ram]
+en = "forgot till reboot; type digits"
+ru = "забыт до рестарта; цифры"
+
+[provision_node_kept]
+en = "not forgotten; nothing changed"
+ru = "не забыт; всё как было"
+
+[provision_node_nothing]
+en = "nothing to forget"
+ru = "нечего забывать"
+
+[provision_forgotten_skipped]
+en = "no passkey; node is forgotten"
+ru = "без кода; узел забыт"
+
 [provision_rejected]
 en = "not accepted — check it"
 ru = "не принято — проверьте"

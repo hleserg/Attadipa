@@ -2,6 +2,7 @@
 #include "meshcore_bond_recovery.h"
 #include "meshcore_forget_outcome.h"
 #include "meshcore_boot.h"
+#include "meshcore_node_forget.h"
 #include "meshcore_node_pin.h"
 #include "meshcore_passkey.h"
 #include "meshcore_passkey_outcome.h"
@@ -94,6 +95,7 @@ enum class EventKind : std::uint8_t {
     Send,
     SendRoom,
     ForgetBond,
+    ForgetNode,
 };
 
 struct Event {
@@ -105,11 +107,11 @@ struct Event {
     // posts to replay a stored passkey does not, or every boot would rewrite
     // flash with what it just read.
     bool persist_passkey = false;
-    // Who is waiting for this Configure to finish, if anybody is. Zero is the
-    // boot replay and the debug bridge, which post and do not wait; the entry
-    // screen reserves a ticket first and reads the answer back under it
-    // (meshcore_passkey_outcome.h).
-    std::uint32_t passkey_ticket = 0;
+    // Who is waiting for this Configure or ForgetNode to finish, if anybody
+    // is. Zero is the boot replay and the debug bridge, which post and do not
+    // wait; the entry screen reserves a ticket first and reads the answer
+    // back under it (meshcore_passkey_outcome.h).
+    std::uint32_t ticket = 0;
     attadipa::core::WallTime timestamp{};
     std::array<std::uint8_t, attadipa::link::kMeshCoreFrameBytes> bytes{};
     std::array<std::uint8_t, 6> peer_prefix{};
@@ -218,15 +220,15 @@ std::atomic_bool send_claimed{false};
 // and a watch that waited would already have talked to the node. After that a
 // node whose key does not match is identified, refused and left alone.
 //
-// Choosing the node *up front* is a provisioning question and it is #356's, not
-// this file's: there is no path in the production image for the passkey either,
-// and inventing a second one here would be the mechanism this repository asks
-// not to add. Until #356 exists there is therefore **no in-image way to
-// re-pin**: nothing erases the `attadipa_mesh` namespace, so a watch whose
-// pinned node was factory-reset, or which is moved to another node, needs
-// `idf.py erase-flash` (which also takes the bonds and the time metadata) or
-// #356. The screen says which node is refused and which one is wanted, so that
-// state is visible without a serial cable.
+// Choosing the node *up front* is a provisioning question, and this file still
+// has no answer to it: nothing in the production image names a node before it
+// answers. What the image has since #411 is the reverse. The entry screen's
+// node field posts EventKind::ForgetNode, which deletes a recorded stale bond
+// and clears the pin from `attadipa_mesh` and from the provider -- the order
+// is in meshcore_node_forget.h -- so a watch whose node was factory-reset, or
+// which is moved to another node, is re-pinned by its next adoption without
+// `idf.py erase-flash`. The screen says which node is refused and which one is
+// wanted, so that state is visible without a serial cable.
 constexpr const char* kMeshNvsNamespace = "attadipa_mesh";
 constexpr const char* kNodeKeyNvsKey    = "node";
 // The passkey, once provisioned, so that a power cycle does not unprovision
@@ -393,6 +395,24 @@ bool store_node_pin(const attadipa::core::MeshPeerId& id)
     return err == ESP_OK;
 }
 
+// The pin's eraser, `erase_passkey()`'s shape on the other key. Its job is
+// narrower than it looks: the next adoption overwrites the key anyway
+// (`store_node_pin` is a set), so what this covers is a restart in the window
+// between a forget and that adoption, which would otherwise put the old key
+// back out of flash at boot.
+bool erase_node_pin()
+{
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return true;
+    if (opened != ESP_OK) return false;
+    esp_err_t err = nvs_erase_key(handle, kNodeKeyNvsKey);
+    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
 bool claim_send()
 {
     bool free_slot = false;
@@ -408,6 +428,11 @@ attadipa::firmware::ForgetBondOperation forget_op;
 // arming and the flash write happen on this worker, and the screen that asked
 // is on the LVGL task. meshcore_passkey_outcome.h, compiled by the host tests.
 attadipa::firmware::PasskeyOperation passkey_op;
+
+// And the same word again for forgetting the node: same screen, same two
+// tasks, same ticket. meshcore_node_forget.h has the sequence it answers for.
+attadipa::firmware::TicketedOperation<attadipa::firmware::ForgetNodeOutcome>
+    forget_node_op;
 
 attadipa::core::MonotonicTime now()
 {
@@ -1286,6 +1311,77 @@ void handle_frame(const Event& event)
     }
 }
 
+// The production instantiation of `forget_node()`; the other one is in
+// tests/test_provisioning.cpp, and the sequence is in the header both compile.
+// Runs on the worker, which owns `provider` and is the only task that may
+// touch the bond store.
+struct RealForgetOps {
+    void disarm() { reconnect_allowed.store(false); }
+    void terminate()
+    {
+        // As Deconfigure does: a scan already under way could still connect,
+        // and with the pin half cleared that connection would adopt.
+        if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
+        const std::uint16_t connection = session_snapshot().connection;
+        if (connection == attadipa::link::kNoSessionHandle) {
+            // No session to end, so the disconnect path will not run
+            // provider.begin() for us; Deconfigure makes the same call here.
+            provider.begin(now());
+            return;
+        }
+        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    bool take_forget(attadipa::firmware::BondIdentity& out)
+    {
+        SessionGuard guard;
+        return recovery.take_forget(out);
+    }
+    bool delete_bond(const attadipa::firmware::BondIdentity& peer)
+    {
+        ble_addr_t address{};
+        address.type = peer.type;
+        std::memcpy(address.val, peer.address.data(), peer.address.size());
+        const int rc = ble_store_util_delete_peer(&address);
+        if (rc != 0) {
+            ESP_LOGE(kTag,
+                     "forget-node: the store refused to delete the bond for "
+                     "xx:xx:xx:%02X:%02X:%02X (rc=%d); nothing changed",
+                     static_cast<unsigned>(peer.address[2]),
+                     static_cast<unsigned>(peer.address[1]),
+                     static_cast<unsigned>(peer.address[0]), rc);
+        }
+        return rc == 0;
+    }
+    void record(const attadipa::firmware::BondIdentity& peer)
+    {
+        SessionGuard guard;
+        recovery.record(peer);
+    }
+    bool erase_pin() { return erase_node_pin(); }
+    bool unpin() { return provider.unpin(); }
+    void clear_refusal()
+    {
+        refused_addr.store(0);
+        refused_until_ms.store(0);
+        hold_all_until_ms.store(0);
+    }
+};
+
+const char* forget_node_name(attadipa::firmware::ForgetNodeOutcome outcome)
+{
+    using attadipa::firmware::ForgetNodeOutcome;
+    switch (outcome) {
+    case ForgetNodeOutcome::Forgotten:  return "bond deleted and pin cleared";
+    case ForgetNodeOutcome::Unpinned:   return "pin cleared; no stale bond was recorded, the bond is kept";
+    case ForgetNodeOutcome::BondKept:   return "the store refused; nothing changed";
+    case ForgetNodeOutcome::PinOnFlash: return "pin cleared in memory only; the NVS erase refused";
+    case ForgetNodeOutcome::Nothing:    return "nothing to forget";
+    case ForgetNodeOutcome::Idle:
+    case ForgetNodeOutcome::InFlight:   break;
+    }
+    return "?";
+}
+
 // The production instantiation of `settle_node_pin()`. The other one is in
 // tests/test_session_owner.cpp, and there is one rule between them.
 struct RealPinOps {
@@ -1458,7 +1554,7 @@ void mesh_task(void*)
                     // so a watch whose passkey was never armed had already
                     // told its holder it was set up.
                     passkey_op.complete(
-                        event.passkey_ticket,
+                        event.ticket,
                         attadipa::firmware::PasskeyOutcome::Refused);
                     provider.fault(now());
                     break;
@@ -1484,7 +1580,7 @@ void mesh_task(void*)
                 // transport's own reconnection, which is not what the person
                 // typing a passkey is waiting to hear.
                 passkey_op.complete(
-                    event.passkey_ticket,
+                    event.ticket,
                     stored ? attadipa::firmware::PasskeyOutcome::Armed
                            : attadipa::firmware::PasskeyOutcome::NotStored);
                 // A Configure that lands on a live session is a
@@ -1615,6 +1711,21 @@ void mesh_task(void*)
                 // Last, and only here: the bond is gone and the store said so.
                 // This is the one path that may become a terminal MeshOk.
                 forget_op.complete(attadipa::firmware::ForgetOutcome::Deleted);
+                break;
+            }
+            case EventKind::ForgetNode: {
+                RealForgetOps ops;
+                const attadipa::firmware::ForgetNodeOutcome outcome =
+                    attadipa::firmware::forget_node(ops);
+                ESP_LOGW(kTag, "forget-node: %s", forget_node_name(outcome));
+                // NOTHING IS RE-ARMED HERE, unlike ForgetBond above. The
+                // watch is unpinned now, and a reconnect would adopt the
+                // first node to answer before the person had typed the
+                // passkey; the Configure that entry posts is the one arm.
+                // The publish() at the foot of this loop is what takes
+                // `has_pinned` off the status, so the request gate below
+                // and the entry screen see the pin gone on the next read.
+                forget_node_op.complete(event.ticket, outcome);
                 break;
             }
             case EventKind::Send:
@@ -1749,7 +1860,7 @@ struct RealBootOps {
 // replay is not re-stored -- is `meshcore_passkey.h`; this is its NVS and its
 // queue.
 struct PasskeyOps {
-    // Zero unless somebody is waiting on the answer; see Event::passkey_ticket.
+    // Zero unless somebody is waiting on the answer; see Event::ticket.
     std::uint32_t ticket = 0;
 
     attadipa::firmware::StoredPasskey load(std::uint32_t& out)
@@ -1761,7 +1872,7 @@ struct PasskeyOps {
         Event event{EventKind::Configure};
         event.passkey = passkey;
         event.persist_passkey = persist;
-        event.passkey_ticket = ticket;
+        event.ticket = ticket;
         return post(event);
     }
 };
@@ -2034,6 +2145,38 @@ esp_err_t meshcore_ble_forget_bond()
 attadipa::firmware::ForgetOutcome meshcore_ble_forget_bond_outcome()
 {
     return forget_op.take();
+}
+
+esp_err_t meshcore_ble_forget_node(std::uint32_t& ticket)
+{
+    // Something to forget, or the request is refused where the caller can
+    // still be told: a recorded stale bond, or a pin. The pin is read from
+    // the published status because `provider` is worker-owned; the worker
+    // reads the real thing and answers `Nothing` if it changed in between.
+    bool anything = false;
+    {
+        SessionGuard guard;
+        anything = recovery.recovery_required();
+    }
+    if (!anything) anything = meshcore_ble_status().has_pinned;
+    if (!anything) return ESP_ERR_INVALID_STATE;
+    std::uint32_t reserved = 0;
+    if (!forget_node_op.reserve(reserved)) return ESP_ERR_NOT_FINISHED;
+    Event event{EventKind::ForgetNode};
+    event.ticket = reserved;
+    if (!post(event)) {
+        ESP_LOGE(kTag, "forget-node: the worker queue was full; nothing changed");
+        forget_node_op.release(reserved);
+        return ESP_ERR_NO_MEM;
+    }
+    ticket = reserved;
+    return ESP_OK;
+}
+
+attadipa::firmware::ForgetNodeOutcome
+meshcore_ble_forget_node_outcome(std::uint32_t ticket)
+{
+    return forget_node_op.take(ticket);
 }
 
 attadipa::core::MeshStatus meshcore_ble_status()

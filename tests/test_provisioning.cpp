@@ -2,6 +2,8 @@
 #include <cstring>
 
 #include "attadipa/apps/provisioning.h"
+#include "meshcore_bond_recovery.h"
+#include "meshcore_node_forget.h"
 #include "meshcore_passkey_outcome.h"
 
 // The entry model with a board that records what it was asked. What is tested
@@ -15,6 +17,12 @@
 // (AGENTS.md: an isolated decision helper does not prove the production caller
 // works). What stays out of reach on a host is NimBLE and NVS themselves --
 // `worker()` stands in for those two calls, and for nothing else.
+//
+// The node half is the same arrangement one file over: `forget_worker()` runs
+// `forget_node()` from `firmware/main/meshcore_node_forget.h` -- the sequence
+// `meshcore_ble.cpp` runs -- with this board as its `Ops`, over the real
+// `BondRecovery` and the same ticketed slot. The fake is the store and the
+// radio; the order of the clears, and what each ending is called, is shipped.
 
 namespace {
 
@@ -33,8 +41,13 @@ using attadipa::apps::EntryKey;
 using attadipa::apps::EntryVerdict;
 using attadipa::apps::ProvisioningEntry;
 using attadipa::core::ProvisionOutcome;
+using attadipa::core::MeshForgetOutcome;
+using attadipa::firmware::BondIdentity;
+using attadipa::firmware::BondRecovery;
+using attadipa::firmware::ForgetNodeOutcome;
 using attadipa::firmware::PasskeyOperation;
 using attadipa::firmware::PasskeyOutcome;
+using attadipa::firmware::TicketedOperation;
 using attadipa::l10n::Locale;
 
 struct FakeBoard final : attadipa::core::Provisioner {
@@ -99,8 +112,107 @@ struct FakeBoard final : attadipa::core::Provisioner {
     // the passkey and flash holds it, or one of them refused.
     void worker(PasskeyOutcome outcome) { op.complete(queued, outcome); }
 
+    // --- The node, and what forgetting it touches --------------------------
+    //
+    // No pin by default, so every test above sees the four-field screen it
+    // was written for. A pinned board shows the node field between the
+    // offset and the passkey.
+    bool pinned = false;        // the RAM copy, what `settle_node_pin` reads
+    bool pin_on_flash = false;  // the NVS key
+    bool store_refuses = false; // ble_store_util_delete_peer says no
+    bool erase_refuses = false; // nvs_erase_key says no
+    bool armed = true;          // reconnect_allowed
+    bool cooling_down = true;   // a refusal cooldown still running
+    int forgets = 0, deletes = 0, terminates = 0, forget_polls = 0;
+    BondRecovery recovery;      // the shipping record, not a stand-in
+    TicketedOperation<ForgetNodeOutcome> forget_op;
+    std::uint32_t forget_queued = 0;
+
+    void stale_bond()
+    {
+        BondIdentity peer{};
+        peer.address = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+        peer.type = 1;
+        peer.valid = true;
+        recovery.record(peer);
+    }
+
+    bool mesh_node(attadipa::core::MeshPeerId& out) override
+    {
+        if (!pinned) return false;
+        out = attadipa::core::MeshPeerId{};
+        out.public_key[0] = 0x5c;
+        out.public_key[1] = 0x62;
+        out.public_key[2] = 0xd9;
+        out.public_key[3] = 0xbc;
+        return true;
+    }
+    ProvisionOutcome forget_mesh_node() override
+    {
+        ++forgets;
+        // The request gate, as meshcore_ble_forget_node() has it: a recorded
+        // bond or a pin, or ESP_ERR_INVALID_STATE -> Rejected.
+        if (!recovery.recovery_required() && !pinned) {
+            return ProvisionOutcome::Rejected;
+        }
+        std::uint32_t reserved = 0;
+        if (!forget_op.reserve(reserved)) return ProvisionOutcome::Failed;
+        if (queue_full) {
+            forget_op.release(reserved);
+            return ProvisionOutcome::Failed;
+        }
+        forget_ticket_ = reserved;
+        forget_queued = reserved;
+        return ProvisionOutcome::Pending;
+    }
+    MeshForgetOutcome mesh_forget_outcome() override
+    {
+        ++forget_polls;
+        const ForgetNodeOutcome outcome = forget_op.take(forget_ticket_);
+        if (outcome != ForgetNodeOutcome::InFlight) forget_ticket_ = 0;
+        switch (outcome) {
+        case ForgetNodeOutcome::InFlight:   return MeshForgetOutcome::Pending;
+        case ForgetNodeOutcome::Forgotten:  return MeshForgetOutcome::Forgotten;
+        case ForgetNodeOutcome::Unpinned:   return MeshForgetOutcome::Unpinned;
+        case ForgetNodeOutcome::PinOnFlash: return MeshForgetOutcome::PinOnFlash;
+        case ForgetNodeOutcome::Nothing:    return MeshForgetOutcome::Nothing;
+        default:                            return MeshForgetOutcome::BondKept;
+        }
+    }
+
+    // `Ops` for forget_node(): the eight things the worker does to the board.
+    void disarm() { armed = false; }
+    void terminate() { ++terminates; }
+    bool take_forget(BondIdentity& out) { return recovery.take_forget(out); }
+    bool delete_bond(const BondIdentity&)
+    {
+        ++deletes;
+        return !store_refuses;
+    }
+    void record(const BondIdentity& peer) { recovery.record(peer); }
+    bool erase_pin()
+    {
+        if (erase_refuses) return false;
+        pin_on_flash = false;
+        return true;
+    }
+    bool unpin()
+    {
+        const bool was = pinned;
+        pinned = false;
+        return was;
+    }
+    void clear_refusal() { cooling_down = false; }
+
+    // The worker's turn: the shipping sequence over this board.
+    void forget_worker()
+    {
+        forget_op.complete(forget_queued, attadipa::firmware::forget_node(*this));
+    }
+
 private:
     std::uint32_t ticket_ = 0;
+    std::uint32_t forget_ticket_ = 0;
 };
 
 void type(ProvisioningEntry& entry, const char* digits)
@@ -638,6 +750,213 @@ int main()
         entry.press(EntryKey::Ok);
         CHECK(entry.finished() && !entry.waiting());
         CHECK(hint_is(entry, "the watch is set up"));
+    }
+
+    // ----- The node field (#411) ------------------------------------------
+    //
+    // State (b) of the report's §6.1: the watch paired afresh with the reset
+    // node and then refused its new key. Nothing stale is recorded, so the
+    // bond is kept and the pin alone goes -- from memory, from flash, with
+    // the refusal cooldown -- and nothing is re-armed: the radio stays down
+    // until the passkey that follows arms it. The passkey itself is never
+    // touched by the forget.
+    {
+        FakeBoard board;
+        board.pinned = board.pin_on_flash = true;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        CHECK(entry.field() == EntryField::Node);
+        CHECK(value_is(entry, "5c62d9bc"));
+        CHECK(std::strcmp(entry.text(Locale::En).backspace, "Forget") == 0);
+        CHECK(std::strcmp(entry.text(Locale::Ru).backspace, "Забыть") == 0);
+        CHECK(std::strcmp(entry.text(Locale::En).title, "Node") == 0);
+        CHECK(!entry.text(Locale::En).sign_key);
+        // Digits mean nothing here.
+        type(entry, "12");
+        CHECK(value_is(entry, "5c62d9bc"));
+
+        entry.press(EntryKey::Backspace);
+        CHECK(board.forgets == 1 && entry.waiting());
+        CHECK(entry.verdict() == EntryVerdict::Pending);
+        CHECK(hint_is(entry, "still forgetting the node"));
+        CHECK(entry.field() == EntryField::Node);
+        // Still pinned: the screen said Pending and nothing has run.
+        CHECK(board.pinned && board.armed);
+        CHECK(!entry.poll());
+
+        board.forget_worker();
+        CHECK(entry.poll());
+        CHECK(entry.verdict() == EntryVerdict::Forgotten);
+        CHECK(entry.field() == EntryField::Passkey && !entry.waiting());
+        CHECK(hint_is(entry, "forgotten; type its new digits"));
+        CHECK(board.deletes == 0);           // the bond is kept
+        CHECK(!board.pinned && !board.pin_on_flash);
+        CHECK(!board.cooling_down);
+        CHECK(!board.armed);                 // nothing re-armed
+        CHECK(board.terminates == 1);
+        CHECK(board.passkeys == 0);          // the passkey was not touched
+        // The passkey hint stays the post-forget one while digits go in.
+        type(entry, "1");
+        CHECK(hint_is(entry, "forgotten; type its new digits"));
+        entry.press(EntryKey::Backspace);
+        // Leaving without a passkey is not "the clock is set".
+        entry.press(EntryKey::Cancel);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
+        CHECK(hint_is(entry, "no passkey; node is forgotten"));
+        CHECK(!board.armed);
+    }
+    // State (a): a stale bond is recorded. It is deleted, once, and the pin
+    // goes with it; the arm that follows is the passkey entry's Configure,
+    // which is counted here as the passkey reaching the board and nothing
+    // else -- the forget armed nothing.
+    {
+        FakeBoard board;
+        board.pinned = board.pin_on_flash = true;
+        board.stale_bond();
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        entry.press(EntryKey::Backspace);
+        board.forget_worker();
+        CHECK(entry.poll());
+        CHECK(entry.verdict() == EntryVerdict::Forgotten);
+        CHECK(board.deletes == 1);
+        CHECK(!board.recovery.recovery_required());
+        CHECK(!board.pinned && !board.pin_on_flash && !board.armed);
+        CHECK(entry.field() == EntryField::Passkey);
+        // A restart between the clear and the next adoption finds no pin:
+        // what boot would read is `pin_on_flash`, and it is gone.
+        {
+            FakeBoard rebooted;
+            rebooted.pinned = board.pin_on_flash;
+            ProvisioningEntry again(rebooted);
+            to_passkey(again);
+            CHECK(again.field() == EntryField::Passkey);
+        }
+        type(entry, "654321");
+        entry.press(EntryKey::Ok);
+        CHECK(board.passkeys == 1 && board.passkey == 654321);
+        board.worker(PasskeyOutcome::Armed);
+        CHECK(entry.poll() && entry.finished());
+        CHECK(hint_is(entry, "the watch is set up"));
+    }
+    // The store refuses. The record goes back, the pin is untouched in both
+    // places, the node stays on the screen, and the key works again once
+    // the store does.
+    {
+        FakeBoard board;
+        board.pinned = board.pin_on_flash = true;
+        board.stale_bond();
+        board.store_refuses = true;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        entry.press(EntryKey::Backspace);
+        board.forget_worker();
+        CHECK(entry.poll());
+        CHECK(entry.verdict() == EntryVerdict::Failed);
+        CHECK(entry.field() == EntryField::Node && !entry.waiting());
+        CHECK(hint_is(entry, "not forgotten; nothing changed"));
+        CHECK(value_is(entry, "5c62d9bc"));
+        CHECK(board.deletes == 1);
+        CHECK(board.recovery.recovery_required());
+        CHECK(board.pinned && board.pin_on_flash);
+        board.store_refuses = false;
+        entry.press(EntryKey::Backspace);
+        board.forget_worker();
+        CHECK(entry.poll());
+        CHECK(entry.verdict() == EntryVerdict::Forgotten);
+        CHECK(board.deletes == 2 && !board.pinned && !board.pin_on_flash);
+    }
+    // Flash refuses the erase. Memory is clear, so the next adoption goes
+    // through, and the hint says what a restart before it would undo.
+    {
+        FakeBoard board;
+        board.pinned = board.pin_on_flash = true;
+        board.erase_refuses = true;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        entry.press(EntryKey::Backspace);
+        board.forget_worker();
+        CHECK(entry.poll());
+        CHECK(entry.verdict() == EntryVerdict::Forgotten);
+        CHECK(entry.field() == EntryField::Passkey);
+        CHECK(hint_is(entry, "forgot till reboot; type digits"));
+        CHECK(!board.pinned && board.pin_on_flash);
+    }
+    // Nothing to forget, twice over: with no pin the field is not shown at
+    // all, and a request made anyway is refused where the caller can be told.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        CHECK(entry.field() == EntryField::Passkey);
+        CHECK(board.forget_mesh_node() == ProvisionOutcome::Rejected);
+        CHECK(board.forgets == 1);
+    }
+    // The pin went between the field being shown and the key: the worker
+    // finds nothing, says so, and the passkey field that follows is the
+    // ordinary one -- nothing was forgotten here.
+    {
+        FakeBoard board;
+        board.pinned = true;
+        board.stale_bond();
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        CHECK(entry.field() == EntryField::Node);
+        board.pinned = false;
+        BondIdentity gone{};
+        (void)board.recovery.take_forget(gone);
+        entry.press(EntryKey::Backspace);
+        CHECK(entry.verdict() == EntryVerdict::Forgotten);
+        CHECK(hint_is(entry, "nothing to forget"));
+        CHECK(entry.field() == EntryField::Passkey && !entry.waiting());
+        CHECK(hint_is(entry, "nothing to forget"));
+        entry.press(EntryKey::Cancel);
+        CHECK(hint_is(entry, "no passkey; the clock is set"));
+    }
+    // OK keeps the node: on to the passkey with nothing asked of the board.
+    {
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        entry.press(EntryKey::Ok);
+        CHECK(entry.field() == EntryField::Passkey);
+        CHECK(board.forgets == 0 && board.pinned);
+        CHECK(hint_is(entry, "six digits from the node; OK alone skips"));
+    }
+    // Leaving while the forget is with the radio: the screen says which
+    // wait it left, and the worker's answer lands in a slot nobody reads.
+    {
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        entry.press(EntryKey::Backspace);
+        // No other key does anything while the radio has it.
+        entry.press(EntryKey::Ok);
+        CHECK(board.forgets == 1 && entry.waiting());
+        entry.press(EntryKey::Cancel);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Pending);
+        CHECK(hint_is(entry, "still forgetting the node"));
+        board.forget_worker();
+        CHECK(!entry.poll());
+        CHECK(!board.pinned);
+    }
+    // The worker queue refusing the post: nothing changed and the key can
+    // be pressed again.
+    {
+        FakeBoard board;
+        board.pinned = true;
+        board.queue_full = true;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        entry.press(EntryKey::Backspace);
+        CHECK(entry.verdict() == EntryVerdict::Failed && !entry.waiting());
+        CHECK(hint_is(entry, "not forgotten; nothing changed"));
+        CHECK(board.pinned && entry.field() == EntryField::Node);
+        board.queue_full = false;
+        entry.press(EntryKey::Backspace);
+        CHECK(entry.waiting());
     }
 
     return failures == 0 ? 0 : 1;

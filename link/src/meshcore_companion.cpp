@@ -572,6 +572,19 @@ void MeshCoreCompanion::pin(const core::MeshPeerId& node)
     status_.has_pinned = true;
 }
 
+bool MeshCoreCompanion::unpin()
+{
+    const bool was_pinned = pinned_set_;
+    pinned_set_ = false;
+    pinned_ = core::MeshPeerId{};
+    wrong_node_ = false;
+    status_.pinned_id = core::MeshPeerId{};
+    status_.has_pinned = false;
+    status_.refused_id = core::MeshPeerId{};
+    status_.has_refused = false;
+    return was_pinned;
+}
+
 bool MeshCoreCompanion::pinned(core::MeshPeerId& out) const
 {
     if (!pinned_set_) return false;

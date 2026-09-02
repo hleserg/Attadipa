@@ -49,9 +49,9 @@ cannot honestly resume where it left off.
   opcode above exists only in the HIL build. The product's first real input is
   the watch itself: a long press on the clock opens an entry screen for the
   date, the time, the offset and the node passkey
-  (`apps/include/attadipa/apps/provisioning.h:65` — "class ProvisioningEntry {"); a Cancel key
+  (`apps/include/attadipa/apps/provisioning.h:77` — "class ProvisioningEntry {"); a Cancel key
   leaves it at any point, and nothing reaches the board before OK on the
-  offset (`apps/include/attadipa/apps/provisioning.h:43` — "Cancel,"), so a
+  offset (`apps/include/attadipa/apps/provisioning.h:52` — "Cancel,"), so a
   long press made by accident costs one key and not a retyped clock. A board
   that failed that write may have moved the chip (the RTC is written last, and
   nothing puts it back), so a Cancel after it keeps the failure on screen rather

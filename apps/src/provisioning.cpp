@@ -21,6 +21,7 @@ const char* mask(EntryField field) {
   case EntryField::Date:    return "____-__-__";
   case EntryField::Time:    return "__:__";
   case EntryField::Offset:  return "__:__";
+  case EntryField::Node:    return "";
   case EntryField::Passkey: return "______";
   case EntryField::Done:    return "";
   }
@@ -36,6 +37,7 @@ unsigned ProvisioningEntry::capacity() const {
   case EntryField::Date:    return 8;
   case EntryField::Time:    return 4;
   case EntryField::Offset:  return 4;
+  case EntryField::Node:    return 0;
   case EntryField::Passkey: return 6;
   case EntryField::Done:    return 0;
   }
@@ -50,12 +52,15 @@ void ProvisioningEntry::press(EntryKey key) {
   // the way out. A second OK here would post a second configure over an answer
   // nobody has read, and the digit keys would edit a value that has already
   // gone; both would also clear the line telling the person to wait.
-  if (awaiting_) {
+  if (awaiting_ || awaiting_forget_) {
     if (key == EntryKey::Cancel) {
-      // Neither "skipped" nor "set up" is true: the passkey is with the radio
-      // and this screen is no longer here to hear how it ended.
+      // Neither "skipped" nor "set up" is true: the passkey, or the forget,
+      // is with the radio and this screen is no longer here to hear how it
+      // ended.
       verdict_ = EntryVerdict::Pending;
+      pending_is_forget_ = awaiting_forget_;
       awaiting_ = false;
+      awaiting_forget_ = false;
       field_ = EntryField::Done;
       count_ = 0;
     }
@@ -77,6 +82,10 @@ void ProvisioningEntry::press(EntryKey key) {
     }
     return;
   case EntryKey::Backspace:
+    if (field_ == EntryField::Node) {
+      forget();
+      return;
+    }
     if (count_ > 0) {
       --count_;
     }
@@ -92,7 +101,7 @@ void ProvisioningEntry::press(EntryKey key) {
     // and unprovisioned at the next. Leaving after the board failed a write is
     // not "nothing changed" either: the RTC may hold the typed time with no
     // rollback behind it, so the last answer stands.
-    if (field_ == EntryField::Passkey) {
+    if (field_ == EntryField::Passkey || field_ == EntryField::Node) {
       verdict_ = passkey_failed_ ? EntryVerdict::Failed : EntryVerdict::Skipped;
     } else {
       verdict_ = board_failed_ ? EntryVerdict::Failed : EntryVerdict::Cancelled;
@@ -177,6 +186,9 @@ void ProvisioningEntry::accept() {
     }
     break;
   }
+  case EntryField::Node:
+    // OK keeps the node. Forgetting it is the erase key's, above.
+    break;
   case EntryField::Passkey: {
     if (count_ == 0) {
       // The empty OK is the other door out of this field, and it asks the
@@ -227,14 +239,80 @@ void ProvisioningEntry::accept() {
     return;
   }
   verdict_ = EntryVerdict::Accepted;
+  advance();
+}
+
+// The next field -- and past the node field on a watch that has no node,
+// which is every watch until its first adoption and every watch after a
+// forget.
+void ProvisioningEntry::advance() {
   field_ = static_cast<EntryField>(static_cast<std::uint8_t>(field_) + 1);
   count_ = 0;
+  if (field_ == EntryField::Node && !sink_.mesh_node(node_)) {
+    field_ = EntryField::Passkey;
+  }
+}
+
+// The erase key on the node field. What it asks for is the whole of #411's
+// recovery -- the stale bond and the pin, together -- and it finishes on the
+// radio's task, so like the passkey it ends in `Pending` and poll() carries
+// it the rest of the way.
+void ProvisioningEntry::forget() {
+  switch (sink_.forget_mesh_node()) {
+  case core::ProvisionOutcome::Pending:
+    verdict_ = EntryVerdict::Pending;
+    awaiting_forget_ = true;
+    return;
+  case core::ProvisionOutcome::Rejected:
+    // Nothing to forget: the node went between this field being shown and
+    // the key. The field has nothing left to show, so it is over.
+    forget_outcome_ = core::MeshForgetOutcome::Nothing;
+    verdict_ = EntryVerdict::Forgotten;
+    advance();
+    return;
+  case core::ProvisionOutcome::Accepted:
+    // Not a value the contract allows -- the clears run elsewhere -- but a
+    // board that says it finished is not told it failed.
+    forget_outcome_ = core::MeshForgetOutcome::Forgotten;
+    node_forgotten_ = true;
+    verdict_ = EntryVerdict::Forgotten;
+    advance();
+    return;
+  case core::ProvisionOutcome::Failed:
+    // The request never reached the radio. Nothing changed, the node is
+    // still on the screen, and the key can be pressed again.
+    verdict_ = EntryVerdict::Failed;
+    return;
+  }
 }
 
 // The other half of the passkey, arriving on the tick rather than on a key.
 // Terminal either way: the board consumes its answer, so this asks once and
 // then stops asking.
 bool ProvisioningEntry::poll() {
+  if (awaiting_forget_) {
+    const core::MeshForgetOutcome outcome = sink_.mesh_forget_outcome();
+    if (outcome == core::MeshForgetOutcome::Pending) {
+      return false;
+    }
+    awaiting_forget_ = false;
+    forget_outcome_ = outcome;
+    if (outcome == core::MeshForgetOutcome::BondKept) {
+      // The store refused and nothing changed. The node stays on the screen
+      // so the key can be pressed again, as the report's §6.1 requires: a
+      // pin cleared beside a bond that is still there is the dead end this
+      // screen exists to end.
+      verdict_ = EntryVerdict::Failed;
+      return true;
+    }
+    // Forgotten in some measure -- or there was nothing, which leaves the
+    // watch exactly as forgotten as it already was. Either way the field has
+    // nothing left to show, and the passkey is what comes next.
+    node_forgotten_ = outcome != core::MeshForgetOutcome::Nothing;
+    verdict_ = EntryVerdict::Forgotten;
+    advance();
+    return true;
+  }
   if (!awaiting_) {
     return false;
   }
@@ -287,9 +365,18 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
     title = StringId::ProvisionTitleOffset;
     hint = StringId::ProvisionHintOffset;
     break;
+  case EntryField::Node:
+    title = StringId::ProvisionTitleNode;
+    hint = StringId::ProvisionHintNode;
+    out.backspace = l10n::tr(StringId::ProvisionKeyForget, locale);
+    break;
   case EntryField::Passkey:
     title = StringId::ProvisionTitlePasskey;
-    hint = StringId::ProvisionHintPasskey;
+    // After a forget the digits wanted are the ones the node shows *now*:
+    // a reset node rolls its passkey (report §5.3), and the old six would
+    // fail with nothing on the screen to say why.
+    hint = node_forgotten_ ? StringId::ProvisionNodeForgotten
+                           : StringId::ProvisionHintPasskey;
     break;
   case EntryField::Done:
     break;
@@ -305,10 +392,27 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
     hint = StringId::ProvisionRejected;
     break;
   case EntryVerdict::Failed:
-    hint = StringId::ProvisionFailed;
+    hint = field_ == EntryField::Node ? StringId::ProvisionNodeKept
+                                      : StringId::ProvisionFailed;
     break;
   case EntryVerdict::Skipped:
-    hint = StringId::ProvisionSkipped;
+    // "the clock is set" is true either way; "no passkey" after a forget
+    // is a watch that stays silent, and the line says so.
+    hint = node_forgotten_ ? StringId::ProvisionForgottenSkipped
+                           : StringId::ProvisionSkipped;
+    break;
+  case EntryVerdict::Forgotten:
+    switch (forget_outcome_) {
+    case core::MeshForgetOutcome::PinOnFlash:
+      hint = StringId::ProvisionNodeForgottenRam;
+      break;
+    case core::MeshForgetOutcome::Nothing:
+      hint = StringId::ProvisionNodeNothing;
+      break;
+    default:
+      hint = StringId::ProvisionNodeForgotten;
+      break;
+    }
     break;
   case EntryVerdict::Cancelled:
     hint = StringId::ProvisionCancelled;
@@ -316,12 +420,27 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
   case EntryVerdict::Pending:
     // On the passkey field this is "wait"; on a screen that was left during
     // the wait it is "this is where it got to". One sentence for both,
-    // because it is one fact.
-    hint = StringId::ProvisionPending;
+    // because it is one fact -- and a second sentence for the forget, which
+    // is the other thing the radio can still be holding.
+    hint = awaiting_forget_ || pending_is_forget_
+               ? StringId::ProvisionNodePending
+               : StringId::ProvisionPending;
     break;
   }
   out.title = l10n::tr(title, locale);
   out.hint = l10n::tr(hint, locale);
+
+  if (field_ == EntryField::Node) {
+    // The first eight hex digits of the node's key, the way the mesh screen
+    // and the node's own screen show it.
+    static constexpr char kHex[] = "0123456789abcdef";
+    for (unsigned i = 0; i < 4; ++i) {
+      out.value[2 * i] = kHex[node_.public_key[i] >> 4];
+      out.value[2 * i + 1] = kHex[node_.public_key[i] & 0x0F];
+    }
+    out.value[8] = '\0';
+    return out;
+  }
 
   // The mask with the typed digits laid over its blanks.
   const char* shape = mask(field_);

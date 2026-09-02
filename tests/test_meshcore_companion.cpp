@@ -181,6 +181,38 @@ void test_another_node_answers_and_the_handshake_stops_there()
     CHECK(client.malformed_frames() == 0);
 }
 
+// The reverse of pin(), and what it has to be for #411: afterwards `pinned()`
+// answers false -- not "the key reads back as zero", which would refuse every
+// node -- the refusal the old pin caused is gone with it, and the next node to
+// answer SELF_INFO is adopted rather than compared.
+void test_unpin_clears_the_pin_and_the_refusal_it_caused()
+{
+    MeshCoreCompanion client;
+    client.pin(key_of(0x40));
+    handshake_to_self_info(client, key_of(0x91));
+    CHECK(client.wrong_node());
+    CHECK(client.status().has_refused && client.status().has_pinned);
+
+    CHECK(client.unpin());
+    core::MeshPeerId out{};
+    CHECK(!client.pinned(out));
+    CHECK(!client.wrong_node());
+    CHECK(!client.status().has_pinned);
+    CHECK(!client.status().has_refused);
+    // Nothing to clear the second time, and it says so.
+    CHECK(!client.unpin());
+
+    // The session that follows is with whichever node answers, and the
+    // handshake goes on past its identity: CMD_DEVICE_QUERY is the next frame.
+    client.disconnected(at(10));
+    client.begin(at(11));
+    handshake_to_self_info(client, key_of(0x91));
+    CHECK(!client.wrong_node());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 2 && frame.bytes[0] == 22);
+}
+
 void test_the_pin_outlives_the_session_and_the_identity_does_not()
 {
     MeshCoreCompanion client;
@@ -1020,6 +1052,7 @@ int main()
     test_the_pinned_node_is_the_one_the_handshake_continues_with();
     test_another_node_answers_and_the_handshake_stops_there();
     test_the_pin_outlives_the_session_and_the_identity_does_not();
+    test_unpin_clears_the_pin_and_the_refusal_it_caused();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
