@@ -1923,7 +1923,7 @@ constants.
   sent as one 1 140-byte host write were all answered, in order, in 117 ms;
   220 sent as one 4 180-byte write were answered 215/220, the last five never,
   and 4 180 − 4 096 = 84 bytes is exactly the tail past the receive ring
-  (`firmware/main/watch_control.cpp:340` — "usb.rx_buffer_size = 4096;"). The
+  (`firmware/main/watch_control.cpp:352` — "usb.rx_buffer_size = 4096;"). The
   loss is inside the USB-Serial/JTAG driver, so no counter sees it: not the
   decoder's `input_dropped`, which counts bytes the decoder abandoned, and not
   the host's `DecoderStats`. The 211 host-side resyncs in the same run were the
