@@ -341,7 +341,7 @@ Everything that provisions a watch sits behind that symbol:
 
 - **The clock cannot be set.** `write_rtc()` is reached only through
   `provision_time()`, whose one instantiation is inside the
-  `firmware/main/waveshare_board.cpp:385` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+  `firmware/main/waveshare_board.cpp:414` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
   block. (Since #356's first change the sequence itself compiles in every
   image; what a production image lacks is a caller.) A production watch reads
   the PCF85063 and never writes it, so a board off the shelf shows whatever its
