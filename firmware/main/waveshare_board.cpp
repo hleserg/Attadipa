@@ -206,18 +206,21 @@ esp_err_t read_time_metadata(attadipa::firmware::TimeMetadata *out,
     return ESP_OK;
   }
   ESP_RETURN_ON_ERROR(opened, kTag, "open time metadata");
-  std::size_t size = sizeof(*out);
-  const esp_err_t err = nvs_get_blob(handle, kTimeMetadataNvsKey, out, &size);
+  attadipa::firmware::TimeMetadataBytes bytes{};
+  std::size_t size = bytes.size();
+  const esp_err_t err =
+      nvs_get_blob(handle, kTimeMetadataNvsKey, bytes.data(), &size);
   nvs_close(handle);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
     return ESP_OK;
   }
-  if (err == ESP_ERR_NVS_INVALID_LENGTH || (err == ESP_OK && size != sizeof(*out))) {
+  if (err == ESP_ERR_NVS_INVALID_LENGTH || (err == ESP_OK && size != bytes.size())) {
     ESP_LOGW(kTag, "time metadata has an unknown size; ignored");
     *out = {};
     return ESP_OK;
   }
   ESP_RETURN_ON_ERROR(err, kTag, "read time metadata");
+  *out = attadipa::firmware::decode_time_metadata(bytes);
   *present = true;
   return ESP_OK;
 }
@@ -246,8 +249,9 @@ esp_err_t save_time_metadata(const attadipa::firmware::TimeMetadata &metadata) {
   nvs_handle_t handle{};
   ESP_RETURN_ON_ERROR(nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle),
                       kTag, "open time metadata for write");
+  const auto bytes = attadipa::firmware::encode_time_metadata(metadata);
   esp_err_t err =
-      nvs_set_blob(handle, kTimeMetadataNvsKey, &metadata, sizeof(metadata));
+      nvs_set_blob(handle, kTimeMetadataNvsKey, bytes.data(), bytes.size());
   if (err == ESP_OK) {
     err = nvs_commit(handle);
   }

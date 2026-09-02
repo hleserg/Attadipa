@@ -218,9 +218,42 @@ void test_provision_time()
 
 }  // namespace
 
+// ---- the blob on flash: the fields and nothing else -----------------------
+
+void test_time_metadata_bytes()
+{
+    using attadipa::firmware::decode_time_metadata;
+    using attadipa::firmware::encode_time_metadata;
+    using attadipa::firmware::TimeMetadata;
+
+    // Ten bytes, not sixteen: no padding leaves the struct, and a field added
+    // later cannot hide in a gap the size check would not see.
+    static_assert(attadipa::firmware::kTimeMetadataBytes == 10);
+    static_assert(sizeof(TimeMetadata) > attadipa::firmware::kTimeMetadataBytes);
+
+    const auto bytes = encode_time_metadata({-180, 0x0102030405060708});
+    CHECK(bytes[0] == 0x4C && bytes[1] == 0xFF);  // -180 = 0xFF4C, low first
+    CHECK(bytes[2] == 0x08 && bytes[9] == 0x01);
+    const TimeMetadata back = decode_time_metadata(bytes);
+    CHECK(back.offset_minutes == -180);
+    CHECK(back.last_sync_utc == 0x0102030405060708);
+
+    // The corners of both fields survive the trip.
+    for (const TimeMetadata sample :
+         {TimeMetadata{0, 0}, TimeMetadata{840, -1},
+          TimeMetadata{-720, std::numeric_limits<std::int64_t>::min()},
+          TimeMetadata{std::numeric_limits<std::int16_t>::min(),
+                       std::numeric_limits<std::int64_t>::max()}}) {
+        const TimeMetadata again = decode_time_metadata(encode_time_metadata(sample));
+        CHECK(again.offset_minutes == sample.offset_minutes);
+        CHECK(again.last_sync_utc == sample.last_sync_utc);
+    }
+}
+
 int main()
 {
     using namespace attadipa::core;
+    test_time_metadata_bytes();
 
     std::uint8_t raw_rtc[7] = {0x56, 0x34, 0x12, 0x25, 0x02, 0x08, 0x26};
     attadipa::firmware::RtcDateTime rtc{};

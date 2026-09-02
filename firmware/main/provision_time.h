@@ -15,6 +15,8 @@
 // adds the debug layer under the same gate -- so the request is scalars, not
 // `debug::TimeSyncBody`.
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -56,6 +58,40 @@ struct TimeMetadata {
     std::int16_t offset_minutes = 0;
     std::int64_t last_sync_utc = 0;
 };
+
+// What flash holds is the two fields and nothing else: ten bytes, little
+// endian, in declaration order. Writing the struct itself would put its six
+// bytes of alignment padding on unencrypted flash with whatever the stack held
+// -- aggregate initialisation sets members, not padding -- and would let a
+// field added into that gap keep `sizeof` at sixteen, which is the whole of
+// the schema check the reader has. A blob of any other length reads as absent.
+constexpr std::size_t kTimeMetadataBytes = 10;
+using TimeMetadataBytes = std::array<std::uint8_t, kTimeMetadataBytes>;
+
+constexpr TimeMetadataBytes encode_time_metadata(const TimeMetadata &metadata)
+{
+    TimeMetadataBytes out{};
+    const auto offset = static_cast<std::uint16_t>(metadata.offset_minutes);
+    const auto sync = static_cast<std::uint64_t>(metadata.last_sync_utc);
+    out[0] = static_cast<std::uint8_t>(offset);
+    out[1] = static_cast<std::uint8_t>(offset >> 8);
+    for (std::size_t i = 0; i < 8; ++i) {
+        out[2 + i] = static_cast<std::uint8_t>(sync >> (8 * i));
+    }
+    return out;
+}
+
+constexpr TimeMetadata decode_time_metadata(const TimeMetadataBytes &bytes)
+{
+    std::uint64_t sync = 0;
+    for (std::size_t i = 0; i < 8; ++i) {
+        sync |= static_cast<std::uint64_t>(bytes[2 + i]) << (8 * i);
+    }
+    const auto offset = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(bytes[0]) |
+        static_cast<std::uint16_t>(bytes[1] << 8));
+    return {static_cast<std::int16_t>(offset), static_cast<std::int64_t>(sync)};
+}
 
 enum class MetadataRead : std::uint8_t { Present, Absent, Unreadable };
 
