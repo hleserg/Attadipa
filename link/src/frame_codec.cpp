@@ -86,9 +86,6 @@ std::size_t Decoder::push(const std::uint8_t* data, std::size_t length)
         std::memcpy(buffer_ + size_, data, accepted);
         size_ += accepted;
     }
-    if (accepted < length) {
-        stats_.input_dropped += static_cast<std::uint32_t>(length - accepted);
-    }
     return accepted;
 }
 

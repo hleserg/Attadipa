@@ -1917,6 +1917,24 @@ constants.
   measured 2026-08-26 on USB serial `28:84:85:B2:18:A4` at source commit
   `1e51897`.
 
+### One host write larger than the USB receive ring loses its tail before the decoder
+
+- **MEASURED:** on the physical Waveshare, 60 pipelined `WAIT_STABLE` requests
+  sent as one 1 140-byte host write were all answered, in order, in 117 ms;
+  220 sent as one 4 180-byte write were answered 215/220, the last five never,
+  and 4 180 − 4 096 = 84 bytes is exactly the tail past the receive ring
+  (`firmware/main/watch_control.cpp:352` — "usb.rx_buffer_size = 4096;"). The
+  loss is inside the USB-Serial/JTAG driver, so no counter sees it: not the
+  decoder's `input_dropped`, which counts bytes the decoder abandoned, and not
+  the host's `DecoderStats`. The 211 host-side resyncs in the same run were the
+  console heartbeat lines the firmware prints on the shared port, not loss.
+- **Boundary:** this is the ceiling of one write, not of throughput; the
+  shipped client sends one framed request per write and never reaches it. It
+  says nothing about the simulator's Unix socket, which has no such ring.
+- **Source:** [PR #404, bench comment](https://github.com/hleserg/Attadipa/pull/404#issuecomment-5503429048),
+  measured 2026-09-02 on USB serial `28:84:85:B2:18:A4` with that branch's HIL
+  image at `cedfdfa` and its own `tools/watch` client.
+
 ### MeshCore Companion discovery and connected status run on the physical Waveshare
 
 - **Claim:** the Waveshare watch at USB serial `28:84:85:B2:18:A4` discovered
@@ -2046,3 +2064,45 @@ ones that heading states.
   (`nvs_api.cpp:522`-`:524`), and a larger buffer returns the stored size in
   `*length` (`:526`), which is what lets a reader reject a blob of another
   schema by size.
+
+### A second `nvs_flash_init()` cannot change the first one's verdict
+
+- **Claim:** once default NVS has initialised, a later `nvs_flash_init()` in
+  the same boot returns `ESP_OK` without touching the partition, and once it
+  has failed, a later call runs the same initialisation on the same flash and
+  answers the same way. So a verdict taken from the first call is the verdict
+  for the boot.
+- **Source (upstream, read):** the pinned toolchain's own source, `~/esp/esp-idf`
+  at `v5.5.5`, `components/nvs_flash/src/nvs_partition_manager.cpp:41` —
+  `mStorage = lookup_storage_from_name(partition_label);` — then `:42`-`:43` —
+  `if (mStorage) {` / `return ESP_OK;` — at the top of `init_partition`,
+  before any flash is read. Nothing in the tree calls `nvs_flash_deinit()`
+  or `nvs_flash_erase()` (grep, this repository, 2026-09-02), which is what
+  would make the second call see a different partition.
+- **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
+  re-reads it.
+- **Consequence:** `firmware/main/waveshare_board.cpp:256` —
+  "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
+  the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
+  cannot contradict it (ADR-0014).
+
+### The two "erase the partition and try again" verdicts of `nvs_flash_init()`
+
+- **Claim:** `ESP_ERR_NVS_NO_FREE_PAGES` and `ESP_ERR_NVS_NEW_VERSION_FOUND`
+  are the two answers whose documented remedy is erasing the partition; no
+  other `nvs_flash_init()` failure carries that remedy.
+- **Source (upstream, read):** same tree. `components/nvs_flash/include/nvs.h:42`
+  — `#define ESP_ERR_NVS_NO_FREE_PAGES` — whose comment ends "Erase the whole
+  partition and call nvs_flash_init again", and `:46` —
+  `#define ESP_ERR_NVS_NEW_VERSION_FOUND` — "contains data in new format and
+  cannot be recognized by this version of code". The implementation treats
+  them as one family: `components/nvs_flash/src/nvs_api.cpp:154` —
+  `if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {`.
+  The header's other `ESP_ERR_NVS_*` comments name no erase.
+- **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
+  header: a third member of the family would make the boot log recommend the
+  wrong recovery for it.
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:259` —
+  "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
+  reset required" for exactly these two, and ADR-0014 names the same two as
+  the erase this firmware never performs on its own.

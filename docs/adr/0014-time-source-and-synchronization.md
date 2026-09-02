@@ -53,7 +53,7 @@ cannot honestly resume where it left off.
   leaves it at any point, and nothing reaches the board before the offset is
   accepted (`apps/include/attadipa/apps/provisioning.h:35` — "Cancel,"), so a
   long press made by accident costs one key and not a retyped clock. The board's
-  `firmware/main/waveshare_board.cpp:403` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
+  `firmware/main/waveshare_board.cpp:432` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
   runs the same `provision_time()` sequence as the opcode, with the same
   order and the same one-day lifetime. Whoever holds the watch may set it —
   [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26 decided that.
@@ -61,6 +61,19 @@ cannot honestly resume where it left off.
   rule. A future companion or network provider refreshes the offset before its
   deadline. If it does not, local time becomes stale rather than silently
   asserting that an old seasonal offset is current.
+- Default NVS is initialised once per boot and its verdict kept
+  (`firmware/main/waveshare_board.cpp:256` — "state.metadata_storage = nvs_flash_init();").
+  A verdict other than success is logged once and every
+  synchronization of that boot fails before the RTC is touched, with the same
+  `Failed` (the host's `OperationFailed`) as a store that cannot be read: the
+  device is at fault, not the request, and the boot log carries the reason. This firmware never calls `nvs_flash_erase()` on its
+  own, whatever the verdict — `ESP_ERR_NVS_NO_FREE_PAGES` and
+  `ESP_ERR_NVS_NEW_VERSION_FOUND` are the two ESP-IDF answers with "erase the
+  partition and try again" — because default NVS is also the BLE bond store
+  and the MeshCore pin. That erase is a factory reset a person performs with
+  the factory image backed up first (`idf.py erase-flash`, then reflash); until
+  then the clock runs degraded and keeps showing. The BLE side initialises the
+  same partition for its own reasons and applies the same policy.
 
 The single-transaction RTC rule follows NXP's
 [PCF85063A datasheet Rev. 7.3](https://www.nxp.com/docs/en/data-sheet/PCF85063A.pdf),
