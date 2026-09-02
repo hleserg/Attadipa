@@ -534,6 +534,7 @@ Semantics for the events that will otherwise be decided by accident:
 | permission denied / no `LPP_GPS` record | a normal outcome. Availability stays `Ready`; validity is unaffected; **not** an error to the user |
 | timeout on a remote request | one outstanding request, so: fail it, do not retry inside the provider, surface it. Retry policy belongs to the caller |
 | identical coordinate read twice | evidence *against* a live fix, not for one. Never refreshes `age_at_source_ms` |
+| `gps:0`, or no `gps` key | availability stays `Ready` — the node handed over a coordinate regardless, and the watch cannot bring the node's receiver up. It is **not** `Off`: `core/include/attadipa/core/availability.h:22` — "Off,            // deliberately powered down; can be brought up" — is a remedy this device can perform, and a node provider has none. The receiver's state is a fact about the coordinate, so validity caps at `Stale` (§4.1) and the first consumer (§6) shows the `gps` key itself |
 | mid-session refresh | **none in the first slice.** Path A is read once per session and there is no safe re-read (M27); validity tops out at `Stale` and `Degraded` is not produced. A second read happens only at reconnect, and that is a new session, not a refresh |
 | two providers disagree | out of scope. Recorded so that the first slice's shape does not foreclose ADR-0011 §5.2 |
 
@@ -586,16 +587,18 @@ than papering over it.
 ### 8.2 Simulator
 
 A fake provider drives every `Availability` a node provider can produce —
-`Unprovisioned` (no node pinned), `Unreachable`, `Incompatible`, `Failed` (the
-short frame §8.1 rejects), `Off` and `Ready` — and, under `Ready`, the
+`Unprovisioned` (no node pinned), `Unreachable`, `Incompatible` (the version
+handshake fails), `Failed` (the short frame §8.1 rejects) and `Ready` — and, under `Ready`, the
 `PositionValidity` ladder `NoFix` and `Stale` (the first slice's ceiling, §4.1),
 plus disconnect and recovery, without the consumer learning which provider
 answered. `Degraded` is a validity, not an availability —
 `core/include/attadipa/core/position.h:188` — "Degraded,  // usable, with a caveat the interface must show"
 — and the two are never folded into one another (ADR-0004 §3); the seven
 availabilities must render as seven different sentences, which is what the
-simulator is there to show. `Unsupported` is the one value a node provider
-cannot produce and is left to the board that has no node at all.
+simulator is there to show. `Unsupported` and `Off` are the two values a node
+provider cannot produce: the first is left to the board that has no node at
+all, the second has no producer because a node hands over its coordinate with
+the receiver off (§6.1, `gps:0`) and the watch cannot bring that receiver up.
 
 ### 8.3 Physical — `NOT EXECUTED — HARDWARE REQUIRED`
 

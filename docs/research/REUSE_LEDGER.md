@@ -1125,9 +1125,9 @@ zero** as an explicit case, since a vector built with round-to-nearest disagrees
 with a real device by one LSB ≈ 11.1 m; truncation of the frame at every byte
 offset; a 24-bit extreme rejected *before* the multiply; unknown type; channel 0;
 duplicate `LPP_GPS`; and the semantic ones, which matter more than any of the
-above — **no input may produce `PositionValidity::Valid`**, `age_at_source_ms`
-is never written as zero, and a coordinate that is identical to the last one
-does not refresh either age.
+above — are **not restated here**: `docs/research/NODE_POSITION_FROM_MESHCORE.md`
+§8.1 holds them (no `Valid`, `Validity::Unknown` on every publish, no refresh on
+an unchanged coordinate), and its §4.1 withdrew the "never zero" rule for `age_at_source_ms`.
 
 ---
 
