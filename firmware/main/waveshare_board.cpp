@@ -639,9 +639,17 @@ void round_flush_area(lv_area_t *area) {
   area->x2 |= 1;
 }
 
+// A boot without the touch controller (#367 item 6) shows a correct clock
+// that ignores every finger, and the long press that opens the entry screen
+// is gone with it; the face says so.
+attadipa::apps::ClockText clock_text() {
+  attadipa::apps::ClockState clock = read_clock_state();
+  clock.touch_absent = state.touch == nullptr;
+  return attadipa::apps::format_clock(clock, false);
+}
+
 void refresh_clock(lv_timer_t *timer) {
-  const attadipa::apps::ClockState clock = read_clock_state();
-  state.clock_face.update(attadipa::apps::format_clock(clock, false));
+  state.clock_face.update(clock_text());
   if (timer != nullptr) {
     lv_timer_set_period(timer,
                         attadipa::apps::clock_manifest().tick_period.value);
@@ -782,7 +790,6 @@ void refresh_mesh() {
 #endif
 
 void build_clock_screen() {
-  const attadipa::apps::ClockState clock = read_clock_state();
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
   state.clock_face.build(lv_screen_active(),
@@ -790,7 +797,7 @@ void build_clock_screen() {
                           attadipa::ui::PixelCost::PerPixel,
                           attadipa::ui::Metrics::for_dpi(
                               profile != nullptr ? profile->display.dpi() : 0)},
-                         attadipa::apps::format_clock(clock, false));
+                         clock_text());
 }
 
 constexpr unsigned kDoneTicks = 3;
@@ -983,9 +990,14 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // `lv_timer_handler()` over freed objects.
 //
 // `lvgl_reachable == false` is the one caller whose failure *was* that lock:
-// the LVGL task has held it past a second, and `lvgl_port_remove_disp()` would
-// wait on it forever (it locks with no timeout). That display is then left
-// where it is and said so; a leak is recoverable and a hang is not.
+// the LVGL task has held it past a second, which means it is inside
+// `lv_timer_handler()`, most plausibly a flush the panel never acknowledged.
+// `lvgl_port_remove_disp()` would wait on that lock forever (it locks with no
+// timeout), and freeing the panel, its IO or the QSPI host under a flush in
+// progress is a use-after-free on the next byte. So the whole display stack
+// -- LVGL, display, panel, panel IO, SPI2 -- is left where it is and said so;
+// only what nothing below LVGL is using is undone. A leak is recoverable and
+// a hang or a panic is not.
 //
 // What "undone" means for LVGL itself is narrower than for the rest:
 // `lvgl_port_deinit()` only asks the LVGL task to stop, and `lv_deinit()` runs
@@ -1005,9 +1017,13 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 esp_err_t abandon_board(bool lvgl_reachable) {
   esp_err_t first_failure = ESP_OK;
   if (state.display != nullptr && !lvgl_reachable) {
-    ESP_LOGE(kTag, "boot rollback: LVGL holds its lock; its display is left "
-                   "in place rather than waited for");
+    ESP_LOGE(kTag, "boot rollback: LVGL holds its lock; LVGL, the panel and "
+                   "QSPI are left in place rather than freed under it");
     state.display = nullptr;
+    state.lvgl_up = false;
+    state.panel = nullptr;
+    state.panel_io = nullptr;
+    state.spi_bus_up = false;
   }
   if (state.display != nullptr) {
     lvgl_port_lock(0);

@@ -242,6 +242,7 @@ public:
         ESP_LOGE(kTag, "arm touch wake: %s", esp_err_to_name(result));
         return false;
       }
+      touch_armed_ = true;
       return true;
     }
     default:
@@ -270,6 +271,7 @@ public:
       if (result == ESP_OK) {
         result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
       }
+      touch_armed_ = false;
       break;
     default:
       break;
@@ -316,8 +318,11 @@ public:
     const bool debug_wake = debug_timer_wake_;
     debug_timer_wake_ = false;
 
-    ESP_LOGI(kTag, "entering %s (touch + %s)",
-             attadipa::core::to_string(state),
+    // Names what was armed and nothing else: a touchless boot (#367 item 6)
+    // never arms the line, and the one line that explains a sleep must not
+    // claim a source the hardware never agreed to.
+    ESP_LOGI(kTag, "entering %s (%s%s)", attadipa::core::to_string(state),
+             touch_armed_ ? "touch + " : "",
              debug_wake ? "debug timer" : "PMU polling");
 
     for (;;) {
@@ -402,6 +407,7 @@ private:
   i2c_master_dev_handle_t pmu_ = nullptr;
   esp_lcd_panel_handle_t panel_ = nullptr;
   gpio_num_t touch_interrupt_ = GPIO_NUM_NC;
+  bool touch_armed_ = false;
   std::uint8_t awake_brightness_ = 0;
   bool debug_timer_wake_ = false;
 };
