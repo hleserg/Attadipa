@@ -130,7 +130,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:941` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:1023` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -138,7 +138,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:940` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:1022` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
@@ -196,7 +196,7 @@ Priced against the current build, B is **A plus a radio**:
   `firmware/sdkconfig.defaults:116` — "CONFIG_BT_NIMBLE_MAX_BONDS=1", and the
   watch's one bond is the MeshCore node's. A provisioning phone that bonds
   evicts it — NimBLE drops the oldest peer to make room:
-  `docs/research/VERIFIED_FACTS.md:238` — "### A wrong MeshCore node's bond evicts the pinned node's",
+  `docs/research/VERIFIED_FACTS.md:320` — "### A wrong MeshCore node's bond evicts the pinned node's",
   which traces it to the upstream source and marks the boundary honestly as
   source-traced rather than measured. So B either raises `MAX_BONDS` (more NVS
   and RAM in every image) or pairs without bonding, which means re-entering the

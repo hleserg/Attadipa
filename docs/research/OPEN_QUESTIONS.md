@@ -250,6 +250,21 @@ sanitizer output. That is **an unverified author claim** and it is recorded as
 one. This project has no Heltec V4 and independently confirming it is
 **NOT EXECUTED — HARDWARE REQUIRED**.
 
+### What a position out of a node still does not say
+
+Opened 2026-09-02 by [#412](https://github.com/hleserg/Attadipa/issues/412). The
+wire formats are closed — three of them, at both revisions, in
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md). What is open is
+everything that needs a node in a room, plus one thing the source genuinely does
+not say.
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| M24 | **Which build environment is on the free bench T114, and does it answer `gps:1`?** `v1.17.1-d929643` does not encode the environment, and GNSS presence is not a board fact either: `EnvironmentSensorManager` opens the GPS UART, waits one second, and sets `gps_detected` from whether any byte arrived. So a node can disagree with itself across two power cycles, and nothing read from source predicts what this unit reports. It decides whether path B is available at all on the one node we may test against | **UNKNOWN** | one `CMD_GET_CUSTOM_VARS` (40) on the bench, reading `RESP_CODE_CUSTOM_VARS` (21). Costs one command and no write. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M25 | **Does losing the fix really leave the transmitted coordinate unchanged?** Read from source the answer is yes — the receiver's value is copied into `node_lat` only inside `if (_location->isValid())`, so the last good value persists — and every conservative rule in the mapping rests on it. It has never been observed | **ASSUMPTION**, with the source behind it | an open-sky capture of `RESP_CODE_SELF_INFO` with the node's own fix independently visible, then indoor captures for an hour. **The prediction is that bytes 36–43 are byte-identical.** If they are not, the report is wrong in a way worth knowing at once. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M26 | **What datum is the altitude in an `LPP_GPS` record?** Cayenne LPP says "meters" and stops. MicroNMEA reads NMEA GGA field 9, which is orthometric height above mean sea level, so MSL is the better guess — but the chain passes through `LocationProvider::getAltitude()`, which any variant may implement differently, and a geoid separation is tens of metres | **UNKNOWN** | reading every in-tree `getAltitude` implementation, or a bench comparison against a known elevation. Until then populate `altitude_msl_mm` with the provenance recorded, and never `altitude_ellipsoid_mm` |
+| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?** It is the only way to re-read the node's coordinate, and its handler also sets `_iter_started = false`, aborting a contacts iteration in progress. Read from source; the practical cost — whether a client notices, whether contacts resync cleanly — is unmeasured | **UNKNOWN** | a bench session that starts a contacts sync and interrupts it. `NOT EXECUTED — HARDWARE REQUIRED` |
+
 ## Architecture
 
 | # | Question | Status | Resolved by |

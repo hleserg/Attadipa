@@ -76,7 +76,7 @@ flatly contradicts.
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:377](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:1083](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+[VERIFIED_FACTS.md:1165](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
@@ -113,7 +113,7 @@ pin facts?", UNKNOWN, with a decision row reading "open" and a sentence in
 `DEPENDENCIES.md` reading "This is a reuse-ledger decision, not a default". All
 three have since been answered the other way, by
 [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md): T6 is struck
-([OPEN_QUESTIONS.md:272](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
+([OPEN_QUESTIONS.md:287](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
 the decision row reads decided
 ([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "a board backend composes ESP-IDF"),
 and the sentence is the decision itself
@@ -732,7 +732,7 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:377](HARDWARE_MATRIX.md) "8 MB **octal**" and
-   [VERIFIED_FACTS.md:1083](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   [VERIFIED_FACTS.md:1165](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
    Only the build-configuration reading was true at the time; T-165 has since
    added and exercised that configuration.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
@@ -801,7 +801,7 @@ twice. **Two are still live.**
    `waveshareteam/Waveshare-ESP32-components`, at
    [REUSE_LEDGER.md:72](REUSE_LEDGER.md)
    "github.com/waveshareteam/Waveshare-ESP32-components".
-3. [VERIFIED_FACTS.md:388-389](VERIFIED_FACTS.md) "every part, pin, I2C" promises
+3. [VERIFIED_FACTS.md:470-471](VERIFIED_FACTS.md) "every part, pin, I2C" promises
    that every part, pin, I2C address and power rail lives in HARDWARE_MATRIX. For this board neither
    addresses nor rails were there, which made the promise false. The promise now
    holds because the table was filled, not because the sentence was weakened.

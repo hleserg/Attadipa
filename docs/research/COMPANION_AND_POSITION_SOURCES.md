@@ -1,9 +1,10 @@
 # Companions and position sources — what must be verified
 
-Status: **open research, two sections closed.** §1 (MeshCore) and §2
-(Meshtastic) now have answers; §§3–7 are still questions. Every row is a question
-with a named source to answer it from, and the file exists so that the answers
-land somewhere other than a chat log.
+Status: **open research, two sections closed and one half-closed.** §1
+(MeshCore) and §2 (Meshtastic) have answers; **§4's MeshCore row is answered as
+of 2026-09-02** and the rest of §4, and §§3, 5, 6 and 7, are still questions.
+Every row is a question with a named source to answer it from, and the file
+exists so that the answers land somewhere other than a chat log.
 
 Raised by the owner on 2026-08-22 and recorded as
 [OD-7](OWNER_DECISIONS.md#od-7--the-companion-is-any-node-not-only-ours),
@@ -150,13 +151,33 @@ amendment rather than a document.
 
 ## 4. Position sources — T-075, T-076
 
+**One row of this table is now answered end to end.** 2026-09-02,
+[#412](https://github.com/hleserg/Attadipa/issues/412):
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md) traces every wire
+a MeshCore node puts a coordinate on, at the pin and at current upstream, and
+specifies what a first provider may claim from it. Three things there change
+what this section says:
+
+- **there are three wires, not one, and the cheapest is not the telemetry one.**
+  `RESP_CODE_SELF_INFO` carries the node's coordinate at bytes 36–43 scaled
+  ×10⁶ — a hundred times finer than the `LPP_GPS` record, ungated by any
+  telemetry permission, and inside a frame `link/src/meshcore_companion.cpp` has
+  parsed since the first companion session. We were discarding it;
+- **`CMD_GET_CUSTOM_VARS` is a real, readable origin signal**, and this document
+  used to imply none existed. Its `gps` key is absent, `0` or `1` — no receiver
+  detected, receiver off, receiver running. Three states instead of one, from
+  one command. Still not a fix flag and still not an age;
+- **the ceiling is unchanged and confirmed against the source that runs.**
+  `PositionValidity::Valid` is not reachable from a stock node, by any path, and
+  §4.1 of that report is the argument.
+
 The inventory, and what each may honestly claim. The column that matters is the
 last one.
 
 | Source | Typical accuracy | Provenance |
 |---|---|---|
 | the watch's own receiver | to be measured | the wearer |
-| a companion node's receiver | to be measured | **the node**, which may be elsewhere |
+| a companion node's receiver | **quantisation is now known**: ≈ 0.11 m over `RESP_CODE_SELF_INFO`, ≈ 11.1 m over `LPP_GPS`. The receiver's own accuracy is never transmitted and stays `UNKNOWN` | **the node**, which may be elsewhere |
 | a phone over the companion link | to be measured | the phone, which is usually but not always co-located |
 | a coordinate inside an incoming message | whatever the sender's was | **somebody else** |
 | a coordinate inside a telemetry frame | the same | the reporting device |
