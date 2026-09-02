@@ -121,17 +121,19 @@ delete_ref() {
 # claim nobody can see is exactly the stall #254 reports.
 discard_own_ref() {
   local repo="$1" number="$2" tag_sha="$3" live rc attempt
-  # Delete only what is positively this attempt's ref. A 404 seconds after the
-  # create is usually the read lagging the write, so look again; an answer that
-  # never settles leaves the ref where it is and names it. Deleting on "unknown"
-  # is the bug this file had (#392).
+  # Delete only what is positively this attempt's ref. Both callers run after
+  # the create returned 201, so the ref IS there: a 404 seconds later is the
+  # read lagging the write, so look again, and three of them are still not
+  # proof of absence -- they are an answer that never settled, and the ref is
+  # left where it is and named, like any other unreadable answer. Deleting on
+  # "unknown" is the bug this file had (#392); returning quietly on "not
+  # found" would be its silent twin, a lock with no holder and no label.
   for attempt in 1 2 3; do
     live="$(attadipa_claim_tag_sha "$repo" "$number")"
     rc=$?
     if [ "$rc" -ne 1 ] || [ "$attempt" -eq 3 ]; then break; fi
     sleep 2
   done
-  [ "$rc" -ne 1 ] || return 0   # three 404s: there is no ref to leave behind
   if [ "$rc" -eq 0 ]; then
     [ "$live" = "$tag_sha" ] || return 0   # another writer's claim is not ours to remove
     delete_ref "$repo" "$number" && return 0
@@ -202,13 +204,16 @@ acquire() {
   # add one fact -- that another holder is there after all. It cannot un-win
   # the claim by failing: the ref is milliseconds old and GitHub's reads lag
   # its writes, so an unreadable answer is retried and, if it never settles,
-  # reported and trusted (#392).
+  # reported and trusted (#392). A read naming somebody else is retried the
+  # same way: the writer lease is released and re-acquired seconds apart, and
+  # a replica behind that DELETE still serves the previous holder's tag. Only
+  # a different holder that survives every read is a claim to undo.
   local read_rc
   attempt=1
   while :; do
     winner="$(attadipa_claim_owner "$repo" "$number")"
     read_rc=$?
-    if [ "$read_rc" -eq 0 ] || [ "$attempt" -eq 4 ]; then break; fi
+    if { [ "$read_rc" -eq 0 ] && [ "$winner" = "$holder" ]; } || [ "$attempt" -eq 4 ]; then break; fi
     attempt=$((attempt + 1))
     sleep 2
   done
