@@ -188,9 +188,24 @@ int main()
         entry.press(EntryKey::Ok);
         CHECK(entry.verdict() == EntryVerdict::Failed);
         CHECK(entry.field() == EntryField::Offset && board.clocks == 1);
+        // Cancel here is not "nothing changed": the board was asked and may
+        // have written the RTC before it failed, so the failure is what stays.
+        {
+            ProvisioningEntry left(board);
+            type(left, "20260902");
+            left.press(EntryKey::Ok);
+            type(left, "0000");
+            left.press(EntryKey::Ok);
+            type(left, "0000");
+            left.press(EntryKey::Ok);
+            left.press(EntryKey::Cancel);
+            CHECK(left.finished() && left.verdict() == EntryVerdict::Failed);
+            CHECK(std::strcmp(left.text(Locale::En).hint, "could not be stored") == 0);
+            CHECK(board.clocks == 2);
+        }
         board.clock_answer = ProvisionOutcome::Accepted;
         entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Passkey && board.clocks == 2);
+        CHECK(entry.field() == EntryField::Passkey && board.clocks == 3);
         // A refused passkey likewise.
         board.passkey_answer = ProvisionOutcome::Rejected;
         type(entry, "000000");

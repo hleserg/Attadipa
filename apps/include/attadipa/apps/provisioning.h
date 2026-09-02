@@ -38,7 +38,7 @@ enum class EntryKey : std::uint8_t {
 // What was said about the last OK, shown until the next key.
 enum class EntryVerdict : std::uint8_t {
     None, Accepted, Rejected, Failed, Skipped,
-    Cancelled,  // Left before anything reached the board.
+    Cancelled,  // Left before the board was asked anything.
 };
 
 struct EntryText {
@@ -73,6 +73,7 @@ private:
     char digits_[9] = {};
     unsigned count_ = 0;
     bool offset_west_ = false;
+    bool board_failed_ = false;  // a set_wall_clock the board could not finish
     // Kept across fields so the offset can be committed with them.
     std::int64_t year_ = 0;
     unsigned month_ = 0, day_ = 0, hour_ = 0, minute_ = 0;

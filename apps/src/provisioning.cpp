@@ -71,8 +71,11 @@ void ProvisioningEntry::press(EntryKey key) {
     return;
   case EntryKey::Cancel:
     // Past the offset the clock is already the board's; leaving then is the
-    // empty-passkey skip by another key, and says so.
+    // empty-passkey skip by another key, and says so. Leaving after the board
+    // failed a write is not "nothing changed": the RTC may hold the typed
+    // time with no rollback behind it, so the last answer stands.
     verdict_ = field_ == EntryField::Passkey ? EntryVerdict::Skipped
+               : board_failed_               ? EntryVerdict::Failed
                                              : EntryVerdict::Cancelled;
     field_ = EntryField::Done;
     count_ = 0;
@@ -144,6 +147,7 @@ void ProvisioningEntry::accept() {
       return;
     case core::ProvisionOutcome::Failed:
       verdict_ = EntryVerdict::Failed;
+      board_failed_ = true;
       return;
     }
     break;

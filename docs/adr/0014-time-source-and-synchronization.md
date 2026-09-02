@@ -50,9 +50,11 @@ cannot honestly resume where it left off.
   the watch itself: a long press on the clock opens an entry screen for the
   date, the time, the offset and the node passkey
   (`apps/include/attadipa/apps/provisioning.h:55` — "class ProvisioningEntry {"); a Cancel key
-  leaves it at any point, and nothing reaches the board before the offset is
-  accepted (`apps/include/attadipa/apps/provisioning.h:35` — "Cancel,"), so a
-  long press made by accident costs one key and not a retyped clock. The board's
+  leaves it at any point, and nothing reaches the board before OK on the
+  offset (`apps/include/attadipa/apps/provisioning.h:35` — "Cancel,"), so a
+  long press made by accident costs one key and not a retyped clock. A board
+  that failed that write is not rolled back (the RTC is written first), so a
+  Cancel after it keeps the failure on screen rather than saying nothing changed. The board's
   `firmware/main/waveshare_board.cpp:432` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
   runs the same `provision_time()` sequence as the opcode, with the same
   order and the same one-day lifetime. Whoever holds the watch may set it —

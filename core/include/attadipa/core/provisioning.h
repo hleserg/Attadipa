@@ -19,7 +19,7 @@ namespace attadipa::core {
 enum class ProvisionOutcome : std::uint8_t {
     Accepted,  // Applied and, where it persists, persisted.
     Rejected,  // Not a value this watch takes. Nothing changed.
-    Failed,    // Storage or hardware refused. Nothing changed.
+    Failed,    // Storage or hardware refused; part of it may have moved.
 };
 
 struct WallClockEntry {
