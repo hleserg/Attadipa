@@ -99,6 +99,17 @@ bool TimeService::observe(const TimeObservation& candidate)
     if (has_observation_) {
         const Validity current_validity = validity(observation_, candidate.observed_at);
         if (!has_report_ && current_validity == Validity::Valid) {
+            // A sample that is already stale when it arrives does not displace
+            // time that is still valid, however high its source ranks. #264's
+            // ledger names the case: a Trusted GNSS observation whose
+            // age_at_source_ms has already spent its fresh_for outranks a
+            // fresh Manual one, and freshness was only ever asked of what we
+            // hold. This only ever rejects a Trusted candidate -- anything
+            // less is already rejected by the comparison below, and
+            // Trusted-with-fresh_for-zero never reaches here.
+            if (validity(candidate, candidate.observed_at) != Validity::Valid) {
+                return false;
+            }
             if (candidate.quality < observation_.quality ||
                 (candidate.quality == observation_.quality &&
                  priority(candidate.source) < priority(observation_.source))) {

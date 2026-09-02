@@ -37,10 +37,12 @@ cannot honestly resume where it left off.
   warns that time may be outdated until a source synchronizes again.
 - The first real input is the existing physical USB debug connection:
   `watch_control.py sync-time`. It sends host UTC, the host's
-  current offset and a bounded lifetime. The device writes PCF85063 seconds
-  through years in one transaction, reads the calendar back, commits the
-  offset metadata to NVS, and only then acknowledges. The host does not retry a
-  lost acknowledgement because that could repeat a wall-clock write.
+  current offset and a bounded lifetime. The device commits the offset
+  metadata to NVS first, then writes PCF85063 seconds through years in one
+  transaction, reads the calendar back, and only then acknowledges (#264
+  reversed the order: a metadata layer that cannot be written is found before
+  the chip is touched). The host does not retry a lost acknowledgement because
+  that could repeat a wall-clock write.
 
   **This is no longer true of a product image, and has not been since #346.**
   `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n", so the

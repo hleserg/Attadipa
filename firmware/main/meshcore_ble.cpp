@@ -1648,7 +1648,7 @@ esp_err_t start_meshcore_ble()
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
-    // `firmware/main/waveshare_board.cpp:191` --
+    // `firmware/main/waveshare_board.cpp:208` --
     // "ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, \"initialize time metadata\");"
     // -- and `firmware/main/attadipa_main.cpp:307` logs a UI failure and starts
     // the mesh anyway, so on that path the pin would be read out of an
