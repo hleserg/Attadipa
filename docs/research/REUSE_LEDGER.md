@@ -2539,7 +2539,7 @@ code under its own licence — no new dependency, no new licence surface:
   either widens them or reports a partial completion under a name that says
   "the bond", which is #378 with more state.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:1519`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:1551`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. What does not
