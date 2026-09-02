@@ -341,7 +341,7 @@ Everything that provisions a watch sits behind that symbol:
 
 - **The clock cannot be set.** `write_rtc()` is reached only through
   `provision_time()`, whose one instantiation is inside the
-  `firmware/main/waveshare_board.cpp:381` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+  `firmware/main/waveshare_board.cpp:385` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
   block. (Since #356's first change the sequence itself compiles in every
   image; what a production image lacks is a caller.) A production watch reads
   the PCF85063 and never writes it, so a board off the shelf shows whatever its
@@ -355,7 +355,7 @@ Everything that provisions a watch sits behind that symbol:
   #356's first change boot replays a stored passkey through the same
   `Configure` event, so a production image scans if a HIL image left one on
   flash; with nothing on flash the worker's
-  `firmware/main/meshcore_ble.cpp:1170` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1174` — "if (configured.load()) start_scan();"
   is false forever: the transport starts, is never configured, and never looks
   for a node.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
