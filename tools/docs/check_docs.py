@@ -298,10 +298,6 @@ FINGERPRINT_MAX = 80
 # is itself reported.
 PLACEHOLDER = "EXAMPLE.md"
 
-# Text this repository carries but does not write: a citation into it may
-# carry a fingerprint and is checked when it does, but none is demanded.
-UPSTREAM_PREFIX = "docs/upstream/"
-
 # These documents also cite a sibling by its bare SHOUTING name --
 # `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
 # this check was written for actually lived. Resolved against the tree rather
@@ -409,11 +405,11 @@ def check_citation_lines(root: str) -> list[str]:
     def tracked_target(resolved: str) -> str:
         """Repo-relative path, when a citation lands in a file we edit.
 
-        Empty for a path this repository does not track, for anything outside
-        the tree, and for `docs/upstream/` -- copies of somebody else's text,
-        which this repository does not re-read, so a quote into one is a
-        promise nobody here can keep. Those stay opt-in. Everything else is
-        not: inserting a paragraph above a cited line lands the citation on a
+        Empty for a path this repository does not track and for anything
+        outside the tree. Those stay opt-in. Everything else is not --
+        `docs/upstream/` included, which #399 first exempted as somebody
+        else's copied text until review showed both files there are written
+        and edited here: inserting a paragraph above a cited line lands the citation on a
         line that is real, non-blank and about something else, and nothing
         here could see it. #331 exempted `.md` targets on the reasoning that
         documentation lines are stable; #386 measured that reasoning against
@@ -423,9 +419,7 @@ def check_citation_lines(root: str) -> list[str]:
         if not resolved:
             return ""
         rel = os.path.relpath(resolved, root)
-        if rel not in tracked or rel.startswith(UPSTREAM_PREFIX):
-            return ""
-        return rel
+        return rel if rel in tracked else ""
 
     for path in markdown_files(root):
         if os.path.basename(path) == PLACEHOLDER:

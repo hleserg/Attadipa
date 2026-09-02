@@ -271,21 +271,23 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
-        # THE TWO EXEMPTIONS THAT REMAIN, asserted rather than assumed.
-        # `docs/upstream/` is tracked -- so "tracked" alone would demand a
-        # quote there -- but it is somebody else's text, which this repository
-        # does not re-read; #386 keeps it opt-in by name.
+        # `docs/upstream/` is not exempt. #399 first kept it opt-in as
+        # "somebody else's text, copied", and review showed the premise false:
+        # both files there are written and edited here, one gaining 54 lines
+        # in a single commit, and this repository cites into them. Tracked is
+        # the rule, and the directory name buys nothing.
         write(root, "docs/upstream/THEIRS.md", "their one\ntheir two\n")
         subprocess.run(["git", "add", "-A"], cwd=root, check=True)
         write(root, "docs/CITER.md", "See `docs/upstream/THEIRS.md:2`.\n")
         case(
-            "a tracked upstream document is not required to carry one",
+            "a tracked upstream document is required to carry one like any other",
             "check_citation_lines",
-            not check_docs.check_citation_lines(root),
+            any("with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)),
         )
         write(root, "docs/CITER.md", 'See `docs/upstream/THEIRS.md:2` — "their one".\n')
         case(
-            "a fingerprint into an upstream document is still checked when given",
+            "a fingerprint into an upstream document is checked",
             "check_citation_lines",
             any("which is now at :1" in problem
                 for problem in check_docs.check_citation_lines(root)),
@@ -376,16 +378,15 @@ def main() -> int:
             and not any("with no fingerprint" in problem for problem in problems),
         )
         # ... and the limit is not gated on the file being one this repository
-        # edits: an upstream target is exempt from NEEDING a quote, not from
-        # being held to the one it carries. Found in review of #399, where the
-        # only length case cited a source file and `if tracked and len(...)`
-        # survived the suite.
-        write(root, "docs/upstream/LONG.md", "alpha\n%s\n" % long_quote)
-        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        # edits: a target that needs no quote is still held to the one it
+        # carries. Found in review of #399, where the only length case cited a
+        # source file and `if tracked and len(...)` survived the suite. The
+        # untracked file is the one target left that needs no quote.
+        write(root, "docs/LONG.md", "alpha\n%s\n" % long_quote)
         write(root, "docs/CITER.md",
-              'See `docs/upstream/LONG.md:2` — "%s".\n' % long_quote)
+              'See `docs/LONG.md:2` — "%s".\n' % long_quote)
         case(
-            "an over-long fingerprint into an exempt file is still over-long",
+            "an over-long fingerprint into an untracked file is still over-long",
             "check_citation_lines",
             any("%d-character fingerprint" % len(long_quote) in problem
                 for problem in check_docs.check_citation_lines(root)),
