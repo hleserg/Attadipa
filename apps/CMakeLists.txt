@@ -7,6 +7,7 @@
 add_library(attadipa_apps
     src/app_manifest.cpp
     src/clock.cpp
+    src/provisioning.cpp
 )
 add_library(attadipa::apps ALIAS attadipa_apps)
 
