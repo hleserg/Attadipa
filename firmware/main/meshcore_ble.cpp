@@ -1765,8 +1765,8 @@ esp_err_t start_meshcore_ble()
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
-    // `firmware/main/waveshare_board.cpp:232` --
-    // "ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, \"initialize time metadata\");"
+    // `firmware/main/waveshare_board.cpp:245` --
+    // "state.metadata_storage = nvs_flash_init();"
     // -- and `firmware/main/attadipa_main.cpp:307` logs a UI failure and starts
     // the mesh anyway, so on that path the pin would be read out of an
     // uninitialised partition.
@@ -1780,7 +1780,8 @@ esp_err_t start_meshcore_ble()
     //
     // NO ERASE-AND-RETRY ON ESP_ERR_NVS_NO_FREE_PAGES HERE. That erase takes
     // the BLE bonds and the time metadata with the pin; it is one policy for
-    // the whole image, and this file is not where it is decided. What this file
+    // the whole image, decided in ADR-0014: this firmware never erases NVS on
+    // its own; recovery is a factory reset a person performs. What this file
     // owes is to say which of the two failures happened instead of reporting
     // both as "unpinned".
     const esp_err_t nvs_err = nvs_flash_init();

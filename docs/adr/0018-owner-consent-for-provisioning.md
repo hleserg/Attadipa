@@ -34,18 +34,18 @@ recorded here so that no option is credited with paying them.
    and a second one gated `save_time_metadata()` — two blocks rather than one,
    which is the difference between ungating this and thinking it is ungated.
    #356's first change removed the second: the sequence is
-   `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
-   in every image, and `firmware/main/waveshare_board.cpp:385` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   `firmware/main/provision_time.h:126` — "ProvisionTimeResult provision_time(Ops &ops,"
+   in every image, and `firmware/main/waveshare_board.cpp:414` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates its one instantiation,
-   `firmware/main/waveshare_board.cpp:386` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
+   `firmware/main/waveshare_board.cpp:415` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side is already unconditional:
-   `firmware/main/waveshare_board.cpp:231` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
+   `firmware/main/waveshare_board.cpp:244` — "esp_err_t restore_time_metadata() {". Every option therefore costs *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:1839` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   `firmware/main/meshcore_ble.cpp:1840` — "bool configure_meshcore_ble(std::uint32_t passkey)"
    reaches `firmware/main/meshcore_ble.cpp:1441` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
    `firmware/main/meshcore_ble.cpp:160` — "std::atomic_bool configured{false};"
@@ -54,7 +54,7 @@ recorded here so that no option is credited with paying them.
    there by #304: `firmware/main/meshcore_ble.cpp:224` — "constexpr const char* kMeshNvsNamespace = ",
    read at `firmware/main/meshcore_ble.cpp:313` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
    and written at `firmware/main/meshcore_ble.cpp:383` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:1786` —
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:1787` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
@@ -143,13 +143,13 @@ The decisive fact is one the firmware already asserts to its peer:
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:1839` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:1840` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.
 `docs/adr/0014-time-source-and-synchronization.md` ranks sources "GNSS, network,
 companion, mesh, manual, RTC, simulated" — `manual` is in that list, above
-`RTC`, and it is built: `firmware/main/provision_time.h:143` —
+`RTC`, and it is built: `firmware/main/provision_time.h:148` —
 "core::TimeSource::Manual, core::TimeQuality::Trusted," — is what the clock
 sequence tags its observation with. What no product image has is a caller for it.
 A hand-typed UTC is minutes-accurate at best,
@@ -252,7 +252,7 @@ The Waveshare RTC's own rail is not resolved either —
 and the documented backup cell belongs to the other board.
 
 The persisted UTC offset does survive, because it is in NVS rather than in the
-chip: `firmware/main/waveshare_board.cpp:231` — "esp_err_t restore_time_metadata() {".
+chip: `firmware/main/waveshare_board.cpp:244` — "esp_err_t restore_time_metadata() {".
 
 If the RTC does not retain, hand entry is recurring rather than one-time, on the
 path the owner meets first, because GNSS has not landed. That makes GNSS more
@@ -318,9 +318,9 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:386` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  by `firmware/main/waveshare_board.cpp:415` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
-  `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
+  `firmware/main/provision_time.h:148` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes
@@ -361,6 +361,6 @@ Beyond B and C:
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
   `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:546` — "void build_mesh_screen() {" — is
+  `firmware/main/waveshare_board.cpp:575` — "void build_mesh_screen() {" — is
   full of literal colours. Building the entry screen where the mesh screen was
   built would silently opt it out of the check.

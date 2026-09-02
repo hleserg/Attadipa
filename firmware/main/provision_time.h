@@ -29,7 +29,8 @@ namespace attadipa::firmware {
 
 enum class ProvisionTimeResult : std::uint8_t {
     Accepted,  // RTC written and verified, metadata stored, service moved.
-    Rejected,  // Not a request this watch accepts. Nothing moved.
+    Rejected,  // Not a request this watch accepts, or not a watch that can
+               // store one right now. Nothing moved.
     Failed,    // Storage or the chip refused, and what had moved was put back.
 };
 
@@ -93,7 +94,11 @@ constexpr TimeMetadata decode_time_metadata(const TimeMetadataBytes &bytes)
     return {static_cast<std::int16_t>(offset), static_cast<std::int64_t>(sync)};
 }
 
-enum class MetadataRead : std::uint8_t { Present, Absent, Unreadable };
+// `NotReady` is boot's verdict, not this read's: default NVS failed to
+// initialise and nothing here will change that, so the sequence refuses
+// before it attempts anything (there is nothing to put back). `Unreadable`
+// is a store that was ready and failed now, which is a `Failed` sequence.
+enum class MetadataRead : std::uint8_t { Present, Absent, Unreadable, NotReady };
 
 // `Ops` is the storage and the chip:
 //
@@ -147,6 +152,9 @@ ProvisionTimeResult provision_time(Ops &ops, const TimeProvisionRequest &request
 
     TimeMetadata previous{};
     const MetadataRead had = ops.read_metadata(&previous);
+    if (had == MetadataRead::NotReady) {
+        return ProvisionTimeResult::Rejected;
+    }
     if (had == MetadataRead::Unreadable) {
         return ProvisionTimeResult::Failed;
     }
