@@ -61,6 +61,10 @@ struct Options {
   core::Validity clock_validity = core::Validity::Valid;
   bool child_mode = false;
 
+  // The entry screen, with a board that accepts everything and says so on
+  // stdout. What a screenshot of it proves is the layout, not a clock.
+  bool provision_screen = false;
+
   bool help = false;
   bool list_boards = false;
 };
