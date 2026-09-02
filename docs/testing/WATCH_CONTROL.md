@@ -385,17 +385,21 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:954` "restore_time_metadata()") is outside the `#if` — but
-cannot write the clock or persist an offset, because the one caller of that
-sequence, `BoardTimeSink`, is inside it. Flashing the HIL image, setting the time, and
-flashing back therefore works: the PCF85063 is battery-backed and the offset is
-in NVS.
+(`waveshare_board.cpp:954` "restore_time_metadata()") is outside the `#if` — and,
+since #356's second change, writes one too: `provision_time()` has two callers,
+`BoardProvisioner` (`waveshare_board.cpp:439` "provision_time(ops, request,")
+outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:501`
+"provision_time(ops, provision,") inside it. Flashing the HIL image, setting the
+time, and flashing back therefore works: the PCF85063 is battery-backed and the
+offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1840` "bool configure_meshcore_ble") has exactly one caller,
+(`meshcore_ble.cpp:1840` "bool configure_meshcore_ble") had exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:524`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
-image contains no call to it. What that call set was per-boot RAM:
+image contained no call to it; the entry screen's `BoardProvisioner`
+(`waveshare_board.cpp:473` "return configure_meshcore_ble(passkey)") is the
+ungated second. What that call set was per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
 (`meshcore_ble.cpp:160` "std::atomic_bool configured", `meshcore_ble.cpp:162`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
