@@ -26,6 +26,10 @@ struct ClockState {
   core::Availability availability = core::Availability::Unprovisioned;
   l10n::Locale locale = l10n::Locale::En;
   ClockMode mode = ClockMode::Adult;
+  // The face is also the only way in: a long press opens the entry screen.
+  // A board that came up without its touch input says so here, and the face
+  // shows it, or a correct clock that ignores every finger reads as frozen.
+  bool touch_absent = false;
 };
 
 struct ClockText {

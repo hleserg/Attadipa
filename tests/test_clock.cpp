@@ -87,5 +87,18 @@ int main() {
   CHECK(!missing.ready && std::strcmp(missing.time, "--:--") == 0);
   CHECK(std::strcmp(missing.status, "не настроено") == 0);
 
+  // A board that came up without touch says so on the face, first: the
+  // 240 px face clips the tail, and the dashes already show a clock that is
+  // not ready.
+  apps::ClockState no_touch;
+  no_touch.time = {wall(2026, 8, 25, 12, 34), 0, 0, core::Validity::Valid};
+  no_touch.availability = core::Availability::Ready;
+  no_touch.touch_absent = true;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status, "no touch") ==
+        0);
+  no_touch.availability = core::Availability::Unreachable;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
+                    "no touch · unreachable") == 0);
+
   return failures == 0 ? 0 : 1;
 }

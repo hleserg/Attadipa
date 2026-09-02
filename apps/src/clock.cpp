@@ -1,6 +1,7 @@
 #include "attadipa/apps/clock.h"
 
 #include <cstdio>
+#include <cstring>
 
 #include "attadipa/l10n/string_id.h"
 #include "attadipa/l10n/tr.h"
@@ -116,7 +117,36 @@ bool wall_time_from_civil(const CivilTime &civil, core::WallTime &out) {
   return true;
 }
 
+ClockText format_clock_time(const ClockState &state, bool compact_date);
+
+// The missing input first, then the clock's own reason: the face clips at
+// 240 px (`LV_LABEL_LONG_CLIP`), the dashes already say the clock is not
+// ready, and "no touch" is the one fact nothing else on the glass shows.
+void prepend_touch_absent(const ClockState &state, ClockText &text) {
+  if (!state.touch_absent) {
+    return;
+  }
+  char reason[sizeof(text.status)];
+  std::memcpy(reason, text.status, sizeof(reason));
+  const char *no_touch = l10n::tr(l10n::StringId::ClockNoTouch, state.locale);
+  // Truncation is the intent (the face clips anyway), and `%.*s` is what
+  // keeps GCC's format-truncation check from calling it a bug.
+  const int room = static_cast<int>(sizeof(text.status)) - 1;
+  const int written = std::snprintf(text.status, sizeof(text.status), "%.*s",
+                                    room, no_touch);
+  if (reason[0] != '\0' && written >= 0 && written < room) {
+    std::snprintf(text.status + written, sizeof(text.status) - written,
+                  " · %.*s", room - written, reason);
+  }
+}
+
 ClockText format_clock(const ClockState &state, bool compact_date) {
+  ClockText text = format_clock_time(state, compact_date);
+  prepend_touch_absent(state, text);
+  return text;
+}
+
+ClockText format_clock_time(const ClockState &state, bool compact_date) {
   ClockText text;
   text.mode = state.mode;
   if (state.availability != core::Availability::Ready) {
