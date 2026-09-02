@@ -401,7 +401,7 @@ shipping a watch to a person who is not holding a build environment.
 ### Q5 — a lease taken on one task, read by another, and a sleep decision in between
 
 `PowerOwner` is single-task by contract
-([`core/include/attadipa/core/power_owner.h:308`](../../core/include/attadipa/core/power_owner.h) —
+([`core/include/attadipa/core/power_owner.h:310`](../../core/include/attadipa/core/power_owner.h) —
 "// **Not thread-safe, and deliberately so.** Every `acquire()`, `release()` and").
 Issue [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 asks the BLE
 transport to declare a lease, and the transport does not run on the task that
