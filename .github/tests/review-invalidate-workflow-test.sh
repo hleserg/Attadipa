@@ -65,8 +65,7 @@ extract_step() {
 SILENT=$(extract_run_block "Say that the review published nothing" "$WF")
 NORUN=$(extract_run_block "Say that the review did not happen" "$WF")
 EARLY=$(extract_run_block "Drop the previous head's pass before reviewing this one" "$WF")
-PUBLISHED=$(extract_run_block "Establish whether the review was published" "$WF")
-if [ -z "$SILENT" ] || [ -z "$NORUN" ] || [ -z "$EARLY" ] || [ -z "$PUBLISHED" ]; then
+if [ -z "$SILENT" ] || [ -z "$NORUN" ] || [ -z "$EARLY" ]; then
   no "both steps' shell can be extracted and run" \
      "no 'run: |' body found under one of the two step names in $WF -- if a step was renamed, re-point this test rather than deleting it"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
@@ -100,7 +99,7 @@ check_published_guard() {
 check_published_guard "$WHY_STEP" "the diagnosis step"
 check_published_guard "$NORUN_STEP" "the did-not-run step"
 
-for pair in "SILENT:the silent step" "NORUN:the did-not-run step" "EARLY:the early-strip step" "PUBLISHED:the publication step"; do
+for pair in "SILENT:the silent step" "NORUN:the did-not-run step" "EARLY:the early-strip step"; do
   var=${pair%%:*}
   what=${pair#*:}
   # shellcheck disable=SC2016  # the literal characters ${{ are the thing sought.
@@ -314,13 +313,17 @@ echo "The publication read is retried, and an answer it cannot get is red (#391)
 # not a list, and no step in the job matches `unknown`: on #382 the ledger
 # froze at round 5 through four further publications with every run green.
 # The step must therefore try again, and then fail rather than fall through.
-cp .github/scripts/review-published.sh "$sandbox/trusted/" || exit 1
+# The read, the retry and the failure are `review-published.sh step`, run here
+# as the shipping script; the workflow's own body is checked to call it.
+# shellcheck disable=SC2016  # the literal $ATTADIPA_TRUSTED_SCRIPTS is the thing sought.
+say 'the publication step is the script, not a body of its own' \
+  "$(printf '%s\n' "$PUBLISHED_STEP" | grep -c 'run: bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" step$')" 1
 state() { sed -n 's/^state=//p' "$sandbox/output" | tail -1; }
 reads() { grep -c '^api ' "$sandbox/log"; }
 pub() {
   : > "$sandbox/output"
   GITHUB_OUTPUT="$sandbox/output" STARTED=2026-08-25T00:00:00Z OUTCOME=success \
-    ATTADIPA_TRUSTED_SCRIPTS="$sandbox/trusted" step "$PUBLISHED" "$sandbox/trusted"
+    step "bash '$PWD/.github/scripts/review-published.sh' step" "$sandbox/trusted"
 }
 
 rc=$(FAIL_API=1 pub)

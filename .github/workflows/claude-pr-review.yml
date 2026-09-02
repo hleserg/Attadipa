@@ -236,7 +236,8 @@ jobs:
             # THE SECOND COUNT, AND THE REASON THE LEDGER ALONE IS NOT ENOUGH.
             # `Converge the published reviewer verdict` is what advances the
             # ledger's `round=`, and it is skipped whenever `review-published.sh`
-            # answers `unknown`. On #382 that happened four times running: the
+            # answers `unknown` (a red step since #391, a green one before). On
+            # #382 that happened four times running: the
             # ledger says `round=5`, and the reviewer published findings at
             # 16:08, 16:34, 17:26 and 17:59 after it, every one of them with
             # converge `skipped` and the run green. Nine paid rounds, a ledger
@@ -379,39 +380,10 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           STARTED: ${{ steps.started.outputs.at }}
           OUTCOME: ${{ steps.review.outcome }}
-        run: |
-          set -uo pipefail
-          # The read is retried, and its failure stays distinguishable from an
-          # empty list (#391). It used to sit behind two `2>/dev/null` and a
-          # `|| true`, so a rate limit or a 502 arrived here as "", the helper
-          # answered `unknown`, and no step below matches `unknown`: the job
-          # ended green having converged nothing (#382, four rounds).
-          comments=""
-          for attempt in 1 2 3; do
-            comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp | jq -c 'flatten(1)')" && break
-            comments=""
-            echo "::warning::reading the comments of #$PR failed (attempt $attempt of 3)"
-            [ "$attempt" -lt 3 ] && sleep 5
-          done
-          labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
-          answer="$(bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
-          case "$answer" in
-            published\ *) state=published ;;
-            silent\ *) state=silent ;;
-            *) state=unknown ;;
-          esac
-          echo "state=$state" >> "$GITHUB_OUTPUT"
-          if [ "$state" = unknown ]; then
-            # Neither `published` nor `silent`, and no step below runs for it,
-            # so this step carries the failure itself. Widening the two
-            # did-not-happen conditions instead would also catch their mirror
-            # case, a run that declined to review on purpose (#391).
-            echo "::error::the review reached the model but its verdict could not be read back (${answer#unknown }); nothing was converged, and the label on #$PR is the reviewer's own rather than the convergence rule's. Re-run this check (#391)"
-            exit 1
-          fi
-          if [ "$state" = published ] && [ "$OUTCOME" = failure ]; then
-            echo "::warning::The review action reported failure after publishing its verdict; the published verdict remains authoritative."
-          fi
+        # The read, its retry and the `unknown` failure live in the script,
+        # so a fix to them is a script change with a test that runs it,
+        # not another workflow-only hand-off (#391).
+        run: bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" step
 
       - name: Say that the review published nothing
         if: always() && steps.published.outputs.state == 'silent' && steps.review.outcome != 'failure'

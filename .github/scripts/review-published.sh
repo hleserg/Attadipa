@@ -55,6 +55,46 @@ attadipa_review_published() {
   fi
 }
 
+# The publication step of claude-pr-review.yml: read this PR's comments and
+# labels, decide, write `state=` to $GITHUB_OUTPUT, and be red on `unknown`.
+# Reads REPO, PR, STARTED, OUTCOME and GITHUB_OUTPUT from the environment.
+attadipa_review_publication_step() {
+  local comments="" labels answer state attempt
+  # The read is retried, and its failure stays distinguishable from an empty
+  # list (#391). It used to sit behind two `2>/dev/null` and a `|| true` in the
+  # workflow, so a rate limit or a 502 arrived here as "", the helper answered
+  # `unknown`, and no step matches `unknown`: the job ended green having
+  # converged nothing (#382, four rounds).
+  for attempt in 1 2 3; do
+    comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp | jq -c 'flatten(1)')" && break
+    comments=""
+    echo "::warning::reading the comments of #$PR failed (attempt $attempt of 3)"
+    [ "$attempt" -lt 3 ] && sleep 5
+  done
+  labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
+  answer="$(attadipa_review_published yes "$OUTCOME" "$comments" "$labels" "$STARTED")"
+  case "$answer" in
+    published\ *) state=published ;;
+    silent\ *) state=silent ;;
+    *) state=unknown ;;
+  esac
+  echo "state=$state" >> "$GITHUB_OUTPUT"
+  if [ "$state" = unknown ]; then
+    # Neither `published` nor `silent`, and no step of the workflow runs for
+    # it, so this step carries the failure itself. Widening the two
+    # did-not-happen conditions instead would also catch their mirror case, a
+    # run that declined to review on purpose (#391).
+    echo "::error::the review reached the model but its verdict could not be read back (${answer#unknown }); nothing was converged, and the label on #$PR is the reviewer's own rather than the convergence rule's. Re-run this check (#391)"
+    return 1
+  fi
+  if [ "$state" = published ] && [ "$OUTCOME" = failure ]; then
+    echo "::warning::The review action reported failure after publishing its verdict; the published verdict remains authoritative."
+  fi
+}
+
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  attadipa_review_published "$@"
+  case "${1-}" in
+    step) attadipa_review_publication_step ;;
+    *) attadipa_review_published "$@" ;;
+  esac
 fi
