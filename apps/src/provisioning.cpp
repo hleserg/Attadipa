@@ -201,8 +201,16 @@ void ProvisioningEntry::accept() {
       verdict_ = EntryVerdict::Rejected;
       return;
     case core::ProvisionOutcome::Failed:
-      // Refused before the radio saw it -- no queue for it, or no storage to
-      // keep it in. Nothing is armed, so leaving from here is still the skip.
+      // Refused before the radio saw it -- no queue for it, no storage to keep
+      // it in, or an earlier passkey still with the radio. Only the last can
+      // still arm something, and the board says which: its outcome is Pending
+      // while a request is in flight and Failed with nothing outstanding, so
+      // "no passkey; the clock is set" is honest only in the Failed case. A
+      // screen that was cancelled with a passkey in flight is gone, and this
+      // one is the only place left that can be told how that ended (#416,
+      // round 1).
+      passkey_failed_ =
+          sink_.mesh_passkey_outcome() != core::ProvisionOutcome::Failed;
       verdict_ = EntryVerdict::Failed;
       return;
     }

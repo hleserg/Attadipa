@@ -531,10 +531,32 @@ int main()
         board.worker(PasskeyOutcome::Armed);
         CHECK(fresh.poll() && fresh.finished());
     }
+    // Cancel after that refusal must not say "no passkey; the clock is set":
+    // the first screen's request is still with the radio and may arm and
+    // persist its digits after this screen is gone. The board's outcome is
+    // Pending while that is so, and the entry reads it before it lets the
+    // person leave under the skip line.
+    {
+        FakeBoard board;
+        ProvisioningEntry left(board);
+        to_passkey(left);
+        type(left, "111111");
+        left.press(EntryKey::Ok);
+        left.press(EntryKey::Cancel);
+
+        ProvisioningEntry fresh(board);
+        to_passkey(fresh);
+        type(fresh, "222222");
+        fresh.press(EntryKey::Ok);
+        CHECK(fresh.verdict() == EntryVerdict::Failed);
+        fresh.press(EntryKey::Cancel);
+        CHECK(fresh.finished() && fresh.verdict() == EntryVerdict::Failed);
+    }
     // A queue that would not hold the request is refused where the person can
     // still be told, and nothing is left in flight: the entry stays on the
     // field and leaving it is still the honest skip, because no passkey ever
-    // reached the radio.
+    // reached the radio. The board is asked once, at the refusal, whether an
+    // earlier request is still out; it is not, and no tick asks again.
     {
         FakeBoard board;
         board.passkey_answer = ProvisionOutcome::Failed;
@@ -544,7 +566,8 @@ int main()
         entry.press(EntryKey::Ok);
         CHECK(!entry.waiting() && !entry.finished());
         CHECK(entry.verdict() == EntryVerdict::Failed);
-        CHECK(!entry.poll() && board.polls == 0);
+        CHECK(board.polls == 1);
+        CHECK(!entry.poll() && board.polls == 1);
         entry.press(EntryKey::Cancel);
         CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
     }
