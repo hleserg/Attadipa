@@ -37,7 +37,7 @@ That is the only conclusion this document is currently entitled to draw.
 | Resource | T-Watch S3 Plus | Waveshare AMOLED 2.06 | Status |
 |---|---|---|---|
 | Flash | 16 MB (`W25Q128JW`) | **32 MB** (`GD25Q256EYIGR`, quad) | CEILING |
-| PSRAM | 8 MB **octal**, D12b — read off the die 2026-08-27 | 8 MB **octal**, D12a | CEILING, both MEASURED |
+| PSRAM | 8 MB **octal**, D12b — the factory image's octal init boots it, 2026-08-27 | 8 MB **octal**, D12a | CEILING, both MEASURED |
 | Internal SRAM | 512 KB (ESP32-S3) | 512 KB (ESP32-S3) | CEILING |
 | Display | 240 × 240 | 410 × 502 | CEILING |
 
@@ -56,10 +56,14 @@ DQS — sitting unrouted on the schematic.
 For the **T-Watch** the shared `R8` marking was not enough to make it, and the
 LilyGO vendor document describing that board's PSRAM as **QSPI** was a live
 conflicting source — one document beating another by inference is how a wrong
-`sdkconfig` gets pinned. D12b asked for that board's own `esptool.py flash_id`
-and got it on 2026-08-27: the die's eFuses report 8 MB, vendor `AP_3v3`, an
-`ESP32-S3R8` with external flash, and Table 1-1 has no 8 MB quad in-package
-part. Octal, MEASURED, and the vendor document is wrong —
+`sdkconfig` gets pinned. D12b was closed on the physical unit on 2026-08-27,
+and not by the leg its row asked for: there is no quad/octal eFuse, and
+`flash_id`'s "4 data lines" describes the flash. What discriminates is the
+factory firmware — it carries the **octal** PSRAM init and no quad one, and
+the watch boots and runs, where an octal init against a quad part bails out
+(`docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:146` — "The factory firmware contains the **octal** PSRAM implementation and no quad").
+The eFuses carry the rest: 8 MB, vendor `AP_3v3`, and Table 1-1 has no 8 MB
+quad in-package part. Octal, MEASURED, and the vendor document is wrong —
 `docs/research/HARDWARE_MATRIX.md:87` — "Closes D12b" and
 `docs/research/OPEN_QUESTIONS.md:126` — "RESOLVED 2026-08-27 — octal".
 
