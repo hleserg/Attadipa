@@ -338,11 +338,11 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 
 **This repository names that document two ways, and this report does not settle
 which is right.** The sites below do not agree, and they are **not the whole
-list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md),
-[`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md),
-[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md),
-[`HARDWARE_MATRIX.md:356`](HARDWARE_MATRIX.md) and
-[`VERIFIED_FACTS.md:1561-1578`](VERIFIED_FACTS.md) name one number or the other
+list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "QMI8658A Datasheet, `13-52-25`",
+[`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md) "chapter 11 documents a complete hardware pedometer",
+[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
+[`HARDWARE_MATRIX.md:392`](HARDWARE_MATRIX.md) "13-52-27 ∙ QMI8658C Datasheet ∙ Rev A" and
+[`VERIFIED_FACTS.md:1664-1681`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
 as well. Enumerating and reconciling them is #341's job, not this report's:
 
 | Site | What it said on 2026-08-28 |
@@ -358,7 +358,7 @@ as well. Enumerating and reconciling them is #341's job, not this report's:
 A document numbered `13-52-27`, titled *QMI8658C Datasheet*, marked `Rev: A`,
 demonstrably does exist — it is the one quoted here, and it reports `0x7C` on its
 own register-description page. A paper numbered `13-52-25` has been read in
-this tree too: [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) records its
+this tree too: [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "Feature list p. 1; chapter 11" records its
 chapter 11 *"Pedometer"* at pp. 64–66 with `STEP_CNT_LOW/MIDL/HIGH` at
 `0x5A`–`0x5C`, `CTRL8.Pedo_EN` and both CTRL9 commands, and
 [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" gives its md5. **What
@@ -390,7 +390,7 @@ number names the Rev A part"* — has no answer to find, because no register
 distinguishes them; the schematic's `QMI8658C` is what picks `13-52-27`, and
 [`VERIFIED_FACTS.md:626`](VERIFIED_FACTS.md) "no register tells them apart"
 now carries that. And the passage where this report treated
-`PEDOMETER_PARTS.md:448` as proof that `13-52-25` had been read for chapter 11
+`PEDOMETER_PARTS.md:448` "pp. 64–66" as proof that `13-52-25` had been read for chapter 11
 was right about the gap and wrong about the remedy: pp. 64–66 are indeed also
 `13-52-27`'s, so the row proved nothing at the time — but the paper has since
 been opened, and chapter 11 is there, on those pages, exactly as the row says.
@@ -443,8 +443,8 @@ asserts hardware behaviour this report will not:
   later, at `shake.log:50`, the same run writes `CTRL3 = 0x36`. The omission is
   the run's, not the log's: the probe's own header carried it too, which is how
   it reached the capture. It is corrected in the probe, and
-  [`HARDWARE_MATRIX.md:514`](HARDWARE_MATRIX.md) *"plus `CTRL3` in the shake run
-  only"* is what states the run's real write set.
+  [`HARDWARE_MATRIX.md:550`](HARDWARE_MATRIX.md) *"plus `CTRL3` in the shake run only"*
+  is what states the run's real write set.
 - the p2p header prints `ped_fix_peak2peak = 200 mg; ped_fix_peak = 100 mg`,
   which are the **datasheet's** numbers, while the engine had been configured
   with SensorLib's loosened 80/60 (≈78/59 mg). The header agreed with the `OVER`

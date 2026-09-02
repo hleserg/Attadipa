@@ -105,10 +105,9 @@ That entry is read from the **T-Watch** schematic —
 `docs/research/VERIFIED_FACTS.md:852` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
-`docs/research/HARDWARE_MATRIX.md:399`, which records the same wiring for the
-product board and whose evidence is a measurement taken on one — "physical BOOT
-and PWR edge pairs measured through `core::InputQueue`" — rather than a reading
-of another board's sheet.
+`docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
+— which records the same wiring for the product board and whose evidence is a
+measurement taken on one rather than a reading of another board's sheet.
 
 **UNKNOWN:** whether the AXP2101 can be configured to report a long press to
 firmware as an event instead of acting on it. That is traceable — a

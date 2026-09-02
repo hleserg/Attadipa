@@ -574,8 +574,8 @@ figures and then quoted as a result.
 The ⚠️ row is the single most important line in this document for anyone
 writing the executable change. It belongs in a board-side table where a wrong
 call fails a build or a test, not in prose — the same argument
-[`OPEN_QUESTIONS.md:118`](OPEN_QUESTIONS.md) — "must never be driven as an
-output" makes for GPIO 6.
+[`OPEN_QUESTIONS.md:122`](OPEN_QUESTIONS.md) — "must never be driven as an output"
+makes for GPIO 6.
 
 ### 6.2 The probe plan, withdrawn
 

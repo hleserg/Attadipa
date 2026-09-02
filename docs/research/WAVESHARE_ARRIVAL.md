@@ -89,11 +89,12 @@ is narrower and was already filed: whether that PSRAM is quad or octal, open
 question D12, named there as a blocker on the LVGL draw-buffer decision. That
 question has since been split on the strength of §3.1 — D12a resolved octal for
 this board, D12b still open for the T-Watch
-([OPEN_QUESTIONS.md:93-95](OPEN_QUESTIONS.md)).
+([OPEN_QUESTIONS.md:125-126](OPEN_QUESTIONS.md) "Waveshare: quad or octal?").
 
 **The I2C topology was known; the addresses were not.** The main bus at SDA 15 /
 SCL 14 and the membership of the touch, PMU, IMU and RTC are all VERIFIED
-([HARDWARE_MATRIX.md:316-319, :326](HARDWARE_MATRIX.md)). But the Waveshare
+([HARDWARE_MATRIX.md:389-393](HARDWARE_MATRIX.md) "FT3168 (driven", `:401` "SDA 15, SCL 14").
+But the Waveshare
 peripheral table carried the header `| Peripheral | Part | Bus / pins | Status |`
 where the T-Watch table 233 lines above it carried
 `| Peripheral | Part | Bus / pins | I2C addr | Power rail | Status |`
@@ -108,10 +109,13 @@ here because the assessment of the advice depends on it having been real.
 proposal, and the repository has deliberately left the question open.** It is
 recorded by name in three places that agree with each other: T6, "Use the
 Waveshare BSP as a dependency, or take only its pin facts?", UNKNOWN
-([OPEN_QUESTIONS.md:180](OPEN_QUESTIONS.md)); decision row 6, "open"
-([../architecture/ARCHITECTURE.md:654](../architecture/ARCHITECTURE.md)); and
-"This is a reuse-ledger decision, not a default"
-([DEPENDENCIES.md:171-174](DEPENDENCIES.md)). The surrounding facts were already
+([OPEN_QUESTIONS.md:271](OPEN_QUESTIONS.md) "Use the Waveshare BSP as a dependency");
+decision row 6, "open"
+([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "take only their pin facts");
+and "This is a reuse-ledger decision, not a default" in `DEPENDENCIES.md` — a
+sentence #371 has since replaced with the decision itself,
+[DEPENDENCIES.md:364](DEPENDENCIES.md) "Neither vendor BSP becomes a", which
+also struck T6. The surrounding facts were already
 established too: BSP v2.0.0 declares `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`
 and drives display, touch, audio and SD only, so it does not touch the QMI8658,
 the AXP2101 or the PCF85063 that are on the board — the distinction now recorded
@@ -158,7 +162,8 @@ reduced by 1/16." `R8` and `R8V` differ by `VDD_SPI` voltage, 3.3 V against
 it is now traced rather than remembered.
 
 The schematic supplies the marking. `U2` is `ESP32-S3R8`, a bare chip — already
-VERIFIED at [HARDWARE_MATRIX.md:301](HARDWARE_MATRIX.md) — so the in-package row
+VERIFIED at [HARDWARE_MATRIX.md:375](HARDWARE_MATRIX.md) "bare chip, not a module" —
+so the in-package row
 applies. Read visually rather than by text extraction, sheet 1 shows package pins
 38–42, which are GPIO33–GPIO37, each carrying a no-connect marker with no wire
 and no net, while pin 43 (GPIO38) immediately above and pins 33–35
@@ -185,7 +190,7 @@ both targets through the shared `R8` marking, and the LilyGO vendor document
 describing the T-Watch's PSRAM as QSPI remains a live conflicting source that
 nobody has re-examined. So the question was split rather than closed: D12a
 records the Waveshare as resolved and octal, D12b leaves the T-Watch CONFLICTING
-pending its own readback ([OPEN_QUESTIONS.md:93-95](OPEN_QUESTIONS.md)).
+pending its own readback ([OPEN_QUESTIONS.md:126](OPEN_QUESTIONS.md) "T-Watch: quad or octal?").
 
 **A flash conflict comes with it, and is not resolved.** Those same five vendor
 `sdkconfig.defaults` set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, while the schematic
@@ -350,9 +355,10 @@ J3 is the **34-pin AMOLED FPC connector**: its block is titled AMOLED and it
 carries `QSPI_SIO0`–`SIO3`, `QSPI_SCL`, `LCD_CS`/`RESET`/`TE`, the MIPI pairs,
 `VCI`, `VDDIO`, `IM0`/`IM1` and `TP_SCL`/`TP_SDA`/`TP_INT`/`TP_RESET`. There is
 no user expansion header on this board. Both records now say so:
-[HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) carries a Display FPC row instead,
+[HARDWARE_MATRIX.md:403](HARDWARE_MATRIX.md) "not an expansion header" carries a
+Display FPC row instead,
 and D3 is struck as mis-stated at
-[OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md). This retires the hot-unplug and
+[OPEN_QUESTIONS.md:110](OPEN_QUESTIONS.md) "there is no expansion connector". This retires the hot-unplug and
 bus-capacitance worry that D3 inherited from the T-Watch, where main-I2C `SDA`
 genuinely does reach a detachable GNSS connector
 ([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), *"The GNSS daughterboard is not only
@@ -736,8 +742,8 @@ does not, kept because an uncorrected claim propagates.
    blocker on hardware that five vendor `sdkconfig.defaults` files and Table 1-1
    already answer.
 5. **"Whether the board carries a bare chip or a module is unknown."**
-   Contradicts [HARDWARE_MATRIX.md:301](HARDWARE_MATRIX.md), which records
-   "bare chip, not a module" as VERIFIED from the schematic.
+   Contradicts [HARDWARE_MATRIX.md:375](HARDWARE_MATRIX.md) "bare chip, not a module",
+   which records exactly that as VERIFIED from the schematic.
 6. **"Four devices on the main I2C bus."** Six. The ES8311 and ES7210 are I2C
    control slaves on the same wire, which the vendor's own BSP demonstrates by
    handing them the single bus handle.
@@ -780,16 +786,17 @@ twice. **Two are still live.**
    expansion header. Now a Display FPC row at
    [HARDWARE_MATRIX.md:403](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
    as mis-stated rather than answered at
-   [OPEN_QUESTIONS.md:85](OPEN_QUESTIONS.md).
+   [OPEN_QUESTIONS.md:110](OPEN_QUESTIONS.md) "there is no expansion connector".
 2. REUSE_LEDGER recorded the Waveshare BSP as coming from
    `github.com/espressif/esp-bsp`. It does not: `esp-bsp/bsp` holds 26 board
    entries and none is a Waveshare AMOLED board. The confusion was understandable
    — esp-bsp genuinely is the source of the `esp_lcd_touch_ft5x06` dependency —
    and it now has its own row, `waveshare-components` pointing at
    `waveshareteam/Waveshare-ESP32-components`, at
-   [REUSE_LEDGER.md:69](REUSE_LEDGER.md).
-3. [VERIFIED_FACTS.md:51-53](VERIFIED_FACTS.md) promises that "every part, pin,
-   I2C address, and power rail" lives in HARDWARE_MATRIX. For this board neither
+   [REUSE_LEDGER.md:72](REUSE_LEDGER.md)
+   "github.com/waveshareteam/Waveshare-ESP32-components".
+3. [VERIFIED_FACTS.md:300-301](VERIFIED_FACTS.md) "every part, pin, I2C" promises
+   that every part, pin, I2C address and power rail lives in HARDWARE_MATRIX. For this board neither
    addresses nor rails were there, which made the promise false. The promise now
    holds because the table was filled, not because the sentence was weakened.
 4. The Waveshare peripheral table lacked the `I2C addr` and `Power rail` columns
@@ -799,7 +806,8 @@ twice. **Two are still live.**
 
 5. **Splitting D12 left three places behind, and all three are now closed.**
    `HARDWARE_MATRIX.md:377` "8 MB **octal**" reads VERIFIED/octal;
-   [RESOURCE_BUDGET.md:38](../architecture/RESOURCE_BUDGET.md) now splits the two
+   [RESOURCE_BUDGET.md:40](../architecture/RESOURCE_BUDGET.md) "8 MB **octal**, D12a"
+   now splits the two
    columns — D12b open for the T-Watch, D12a octal for the Waveshare — and the
    open-question row in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) is struck and
    split the same way.
@@ -821,16 +829,18 @@ twice. **Two are still live.**
    states "Both Attadipa boards are ESP32-S3**R8** modules with PSRAM" and rests a
    ~10 µA light-sleep floor on the reasoning that the workaround "must not be
    deselected on a module rather than a bare chip". That contradicts
-   [HARDWARE_MATRIX.md:301](HARDWARE_MATRIX.md), which records a bare chip, and
+   [HARDWARE_MATRIX.md:375](HARDWARE_MATRIX.md) "bare chip, not a module", and
    the figure is carried forward into [HIL_PLANS.md:68-72](../testing/HIL_PLANS.md) — "VENDOR-STATED"
    as VENDOR-STATED. One of the two is wrong and the sleep-current plan depends
    on which.
 7. The part-ownership table at
-   [ARCHITECTURE.md:405-425](../architecture/ARCHITECTURE.md) has two problems in
+   [ARCHITECTURE.md:405-425](../architecture/ARCHITECTURE.md) "Expansion header J3"
+   has two problems in
    one table. It has no flash or PSRAM row for this board, where the T-Watch
    table has both — an omission rather than a claim of absence, but a defect
    against the scoped [firmware rules](../../firmware/AGENTS.md), since every
    part on the board gets a seat. And it still carries `| Expansion header J3 | BoardService | ≥ 29 pins;
    pinout unresolved (D3). |`, which is now contradicted by
-   [HARDWARE_MATRIX.md:328](HARDWARE_MATRIX.md) and by the struck D3 above. The
+   [HARDWARE_MATRIX.md:403](HARDWARE_MATRIX.md) "not an expansion header" and by the
+   struck D3 above. The
    row should become the display FPC, owned by `DisplayService`.

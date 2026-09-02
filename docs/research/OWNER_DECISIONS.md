@@ -1133,12 +1133,12 @@ duplicate — because a copy that drifts is worse than a pointer:
 
 - **the two T114s advertise over BLE under the same name**, so anything
   selecting a node by advertised name gets whichever answered first
-  (`TEST_FLEET.md:29-32`, where they are the antecedent of "both"). Whether the
+  (`TEST_FLEET.md:30` — "the free bench node", where they are the antecedent of "both"). Whether the
   V4 also answers to that name is not recorded, and it does not change the rule:
   **select by address**, which is correct for every node here under either
   reading;
 - **a BLE pairing PIN is required and is deliberately not in this repository**
-  (`TEST_FLEET.md:160-163`). This repository is public and a pairing PIN is a
+  (`TEST_FLEET.md:160-163` — "A BLE pairing PIN is required"). This repository is public and a pairing PIN is a
   device access credential. The owner holds it; ask in the session that needs
   it.
 
@@ -1170,8 +1170,8 @@ radio in the room.
 > to be stable:**
 > [`OWNER_DECISIONS.md:1138`](OWNER_DECISIONS.md) "select by address".
 > The one this repository has measured is a *random* one — `peer_addr_type=1`,
-> [`MESHCORE_T114_FIRST_CONTACT.md:47`](MESHCORE_T114_FIRST_CONTACT.md)
-> "random", `MEASURED` 2026-08-28 — read once, from one node, and never read a
+> [`MESHCORE_T114_FIRST_CONTACT.md:47`](MESHCORE_T114_FIRST_CONTACT.md) "random",
+> `MEASURED` 2026-08-28 — read once, from one node, and never read a
 > second time to see whether it survived a power cycle or the factory reset of
 > that same day. Whether a random address here is the kind that stays put or the
 > kind that rotates is therefore `UNKNOWN`, and an address of unmeasured
@@ -1289,9 +1289,10 @@ cause.
   A2 and A3 move to RESOLVED, pointing here.
 - **A divergence to record rather than paper over.**
   [ADR-0003](../adr/0003-radio-not-lora.md) still lists A2 as open at
-  `../adr/0003-radio-not-lora.md:109-111`, `:265` and `:270-271`. Its stated
+  `../adr/0003-radio-not-lora.md:109-111` "purchase-time variant", `:265`
+  "until A1 and A2 are answered" and `:270-271` "the owner's to answer". Its stated
   reason is not "no marking read" but ownership: the last of those,
-  `../adr/0003-radio-not-lora.md:270-271`, calls A2 *"the owner's to answer"*,
+  `../adr/0003-radio-not-lora.md:270-271` *"the owner's to answer"*, calls A2 that,
   and the owner has now answered
   it. So the divergence is narrower than it looks — what the ADR is still
   waiting for is the evidence it treats as decisive, a marking read off the

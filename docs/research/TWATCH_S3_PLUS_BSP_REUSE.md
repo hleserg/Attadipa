@@ -41,7 +41,7 @@ experiment can say whether the vendor command table is needed.
 
 | Source | Statement |
 |---|---|
-| Attadipa schematic read | [HARDWARE_MATRIX](HARDWARE_MATRIX.md):96 — `SPI: CS 12, MOSI 13, SCK 18, DC 38, BL 45; MISO and RESET not connected` |
+| Attadipa schematic read | [HARDWARE_MATRIX](HARDWARE_MATRIX.md):96 — "SPI: CS 12, MOSI 13, SCK 18, DC 38, BL 45; MISO and RESET not connected" |
 | LilyGO's own hardware doc for this exact board | `LilyGoLib@38e6f8d` `docs/hardware/lilygo-t-watch-s3-plus.md` — `Display RESET \| Not Connected`, `Display MISO \| Not Connected` |
 | `espressif/arduino-esp32` `3.3.2` | `variants/lilygo_twatch_s3/pins_arduino.h` — `#define DISP_RST (-1)`, `#define DISP_MISO (-1)` |
 
@@ -272,7 +272,8 @@ would inherit four decisions it has explicitly made differently, one of which
 precedes `LilyGoDispSPI::init(...)` at `:135`, and that is not style: ALDO3
 supplies both the display and the touch controller and ALDO2 the backlight
 (`docs/hardware/lilygo-t-watch-s3-plus.md`, agreeing with
-[HARDWARE_MATRIX](HARDWARE_MATRIX.md):96-97). The panel cannot be talked to
+[HARDWARE_MATRIX](HARDWARE_MATRIX.md):96-97 "ALDO3 (panel), ALDO2 (backlight)").
+The panel cannot be talked to
 before its rail is up. Under ADR-0016 that ordering is the power owner's to
 express as a dependency, not the board backend's to perform.
 
@@ -338,8 +339,8 @@ plainly in `docs/hardware/lilygo-t-watch-s3-plus.md`: *"T-Watch-S3-Plus does not
 have a touch reset pin connected, so if you set the touch screen to sleep, the
 touch will not work."* This repository already carries the mechanism —
 [VERIFIED_FACTS](VERIFIED_FACTS.md) *"The T-Watch touch panel has no reset
-line"*, and [HARDWARE_MATRIX](HARDWARE_MATRIX.md):188 traces it to an unfitted
-pull-up `R39`. The only recovery from a wedged controller is cycling **ALDO3**,
+line"*, and [HARDWARE_MATRIX](HARDWARE_MATRIX.md):222 "pull-up R39" traces it to an
+unfitted pull-up `R39`. The only recovery from a wedged controller is cycling **ALDO3**,
 which also blanks the display because it is the same rail. Under ADR-0016 that
 is a power-owner action with a visible side effect, not something a touch driver
 may do. **Putting this controller to sleep is therefore out of scope for the

@@ -242,8 +242,9 @@ whether anything reads the rotation — see §6, which stands.
 
 Silkscreen legible on the daughterboard: **`PPS`, `BOOT`, `GND`, `ANT`, `IO`**.
 A u.FL coaxial lead runs from it to a **ceramic chip antenna on a separate small
-PCB clipped into the back cover**. So the GNSS daughterboard
-[HARDWARE_MATRIX](HARDWARE_MATRIX.md):103 describes is physically present and
+PCB clipped into the back cover**. So the GNSS daughterboard that
+[HARDWARE_MATRIX](HARDWARE_MATRIX.md):103 "13-pin 0.3 mm FPC daughterboard"
+describes is physically present and
 antenna-fed on this unit — previously a schematic-only fact — which is also why
 BOOT and RST exist at all on this board (:113, :226) and why the hardware
 download-mode entry in §7 worked.
