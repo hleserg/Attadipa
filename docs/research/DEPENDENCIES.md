@@ -360,7 +360,7 @@ simulator driving timed frames, or a board.
   [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md). A board
   backend composes official ESP-IDF components and hands the runtime an
   `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t` — the seam
-  `waveshare_board.cpp:115-116` — "esp_lcd_panel_handle_t panel" — already
+  `waveshare_board.cpp:120-124` — "esp_lcd_panel_handle_t panel" — already
   exposes. **Neither vendor BSP becomes a
   link-time dependency**, and the answer is the same for both because the reason
   is the same: each carries product policy this project has decided differently,

@@ -160,7 +160,8 @@ private:
     if (!sleep_requested_ || !input_queue_.empty() ||
         input_state_.held_count(attadipa::core::InputOrigin::Physical) != 0 ||
         input_state_.held_count(attadipa::core::InputOrigin::Remote) != 0 ||
-        pointer_pressed_ || gpio_get_level(kTouchInterrupt) == 0) {
+        pointer_pressed_ ||
+        (touch_ != nullptr && gpio_get_level(kTouchInterrupt) == 0)) {
       return;
     }
     sleep_requested_ = false;
@@ -177,9 +178,14 @@ private:
     // found by reading its latched edge during a timer wake and comes back as
     // a derived cause. Naming it here would be a wake plan the hardware never
     // agreed to.
+    // A boot that got no touch controller (#367 item 6) does not name its
+    // line either: nothing drives that pin then, and a wake on an undriven
+    // level is a wake plan the hardware never agreed to, same as the button.
     plan.wake_sources =
         attadipa::core::wake_bit(attadipa::core::WakeSource::Timer) |
-        attadipa::core::wake_bit(attadipa::core::WakeSource::Touch);
+        (touch_ != nullptr
+             ? attadipa::core::wake_bit(attadipa::core::WakeSource::Touch)
+             : 0);
     plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);
 
     const attadipa::core::MonotonicTime now{
@@ -252,7 +258,8 @@ private:
   }
 
   void poll_physical_touch() {
-    if (input_queue_.size() == attadipa::core::InputQueue::kCapacity) {
+    if (touch_ == nullptr ||
+        input_queue_.size() == attadipa::core::InputQueue::kCapacity) {
       return;
     }
     if (!physical_pressed_ && gpio_get_level(kTouchInterrupt) != 0) {
@@ -475,15 +482,18 @@ esp_err_t start_physical_input(esp_lcd_touch_handle_t touch,
   }
   const attadipa::platform::BoardProfile *board =
       attadipa::platform::find_board_profile(kBoardProfileId);
-  if (board == nullptr || touch == nullptr || pmu == nullptr ||
-      panel == nullptr || awake_brightness > 100 || refresh_ui == nullptr) {
+  if (board == nullptr || pmu == nullptr || panel == nullptr ||
+      awake_brightness > 100 || refresh_ui == nullptr) {
     return ESP_ERR_INVALID_ARG;
   }
   // Bind the power owner before anything can ask it to sleep. This is the
   // composition point: the touch interrupt pin is known here and nowhere else,
-  // and board_power.cpp is the only file that may act on it.
+  // and board_power.cpp is the only file that may act on it. A null `touch`
+  // is a boot without the controller: the buttons and the clock still run, and
+  // the owner is told there is no line to wake on.
   const esp_err_t power_result = attadipa::firmware::board_power_attach(
-      pmu, panel, kTouchInterrupt, awake_brightness);
+      pmu, panel, touch != nullptr ? kTouchInterrupt : GPIO_NUM_NC,
+      awake_brightness);
   if (power_result != ESP_OK) {
     return power_result;
   }
@@ -498,7 +508,8 @@ esp_err_t start_physical_input(esp_lcd_touch_handle_t touch,
     return result;
   }
   service = candidate;
-  ESP_LOGI(kTag, "physical input ready: touch, GPIO0 and the AXP2101 power key");
+  ESP_LOGI(kTag, "physical input ready: %s, GPIO0 and the AXP2101 power key",
+           touch != nullptr ? "touch" : "no touch");
   return ESP_OK;
 }
 

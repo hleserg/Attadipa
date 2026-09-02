@@ -135,7 +135,7 @@ built on top of it.
 | M1 | **AKM `AK09911` Short Datasheet**, `ShortDatasheet-E-00`, 2014/1, md5 `1d7e1960c86b2a1fb38ecc862196c4a7`. The right document for the ordered part — `AK09911C` is the only variant named, in the package line and again in the recommended-connection schematic. It is a *short* datasheet: it runs to §9 and contains **no register address map** (§4.4) |
 | M2 | **QST `QMC5883L` Datasheet Rev. B**, `13-52-04`, `QST-PD-B002-22`, md5 `d13221b15c034c3f9b24befa48c8f4ab`. Rev B, not the Rev 1.0 most of the internet mirrors |
 | M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5.6. Marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY` on every page; a pre-release document |
-| M5 | **QST `QMI8658A` Datasheet Rev A**, `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are verbatim identical to M3's. Used only for what the vendor did to the documentation — **never** for an electrical characteristic *of the magnetometer retrofit this document scopes*, which is what "here" means. That ruling was written while the PDF had been opened for lineage alone; on 2026-09-01 it was read in full under [#341](https://github.com/hleserg/Attadipa/issues/341) and [`VERIFIED_FACTS.md:725-730`](VERIFIED_FACTS.md) "Gyroscope noise density" takes six of its figures — for the **A** column of a table whose whole point is that this board is the **C**, so nothing crosses into the retrofit |
+| M5 | **QST `QMI8658A` Datasheet Rev A**, `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are verbatim identical to M3's. Used only for what the vendor did to the documentation — **never** for an electrical characteristic *of the magnetometer retrofit this document scopes*, which is what "here" means. That ruling was written while the PDF had been opened for lineage alone; on 2026-09-01 it was read in full under [#341](https://github.com/hleserg/Attadipa/issues/341) and [`VERIFIED_FACTS.md:807-812`](VERIFIED_FACTS.md) "Gyroscope noise density" takes six of its figures — for the **A** column of a table whose whole point is that this board is the **C**, so nothing crosses into the retrofit |
 | M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and die marking only. A photograph of a module is evidence about *labels*, not about *nets* |
 | A46 | **NXP/Freescale AN4246 Rev 3/4.0**, *Calibrating an eCompass in the Presence of Hard and Soft-Iron Interference*, T. Ozyagcilar. The ten-parameter model |
 | A47 | **NXP/Freescale AN4247 Rev 3/4.0**, *Layout Recommendations for PCBs Using a Magnetometer Sensor*. The keep-out and current-trace arithmetic |
@@ -1219,7 +1219,7 @@ behaviour the library is admired for is off until you turn it on. Licence remain
 MIT.
 
 **Two `REJECT` verdicts fire their own written revisit triggers**, not a proposal
-of ours: `docs/research/REUSE_LEDGER.md:743` — "an external magnetometer is decided"
+of ours: `docs/research/REUSE_LEDGER.md:747` — "an external magnetometer is decided"
 (OPEN_QUESTIONS A5) — and
 `docs/upstream/research-integration.md:406` — "and not deferred — the finding is inapplicable"
 (*"to this hardware rather than premature"*). The Waveshare with a magnetometer has accel + gyro + mag, which

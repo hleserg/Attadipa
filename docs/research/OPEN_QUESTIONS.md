@@ -250,6 +250,21 @@ sanitizer output. That is **an unverified author claim** and it is recorded as
 one. This project has no Heltec V4 and independently confirming it is
 **NOT EXECUTED — HARDWARE REQUIRED**.
 
+### What a position out of a node still does not say
+
+Opened 2026-09-02 by [#412](https://github.com/hleserg/Attadipa/issues/412). The
+wire formats are closed — three of them, at both revisions, in
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md). What is open is
+everything that needs a node in a room, plus one thing the source genuinely does
+not say.
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| M24 | **Which build environment is on the free bench T114, and does it answer `gps:1`?** `v1.17.1-d929643` does not encode the environment, and GNSS presence is not a board fact either: `EnvironmentSensorManager` opens the GPS UART, waits one second, and sets `gps_detected` from whether any byte arrived. So a node can disagree with itself across two power cycles, and nothing read from source predicts what this unit reports. It decides whether path B is available at all on the one node we may test against | **UNKNOWN** | one `CMD_GET_CUSTOM_VARS` (40) on the bench, reading `RESP_CODE_CUSTOM_VARS` (21). Costs one command and no write. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M25 | **Does losing the fix really leave the transmitted coordinate unchanged?** Read from source the answer is yes — the receiver's value is copied into `node_lat` only inside `if (_location->isValid())`, so the last good value persists — and every conservative rule in the mapping rests on it. It has never been observed | **ASSUMPTION**, with the source behind it | an open-sky capture of `RESP_CODE_SELF_INFO` with the node's own fix independently visible, then indoor captures for an hour. **The prediction is that bytes 36–43 are byte-identical.** If they are not, the report is wrong in a way worth knowing at once. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M26 | **What datum is the altitude in an `LPP_GPS` record?** Cayenne LPP says "meters" and stops. MicroNMEA reads NMEA GGA field 9, which is orthometric height above mean sea level, so MSL is the better guess — but the chain passes through `LocationProvider::getAltitude()`, which any variant may implement differently, and a geoid separation is tens of metres | **UNKNOWN** | reading every in-tree `getAltitude` implementation, or a bench comparison against a known elevation. Until then populate `altitude_msl_mm` with the provenance recorded, and never `altitude_ellipsoid_mm` |
+| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?** It is the only way to re-read the node's coordinate, and its handler also sets `_iter_started = false`, aborting a contacts iteration in progress. Read from source; the practical cost — whether a client notices, whether contacts resync cleanly — is unmeasured | **UNKNOWN** | a bench session that starts a contacts sync and interrupts it. `NOT EXECUTED — HARDWARE REQUIRED` |
+
 ## Architecture
 
 | # | Question | Status | Resolved by |
@@ -347,9 +362,9 @@ is the record of what was true at `144459f` and what changed it:
   `provision_time()`, whose one instantiation was inside the
   `#if CONFIG_ATTADIPA_WATCH_CONTROL` block. #356's first change made the
   sequence compile in every image; its second gave a product image the caller:
-  `firmware/main/waveshare_board.cpp:429` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
+  `firmware/main/waveshare_board.cpp:443` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
   is ungated and is reached from the entry screen a long press on the clock
-  opens (`firmware/main/waveshare_board.cpp:788` — "void long_press(lv_event_t *) {").
+  opens (`firmware/main/waveshare_board.cpp:839` — "void long_press(lv_event_t *) {").
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same
@@ -359,9 +374,9 @@ is the record of what was true at `144459f` and what changed it:
   the passkey key. #356's first change made boot replay a stored passkey
   through the same `Configure` event, and its second lets the fourth field of
   the entry screen store one:
-  `firmware/main/waveshare_board.cpp:460` — "set_mesh_passkey(std::uint32_t passkey) override {".
+  `firmware/main/waveshare_board.cpp:474` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
-  `firmware/main/meshcore_ble.cpp:1174` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1185` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
 - **A changed node cannot be recovered from, and this bullet understated it.**
@@ -373,7 +388,7 @@ is the record of what was true at `144459f` and what changed it:
   reads the reset node's new public key, and
   `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;" turns
   it away for good. The single writer of that key is
-  `firmware/main/meshcore_ble.cpp:383` — "nvs_set_blob(handle, kNodeKeyNvsKey"
+  `firmware/main/meshcore_ble.cpp:389` — "nvs_set_blob(handle, kNodeKeyNvsKey"
   and there is no eraser; the file's one `nvs_erase_key` names the passkey
   instead. So this is not "the product image lacks a surface the HIL image has";
   no image has the operation. Traced in
@@ -445,7 +460,7 @@ task blocked on a lock there is a task that cannot un-take the decision anyway.
 **Why nothing is broken today, stated so the reason is checkable rather than
 reassuring.** The only sleep plan the firmware issues suspends the display and
 nothing else
-([`firmware/main/physical_input.cpp:183`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:189`](../../firmware/main/physical_input.cpp) —
 "plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
 trip is an intersection
 ([`core/src/power_owner.cpp:382`](../../core/src/power_owner.cpp) —

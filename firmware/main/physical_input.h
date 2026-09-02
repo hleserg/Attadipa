@@ -20,7 +20,9 @@
 // InputOrigin::Remote into the queue this owns; it is not what makes the queue
 // exist.
 //
-// Called with LVGL locked. All mutable state stays on LVGL's task.
+// Called with LVGL locked. All mutable state stays on LVGL's task. `touch` may
+// be null when boot could not start the controller: the service then answers
+// buttons and remote input only, and never asks the owner for a touch wake.
 esp_err_t start_physical_input(esp_lcd_touch_handle_t touch,
                                i2c_master_dev_handle_t pmu,
                                esp_lcd_panel_handle_t panel,

@@ -235,6 +235,88 @@ amendment that `main` has since moved by two documentation commits. Kept as a
 signpost rather than deleted, because two entries saying the same thing is how a
 reader ends up citing the one that was not updated.
 
+### `RESP_CODE_SELF_INFO` carries the node's coordinate at bytes 36–43, scaled ×10⁶
+
+- **Claim:** the frame a MeshCore node answers `CMD_APP_START` with contains
+  `int32` latitude at offset 36 and `int32` longitude at offset 40, each the
+  node's stored coordinate multiplied by 1 000 000 and written with `memcpy`, so
+  in the node's native byte order — little-endian on every board in the fleet.
+  It is a hundred times finer than the ×10⁴ `LPP_GPS` telemetry record and is
+  gated by neither `advert_loc_policy` nor the three `telemetry_mode_*` prefs.
+- **Source:** upstream `examples/companion_radio/MyMesh.cpp`, the
+  `cmd_frame[0] == CMD_APP_START` branch — `lat = (sensors.node_lat *
+  1000000.0);` followed by two `memcpy(&out_frame[i], &lat, 4)` calls, after a
+  4-byte header and the 32-byte public key.
+- **Checked:** 2026-09-02, at both `d92964352441e53b93e8667b802e04f6e072b39e`
+  and `0679dbeffc504d562d2f09eb072fdc223f8ffc2a` — the file is byte-identical
+  between them.
+- **Independently corroborated:** the same arithmetic puts `node_name` at offset
+  58, which is where a bench capture found it in a 72-byte frame and where this
+  repository's own parser reads it —
+  `link/src/meshcore_companion.cpp:396` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
+  The coordinate sits between two fields already read correctly.
+- **Not verified:** nothing has read bytes 36–43 off a physical node.
+  `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### A MeshCore node transmits no fix status, and a lost fix changes nothing on the wire
+
+- **Claim:** `LocationProvider` — MeshCore's own GNSS interface — declares
+  `isValid()`, `satellitesCount()` and `getTimestamp()`, and
+  `MicroNMEALocationProvider` implements all three, so the node holds the fix
+  flag, the satellite count and the receiver's UTC. **No wire carries any of
+  them.** The single place `isValid()` is consulted is a write gate:
+  `EnvironmentSensorManager::loop()` copies the receiver's latitude, longitude
+  and altitude into `node_lat`/`node_lon`/`node_altitude` *inside*
+  `if (_location->isValid())`, so on loss of fix the previous coordinate stays
+  in the slot and keeps being transmitted, unchanged and unmarked.
+- **Source:** upstream `src/helpers/sensors/LocationProvider.h`,
+  `src/helpers/sensors/MicroNMEALocationProvider.h` and
+  `src/helpers/sensors/EnvironmentSensorManager.cpp`.
+- **Checked:** 2026-09-02, byte-identical at the pin and at `0679dbe`. Upstream
+  [issue #2179](https://github.com/meshcore-dev/MeshCore/issues/2179), open since
+  2026-03-28, asks for accuracy in telemetry — consistent with, though not proof
+  of, the field's absence.
+- **Consequence:** `PositionValidity::Valid` is not reachable from a stock
+  MeshCore node by any path. The argument is
+  [NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md) §4.1.
+- **Not verified on hardware.** The experiment that would confirm it — an
+  open-sky capture and an indoor no-fix capture, predicted byte-identical in
+  bytes 36–43 — is `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### `LPPReader::readGPS` reads up to 8 bytes past its buffer, and can then report success
+
+- **Claim:** `readGPS` calls `getFloat` three times, reading nine bytes, and only
+  then evaluates `return _pos <= _len`. `readHeader` guarantees only
+  `_pos + 2 < _len` on entry, so as little as one valid byte may remain — **up
+  to 8 bytes are read past the end.** Separately, `_pos` is a `uint8_t`, so
+  `_pos += 9` wraps: from `_pos = 250` it becomes 3, and the trailing bounds
+  test then returns **true** on a record it read out of bounds.
+- **Source:** upstream `src/helpers/sensors/LPPDataHelpers.h`, `LPPReader`.
+- **Checked:** 2026-09-02, identical at the pin and at `0679dbe`.
+- **Scope:** this is upstream's parser, not Attadipa's — nothing in this tree
+  calls it, and it is recorded so that nobody copies it. The wrap needs a buffer
+  longer than a stock BLE link delivers, which is a property of the transport
+  and not of the function.
+
+### MeshCore's LPP GPS bytes come from `electroniccats/CayenneLPP` 1.6.1, and it truncates toward zero
+
+- **Claim:** the `LPP_GPS` record on the wire is written by
+  `CayenneLPP::addGPS`, from the library MeshCore declares in `platformio.ini`
+  and does not vendor. It emits `[channel][136]` then latitude, longitude and
+  altitude as big-endian signed 24-bit values from `int32_t lat = latitude *
+  10000` and `alt = altitude * 100`. **Byte-for-byte identical to MeshCore's own
+  `LPPWriter::writeGPS`** and to what `LPPReader::readGPS` expects.
+- **The conversion truncates toward zero and does not round**, and the value is
+  narrowed `double → float` first. A transmitted coordinate is therefore never
+  larger in magnitude than the node's stored one and may be a full LSB smaller —
+  **1e-4° ≈ 11.1 m**, biased toward the equator and the prime meridian.
+- **Source:** `ElectronicCats/CayenneLPP@a83f3e4` (1.6.1, MIT per `LICENSE.md`),
+  `src/CayenneLPP.cpp::addGPS`, with `LPP_GPS_SIZE 9` in `src/CayenneLPP.h`.
+- **Checked:** 2026-09-02. This closes the caveat
+  [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) §4.1 had carried
+  since 2026-08-22, which recorded the layout as established from the reader and
+  the size tables but not from the writer.
+
 ### A wrong MeshCore node's bond evicts the pinned node's
 
 - **Claim:** with a passkey armed, a MeshCore node that this watch is *not*
@@ -254,13 +336,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:1684`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1716`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
-  ([`firmware/main/meshcore_ble.cpp:161`](../../firmware/main/meshcore_ble.cpp)
+  ([`firmware/main/meshcore_ble.cpp:167`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1441`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1452`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -294,9 +376,9 @@ reader ends up citing the one that was not updated.
   `espressif/esp-idf@v5.5.5` records for
   `components/bt/host/nimble/nimble`.
 - **Source (this repository):** the watch is the central and takes that branch
-  from [`firmware/main/meshcore_ble.cpp:829`](../../firmware/main/meshcore_ble.cpp)
+  from [`firmware/main/meshcore_ble.cpp:840`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1457`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1481`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on
@@ -321,10 +403,10 @@ reader ends up citing the one that was not updated.
   "return PinOutcome::Refused;", latched by
   [`link/src/meshcore_companion.cpp:397`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
-  is [`firmware/main/meshcore_ble.cpp:383`](../../firmware/main/meshcore_ble.cpp)
+  is [`firmware/main/meshcore_ble.cpp:389`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
   the passkey instead —
-  [`firmware/main/meshcore_ble.cpp:372`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:378`](../../firmware/main/meshcore_ble.cpp)
   "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". The mesh opcode
   block ends at
   [`debug/include/attadipa/debug/protocol.h:84`](../../debug/include/attadipa/debug/protocol.h)
@@ -336,7 +418,7 @@ reader ends up citing the one that was not updated.
 - **Boundary — source-traced, not measured.** No node has been reset while a
   watch was pinned to it.
 - **Consequence:** two comments in the tree say the gap closes with #356 —
-  [`firmware/main/meshcore_ble.cpp:219`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:225`](../../firmware/main/meshcore_ble.cpp)
   "re-pin**: nothing erases the " and
   [`core/include/attadipa/core/mesh_service.h:61`](../../core/include/attadipa/core/mesh_service.h)
   "until #356 there is no in-image way to re-pin". #356's implementation
@@ -731,7 +813,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1788`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1870`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1763,7 +1845,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:714`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
@@ -2169,7 +2251,7 @@ ones that heading states.
   would make the second call see a different partition.
 - **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
   re-reads it.
-- **Consequence:** `firmware/main/waveshare_board.cpp:256` —
+- **Consequence:** `firmware/main/waveshare_board.cpp:270` —
   "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
   the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
   cannot contradict it (ADR-0014).
@@ -2190,7 +2272,7 @@ ones that heading states.
 - **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
   header: a third member of the family would make the boot log recommend the
   wrong recovery for it.
-- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:259` —
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:273` —
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.

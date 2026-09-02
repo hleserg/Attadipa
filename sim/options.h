@@ -59,6 +59,7 @@ struct Options {
   core::WallTime clock_time{};
   core::Availability clock_availability = core::Availability::Ready;
   core::Validity clock_validity = core::Validity::Valid;
+  bool touch_absent = false;  // --no-touch: the Clock says its touch is gone
   bool child_mode = false;
 
   // The entry screen, with a board that accepts everything and says so on

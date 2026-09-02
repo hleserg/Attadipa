@@ -328,13 +328,26 @@ local client.
 The advert builder **truncates toward zero** (`double`→`int32`), it does not
 round.
 
-> **Caveat on the LPP encoder.** The call is `telemetry.addGPS(...)` on a
-> `CayenneLPP` object, and CayenneLPP is an **external dependency** —
-> `electroniccats/CayenneLPP @ 1.6.1`, declared in `platformio.ini:27` and **not
-> vendored** here (only a stub in `test/mocks/` with no `addGPS`). The 9-byte
-> layout above is established from MeshCore's own reader, writer and size tables,
-> which agree with each other three ways, but **not** from the `addGPS` source,
-> which is not in this repository.
+> **The caveat on the LPP encoder is closed — 2026-09-02, [#412](https://github.com/hleserg/Attadipa/issues/412).**
+> The call is `telemetry.addGPS(...)` on a `CayenneLPP` object, and CayenneLPP is
+> an **external dependency** — `electroniccats/CayenneLPP @ 1.6.1`, declared in
+> `platformio.ini:27` and **not vendored** here (only a stub in `test/mocks/`
+> with no `addGPS`). The 9-byte layout above used to rest on MeshCore's own
+> reader, writer and size tables, which agree three ways, and **not** on the
+> `addGPS` source. That source has now been read at
+> `ElectronicCats/CayenneLPP@a83f3e4`, `src/CayenneLPP.cpp`: it writes
+> `[channel][136]` then `lat>>16, lat>>8, lat` and the same for `lon` and `alt`,
+> from `int32_t lat = latitude * 10000` and `alt = altitude * 100`, guarded by
+> `LPP_GPS_SIZE 9`. **Byte-for-byte what the three in-repo tables predicted** —
+> the layout is now established from the code that actually produces the bytes.
+>
+> It also carries the same truncation as the advert builder, and one step more:
+> `node_lat` is a `double`, `addGPS` takes a `float`, and the C conversion at the
+> end truncates toward zero. So a telemetry coordinate is never larger in
+> magnitude than the node's stored one and may be a full LSB — **≈ 11.1 m** —
+> smaller, biased toward the equator and the prime meridian. A golden vector
+> generated with round-to-nearest disagrees with a real device about half the
+> time. [NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md) §3.2.
 
 ### 4.2 Does telemetry carry a position? Yes — conditionally
 
@@ -570,6 +583,15 @@ Consequences only. Designs go in ADRs and tasks, not here.
 8. **A stock node exports its private key on request.** T-069's threat model
    gains a section: a vanilla companion on a shared LAN is not a trusted
    peripheral.
+9. **A connected client reads the node's stored coordinate unconditionally.**
+   New with [#412](https://github.com/hleserg/Attadipa/issues/412):
+   `RESP_CODE_SELF_INFO` carries the ×10⁶ coordinate at bytes 36–43 to every
+   client that completes `CMD_APP_START`, gated by neither `advert_loc_policy`
+   nor the three `telemetry_mode_*` prefs — those govern the advert and the
+   LPP path only. T-069's threat model gains the second section: whoever can
+   pair with a node knows where its owner keeps it, whatever the node's
+   location-sharing settings say. Traced in
+   [NODE_POSITION_FROM_MESHCORE.md](NODE_POSITION_FROM_MESHCORE.md) §1.1.
 
 ## 7. What is still `UNKNOWN`
 
@@ -578,7 +600,7 @@ Consequences only. Designs go in ADRs and tasks, not here.
 | Does any of this behave as read on a real vanilla node? | source only. `NOT EXECUTED — HARDWARE REQUIRED` |
 | What ATT MTU does a real ESP32-S3 central negotiate with a MeshCore peripheral? | still open, and it needs a board. §2.2 |
 | ~~What happens to a 176-byte frame if the MTU is smaller?~~ | **narrowed 2026-08-23.** It is short by `176 − (MTU − 3)`, silently — measured upstream on ESP32/NimBLE, and at MTU 176 that is three bytes. **Not** measured on this revision's Bluedroid path, and not on any Attadipa hardware. [MESHCORE_BLE_FRAME_CAPACITY](MESHCORE_BLE_FRAME_CAPACITY.md) |
-| The exact `addGPS` byte layout as CayenneLPP 1.6.1 writes it | §4.1 — external, not vendored |
+| ~~The exact `addGPS` byte layout as CayenneLPP 1.6.1 writes it~~ | **closed 2026-09-02**, [#412](https://github.com/hleserg/Attadipa/issues/412): read from the writer's own source at `1.6.1` — §4.1 above and [NODE_POSITION_FROM_MESHCORE.md](NODE_POSITION_FROM_MESHCORE.md) §3.1. Whether a real node's bytes agree is still `NOT EXECUTED — HARDWARE REQUIRED` |
 | Whether the first-party JS and Python clients agree with this reading | not cross-checked; they are the obvious second source and were not consulted |
 | How the numbering differs at other tags | 53's absence proves the numbering has already moved. Any statement about another revision is `UNKNOWN` |
 | Whether a `RESP_CODE_DEVICE_INFO` from a *newer* node is safe to parse at 81 bytes | the reply has grown before; a client must key off length, and no compatibility rule is documented upstream |

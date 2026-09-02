@@ -268,6 +268,12 @@ public:
       return true;
     }
     case attadipa::core::WakeSource::Touch: {
+      if (touch_interrupt_ == GPIO_NUM_NC) {
+        // Attached without a touch controller: the line is undriven and its
+        // level UNKNOWN, so it is refused like Button below, not guessed.
+        ESP_LOGE(kTag, "no touch line to arm on this boot");
+        return false;
+      }
       esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);
       if (result == ESP_OK) {
         result = esp_sleep_enable_gpio_wakeup();
@@ -279,6 +285,7 @@ public:
         ESP_LOGE(kTag, "arm touch wake: %s", esp_err_to_name(result));
         return false;
       }
+      touch_armed_ = true;
       return true;
     }
     default:
@@ -301,10 +308,13 @@ public:
       result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
       break;
     case attadipa::core::WakeSource::Touch:
-      result = gpio_wakeup_disable(touch_interrupt_);
+      result = touch_interrupt_ == GPIO_NUM_NC
+                   ? ESP_ERR_INVALID_STATE  // never armed; the branch below
+                   : gpio_wakeup_disable(touch_interrupt_);
       if (result == ESP_OK) {
         result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
       }
+      touch_armed_ = false;
       break;
     default:
       break;
@@ -351,8 +361,11 @@ public:
     const bool debug_wake = debug_timer_wake_;
     debug_timer_wake_ = false;
 
-    ESP_LOGI(kTag, "entering %s (touch + %s)",
-             attadipa::core::to_string(state),
+    // Names what was armed and nothing else: a touchless boot (#367 item 6)
+    // never arms the line, and the one line that explains a sleep must not
+    // claim a source the hardware never agreed to.
+    ESP_LOGI(kTag, "entering %s (%s%s)", attadipa::core::to_string(state),
+             touch_armed_ ? "touch + " : "",
              debug_wake ? "debug timer" : "PMU polling");
 
     for (;;) {
@@ -378,7 +391,8 @@ public:
         // ADR-0016 §6: the pin is a corroborating signal, never the classifier.
         // It used to *be* the classifier, and a GPIO wake with the line already
         // released then fell through to "cause unknown".
-        if (gpio_get_level(touch_interrupt_) != 0) {
+        if (touch_interrupt_ != GPIO_NUM_NC &&
+            gpio_get_level(touch_interrupt_) != 0) {
           ESP_LOGW(kTag, "GPIO wake with the touch line already high");
         }
         (void)consume_power_edge();
@@ -436,6 +450,7 @@ private:
   i2c_master_dev_handle_t pmu_ = nullptr;
   esp_lcd_panel_handle_t panel_ = nullptr;
   gpio_num_t touch_interrupt_ = GPIO_NUM_NC;
+  bool touch_armed_ = false;
   std::uint8_t awake_brightness_ = 0;
   bool debug_timer_wake_ = false;
 };
