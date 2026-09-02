@@ -69,6 +69,14 @@ constexpr Rail kRails[] = {
      "GNSS, haptic enable, amplifier; nothing has measured them"},
 };
 
+// rail_for() indexes by position, and this is the table most likely to grow:
+// DC4, BLDO1 and BLDO2 each become a row when GNSS or the haptic arrives. A
+// row inserted above ALDO3 would silently move Display onto another regulator.
+static_assert(kRails[3].voltage_register == 0x94 &&
+                  kRails[4].voltage_register == 0x95,
+              "Display is ALDO3 (0x94) and Radio is ALDO4 (0x95): a row was "
+              "inserted above them, so re-index rail_for()");
+
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   switch (domain) {
   case attadipa::core::PowerDomain::Display:

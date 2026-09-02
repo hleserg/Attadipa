@@ -434,7 +434,10 @@ Reading the result:
 
 Per arm, from cold: full power removal, then boot; then ten reset cycles and ten
 display off/on cycles. Each arm renders an asymmetric RGB565 swatch (so a byte
-swap is visible as a colour change rather than a mirror), corner and edge
+swap is visible as a colour change rather than a mirror; a swatch that is
+*complemented* — red reading cyan, the white block black — is inversion, the
+`CONFIG_ATTADIPA_TWATCH_PANEL_INVERT` switch every arm shares, which defaults
+to the vendor's `INVON` and is flipped, not re-armed), corner and edge
 coordinate markers, a grey ramp, a one-pixel checkerboard, and both a full and a
 partial flush. Then rotation and gap, then display sleep and wake **with the
 120 ms `SLPOUT`→`SLPIN` interval of §4 respected and, separately, deliberately

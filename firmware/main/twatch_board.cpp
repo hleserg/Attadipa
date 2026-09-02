@@ -70,6 +70,22 @@ constexpr int kLinesPerBuffer = 20;
 // tolerates is UNKNOWN (TWATCH_S3_PLUS_BSP_REUSE.md §6). The slower shipping
 // value is the starting point, not a measurement.
 constexpr int kPanelClockHz = 40 * 1000 * 1000;
+#if CONFIG_ATTADIPA_TWATCH_PANEL_INVERT
+constexpr bool kPanelInvert = true;
+#else
+constexpr bool kPanelInvert = false;
+#endif
+
+// The FT6336U's readiness after ALDO3 is UNKNOWN -- no datasheet figure has
+// been traced -- and the interval initialize_panel() takes before the probe
+// differs per arm by about 100 ms, which must not be the settle window by
+// accident. So the window is named: at least kTouchSettleMs after the rails
+// came up, then kTouchProbeAttempts probes kTouchRetryMs apart before touch is
+// declared absent. One NAK used to be final for the power cycle, and the only
+// way to tell "dead" from "not yet" was an unplug / hold BOOT / replug.
+constexpr std::uint32_t kTouchSettleMs = 100;
+constexpr unsigned kTouchProbeAttempts = 3;
+constexpr std::uint32_t kTouchRetryMs = 50;
 
 struct State {
   i2c_master_bus_handle_t main_i2c = nullptr;
@@ -82,6 +98,8 @@ struct State {
   lv_indev_t *indev = nullptr;
   lv_obj_t *marker = nullptr;
   lv_obj_t *readout = nullptr;
+  TickType_t rails_up = 0;  // when initialize_pmu() returned with ALDO3 on
+  unsigned touch_attempts = 0;
 };
 State state;
 
@@ -224,6 +242,14 @@ esp_err_t initialize_panel() {
 #if CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
   ESP_RETURN_ON_ERROR(send_vendor_table(state.panel_io), kTag, "vendor table");
 #endif
+  // SWRESET leaves inversion off, and the vendor turns it on: INVON (21h) is
+  // sent through the panel API, not from the table, so arm B does not carry it
+  // either (TWATCH_S3_PLUS_BSP_REUSE.md §5, §11). Between the table and DISPON,
+  // where the vendor sends it. Inverted, the swatch photographs complemented:
+  // red reads cyan, the white block black -- a different picture from the byte
+  // order being wrong, which is what §11 assigns a colour change to.
+  ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(state.panel, kPanelInvert),
+                      kTag, "%s", kPanelInvert ? "INVON" : "INVOFF");
   ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(state.panel, true), kTag,
                       "DISPON");
 
@@ -275,9 +301,27 @@ esp_err_t initialize_touch() {
   // No sleep command is ever sent to this controller. The only recovery from a
   // wedged FT6336U is cycling ALDO3, which blanks the display
   // (TWATCH_S3_PLUS_BSP_REUSE.md §8, §10.5).
-  ESP_RETURN_ON_ERROR(
-      esp_lcd_touch_new_i2c_ft5x06(touch_io, &config, &state.touch), kTag,
-      "FT6336U via the FT5x06 driver");
+  const TickType_t since_rails = xTaskGetTickCount() - state.rails_up;
+  if (since_rails < pdMS_TO_TICKS(kTouchSettleMs)) {
+    vTaskDelay(pdMS_TO_TICKS(kTouchSettleMs) - since_rails);
+  }
+  esp_err_t err = ESP_FAIL;
+  for (state.touch_attempts = 1; state.touch_attempts <= kTouchProbeAttempts;
+       ++state.touch_attempts) {
+    err = esp_lcd_touch_new_i2c_ft5x06(touch_io, &config, &state.touch);
+    if (err == ESP_OK) {
+      break;
+    }
+    ESP_LOGW(kTag, "FT6336U probe %u of %u: %s", state.touch_attempts,
+             kTouchProbeAttempts, esp_err_to_name(err));
+    if (state.touch_attempts < kTouchProbeAttempts) {
+      vTaskDelay(pdMS_TO_TICKS(kTouchRetryMs));
+    }
+  }
+  if (err != ESP_OK) {
+    state.touch_attempts = kTouchProbeAttempts;
+    return err;
+  }
   // This proves an ACK at 0x38 and nothing more. Touch is Ready when a
   // coordinate arrives (§10.2); the screen logs the first one.
   return ESP_OK;
@@ -379,6 +423,7 @@ esp_err_t start_twatch_ui() {
   ESP_RETURN_ON_ERROR(backlight(false), kTag, "hold the backlight dark");
   // Without the PMU there is no ALDO3 and nothing below can answer.
   ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "PMU and rails");
+  state.rails_up = xTaskGetTickCount();
 
   // §10.1 and §10.3: a failed panel command loses the display and nothing
   // else; a dead touch bus leaves the display alone.
@@ -408,11 +453,13 @@ esp_err_t start_twatch_ui() {
   }
 
   ESP_LOGI(kTag,
-           "T-Watch S3 Plus bring-up: panel %s, touch %s; SPI %d MHz, reset wait "
-           "+%d ms, vendor table %s",
+           "T-Watch S3 Plus bring-up: panel %s, touch %s (probe %u of %u); SPI "
+           "%d MHz, reset wait +%d ms, %s, vendor table %s",
            panel_err == ESP_OK ? "up" : "ABSENT",
-           touch_err == ESP_OK ? "ACK at 0x38" : "ABSENT",
-           kPanelClockHz / 1000000, CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS,
+           touch_err == ESP_OK ? "ACK at 0x38" : "ABSENT", state.touch_attempts,
+           kTouchProbeAttempts, kPanelClockHz / 1000000,
+           CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS,
+           kPanelInvert ? "INVON" : "INVOFF",
 #if CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
            "sent"
 #else

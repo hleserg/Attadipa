@@ -8,11 +8,14 @@
 
 CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y
 
-# Flash: Winbond W25Q128JW (JEDEC 0xEF 0x4018), 16 MB. The factory image's own
-# header says DIO at 80 MHz — esptool image-info on the 2026-08-27 backup,
-# MEASURED (docs/research/TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md). Whether
-# this part takes QIO is UNKNOWN, so the mode the vendor shipped is the mode
-# used. Size, PSRAM (8 MB octal) and console are the Waveshare's and stay.
+# Flash: Winbond W25Q128JW (JEDEC 0xEF 0x4018), 16 MB. The factory image's
+# header byte says DIO at 80 MHz — esptool image-info on the 2026-08-27 backup,
+# MEASURED (docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:91 — "flash DIO
+# @ 80 MHz, image says 16 MB"). That byte does not say what the part takes: the
+# ROM reads the header as `dio` for every quad choice (sdkconfig.defaults:26),
+# so a QIO build would carry it too. DIO is chosen because QIO is unproven on
+# this part, not because the vendor is known to have chosen it. Size, PSRAM
+# (8 MB octal) and console are the Waveshare's and stay.
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

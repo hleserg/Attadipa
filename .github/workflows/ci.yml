@@ -671,6 +671,11 @@ jobs:
       - name: The power-owner check tests itself
         run: python3 tools/flash/one_power_owner.py --selftest
 
+      # The bench flasher's plan (sorted offsets, RESTORE_SPAN, esptool argv)
+      # is decided host-side before esptool is imported, so it is checkable here.
+      - name: The no-reset flasher tests its plan
+        run: python3 tools/flash/flash_no_reset.py --selftest
+
       - name: Sleep, wake arming and AXP2101 rails have one owner
         run: python3 tools/flash/one_power_owner.py .
 

@@ -62,7 +62,74 @@ def plan_from_build(build_dir: Path) -> tuple[dict[str, str], list[tuple[int, Pa
     for _offset, path in files:
         if not path.is_file():
             raise SystemExit(f"flasher_args.json names {path}, which does not exist")
+    end = max(offset + path.stat().st_size for offset, path in files)
+    if end > RESTORE_SPAN:
+        # --restore is the only way back to the factory image, and it writes
+        # RESTORE_SPAN bytes; a plan that reaches past it (an ota_1 at 0x410000,
+        # say -- firmware/partitions.csv says the table may change) would leave
+        # flash that no restore undoes.
+        raise SystemExit(f"the plan writes up to 0x{end:x}, past RESTORE_SPAN "
+                         f"0x{RESTORE_SPAN:x}; --restore could not undo it, so "
+                         "raise RESTORE_SPAN deliberately or shrink the plan")
     return settings, files
+
+
+def esptool_argv(settings: dict[str, str], files: list[tuple[int, Path]],
+                 after: str) -> list[str]:
+    # Underscore spelling (`write_flash`, `--flash_mode`). esptool 4.12 answers
+    # `write_flash -h` and `write-flash -h` alike (checked 2026-09-02), so this
+    # is the spelling that the machine the backup was taken on accepts; an
+    # esptool that drops it refuses the argv itself before touching the port.
+    argv = ["--chip", "esp32s3", "--baud", str(BAUD), "--after", after,
+            "write_flash", "--flash_mode", settings["flash_mode"],
+            "--flash_freq", settings["flash_freq"],
+            "--flash_size", settings["flash_size"]]
+    for offset, path in files:
+        argv += [f"0x{offset:x}", str(path)]
+    return argv
+
+
+def selftest() -> int:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as scratch:
+        build = Path(scratch)
+        (build / "bootloader.bin").write_bytes(b"\xe9" * 0x100)
+        (build / "app.bin").write_bytes(b"\xe9" * 0x1000)
+        (build / "flasher_args.json").write_text(json.dumps({
+            "flash_settings": {"flash_mode": "dio", "flash_freq": "80m",
+                               "flash_size": "16MB"},
+            "flash_files": {"0x10000": "app.bin", "0x0": "bootloader.bin"},
+        }))
+        settings, files = plan_from_build(build)
+        assert [offset for offset, _ in files] == [0x0, 0x10000], "sorted by offset"
+        argv = esptool_argv(settings, files, "watchdog_reset")
+        assert argv[:6] == ["--chip", "esp32s3", "--baud", "115200",
+                            "--after", "watchdog_reset"], argv
+        assert argv[6] == "write_flash" and argv[7:9] == ["--flash_mode", "dio"], argv
+        assert argv[-2:] == ["0x10000", str(build / "app.bin")], argv
+
+        (build / "flasher_args.json").write_text(json.dumps({
+            "flash_settings": settings,
+            "flash_files": {"0x0": "bootloader.bin", "0x40f100": "app.bin"},
+        }))
+        try:
+            plan_from_build(build)
+        except SystemExit as refused:
+            assert "past RESTORE_SPAN" in str(refused), refused
+        else:
+            raise AssertionError("a plan ending at 0x410100 was not refused")
+
+        backup = build / "twatch_factory_16MB.bin"
+        backup.write_bytes(b"\x00" * (FACTORY_FLASH_BYTES - 1))
+        try:
+            plan_from_backup(backup, build)
+        except SystemExit as refused:
+            assert "not a full 16 MiB" in str(refused), refused
+        else:
+            raise AssertionError("a 16 MiB - 1 backup was not refused")
+    print("flash_no_reset selftest: 3 cases, all as expected.")
+    return 0
 
 
 def plan_from_backup(backup: Path, scratch: Path) -> tuple[dict[str, str], list[tuple[int, Path]]]:
@@ -125,8 +192,13 @@ def main() -> int:
                         help="print the esptool command and exit without opening the port")
     parser.add_argument("--log", type=Path, default=None,
                         help="write the console transcript here as well")
+    parser.add_argument("--selftest", action="store_true",
+                        help="check the plan, the span refusal and the esptool "
+                             "argv without a device, then exit")
     args = parser.parse_args()
 
+    if args.selftest:
+        return selftest()
     if (args.build_dir is None) == (args.restore is None):
         raise SystemExit("give exactly one of a build directory or --restore BACKUP")
 
@@ -136,18 +208,16 @@ def main() -> int:
     else:
         settings, files = plan_from_build(args.build_dir)
 
-    argv = ["--chip", "esp32s3", "--baud", str(BAUD), "--after", args.after,
-            "write_flash", "--flash_mode", settings["flash_mode"],
-            "--flash_freq", settings["flash_freq"],
-            "--flash_size", settings["flash_size"]]
-    for offset, path in files:
-        argv += [f"0x{offset:x}", str(path)]
+    argv = esptool_argv(settings, files, args.after)
     print("# esptool " + " ".join(argv), flush=True)
     if args.dry_run:
         return 0
 
     import esptool
     import serial as pyserial
+
+    print(f"# esptool {esptool.__version__} (argv spelling checked on 4.12)",
+          flush=True)
 
     port = args.port or resolve_port(args.serial)
     print(f"# port {port}", flush=True)

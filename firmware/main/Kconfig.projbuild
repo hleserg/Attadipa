@@ -32,6 +32,18 @@ config ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS
         in docs/research/TWATCH_S3_PLUS_BSP_REUSE.md section 11; 0 is arm
         A, the driver as shipped.
 
+config ATTADIPA_TWATCH_PANEL_INVERT
+    bool "Invert the panel's colours (INVON), as the vendor does"
+    depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default y
+    help
+        SWRESET leaves the ST7789 with inversion off. LilyGoLib sends INVON
+        (21h) through the panel API rather than from its command table
+        (TWATCH_S3_PLUS_BSP_REUSE.md section 5), so arm B does not carry it
+        and it has to be a choice of its own. Whether this panel wants it is
+        what the section 11 swatch photographs: inverted, red reads cyan
+        and the white block black.
+
 config ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
     bool "Send LilyGO's panel command table after init (arm B)"
     depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
