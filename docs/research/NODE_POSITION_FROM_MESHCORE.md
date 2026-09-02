@@ -90,7 +90,7 @@ arithmetic above puts the name at 58; the bench capture already in the tree put
 it at 58 in a 72-byte frame, and this repository's parser reads it from there —
 `link/src/meshcore_companion.cpp:396` —
 "(void)copy_text(status_.node_name, &data[58], size - 58);" — with the public
-key at 4, `:393` — "std::memcpy(status_.node_id.public_key.data(), &data[4],".
+key at 4, `link/src/meshcore_companion.cpp:393` — "std::memcpy(status_.node_id.public_key.data(), &data[4],".
 Bytes 36–43 sit between two fields we already read correctly, and we discard
 them.
 
@@ -104,8 +104,9 @@ Two properties that make path A better than it looks:
 - it is **not** gated by `advert_loc_policy`, which only governs the advert, and
   it is **not** gated by the three `telemetry_mode_*` prefs, which only govern
   path B. A connected client sees the node's stored coordinate unconditionally.
-  That is a privacy fact as much as a convenience one and belongs in the
-  tracker threat model;
+  That is a privacy fact as much as a convenience one, and it is handed to
+  T-069 the way the protocol report hands over the private-key export:
+  [MESHCORE_COMPANION_PROTOCOL.md](MESHCORE_COMPANION_PROTOCOL.md) §6, item 9;
 - byte 46 hands us the telemetry permission configuration in the same frame, so
   a client can tell *before asking* whether a path-B request would be refused.
 
@@ -376,10 +377,19 @@ for, and ADR-0004 §3 already rules that the interface shows the larger. Here th
 larger is unbounded. So:
 
 - **`age_at_us_ms`** — known, exact, from the arrival monotonic;
-- **`age_at_source_ms`** — `UNKNOWN`, and there is no defensible number. Not
-  zero. Zero is the specific lie this whole document exists to prevent;
+- **`age_at_source_ms`** — `UNKNOWN`, and there is no defensible number.
+  `Timed<T>` cannot say so: the field is
+  `core/include/attadipa/core/availability.h:72` — "std::uint32_t age_at_source_ms = 0;"
+  — and the tree's one consumer adds whatever is there to transit as a real
+  number, `core/src/time_service.cpp:31` — ": transit + observation.age_at_source_ms;".
+  So the zero the field carries is not a claim of freshness; it is a field with
+  no meaning, and nothing about the number makes it safe;
 - therefore **`Validity::Unknown`**, not `Valid`, on the `Timed<Position>` a
-  Location owner publishes.
+  Location owner publishes — and that is a **precondition on every consumer,
+  not a property of the provider**: a consumer reads `validity` first and treats
+  both ages as undefined under `Unknown`. The first consumer §6 names must show
+  the ages as unknown, not as `0 ms`. This is the only thing that makes the
+  zero safe, and it is the contract §8.1 tests.
 
 A `PositionValidity` of `Degraded` is defensible *only* when
 `RESP_CODE_CUSTOM_VARS` said `gps:1` and the value changed since the last read —
@@ -387,6 +397,17 @@ a changing coordinate from a running receiver is weak evidence of a live fix.
 `gps:0`, no `gps` key, or an unchanged value all mean `Stale`. **`Valid` is not
 reachable from a stock node and no provider may set it**, which is the strongest
 single rule this research produces.
+
+**And on path A alone there is no second read, so `Degraded` is not reachable
+either.** The coordinate arrives once per session, in the `RESP_CODE_SELF_INFO`
+that answers `CMD_APP_START`; the only way to ask again is to send
+`CMD_APP_START` again, which is M27 — `UNKNOWN`, and it aborts a contacts
+iteration in progress (§5) — and §5 argues against the poller that would
+produce a second read anyway. So the first slice's ladder **tops out at
+`Stale`**: `Degraded` becomes reachable only when a safe re-read exists —
+M27 measured, or path B's request/response decoded — and until then a provider
+that publishes `Degraded` has read something this document has not shown it.
+§6.1 carries the same rule as a lifecycle row and §8.1 tests it.
 
 ### 4.2 Provenance is the node, and the node is not the wrist
 
@@ -456,7 +477,7 @@ and it is stronger than the power one.
 
 PLATFORM_AUDIT is explicit about the shape:
 `docs/architecture/PLATFORM_AUDIT.md:259` — "One provider contract is enough" —
-and `:555` — "do not add a second forwarding HAL".
+and `docs/architecture/PLATFORM_AUDIT.md:555` — "do not add a second forwarding HAL".
 
 **Recommendation: build the first `PositionProvider` on path A.**
 
@@ -513,6 +534,7 @@ Semantics for the events that will otherwise be decided by accident:
 | permission denied / no `LPP_GPS` record | a normal outcome. Availability stays `Ready`; validity is unaffected; **not** an error to the user |
 | timeout on a remote request | one outstanding request, so: fail it, do not retry inside the provider, surface it. Retry policy belongs to the caller |
 | identical coordinate read twice | evidence *against* a live fix, not for one. Never refreshes `age_at_source_ms` |
+| mid-session refresh | **none in the first slice.** Path A is read once per session and there is no safe re-read (M27); validity tops out at `Stale` and `Degraded` is not produced. A second read happens only at reconnect, and that is a new session, not a refresh |
 | two providers disagree | out of scope. Recorded so that the first slice's shape does not foreclose ADR-0011 §5.2 |
 
 ## 7. Reuse comparison
@@ -546,7 +568,11 @@ certainly an unset pref; ±90/±180 ×10⁶ at the boundary; a value beyond it, 
 rejected anyway.
 
 Semantics, which are the tests that matter: **no input produces
-`PositionValidity::Valid`**; `age_at_source_ms` is never written as 0;
+`PositionValidity::Valid`**, and in the first slice none produces `Degraded`
+either (§4.1: no second read); every published `Timed<Position>` carries
+`Validity::Unknown`, and the fixture asserts *that* rather than the value of
+`age_at_source_ms`, which has no unknown representation (§4.1) — a consumer
+that reads the age before the validity is the bug the test exists to catch;
 `FixType::Unknown` survives to the consumer; an unchanged coordinate read twice
 does not refresh either age; `gps:0` and a missing `gps` key both cap validity
 at `Stale`; disconnect retains and ages rather than clearing.
@@ -559,9 +585,17 @@ than papering over it.
 
 ### 8.2 Simulator
 
-A fake provider drives `Ready`, `Degraded`, `Unreachable`, `Incompatible` and
-`Off`, plus disconnect and recovery, without the consumer learning which
-provider answered.
+A fake provider drives every `Availability` a node provider can produce —
+`Unprovisioned` (no node pinned), `Unreachable`, `Incompatible`, `Failed` (the
+short frame §8.1 rejects), `Off` and `Ready` — and, under `Ready`, the
+`PositionValidity` ladder `NoFix` and `Stale` (the first slice's ceiling, §4.1),
+plus disconnect and recovery, without the consumer learning which provider
+answered. `Degraded` is a validity, not an availability —
+`core/include/attadipa/core/position.h:188` — "Degraded,  // usable, with a caveat the interface must show"
+— and the two are never folded into one another (ADR-0004 §3); the seven
+availabilities must render as seven different sentences, which is what the
+simulator is there to show. `Unsupported` is the one value a node provider
+cannot produce and is left to the board that has no node at all.
 
 ### 8.3 Physical — `NOT EXECUTED — HARDWARE REQUIRED`
 
