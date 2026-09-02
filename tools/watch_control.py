@@ -250,7 +250,22 @@ def cmd_mesh_configure(watch: Watch, args) -> int:
                 "000000 turns pairing off rather than setting a passkey; "
                 "run --unpaired-probe to ask for the unpaired probe")
     watch.mesh_configure(passkey)
-    emit(args, {"configured": True}, "MeshCore BLE configured; engineering screen enabled")
+    # What the watch keeps is a different sentence for the two flags: a pairing
+    # passkey is written to NVS -- unencrypted flash -- and replayed at every
+    # boot until `mesh-disconnect` erases it; the probe's zero is for this boot
+    # only and is neither stored nor accepted from flash (meshcore_passkey.h).
+    # The operator reads this line and nothing else, so it has to say which.
+    # It says what the watch does, not what happened: the worker writes after
+    # the bridge has answered, and a refused write reaches only the serial log.
+    if args.unpaired_probe:
+        emit(args, {"configured": True, "persist": False},
+             "MeshCore BLE unpaired probe running; engineering screen enabled; "
+             "lasts until the next boot")
+    else:
+        emit(args, {"configured": True, "persist": True},
+             "MeshCore BLE configured; engineering screen enabled; the watch "
+             "keeps the passkey in flash until mesh-disconnect (a failed "
+             "write reaches only its serial log)")
     return 0
 
 
@@ -308,7 +323,10 @@ def cmd_mesh_forget_bond(watch: Watch, args) -> int:
 
 def cmd_mesh_disconnect(watch: Watch, args) -> int:
     watch.mesh_disconnect()
-    emit(args, {"disconnected": True}, "MeshCore BLE stopped")
+    emit(args, {"disconnected": True},
+         "MeshCore BLE stopped; the watch erases its stored passkey, so it "
+         "stays unprovisioned across boots (a failed erase reaches only its "
+         "serial log)")
     return 0
 
 
@@ -661,7 +679,9 @@ def build_parser() -> argparse.ArgumentParser:
     sync.set_defaults(func=cmd_sync_time)
 
     mesh_configure = subparsers.add_parser(
-        "mesh-configure", help="configure the watch's MeshCore BLE companion link")
+        "mesh-configure",
+        help="configure the watch's MeshCore BLE companion link; the passkey "
+             "is kept in the watch's flash across boots until mesh-disconnect")
     # The passkey is read from the terminal or stdin, never from argv: see
     # read_secret. The unpaired probe carries no secret, so it stays a flag and
     # stays scriptable.
@@ -671,7 +691,9 @@ def build_parser() -> argparse.ArgumentParser:
     mesh_configure.set_defaults(func=cmd_mesh_configure)
 
     mesh_disconnect = subparsers.add_parser(
-        "mesh-disconnect", help="stop the watch's MeshCore BLE scan and link")
+        "mesh-disconnect",
+        help="stop the watch's MeshCore BLE scan and link, and erase the "
+             "stored passkey -- this is how a watch is unprovisioned")
     mesh_disconnect.set_defaults(func=cmd_mesh_disconnect)
     mesh_forget_bond = subparsers.add_parser(
         "mesh-forget-bond",
