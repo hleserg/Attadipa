@@ -465,7 +465,7 @@ tools/watch_control.py                the command line
        └───────────────────────────────────────────────────┘
 ```
 
-Five decisions worth knowing:
+Six decisions worth knowing:
 
 1. **It is not a second protocol.** `link::frame_codec`'s framing — sync `F1
    5E`, a checked length, CRC-16/CCITT, a resynchronising decoder — carries an

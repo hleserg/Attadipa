@@ -1705,7 +1705,7 @@ void test_what_a_drain_could_not_make_room_for_is_counted_once()
         for (FrameResult got = decoder.next(out, sizeof out); !got.exhausted();
              got = decoder.next(out, sizeof out)) {
             if (!got) {
-                break;  // OutputTooSmall would repeat for ever; see :1371
+                break;  // OutputTooSmall would repeat for ever; test_the_drain_loop_the_header_prescribes_terminates() says why
             }
         }
     };
@@ -1742,7 +1742,7 @@ void test_corrupt_frames_in_a_burst_are_not_counted_as_loss()
             for (FrameResult got = decoder.next(out, sizeof out); !got.exhausted();
                  got = decoder.next(out, sizeof out)) {
                 if (!got) {
-                    break;  // OutputTooSmall would repeat for ever; see :1371
+                    break;  // OutputTooSmall would repeat for ever; test_the_drain_loop_the_header_prescribes_terminates() says why
                 }
                 ++good;
             }
