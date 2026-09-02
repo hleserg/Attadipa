@@ -164,6 +164,20 @@ check_step "Review" "cap-that-failed" "$BROKEN_CAP_CTX" runs
 check_step "Say that the review did not happen" "cap-that-failed" "$BROKEN_CAP_CTX" runs
 
 echo
+echo "  an unreadable read-back matches none of the four verdict steps, which is"
+echo "  why the publication step carries that failure itself (#391)"
+# The review reached the model and succeeded; only the comment read failed.
+# `review-invalidate-workflow-test.sh` executes that step and asserts it is
+# red; this asserts that nothing else would have said so, so the failure has
+# to live there and not in a widened did-not-happen condition -- which would
+# also catch a run that declined to review on purpose.
+UNKNOWN_CTX='{"steps.auth.outputs.ok":"true","steps.cap.outputs.run":"yes","steps.review.outcome":"success","steps.happened.outputs.ran":"yes","steps.published.outputs.state":"unknown"}'
+check_step "Converge the published reviewer verdict" unknown "$UNKNOWN_CTX" skipped
+check_step "Say that the review published nothing"   unknown "$UNKNOWN_CTX" skipped
+check_step "Work out why the review did not happen"  unknown "$UNKNOWN_CTX" skipped
+check_step "Say that the review did not happen"      unknown "$UNKNOWN_CTX" skipped
+
+echo
 echo "  the evaluator itself: an always() condition would run on a cancelled job,"
 echo "  which is what makes the two assertions above mean anything"
 say "always() runs on a cancelled job" \

@@ -65,7 +65,8 @@ extract_step() {
 SILENT=$(extract_run_block "Say that the review published nothing" "$WF")
 NORUN=$(extract_run_block "Say that the review did not happen" "$WF")
 EARLY=$(extract_run_block "Drop the previous head's pass before reviewing this one" "$WF")
-if [ -z "$SILENT" ] || [ -z "$NORUN" ] || [ -z "$EARLY" ]; then
+PUBLISHED=$(extract_run_block "Establish whether the review was published" "$WF")
+if [ -z "$SILENT" ] || [ -z "$NORUN" ] || [ -z "$EARLY" ] || [ -z "$PUBLISHED" ]; then
   no "both steps' shell can be extracted and run" \
      "no 'run: |' body found under one of the two step names in $WF -- if a step was renamed, re-point this test rather than deleting it"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"
@@ -99,7 +100,7 @@ check_published_guard() {
 check_published_guard "$WHY_STEP" "the diagnosis step"
 check_published_guard "$NORUN_STEP" "the did-not-run step"
 
-for pair in "SILENT:the silent step" "NORUN:the did-not-run step" "EARLY:the early-strip step"; do
+for pair in "SILENT:the silent step" "NORUN:the did-not-run step" "EARLY:the early-strip step" "PUBLISHED:the publication step"; do
   var=${pair%%:*}
   what=${pair#*:}
   # shellcheck disable=SC2016  # the literal characters ${{ are the thing sought.
@@ -304,6 +305,38 @@ else
   no "and it fires on a new head rather than on every event" \
      "its condition does not name 'synchronize'; on reopened or ready_for_review the head is unchanged and the label is still this head's"
 fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "The publication read is retried, and an answer it cannot get is red (#391)"
+
+# `review-published.sh` answers `unknown` when the comments it was handed are
+# not a list, and no step in the job matches `unknown`: on #382 the ledger
+# froze at round 5 through four further publications with every run green.
+# The step must therefore try again, and then fail rather than fall through.
+cp .github/scripts/review-published.sh "$sandbox/trusted/" || exit 1
+state() { sed -n 's/^state=//p' "$sandbox/output" | tail -1; }
+reads() { grep -c '^api ' "$sandbox/log"; }
+pub() {
+  : > "$sandbox/output"
+  GITHUB_OUTPUT="$sandbox/output" STARTED=2026-08-25T00:00:00Z OUTCOME=success \
+    ATTADIPA_TRUSTED_SCRIPTS="$sandbox/trusted" step "$PUBLISHED" "$sandbox/trusted"
+}
+
+rc=$(FAIL_API=1 pub)
+say 'a comment read that keeps failing is tried three times' "$(reads)" 3
+say '...and records unknown, not silent: nothing proved the review said nothing' "$(state)" unknown
+say '...and the step is red, so the run cannot end green having converged nothing' "$(sign "$rc")" nonzero
+say '...and says why' "$(grep -c '::error::.*could not be read back' "$sandbox/out")" 1
+
+rc=$(BODIES='[[]]' pub)
+say 'an empty comment list is silent, not unknown' "$(state)" silent
+say '...read once' "$(reads)" 1
+say '...and green here; the silent step carries that verdict' "$(sign "$rc")" zero
+
+rc=$(BODIES='[[{"user":{"login":"claude[bot]"},"created_at":"2026-08-25T00:10:00Z","updated_at":"2026-08-25T00:10:00Z","body":"review"}]]' pub)
+say 'a reviewer comment written during the run is published' "$(state)" published
+say '...and green' "$(sign "$rc")" zero
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
