@@ -239,9 +239,9 @@ esp_err_t restore_time_metadata() {
 // in ESP-IDF v5.5.5, nvs_commit() in components/nvs_flash/src/nvs_api.cpp is
 // commented "no-op for now, to be used when intermediate cache is added" and
 // NVSHandleSimple::commit() returns ESP_OK without touching storage -- so a
-// `save_time_metadata()` that fails between its two sets leaves `tz_min`
-// behind without `last_utc`. A version bump re-reads that. The flag means
-// complete, and a
+// `save_time_metadata()` that fails between its two sets leaves `last_utc`
+// behind without `tz_min`; the offset is written last, so a torn write never
+// publishes a new one. The flag means complete, and a
 // half-written store is deliberately not complete: restoring it would put back
 // a UTC offset from a synchronization that failed, which is the one thing this
 // type exists to prevent. So `present == false` is restored by erasing both
