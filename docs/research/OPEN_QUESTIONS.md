@@ -376,7 +376,7 @@ is the record of what was true at `144459f` and what changed it:
   instead. So this is not "the product image lacks a surface the HIL image has";
   no image has the operation. Traced in
   [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md) §4, and it
-  is now **Q6** below rather than a clause inside Q4.
+  is now **Q6** above rather than a clause inside Q4.
 
 So the gap #346 opened when the unauthenticated USB control plane left the
 product image was wider than "time is not settable": the mesh half of the

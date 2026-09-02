@@ -2517,15 +2517,21 @@ node is refused on the pin instead:
 — "if (!ops.wrong_node()) return PinOutcome::Pinned;" falls through to
 [`:200`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;".
 No image can clear that pin. So this entry is `USE AS-IS` for what it covers and
-**incomplete as a recovery**: a real one needs the bond, the pin and the stored
-passkey cleared as one operation.
+**incomplete as a recovery**: a real one needs the bond and the pin cleared as
+one operation, and the stored passkey replaced by the entry that carries the
+node's current digits — never erased, since an erased passkey leaves the watch
+unconfigured at its next boot.
 
 Three further reuse verdicts follow, and all three are this repository's own
 code under its own licence — no new dependency, no new licence surface:
 
-- `firmware/main/meshcore_bond_recovery.h` — `USE AS-IS`. It answers "which
-  bond, and only that one", and it should not learn about the pin: a second
-  record would be a second thing to keep in step with a single conflict.
+- `firmware/main/meshcore_bond_recovery.h` — `USE AS-IS`, for the stale-bond
+  state only. It answers "which bond, and only that one", and it should not
+  learn about the pin: a second record would be a second thing to keep in step
+  with a single conflict. Once the watch has paired afresh the record is empty
+  by design (`pairing_succeeded()`), and the state where the pin refuses a
+  re-made bond needs a record of the refused peer that nothing writes today —
+  [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md) §6.1.
 - [`../../firmware/main/meshcore_forget_outcome.h:59`](../../firmware/main/meshcore_forget_outcome.h)
   — "class ForgetBondOperation {" — `ADAPT`. The reservation slot and the
   one-at-a-time rule cross the same two tasks and are exactly right. Its outcome
