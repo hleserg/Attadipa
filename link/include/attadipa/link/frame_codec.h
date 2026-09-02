@@ -186,7 +186,10 @@ struct DecoderStats {
 // Holds one frame's worth of bytes and no more. It allocates nothing, blocks on
 // nothing and is safe to feed one byte at a time or two hundred — the fragment
 // boundaries of the underlying transport are not allowed to change what comes
-// out, which is the property `push()` and `next()` exist to guarantee.
+// out, which is the property `push()`, `feed()` and `next()` exist to
+// guarantee. A transport hands each read to `feed()`, which drains, offers and
+// counts what it finally gives up on; `push()` alone counts nothing, so a
+// caller that loops over `push()` itself owns its own `input_dropped`.
 class Decoder {
 public:
     // One byte of slack beyond a maximum frame, so that a complete frame plus
