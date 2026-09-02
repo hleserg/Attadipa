@@ -279,7 +279,8 @@ one. This project has no Heltec V4 and independently confirming it is
 | ~~Q1~~ | ~~What should the Waveshare board *be*, given it cannot do mesh or navigation?~~ | **RESOLVED** | [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-1. The premise was wrong: it cannot do mesh or navigation *on its own*. With an Attadipa node attached it runs the same applications as a LoRa watch; without one it is a watch, an audio device, and whatever the installed applications make it |
 | Q2 | ~~Is a magnetometer expected to be added externally~~, **or is heading GNSS-only on a stock board for good?** | **half answered 2026-08-22** | The first half is settled by A5 and by the same evidence: one is being added externally, to one unit ([#83](https://github.com/hleserg/Attadipa/issues/83)). The second half is **not** settled and is the part that was always the product question — a modified unit says nothing about what a stock board offers, and the firmware ships for stock boards. Restated rather than closed |
 | Q3 | Realistic battery-life target | UNKNOWN | measurement, after bring-up |
-| ~~Q4~~ | ~~How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node?~~ | **RESOLVED 2026-09-02** | the owner chose on-device entry: [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-26 and [ADR-0018](../adr/0018-owner-consent-for-provisioning.md), with [#356](https://github.com/hleserg/Attadipa/issues/356) carrying the implementation. The answer is **not** one of the options below — every one of them assumes a provisioning channel and the decision was to have none. The section keeps them for the two corrections noted there |
+| ~~Q4~~ | ~~How does an owner earn the right to provision a production watch — set its clock, keep its timezone, give MeshCore a passkey, recover from a changed node?~~ | **RESOLVED 2026-09-02** | the owner chose on-device entry: [OWNER_DECISIONS.md](OWNER_DECISIONS.md) OD-26 and [ADR-0018](../adr/0018-owner-consent-for-provisioning.md), with [#356](https://github.com/hleserg/Attadipa/issues/356) carrying the implementation. The answer is **not** one of the options below — every one of them assumes a provisioning channel and the decision was to have none. The section keeps them for the two corrections noted there. **One clause of the question is not resolved and was struck through with the rest by mistake: *recover from a changed node*.** OD-26 and ADR-0018 decide the consent factor, and #356 builds the entry screen, but neither adds an operation that clears what a reset node invalidates — see **Q6** |
+| Q6 | After a MeshCore node is factory-reset or reflashed, what returns a watch to service — and what exactly may that operation clear? | **UNKNOWN, and wider than it looked** | Split out of Q4 on 2026-09-02 by [#409](https://github.com/hleserg/Attadipa/issues/409). The blocking state is **two** items, not one: the stale bond, which `mesh-forget-bond` can delete in a HIL image, and the **pin**, which nothing in any image can clear. Re-entering a passkey cannot substitute for either — with a bond in the store the watch encrypts instead of pairing and the passkey is never consulted. Today the only recovery is `idf.py erase-flash`, which also takes the bonds and the time metadata. Evidence and the minimum atomic scope: [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md). Resolved by an implementation issue and a bench run; the physical half is **NOT EXECUTED — HARDWARE REQUIRED** |
 | Q5 | How does a power lease taken on one task take part in a sleep decision made on another? | **UNKNOWN** | engineering decision, deferred. Blocks [#367](https://github.com/hleserg/Attadipa/issues/367) item 7 only; consequence is zero until a plan suspends a domain a cross-task lease holds |
 
 Q1 was a genuine product question, not an engineering one, and it was answered
@@ -363,8 +364,21 @@ is the record of what was true at `144459f` and what changed it:
   `firmware/main/meshcore_ble.cpp:1185` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
-- **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
-  the same single gated caller.
+- **A changed node cannot be recovered from, and this bullet understated it.**
+  `meshcore_ble_forget_bond()` has the same single gated caller, which is what
+  the sentence said. What it did not say is that ungating that caller would not
+  finish the job: the bond is one of two things a reset node invalidates, and
+  the other is the **pin**, which no image can clear at all. Deleting the bond
+  re-arms one pairing; given the node's current digits the watch then pairs,
+  reads the reset node's new public key, and
+  `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;" turns
+  it away for good. The single writer of that key is
+  `firmware/main/meshcore_ble.cpp:389` — "nvs_set_blob(handle, kNodeKeyNvsKey"
+  and there is no eraser; the file's one `nvs_erase_key` names the passkey
+  instead. So this is not "the product image lacks a surface the HIL image has";
+  no image has the operation. Traced in
+  [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md) §4, and it
+  is now **Q6** above rather than a clause inside Q4.
 
 So the gap #346 opened when the unauthenticated USB control plane left the
 product image was wider than "time is not settable": the mesh half of the
