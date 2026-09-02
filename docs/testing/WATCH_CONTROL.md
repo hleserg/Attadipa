@@ -385,7 +385,7 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:946` "restore_time_metadata()") is outside the `#if` — but
+(`waveshare_board.cpp:954` "restore_time_metadata()") is outside the `#if` — but
 cannot write the clock or persist an offset, because the one caller of that
 sequence, `BoardTimeSink`, is inside it. Flashing the HIL image, setting the time, and
 flashing back therefore works: the PCF85063 is battery-backed and the offset is
@@ -393,7 +393,7 @@ in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:1840` "bool configure_meshcore_ble") has exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:516`
+`BoardMeshSink::configure` (`waveshare_board.cpp:524`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contains no call to it. What that call set was per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
@@ -434,7 +434,7 @@ press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:4
 "set_mesh_passkey(std::uint32_t passkey) override {" sends the same `Configure`
 event. What stays HIL-only is watching it happen: the mesh screen's
 `mesh_screen_requested` (`waveshare_board.cpp:139`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:519`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:527`
 "mesh_screen_requested.store(true)", inside the `#if`, so a product image
 scans without showing that it does.
 
@@ -496,7 +496,7 @@ tools/watch_control.py                the command line
        └───────────────────────────────────────────────────┘
 ```
 
-Five decisions worth knowing:
+Six decisions worth knowing:
 
 1. **It is not a second protocol.** `link::frame_codec`'s framing — sync `F1
    5E`, a checked length, CRC-16/CCITT, a resynchronising decoder — carries an
@@ -529,6 +529,13 @@ Five decisions worth knowing:
    of board facts — it asks. A tool that knew "the Waveshare is 410 × 502" would
    be the architecture rule broken in a script, and wrong the first time a panel
    was rotated.
+
+6. **One request per host write.** On the physical device a single write larger
+   than the USB-Serial/JTAG receive ring — 4 096 bytes — loses its tail in the
+   driver, before any byte reaches the decoder, and nothing counts it
+   ([VERIFIED_FACTS](../research/VERIFIED_FACTS.md#one-host-write-larger-than-the-usb-receive-ring-loses-its-tail-before-the-decoder),
+   `MEASURED`). The client never batches requests into one write, so it never
+   gets there; a script that does must stay under that ring.
 
 ### Tests
 
