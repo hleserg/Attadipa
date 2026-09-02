@@ -225,6 +225,12 @@ public:
       return true;
     }
     case attadipa::core::WakeSource::Touch: {
+      if (touch_interrupt_ == GPIO_NUM_NC) {
+        // Attached without a touch controller: the line is undriven and its
+        // level UNKNOWN, so it is refused like Button below, not guessed.
+        ESP_LOGE(kTag, "no touch line to arm on this boot");
+        return false;
+      }
       esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);
       if (result == ESP_OK) {
         result = esp_sleep_enable_gpio_wakeup();
@@ -258,7 +264,9 @@ public:
       result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
       break;
     case attadipa::core::WakeSource::Touch:
-      result = gpio_wakeup_disable(touch_interrupt_);
+      result = touch_interrupt_ == GPIO_NUM_NC
+                   ? ESP_ERR_INVALID_STATE  // never armed; the branch below
+                   : gpio_wakeup_disable(touch_interrupt_);
       if (result == ESP_OK) {
         result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
       }
@@ -335,7 +343,8 @@ public:
         // ADR-0016 §6: the pin is a corroborating signal, never the classifier.
         // It used to *be* the classifier, and a GPIO wake with the line already
         // released then fell through to "cause unknown".
-        if (gpio_get_level(touch_interrupt_) != 0) {
+        if (touch_interrupt_ != GPIO_NUM_NC &&
+            gpio_get_level(touch_interrupt_) != 0) {
           ESP_LOGW(kTag, "GPIO wake with the touch line already high");
         }
         (void)consume_power_edge();

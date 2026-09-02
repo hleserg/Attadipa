@@ -69,6 +69,8 @@ namespace attadipa::firmware {
 esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu);
 
 // Bind the owner to this board's hardware. Called once, before any sleep.
+// `GPIO_NUM_NC` for the touch line means boot found no touch controller: the
+// owner then refuses `WakeSource::Touch` rather than arm an undriven pin.
 esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
                             esp_lcd_panel_handle_t panel,
                             gpio_num_t touch_interrupt,
