@@ -337,34 +337,39 @@ Two things in what follows are worth reading against that, rather than deleted:
 Verified in this tree at `144459f`, not inferred from the issue that predicted
 it. The production image is the one built from `sdkconfig.defaults` alone, and
 that file carries `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n".
-Everything that provisions a watch sits behind that symbol:
+Everything that provisioned a watch sat behind that symbol, and #356 moved
+each piece out from behind it in the order below — the tense of each bullet
+is the record of what was true at `144459f` and what changed it:
 
-- **The clock cannot be set.** `write_rtc()` is reached only through
-  `provision_time()`, whose one instantiation is inside the
-  `firmware/main/waveshare_board.cpp:414` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
-  block. (Since #356's first change the sequence itself compiles in every
-  image; what a production image lacks is a caller.) A production watch reads
-  the PCF85063 and never writes it, so a board off the shelf shows whatever its
-  RTC powered up with.
-- **The timezone cannot be kept,** for the same reason: `save_time_metadata()`
-  is called by nothing outside that block. `restore_time_metadata()` is
-  unguarded, so production can read a stored offset it has no way to have
-  stored.
-- **MeshCore never scans.** `configure_meshcore_ble()` is the only writer of
-  the passkey key, and it is reachable only from inside that block. Since
-  #356's first change boot replays a stored passkey through the same
-  `Configure` event, so a production image scans if a HIL image left one on
-  flash; with nothing on flash the worker's
+- **The clock could not be set.** `write_rtc()` was reached only through
+  `provision_time()`, whose one instantiation was inside the
+  `#if CONFIG_ATTADIPA_WATCH_CONTROL` block. #356's first change made the
+  sequence compile in every image; its second gave a product image the caller:
+  `firmware/main/waveshare_board.cpp:429` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
+  is ungated and is reached from the entry screen a long press on the clock
+  opens (`firmware/main/waveshare_board.cpp:788` — "void long_press(lv_event_t *) {").
+  A board off the shelf still shows whatever its RTC powered up with until
+  somebody holding it enters the date and time — which is what ADR-0018 chose.
+- **The timezone could not be kept,** for the same reason, and for the same
+  reason it now is: the offset is the third field of that screen and goes
+  through the same `provision_time()` as the clock.
+- **MeshCore never scanned.** `configure_meshcore_ble()` is the only writer of
+  the passkey key. #356's first change made boot replay a stored passkey
+  through the same `Configure` event, and its second lets the fourth field of
+  the entry screen store one:
+  `firmware/main/waveshare_board.cpp:460` — "set_mesh_passkey(std::uint32_t passkey) override {".
+  With nothing on flash and nothing entered the worker's
   `firmware/main/meshcore_ble.cpp:1174` — "if (configured.load()) start_scan();"
-  is false forever: the transport starts, is never configured, and never looks
-  for a node.
+  is false forever, which is now the same "not set up yet" as a blank clock
+  rather than a product that cannot be set up.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has
   the same single gated caller.
 
 So the gap #346 opened when the unauthenticated USB control plane left the
 product image was wider than "time is not settable": the mesh half of the
-product does not run at all without it. That gap is what OD-26 answers; it is
-closed as a question and open as work, in #356.
+product does not run at all without it. That gap is what OD-26 answers, and
+#356 is the work that closed it; what remains hardware-untested is listed in
+that PR, not here.
 
 What was missing was not a mechanism. It was a rule about **who may put a watch
 into provisioning mode**, and that is a product decision, not an engineering

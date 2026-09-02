@@ -1,0 +1,257 @@
+#include "attadipa/apps/provisioning.h"
+
+#include "attadipa/apps/clock.h"
+#include "attadipa/l10n/string_id.h"
+#include "attadipa/l10n/tr.h"
+
+namespace attadipa::apps {
+namespace {
+
+unsigned number(const char* digits, unsigned from, unsigned count) {
+  unsigned value = 0;
+  for (unsigned i = 0; i < count; ++i) {
+    value = value * 10 + static_cast<unsigned>(digits[from + i] - '0');
+  }
+  return value;
+}
+
+// The mask each field is typed into; `_` is a digit still to come.
+const char* mask(EntryField field) {
+  switch (field) {
+  case EntryField::Date:    return "____-__-__";
+  case EntryField::Time:    return "__:__";
+  case EntryField::Offset:  return "__:__";
+  case EntryField::Passkey: return "______";
+  case EntryField::Done:    return "";
+  }
+  return "";
+}
+
+}  // namespace
+
+ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink) : sink_(sink) {}
+
+unsigned ProvisioningEntry::capacity() const {
+  switch (field_) {
+  case EntryField::Date:    return 8;
+  case EntryField::Time:    return 4;
+  case EntryField::Offset:  return 4;
+  case EntryField::Passkey: return 6;
+  case EntryField::Done:    return 0;
+  }
+  return 0;
+}
+
+void ProvisioningEntry::press(EntryKey key) {
+  if (field_ == EntryField::Done) {
+    return;
+  }
+  verdict_ = EntryVerdict::None;
+  if (key >= EntryKey::Digit0 && key <= EntryKey::Digit9) {
+    if (count_ < capacity()) {
+      digits_[count_++] = static_cast<char>(
+          '0' + (static_cast<unsigned>(key) -
+                 static_cast<unsigned>(EntryKey::Digit0)));
+    }
+    return;
+  }
+  switch (key) {
+  case EntryKey::Sign:
+    if (field_ == EntryField::Offset) {
+      offset_west_ = !offset_west_;
+    }
+    return;
+  case EntryKey::Backspace:
+    if (count_ > 0) {
+      --count_;
+    }
+    return;
+  case EntryKey::Ok:
+    accept();
+    return;
+  case EntryKey::Cancel:
+    // Past the offset the clock is already the board's; leaving then is the
+    // empty-passkey skip by another key, and says so. Leaving after the board
+    // failed a write is not "nothing changed": the RTC may hold the typed
+    // time with no rollback behind it, so the last answer stands.
+    verdict_ = field_ == EntryField::Passkey ? EntryVerdict::Skipped
+               : board_failed_               ? EntryVerdict::Failed
+                                             : EntryVerdict::Cancelled;
+    field_ = EntryField::Done;
+    count_ = 0;
+    return;
+  default:
+    return;
+  }
+}
+
+// What OK does with a full field. A field that is not full, or does not name
+// a real moment, is refused and stays on the screen with its digits, so a slip
+// costs one key and not the whole entry.
+void ProvisioningEntry::accept() {
+  switch (field_) {
+  case EntryField::Date: {
+    if (count_ != 8) {
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    }
+    const unsigned year = number(digits_, 0, 4);
+    const unsigned month = number(digits_, 4, 2);
+    const unsigned day = number(digits_, 6, 2);
+    core::WallTime probe;
+    if (year < 2000 || year > 2099 ||
+        !wall_time_from_civil({year, month, day, 0, 0, 0, 0}, probe)) {
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    }
+    year_ = year;
+    month_ = month;
+    day_ = day;
+    break;
+  }
+  case EntryField::Time: {
+    const unsigned hour = number(digits_, 0, 2);
+    const unsigned minute = number(digits_, 2, 2);
+    if (count_ != 4 || hour > 23 || minute > 59) {
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    }
+    hour_ = hour;
+    minute_ = minute;
+    break;
+  }
+  case EntryField::Offset: {
+    const unsigned hours = number(digits_, 0, 2);
+    const unsigned minutes = number(digits_, 2, 2);
+    // UTC-12 to UTC+14 is every zone there is.
+    if (count_ != 4 || minutes > 59 || hours * 60 + minutes > 14 * 60 ||
+        (offset_west_ && hours * 60 + minutes > 12 * 60)) {
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    }
+    core::WallTime utc;
+    if (!wall_time_from_civil({static_cast<std::int64_t>(year_), month_, day_,
+                               0, hour_, minute_, 0},
+                              utc)) {
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    }
+    const int signed_minutes =
+        static_cast<int>(hours * 60 + minutes) * (offset_west_ ? -1 : 1);
+    switch (sink_.set_wall_clock(
+        {utc.unix_seconds, static_cast<std::int16_t>(signed_minutes)})) {
+    case core::ProvisionOutcome::Accepted:
+      break;
+    case core::ProvisionOutcome::Rejected:
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    case core::ProvisionOutcome::Failed:
+      verdict_ = EntryVerdict::Failed;
+      board_failed_ = true;
+      return;
+    }
+    break;
+  }
+  case EntryField::Passkey: {
+    if (count_ == 0) {
+      verdict_ = EntryVerdict::Skipped;
+      field_ = EntryField::Done;
+      return;
+    }
+    if (count_ != 6) {
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    }
+    switch (sink_.set_mesh_passkey(number(digits_, 0, 6))) {
+    case core::ProvisionOutcome::Accepted:
+      break;
+    case core::ProvisionOutcome::Rejected:
+      verdict_ = EntryVerdict::Rejected;
+      return;
+    case core::ProvisionOutcome::Failed:
+      verdict_ = EntryVerdict::Failed;
+      return;
+    }
+    break;
+  }
+  case EntryField::Done:
+    return;
+  }
+  verdict_ = EntryVerdict::Accepted;
+  field_ = static_cast<EntryField>(static_cast<std::uint8_t>(field_) + 1);
+  count_ = 0;
+}
+
+EntryText ProvisioningEntry::text(l10n::Locale locale) const {
+  using l10n::StringId;
+  EntryText out;
+  out.ok = l10n::tr(StringId::ProvisionKeyOk, locale);
+  out.backspace = l10n::tr(StringId::ProvisionKeyErase, locale);
+  out.cancel = l10n::tr(StringId::ProvisionKeyCancel, locale);
+  out.sign_key = field_ == EntryField::Offset;
+  out.done = field_ == EntryField::Done;
+
+  StringId title = StringId::ProvisionTitleDone;
+  StringId hint = StringId::ProvisionDone;
+  switch (field_) {
+  case EntryField::Date:
+    title = StringId::ProvisionTitleDate;
+    hint = StringId::ProvisionHintDate;
+    break;
+  case EntryField::Time:
+    title = StringId::ProvisionTitleTime;
+    hint = StringId::ProvisionHintTime;
+    break;
+  case EntryField::Offset:
+    title = StringId::ProvisionTitleOffset;
+    hint = StringId::ProvisionHintOffset;
+    break;
+  case EntryField::Passkey:
+    title = StringId::ProvisionTitlePasskey;
+    hint = StringId::ProvisionHintPasskey;
+    break;
+  case EntryField::Done:
+    break;
+  }
+  switch (verdict_) {
+  case EntryVerdict::None:
+    break;
+  case EntryVerdict::Accepted:
+    // Moving on is the answer; the new field's hint is what a person needs
+    // next, not a word about the last one. Done says its own line.
+    break;
+  case EntryVerdict::Rejected:
+    hint = StringId::ProvisionRejected;
+    break;
+  case EntryVerdict::Failed:
+    hint = StringId::ProvisionFailed;
+    break;
+  case EntryVerdict::Skipped:
+    hint = StringId::ProvisionSkipped;
+    break;
+  case EntryVerdict::Cancelled:
+    hint = StringId::ProvisionCancelled;
+    break;
+  }
+  out.title = l10n::tr(title, locale);
+  out.hint = l10n::tr(hint, locale);
+
+  // The mask with the typed digits laid over its blanks.
+  const char* shape = mask(field_);
+  unsigned typed = 0;
+  unsigned n = 0;
+  if (field_ == EntryField::Offset) {
+    out.value[n++] = offset_west_ ? '-' : '+';
+  }
+  for (unsigned i = 0; shape[i] != '\0' && n + 1 < sizeof(out.value); ++i) {
+    if (shape[i] == '_' && typed < count_) {
+      out.value[n++] = digits_[typed++];
+    } else {
+      out.value[n++] = shape[i];
+    }
+  }
+  out.value[n] = '\0';
+  return out;
+}
+
+}  // namespace attadipa::apps
