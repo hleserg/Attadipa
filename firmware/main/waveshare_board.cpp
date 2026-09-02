@@ -1016,6 +1016,11 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // report to the caller is that error, not ESP_OK.
 esp_err_t abandon_board(bool lvgl_reachable) {
   esp_err_t first_failure = ESP_OK;
+  // One rule for both: a lock this rollback cannot get -- the caller's own
+  // timeout, or a second of ours here -- means the display stack stays.
+  if (state.display != nullptr && lvgl_reachable && !lvgl_port_lock(1000)) {
+    lvgl_reachable = false;
+  }
   if (state.display != nullptr && !lvgl_reachable) {
     ESP_LOGE(kTag, "boot rollback: LVGL holds its lock; LVGL, the panel and "
                    "QSPI are left in place rather than freed under it");
@@ -1026,9 +1031,8 @@ esp_err_t abandon_board(bool lvgl_reachable) {
     state.spi_bus_up = false;
   }
   if (state.display != nullptr) {
-    lvgl_port_lock(0);
-    // create_ui()'s objects go first, under the lock, or the refresh tick
-    // outlives the screen it draws on.
+    // Locked above. create_ui()'s objects go first, under the lock, or the
+    // refresh tick outlives the screen it draws on.
     state.provision_face.clear();
     state.entry.reset();
     state.clock_face.clear();
@@ -1160,7 +1164,10 @@ esp_err_t start_waveshare_ui() {
 #endif
   lvgl_port_unlock();
   if (physical_result != ESP_OK) {
-    // Nothing of it started, so the rollback has only the steps above to undo.
+    // The service did not start, but board_power_attach() may have: the
+    // owner then keeps a pmu and a panel the rollback frees. Harmless while
+    // every route to board_power_owner() runs inside the service, which is
+    // assigned only on success -- a second caller would have to know this.
     return abandon_board_after(physical_result, "start physical input");
   }
 #if CONFIG_ATTADIPA_WATCH_CONTROL
