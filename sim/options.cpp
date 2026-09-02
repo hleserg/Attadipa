@@ -81,6 +81,8 @@ void print_usage(const char *argv0) {
       "screenshot\n"
       "  --clock-state <name> ready, stale, unprovisioned, unreachable, or "
       "failed\n"
+      "  --no-touch       the Clock as a board shows it when touch did not come "
+      "up\n"
       "  --child          render the Clock in Child mode\n"
       "  --provision      open the Clock's entry screen for the time and the "
       "node passkey\n"
@@ -191,6 +193,11 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
                      value);
         return ParseResult::Error;
       }
+      continue;
+    }
+    if (std::strcmp(arg, "--no-touch") == 0) {
+      out.clock_screen = true;
+      out.touch_absent = true;
       continue;
     }
     if (std::strcmp(arg, "--debug-socket") == 0) {

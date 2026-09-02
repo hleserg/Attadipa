@@ -87,5 +87,36 @@ int main() {
   CHECK(!missing.ready && std::strcmp(missing.time, "--:--") == 0);
   CHECK(std::strcmp(missing.status, "не настроено") == 0);
 
+  // A board that came up without touch says so on the face, first: the
+  // 240 px face clips the tail, and the dashes already show a clock that is
+  // not ready.
+  apps::ClockState no_touch;
+  no_touch.time = {wall(2026, 8, 25, 12, 34), 0, 0, core::Validity::Valid};
+  no_touch.availability = core::Availability::Ready;
+  no_touch.touch_absent = true;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status, "no touch") ==
+        0);
+  no_touch.availability = core::Availability::Unreachable;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
+                    "no touch · unreachable") == 0);
+  // The Russian pairs are the long ones, and a cut by bytes would land inside
+  // a two-byte character; every pair fits, and the longest is checked whole.
+  no_touch.locale = l10n::Locale::Ru;
+  no_touch.availability = core::Availability::Unprovisioned;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
+                    "нет сенсора · не настроено") == 0);
+  no_touch.availability = core::Availability::Unsupported;
+  CHECK(std::strcmp(apps::format_clock(no_touch, false).status,
+                    "нет сенсора · не поддерживается") == 0);
+  char cut[] = "не\xD0";  // "не" and the lead byte of a third letter
+  apps::trim_partial_utf8(cut);
+  CHECK(std::strcmp(cut, "не") == 0);
+  char whole[] = "нет";
+  apps::trim_partial_utf8(whole);
+  CHECK(std::strcmp(whole, "нет") == 0);
+  char ascii[] = "no touch";
+  apps::trim_partial_utf8(ascii);
+  CHECK(std::strcmp(ascii, "no touch") == 0);
+
   return failures == 0 ? 0 : 1;
 }
