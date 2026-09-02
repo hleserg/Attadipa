@@ -179,7 +179,11 @@ void ProvisioningEntry::accept() {
   }
   case EntryField::Passkey: {
     if (count_ == 0) {
-      verdict_ = EntryVerdict::Skipped;
+      // The empty OK is the other door out of this field, and it asks the
+      // same question Cancel does: a passkey that reached the radio and came
+      // back badly may be armed for this boot, and "no passkey; the clock is
+      // set" would describe the opposite watch (#416, round 3).
+      verdict_ = passkey_failed_ ? EntryVerdict::Failed : EntryVerdict::Skipped;
       field_ = EntryField::Done;
       return;
     }

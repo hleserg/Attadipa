@@ -429,6 +429,20 @@ int main()
         CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
         CHECK(hint_is(entry, "could not be stored"));
     }
+    // The same exit through the other door: erase the digits and press OK,
+    // which on a clean field is the skip. After NotStored it is not.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board);
+        to_passkey(entry);
+        type(entry, "123456");
+        entry.press(EntryKey::Ok);
+        board.worker(PasskeyOutcome::NotStored);
+        CHECK(entry.poll());
+        for (int i = 0; i < 6; ++i) entry.press(EntryKey::Backspace);
+        entry.press(EntryKey::Ok);
+        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
+    }
     // Back to back. A second OK over an in-flight request would be a second
     // configure with one answer to share; the keypad is deaf until the radio
     // has answered, and the digits nobody can edit stay as they are.
