@@ -158,6 +158,13 @@ case "$method:$path" in
       echo 'gh: Server Error (HTTP 500)' >&2; exit 1
     fi
     lock=ref; [ "${path##*/}" = writer ] && lock=writer
+    # ATTADIPA_STUB_REF_GET_FAIL_AFTER=N: the first N reads of this ref answer
+    # normally, every read after them is a 500 (round 5: the loops must keep
+    # their last readable answer, not their last answer).
+    if [ -n "${ATTADIPA_STUB_REF_GET_FAIL_AFTER-}" ]; then
+      reads=$(( $(cat "$state/reads.$lock" 2>/dev/null || echo 0) + 1 )); echo "$reads" > "$state/reads.$lock"
+      if [ "$reads" -gt "$ATTADIPA_STUB_REF_GET_FAIL_AFTER" ]; then echo 'gh: Server Error (HTTP 500)' >&2; exit 1; fi
+    fi
     if [ -s "$state/dellag.$lock" ]; then
       # The read lags the DELETE too: ATTADIPA_STUB_DELETE_LAG=N keeps serving
       # the deleted ref's sha for N reads, then it is gone (#392, round 2).
@@ -612,6 +619,38 @@ set -e
   && ok 'a release that reads 404 on a just-trusted create says nothing deleted, not nothing held' \
   || bad 'a release that reads 404 on a just-trusted create says nothing deleted, not nothing held' \
          "acquire rc=$trusted_rc, release rc=$unread_release2_rc, stderr=$(printf '%s' "$unread_release2_err" | tr '\n' ' ')"
+
+# A loop's knowledge is its last READABLE answer. Three reads name the previous
+# holder and the fourth is a 500: that is a foreign holder, not "not readable
+# back", and the claim is undone rather than trusted with the label added
+# (round 5, finding 2). The pre-check is the first of the four normal reads.
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+last_readable_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_STALE=9 \
+  ATTADIPA_STUB_REF_GET_FAIL_AFTER=4 bash "$CLAIM" acquire o/r 7 agent-9999-1 2>&1 >/dev/null)"
+last_readable_rc=$?
+set -e
+[ "$last_readable_rc" -eq 2 ] && ! grep -Fxq agent:working "$work/state/labels" \
+  && case "$last_readable_err" in *'trusting the create'*) false ;; *'claim verification failed: held by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a read-back that named another holder is not unsaid by a 500 after it' \
+  || bad 'a read-back that named another holder is not unsaid by a 500 after it' \
+         "rc=$last_readable_rc, labels=$(tr '\n' ' ' < "$work/state/labels"), stderr=$(printf '%s' "$last_readable_err" | tr '\n' ' ')"
+
+# Same rule in release: one readable read names another writer, the next two
+# are 500s. "held by <them>", never "left behind -- break it" over a ref a read
+# said is somebody else's (round 5, finding 1).
+reset_state; claimed
+set +e
+held_not_break_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_GET_FAIL_AFTER=1 \
+  bash "$CLAIM" release o/r 7 agent-9999-1 2>&1 >/dev/null)"
+held_not_break_rc=$?
+set -e
+[ "$held_not_break_rc" -eq 3 ] && [ -d "$work/state/ref.lock" ] && grep -Fxq agent:working "$work/state/labels" \
+  && case "$held_not_break_err" in *'left behind'*) false ;; *'held by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a release that read another holder once does not advise breaking their ref' \
+  || bad 'a release that read another holder once does not advise breaking their ref' \
+         "rc=$held_not_break_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$held_not_break_err" | tr '\n' ' ')"
 
 # `release` meets the same lag as the read-back, seconds after the same
 # create: the ordinary `held: full` exit of writer-start.sh is acquire, deny,

@@ -91,10 +91,15 @@ the label edit fails, or the read-back names a different holder for four reads,
 the undo deletes only a ref it positively read back as its own; every other
 answer leaves the ref where it is and names it on stderr:
 `left behind: refs/tags/attadipa-claims/<n> -- clear it with: claim.sh break
-OWNER/REPO <n>`. That ref has no label, so the watchdog never visits it and
-every later dispatch answers `already claimed; writer held`. The stderr line in
-the run log is the only record. Confirm with `claim.sh owner` before breaking:
-the read may have been a lagging replica, or a later writer may hold it now.
+OWNER/REPO <n>`. A task ref left this way has no label, so the watchdog never
+visits it (its reap list is built from `agent:working`) and every later
+dispatch answers `already claimed; writer held`. The `writer` ref is the other
+case: `acquire` sets no label for it, the watchdog reaps `writer` by name every
+hour, so a hosted one clears itself within two hours and only a terminal one
+stays, and while it stands a run answers `Another writer holds the repository;
+this run is held`. Either way the stderr line in the run log is the only
+record. Confirm with `claim.sh owner` before breaking: the read may have been a
+lagging replica, or a later writer may hold it now.
 
 Two more messages have the same shape. `acquire` can exit 0 with
 `claim created but not readable back after 4 attempts; trusting the create`:

@@ -214,21 +214,24 @@ acquire() {
   # reported and trusted (#392). A read naming somebody else is retried the
   # same way: the writer lease is released and re-acquired seconds apart, and
   # a replica behind that DELETE still serves the previous holder's tag. Only
-  # a different holder that survives every read is a claim to undo.
-  local read_rc
+  # a different holder that survives every read is a claim to undo. What the
+  # loop knows is its last READABLE answer, not its last answer: a 500 on the
+  # fourth read does not unsay three reads that named somebody.
+  local read_rc known=
   attempt=1
   while :; do
     winner="$(attadipa_claim_owner "$repo" "$number")"
     read_rc=$?
+    [ "$read_rc" -ne 0 ] || known="$winner"
     if { [ "$read_rc" -eq 0 ] && [ "$winner" = "$holder" ]; } || [ "$attempt" -eq 4 ]; then break; fi
     attempt=$((attempt + 1))
     sleep 2
   done
-  if [ "$read_rc" -ne 0 ]; then
+  if [ -z "$known" ]; then
     printf 'claim created but not readable back after %s attempts; trusting the create -- confirm with: claim.sh owner %s %s\n' \
       "$attempt" "$repo" "$number" >&2
-  elif [ "$winner" != "$holder" ]; then
-    printf 'claim verification failed: held by %s\n' "$winner" >&2
+  elif [ "$known" != "$holder" ]; then
+    printf 'claim verification failed: held by %s\n' "$known" >&2
     discard_own_ref "$repo" "$number" "$tag_sha"
     return 2
   elif [ "$attempt" -gt 1 ]; then
@@ -250,24 +253,29 @@ release() {
   # `|| true` -- this line is the whole signal that a lease trusted at its
   # create is still there (#392). A settled 404 says only what it knows: no
   # readable claim, nothing deleted -- acquire may have trusted a create this
-  # read has not caught up with yet.
+  # read has not caught up with yet. As in the read-back, the loop's
+  # knowledge is its last readable answer: a read that named another writer
+  # is not unsaid by a 500 after it, and "left behind -- break it" must never
+  # be printed over a ref a read named as somebody else's.
+  local known=
   for attempt in 1 2 3; do
     winner="$(attadipa_claim_owner "$repo" "$number")"
     rc=$?
+    [ "$rc" -ne 0 ] || known="$winner"
     if { [ "$rc" -eq 0 ] && [ "$winner" = "$holder" ]; } || [ "$attempt" -eq 3 ]; then break; fi
     sleep 2
   done
-  case "$rc" in
-    0) ;;
-    1) printf 'no readable claim at %s after %s attempts; nothing deleted -- confirm with: claim.sh owner %s %s\n' \
-         "$(claim_ref "$number")" "$attempt" "$repo" "$number" >&2
-       return 3 ;;
-    *) printf 'cannot read who holds %s; left behind -- clear it with: claim.sh break %s %s\n' \
-         "$(claim_ref "$number")" "$repo" "$number" >&2
-       return 3 ;;
-  esac
-  if [ "$winner" != "$holder" ]; then
-    printf 'held by %s\n' "$winner" >&2
+  if [ -z "$known" ]; then
+    case "$rc" in
+      1) printf 'no readable claim at %s after %s attempts; nothing deleted -- confirm with: claim.sh owner %s %s\n' \
+           "$(claim_ref "$number")" "$attempt" "$repo" "$number" >&2 ;;
+      *) printf 'cannot read who holds %s; left behind -- clear it with: claim.sh break %s %s\n' \
+           "$(claim_ref "$number")" "$repo" "$number" >&2 ;;
+    esac
+    return 3
+  fi
+  if [ "$known" != "$holder" ]; then
+    printf 'held by %s\n' "$known" >&2
     return 3
   fi
   if [ "$number" != writer ]; then
