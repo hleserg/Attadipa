@@ -155,6 +155,15 @@ case "$method:$path" in
       echo 'gh: Server Error (HTTP 500)' >&2; exit 1
     fi
     lock=ref; [ "${path##*/}" = writer ] && lock=writer
+    if [ -s "$state/dellag.$lock" ]; then
+      # The read lags the DELETE too: ATTADIPA_STUB_DELETE_LAG=N keeps serving
+      # the deleted ref's sha for N reads, then it is gone (#392, round 2).
+      if [ "$(cat "$state/dellag.$lock")" -gt 0 ]; then
+        echo "$(($(cat "$state/dellag.$lock") - 1))" > "$state/dellag.$lock"
+        printf '{"object":{"sha":"%s"}}\n' "$(cat "$state/$lock.sha")"; exit 0
+      fi
+      rm -f "$state/dellag.$lock" "$state/$lock.sha"; rm -rf "$state/$lock.lock"
+    fi
     if [ ! -d "$state/$lock.lock" ]; then echo 'gh: Not Found (HTTP 404)' >&2; exit 1; fi
     if [ -s "$state/lag.$lock" ] && [ "$(cat "$state/lag.$lock")" -gt 0 ]; then
       echo "$(($(cat "$state/lag.$lock") - 1))" > "$state/lag.$lock"
@@ -172,7 +181,11 @@ case "$method:$path" in
       echo 'gh: Resource not accessible by integration (HTTP 403)' >&2; exit 1
     fi
     lock=ref; [ "${path##*/}" = writer ] && lock=writer
-    rm -rf "$state/$lock.lock"; rm -f "$state/$lock.sha" ;;
+    if [ -n "${ATTADIPA_STUB_DELETE_LAG-}" ]; then
+      printf '%s\n' "$ATTADIPA_STUB_DELETE_LAG" > "$state/dellag.$lock"
+    else
+      rm -rf "$state/$lock.lock"; rm -f "$state/$lock.sha"
+    fi ;;
   *) echo "unexpected api call: $method $path" >&2; exit 64 ;;
 esac
 STUB
@@ -505,6 +518,22 @@ set -e
   || bad 'a failed claim never deletes a ref it could not read' \
          "rc=$unread_orphan_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$unread_orphan_err" | tr '\n' ' ')"
 
+# Three confirmed 404s is a ref that is not there, not one left behind. The
+# read-back spends its four attempts and trusts the create, the label edit
+# fails, and the undo reads 404 three times: rc 2, and no "left behind" for a
+# ref nobody can see (round 2, finding 3; the lag knob reaches this branch).
+reset_state
+set +e
+absent_undo_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_MODE=issuefail \
+  ATTADIPA_STUB_REF_LAG=99 bash "$CLAIM" acquire o/r 7 agent-4242-1 2>&1 >/dev/null)"
+absent_undo_rc=$?
+set -e
+[ "$absent_undo_rc" -eq 2 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$absent_undo_err" in *'left behind'*) false ;; *) true ;; esac \
+  && ok 'three confirmed 404s in the undo are not a ref left behind' \
+  || bad 'three confirmed 404s in the undo are not a ref left behind' \
+         "rc=$absent_undo_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$absent_undo_err" | tr '\n' ' ')"
+
 # `release` meets the same lag as the read-back, seconds after the same
 # create: the ordinary `held: full` exit of writer-start.sh is acquire, deny,
 # release. A lagging read is retried rather than answered "nothing held".
@@ -520,6 +549,37 @@ set -e
   && ok 'a release whose read lags the create is retried, not refused' \
   || bad 'a release whose read lags the create is retried, not refused' \
          "rc=$lag_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stdout=$lag_release_out"
+
+# The confirmation after the DELETE reads a ref deleted milliseconds ago, the
+# tightest window in the file. One lagging answer used to make `release` put
+# `agent:working` back on an issue whose lock was already gone -- the label the
+# watchdog then requeues two hours later (round 2, finding 1).
+reset_state; claimed
+set +e
+dellag_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_DELETE_LAG=1 \
+  bash "$CLAIM" release o/r 7 agent-4242-1 2>/dev/null)"
+dellag_rc=$?
+set -e
+[ "$dellag_rc" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] && ! grep -Fxq agent:working "$work/state/labels" \
+  && case "$dellag_out" in *'released by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a DELETE whose confirmation lags once is a cleared claim, and the label stays off' \
+  || bad 'a DELETE whose confirmation lags once is a cleared claim, and the label stays off' \
+         "rc=$dellag_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), labels=$(tr '\n' ' ' < "$work/state/labels"), stdout=$dellag_out"
+
+# The losing racer reads the winner's ref once, milliseconds after it was
+# created, and answered "ownership is unknown" (exit 2, a red run) where the
+# truth was "held" (exit 3, a clean exit) a second later (round 2, finding 2).
+reset_state; claimed
+printf '2\n' > "$work/state/lag.ref"
+set +e
+loser_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" \
+  bash "$CLAIM" acquire o/r 7 agent-9999-1 2>&1 >/dev/null)"
+loser_rc=$?
+set -e
+[ "$loser_rc" -eq 3 ] && case "$loser_err" in *'held by agent-4242-1'*) true ;; *) false ;; esac \
+  && ok 'a loser whose read of the winner lags is told held, not unknown' \
+  || bad 'a loser whose read of the winner lags is told held, not unknown' \
+         "rc=$loser_rc, stderr=$(printf '%s' "$loser_err" | tr '\n' ' ')"
 
 # A release that never learns who holds the ref deletes nothing -- and says so.
 # Every caller writes `|| true`, so silence here is a leaked lease nobody sees.

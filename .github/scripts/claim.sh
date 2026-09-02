@@ -96,11 +96,18 @@ edit_label() {
 # "gone" out of an unknown answer is how a claim gets reported cleared while it
 # still holds the queue (#254). Every caller inherits this: release, break, reap.
 delete_ref() {
-  local err
+  local err attempt
   gh api --method DELETE "repos/$1/git/refs/tags/attadipa-claims/$2" >/dev/null 2>&1
-  err="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>&1 >/dev/null)"
+  # The confirmation reads a ref deleted milliseconds ago, and GitHub's reads
+  # lag its writes: a replica still serving it answers "exists" for a DELETE
+  # that worked. Look again before saying so, because release re-adds the label
+  # and reap abandons its sweep on that answer (#392, round 2).
+  for attempt in 1 2 3; do
+    err="$(gh api "repos/$1/git/ref/tags/attadipa-claims/$2" 2>&1 >/dev/null)"
+    case "$err" in *'HTTP 404'*) return 0 ;; esac
+    [ "$attempt" -eq 3 ] || sleep 2
+  done
   case "$err" in
-    *'HTTP 404'*) return 0 ;;
     '') printf '%s still exists after DELETE\n' "$(claim_ref "$2")" >&2 ;;
     *) printf 'cannot confirm %s is gone: %s\n' "$(claim_ref "$2")" \
          "$(printf '%s' "$err" | tr '\n' ' ')" >&2 ;;
@@ -155,7 +162,7 @@ reject_unsafe_holder() {
 }
 
 acquire() {
-  local repo="$1" number="$2" holder="$3" branch head tag_json tag_sha winner existing now
+  local repo="$1" number="$2" holder="$3" branch head tag_json tag_sha winner existing now attempt
   reject_unsafe_holder "$holder" || {
     printf 'pass an agent id such as local-<who>-<n>; see AGENTS.md\n' >&2
     return 64
@@ -176,11 +183,16 @@ acquire() {
   tag_sha="$(printf '%s' "$tag_json" | jq -er '.sha')" || return 2
 
   if ! attadipa_claim_create_ref "$repo" "$number" "$tag_sha"; then
-    existing="$(attadipa_claim_owner "$repo" "$number")"
-    if [ -n "$existing" ]; then
-      printf 'held by %s\n' "$existing" >&2
-      return 3
-    fi
+    # The ref that refused this create is the winner's, milliseconds old, and
+    # a read of it lags the same way the read-back below does. Held is exit 3
+    # and every caller exits clean on it; unknown is 2 and goes red (#392).
+    for attempt in 1 2 3; do
+      if existing="$(attadipa_claim_owner "$repo" "$number")" && [ -n "$existing" ]; then
+        printf 'held by %s\n' "$existing" >&2
+        return 3
+      fi
+      [ "$attempt" -eq 3 ] || sleep 2
+    done
     printf 'claim creation failed and ownership is unknown\n' >&2
     return 2
   fi
@@ -191,7 +203,8 @@ acquire() {
   # the claim by failing: the ref is milliseconds old and GitHub's reads lag
   # its writes, so an unreadable answer is retried and, if it never settles,
   # reported and trusted (#392).
-  local attempt=1 read_rc
+  local read_rc
+  attempt=1
   while :; do
     winner="$(attadipa_claim_owner "$repo" "$number")"
     read_rc=$?
