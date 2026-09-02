@@ -1891,7 +1891,10 @@ bool configure_meshcore_ble(std::uint32_t passkey)
 esp_err_t meshcore_ble_configure_passkey(std::uint32_t passkey,
                                          std::uint32_t& ticket)
 {
-    ticket = 0;
+    // `ticket` is written only on ESP_OK: on every refusal it keeps naming
+    // whatever the caller last had in flight, which the busy refusal below
+    // is precisely about -- the screen reads that ticket next to learn
+    // whether the earlier passkey may still arm (#416, review round 2).
     // Only a pairing passkey. The unpaired probe is a diagnostic somebody asks
     // for while watching the console; a screen with a keypad cannot ask for it
     // and must not be able to arm an unencrypted scan by typing six zeros.

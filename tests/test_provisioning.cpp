@@ -65,6 +65,8 @@ struct FakeBoard final : attadipa::core::Provisioner {
         ++passkeys;
         passkey = value;
         if (passkey_answer != ProvisionOutcome::Pending) return passkey_answer;
+        // As the board does: the ticket is written on success only, so a
+        // busy refusal leaves the in-flight one for mesh_passkey_outcome().
         std::uint32_t reserved = 0;
         if (!op.reserve(reserved)) return ProvisionOutcome::Failed;
         ticket_ = reserved;

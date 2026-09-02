@@ -19,7 +19,9 @@ bool configure_meshcore_ble(std::uint32_t passkey);
 
 // The watch's own entry screen, which is not reading a log. Reserves the slot
 // the answer will arrive in before queuing the request, and hands back the
-// ticket to read it under; `ticket` is zeroed on every failure.
+// ticket to read it under. `ticket` is written on `ESP_OK` only: a refusal
+// leaves the caller's last ticket alone, because `ESP_ERR_NOT_FINISHED` means
+// that ticket's request is still in flight and the screen reads it next.
 //
 // `ESP_OK` means the request was taken, **not** that the passkey is armed:
 // #416 was this path calling the queue post a terminal success and the screen
