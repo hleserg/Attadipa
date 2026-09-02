@@ -63,14 +63,31 @@ recorded here so that no option is credited with paying them.
    stored once the stack has taken it
    (`firmware/main/meshcore_ble.cpp:1451` — "if (event.persist_passkey && !store_passkey(event.passkey)) {"),
    replayed at boot through the same event, and erased again by `Deconfigure`
-   (`firmware/main/meshcore_ble.cpp:1490` — "if (!erase_passkey()) {"), which
-   is the whole of revocation. `Deconfigure` is reached only from the HIL
+   (`firmware/main/meshcore_ble.cpp:1490` — "if (!erase_passkey()) {").
+   `Deconfigure` is reached only from the HIL
    image's `mesh-disconnect`, so a product image cannot revoke on its own: it
    can be given another passkey, or be flashed over with the HIL image and
    told to stop, or have its flash erased. This ADR does not add a revocation
    gesture, for the reason it adds no mode — nothing on a product image accepts
    input except the panel, and forgetting a node is a screen that does not
    exist yet.
+
+   **Correction, 2026-09-02 ([#409](https://github.com/hleserg/Attadipa/issues/409)):
+   this paragraph used to call that erase "the whole of revocation", and it is
+   not.** It erases the passkey and leaves behind the two pieces of state that
+   actually block a reconnect: the bond, and the pinned node public key. The
+   bond a HIL image can delete; the pin **no image can**, because the only
+   writer of `firmware/main/meshcore_ble.cpp:225` — "constexpr const char* kNodeKeyNvsKey"
+   is the adopt path and there is no eraser beside it. So "be flashed over with
+   the HIL image and told to stop" does not restore a watch whose node was
+   factory-reset either — after `mesh-forget-bond` the watch pairs afresh, reads
+   the node's new key and refuses it at
+   `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;".
+   `erase-flash` is the only path, and it takes the bonds, the pin and the time
+   metadata together. The decision below does not move — it declines to add a
+   revocation gesture under either reading — but the cost of declining is larger
+   than this fact stated, and the record should carry the larger number. Traced
+   in [MESHCORE_NODE_RESET_RECOVERY.md](../research/MESHCORE_NODE_RESET_RECOVERY.md).
 
 3. **Touch already works, as an LVGL pointer device.**
    `firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);".
@@ -110,7 +127,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:853` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:941` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -118,7 +135,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:852` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:940` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"

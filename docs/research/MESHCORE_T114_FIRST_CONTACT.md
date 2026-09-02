@@ -682,6 +682,34 @@ It deletes only the bond that the conflict recorded — it takes no peer to name
 so in those words rather than as a malformed-request error, so the ordinary
 state is distinguishable from a fault; it is not a way to walk the bond store.
 
+**And for the case this subsection is about, it is step one of a recovery whose
+step two does not exist.** Corrected 2026-09-02 by
+[#409](https://github.com/hleserg/Attadipa/issues/409): the node whose keys are
+gone is a node that was factory-reset, and a factory reset also regenerates its
+public key — the row at [`:50`](MESHCORE_T114_FIRST_CONTACT.md)
+"a factory reset regenerates it" is the `MEASURED` fact three paragraphs of this
+section rest on. So after `mesh-forget-bond` the watch pairs afresh, completes
+the handshake, reads a key that is not the one it is pinned to, and refuses the
+node: [`../../firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
+— "return PinOutcome::Refused;". Nothing in any image erases the pin — the sole
+writer is [`../../firmware/main/meshcore_ble.cpp:383`](../../firmware/main/meshcore_ble.cpp)
+— "nvs_set_blob(handle, kNodeKeyNvsKey" and there is no eraser beside it — so
+the watch refuses the node once a minute, indefinitely, and `idf.py erase-flash`
+is the only way back. `mesh-forget-bond` is still correct and still necessary;
+it is sufficient only if the node somehow lost its bond while **keeping** its
+public key, and no operation is known that does that. Full trace, and the
+minimum atomic scope a real recovery would need, in
+[MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md).
+
+**A second thing this section did not know: the node's passkey does not survive
+its own reset either.** At `d929643`, a T114 with a display whose preferences
+were wiped (`ble_pin == 0`) generates a fresh six-digit passkey at *every* boot —
+`_active_ble_pin = rng.nextInt(100000, 999999); // random pin each session` in
+`examples/companion_radio/MyMesh.cpp`. So the sentence below about
+`mesh-configure` not being needed again is about a watch reboot, and must not be
+read as covering a *node* reset: after one of those the stored passkey is stale,
+and stale again after the node's next power cycle.
+
 **The reply waits for the deletion.** Until #378 it did not: the request was
 answered when it reached the event queue, so the operator was told the bond was
 gone before `ble_store_util_delete_peer()` had been called, and the answer

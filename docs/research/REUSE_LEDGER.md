@@ -2504,3 +2504,41 @@ letting the newest peer overwrite the record turns the fourth case red.
 reported as `BadInput` rather than a transport failure. The physical case — a
 node reset on the bench, and a nearby unselected peer failing to evict the
 bond — is `NOT EXECUTED — HARDWARE REQUIRED`.
+
+**Scope, corrected 2026-09-02 ([#409](https://github.com/hleserg/Attadipa/issues/409)):
+this reuse restores a bond, and a bond is not the whole of what a node reset
+breaks.** Nothing above is withdrawn — the policy, the trigger and the rejection
+of both automatic paths all still hold, and #2206 was re-read on 2026-09-02 and
+is still open with no comments. What the entry did not say is where its output
+stops. A factory-reset node also has a **new public key**, so once
+`mesh-forget-bond` has deleted the bond and the watch has paired afresh, the
+node is refused on the pin instead:
+[`../../firmware/main/meshcore_node_pin.h:194`](../../firmware/main/meshcore_node_pin.h)
+— "if (!ops.wrong_node()) return PinOutcome::Pinned;" falls through to
+[`:200`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;".
+No image can clear that pin. So this entry is `USE AS-IS` for what it covers and
+**incomplete as a recovery**: a real one needs the bond, the pin and the stored
+passkey cleared as one operation.
+
+Three further reuse verdicts follow, and all three are this repository's own
+code under its own licence — no new dependency, no new licence surface:
+
+- `firmware/main/meshcore_bond_recovery.h` — `USE AS-IS`. It answers "which
+  bond, and only that one", and it should not learn about the pin: a second
+  record would be a second thing to keep in step with a single conflict.
+- [`../../firmware/main/meshcore_forget_outcome.h:59`](../../firmware/main/meshcore_forget_outcome.h)
+  — "class ForgetBondOperation {" — `ADAPT`. The reservation slot and the
+  one-at-a-time rule cross the same two tasks and are exactly right. Its outcome
+  names are bond-shaped (`Deleted`, `Refused`, `Nothing`); a wider operation
+  either widens them or reports a partial completion under a name that says
+  "the bond", which is #378 with more state.
+- The worker's `ForgetBond` event —
+  [`../../firmware/main/meshcore_ble.cpp:1519`](../../firmware/main/meshcore_ble.cpp)
+  — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
+  already the only place that touches the bond store, already terminates the
+  live session first, and already re-arms exactly one attempt. What does not
+  exist anywhere is an eraser for `kNodeKeyNvsKey`; that is the one new line of
+  storage code, and its shape is `erase_passkey()`'s.
+
+Evidence: [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md).
+Physical stale-bond recovery remains `NOT EXECUTED — HARDWARE REQUIRED`.
