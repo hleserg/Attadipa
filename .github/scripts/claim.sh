@@ -134,12 +134,19 @@ discard_own_ref() {
     if [ "$rc" -ne 1 ] || [ "$attempt" -eq 3 ]; then break; fi
     sleep 2
   done
-  if [ "$rc" -eq 0 ]; then
-    [ "$live" = "$tag_sha" ] || return 0   # another writer's claim is not ours to remove
-    delete_ref "$repo" "$number" && return 0
+  if [ "$rc" -eq 0 ] && [ "$live" = "$tag_sha" ] && delete_ref "$repo" "$number"; then
+    return 0
   fi
+  # Every other answer leaves the ref where it is and names it -- including a
+  # read that names some other tag. After a 201 the ref is this attempt's, so
+  # that read is the same lagging replica as a 404, or a writer that took the
+  # ref since; either way it is not ours to delete unseen, and a lock nobody
+  # names is the invisible one. The operator confirms before breaking.
   printf 'left behind: %s -- clear it with: claim.sh break %s %s\n' \
     "$(claim_ref "$number")" "$repo" "$number" >&2
+  [ "$rc" -ne 0 ] || [ "$live" = "$tag_sha" ] || printf \
+    '  (it read back as tag %s, not this attempt'"'"'s %s: a replica behind the create, or a later writer -- check claim.sh owner %s %s first)\n' \
+    "$live" "$tag_sha" "$repo" "$number" >&2
 }
 
 # The holder id is published: claim.sh puts it in the tag message and in the tag
@@ -237,18 +244,24 @@ acquire() {
 release() {
   local repo="$1" number="$2" holder="$3" winner rc attempt
   # The read is retried as acquire's is: a release seconds after the create
-  # meets the same lag. An answer that never settles is said out loud, because
-  # every caller writes `|| true` -- this line is the whole signal that a lease
-  # trusted at its create is still there (#392).
+  # meets the same lag, and a replica behind the previous DELETE serves the
+  # previous holder's tag, so a read naming somebody else is retried too. An
+  # answer that never settles is said out loud, because every caller writes
+  # `|| true` -- this line is the whole signal that a lease trusted at its
+  # create is still there (#392). A settled 404 says only what it knows: no
+  # readable claim, nothing deleted -- acquire may have trusted a create this
+  # read has not caught up with yet.
   for attempt in 1 2 3; do
     winner="$(attadipa_claim_owner "$repo" "$number")"
     rc=$?
-    if [ "$rc" -eq 0 ] || [ "$attempt" -eq 3 ]; then break; fi
+    if { [ "$rc" -eq 0 ] && [ "$winner" = "$holder" ]; } || [ "$attempt" -eq 3 ]; then break; fi
     sleep 2
   done
   case "$rc" in
     0) ;;
-    1) printf 'nothing is held at %s\n' "$(claim_ref "$number")" >&2; return 3 ;;
+    1) printf 'no readable claim at %s after %s attempts; nothing deleted -- confirm with: claim.sh owner %s %s\n' \
+         "$(claim_ref "$number")" "$attempt" "$repo" "$number" >&2
+       return 3 ;;
     *) printf 'cannot read who holds %s; left behind -- clear it with: claim.sh break %s %s\n' \
          "$(claim_ref "$number")" "$repo" "$number" >&2
        return 3 ;;

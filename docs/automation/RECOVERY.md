@@ -78,10 +78,30 @@ that is at least two hours old *and* recorded a hosted Actions run that has
 completed; a local or unattributed lease stays until someone runs
 `claim.sh break`, and the watchdog log names that command and why it declined.
 A break that could not delete the ref reports failure and leaves
-`agent:working` on, so a stuck queue always has a visible owner.
+`agent:working` on, so a claim that reached its label keeps a visible owner.
+The one that did not is the next section.
 `/ci-repair reset` also breaks the PR claim after its existing
 collaborator/whole-command checks. The agent's branch,
 if it made one, remains — `git branch -r | grep claude/`.
+
+### A claim nobody can see: a ref with no label
+
+`claim.sh acquire` creates the ref first and adds `agent:working` second. When
+the label edit fails, or the read-back names a different holder for four reads,
+the undo deletes only a ref it positively read back as its own; every other
+answer leaves the ref where it is and names it on stderr:
+`left behind: refs/tags/attadipa-claims/<n> -- clear it with: claim.sh break
+OWNER/REPO <n>`. That ref has no label, so the watchdog never visits it and
+every later dispatch answers `already claimed; writer held`. The stderr line in
+the run log is the only record. Confirm with `claim.sh owner` before breaking:
+the read may have been a lagging replica, or a later writer may hold it now.
+
+Two more messages have the same shape. `acquire` can exit 0 with
+`claim created but not readable back after 4 attempts; trusting the create`:
+the claim is won and the label set, and `claim.sh owner` confirms it a moment
+later. `release` can answer `no readable claim at <ref> after 3 attempts;
+nothing deleted` when the ref it created seconds ago is not readable yet: that
+is not "nothing held", so release again rather than assume the lease is gone.
 
 ### The queue is full or in incident mode
 

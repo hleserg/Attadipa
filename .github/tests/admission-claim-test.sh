@@ -562,6 +562,57 @@ set -e
   || bad 'a read-back that serves the previous holder once is retried, not undone' \
          "rc=$stale_rc, stdout=$stale_out, owner=$stale_owner, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone)"
 
+# `release` meets the same replica: acquire-then-release seconds apart is the
+# ordinary `held: full` exit of writer-start.sh, and one read naming the
+# previous holder used to be "held by <them>", rc 3, the lease left on origin
+# held by the caller that just gave up (round 4, finding 1).
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" acquire o/r 7 agent-9999-1 >/dev/null 2>&1
+printf '2\n' > "$work/state/stale.ref"
+set +e
+stale_release_out="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-9999-1 2>/dev/null)"
+stale_release_rc=$?
+set -e
+[ "$stale_release_rc" -eq 0 ] && [ ! -d "$work/state/ref.lock" ] && ! grep -Fxq agent:working "$work/state/labels" \
+  && case "$stale_release_out" in *'released by agent-9999-1'*) true ;; *) false ;; esac \
+  && ok 'a release whose read names the previous holder is retried, not refused' \
+  || bad 'a release whose read names the previous holder is retried, not refused' \
+         "rc=$stale_release_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stdout=$stale_release_out"
+
+# The undo's own read can hit the same replica: a sha that is not this
+# attempt's, after a create that returned 201. That used to be a silent
+# return -- a lock with no holder, no label and no message (round 4, finding 2).
+reset_state; claimed
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r 7 agent-4242-1 >/dev/null 2>&1
+set +e
+stale_undo_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_STALE=9 \
+  bash "$CLAIM" acquire o/r 7 agent-9999-1 2>&1 >/dev/null)"
+stale_undo_rc=$?
+set -e
+[ "$stale_undo_rc" -eq 2 ] && [ -d "$work/state/ref.lock" ] \
+  && case "$stale_undo_err" in *'left behind'*'refs/tags/attadipa-claims/7'*'claim.sh owner'*) true ;; *) false ;; esac \
+  && ok 'an undo whose read names another tag names the ref it left behind' \
+  || bad 'an undo whose read names another tag names the ref it left behind' \
+         "rc=$stale_undo_rc, ref=$([ -d "$work/state/ref.lock" ] && echo kept || echo gone), stderr=$(printf '%s' "$stale_undo_err" | tr '\n' ' ')"
+
+# acquire may now exit 0 having never read its ref ("trusting the create"), and
+# the next statement on the deny path is a release. Its 404 used to be
+# "nothing is held" -- an assertion of absence about a ref that is there,
+# reassuring and last in the log (round 4, finding 3). It says what it knows.
+reset_state
+set +e
+PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" ATTADIPA_STUB_REF_LAG=99 bash "$CLAIM" acquire o/r writer local-x-1 >/dev/null 2>&1
+trusted_rc=$?
+unread_release2_err="$(PATH="$work/bin:$PATH" ATTADIPA_STUB_STATE="$work/state" bash "$CLAIM" release o/r writer local-x-1 2>&1 >/dev/null)"
+unread_release2_rc=$?
+set -e
+[ "$trusted_rc" -eq 0 ] && [ "$unread_release2_rc" -eq 3 ] && [ -d "$work/state/writer.lock" ] \
+  && case "$unread_release2_err" in *'nothing is held'*) false ;; *'refs/tags/attadipa-claims/writer'*'nothing deleted'*) true ;; *) false ;; esac \
+  && ok 'a release that reads 404 on a just-trusted create says nothing deleted, not nothing held' \
+  || bad 'a release that reads 404 on a just-trusted create says nothing deleted, not nothing held' \
+         "acquire rc=$trusted_rc, release rc=$unread_release2_rc, stderr=$(printf '%s' "$unread_release2_err" | tr '\n' ' ')"
+
 # `release` meets the same lag as the read-back, seconds after the same
 # create: the ordinary `held: full` exit of writer-start.sh is acquire, deny,
 # release. A lagging read is retried rather than answered "nothing held".
