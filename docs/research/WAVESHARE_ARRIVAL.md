@@ -21,7 +21,7 @@ The Waveshare panel is AMOLED. An AMOLED has no backlight — every lit pixel is
 diode drawing its own current, so a bright page costs power in proportion to how
 much of it is bright, and the diodes age in proportion to how hard they are
 driven. An LCD does not work this way, and the T-Watch's panel is an
-IPS LCD ([`platform/src/board_profiles.cpp:92`](../../platform/src/board_profiles.cpp) "PanelTechnology::Ips").
+IPS LCD ([`platform/src/board_profiles.cpp:98`](../../platform/src/board_profiles.cpp) "PanelTechnology::Ips").
 So this is the first design question in the project whose answer is different on
 the two boards.
 
@@ -133,7 +133,7 @@ decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
 ([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
 `firmware/` on that version and prints the actual `firmware-build` dependency
 result rather than an unconditional success
-([`.github/workflows/ci.yml:834`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+([`.github/workflows/ci.yml:854`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
 The paragraph is kept rather than deleted because the constraint it describes is
 what the rest of this section reasons from.
 
@@ -479,7 +479,7 @@ Recorded here because it is the part of §1 that has an architectural answer, an
 it is small.
 
 `platform::PanelTechnology` already exists and the Waveshare profile already sets
-`Amoled` ([`platform/src/board_profiles.cpp:130`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
+`Amoled` ([`platform/src/board_profiles.cpp:136`](../../platform/src/board_profiles.cpp) "PanelTechnology::Amoled").
 **Nothing reads it.** A grep across `platform/`, `core/`, `ui/` and `apps/`
 returns the two assignments and no consumers, so no code in this project can
 behave differently on an emissive panel today, whatever is decided.
@@ -773,7 +773,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:401](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:834`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
+    [`.github/workflows/ci.yml:854`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more

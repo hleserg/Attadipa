@@ -89,6 +89,22 @@ def esptool_argv(settings: dict[str, str], files: list[tuple[int, Path]],
     return argv
 
 
+def identity_mismatch(mac: bytes, serial: str) -> str | None:
+    """Why the chip on the opened port is not the unit --serial names, or None.
+
+    Two ESP32-S3 boards enumerate as 303a:1001 on this bench, and --port skips
+    the by-id lookup that tells them apart. The base MAC the loader reports is
+    the USB serial in colon form, so the comparison is two values already in
+    hand -- and it runs before anything is written, because a T-Watch image
+    over the 32 MB Waveshare is exactly what --restore cannot undo.
+    """
+    seen = ":".join(f"{b:02x}" for b in mac)
+    want = serial.strip().lower()
+    if seen == want:
+        return None
+    return f"the chip on this port is {seen}, not {want}: nothing written"
+
+
 def selftest() -> int:
     import tempfile
 
@@ -128,7 +144,14 @@ def selftest() -> int:
             assert "not a full 16 MiB" in str(refused), refused
         else:
             raise AssertionError("a 16 MiB - 1 backup was not refused")
-    print("flash_no_reset selftest: 3 cases, all as expected.")
+
+        unit = bytes.fromhex(TWATCH_SERIAL.replace(":", ""))
+        assert identity_mismatch(unit, TWATCH_SERIAL) is None
+        assert identity_mismatch(unit, TWATCH_SERIAL.lower()) is None
+        other = bytes.fromhex("f4a4a3ecee7d")
+        refused = identity_mismatch(other, TWATCH_SERIAL)
+        assert refused and "nothing written" in refused, refused
+    print("flash_no_reset selftest: 4 cases, all as expected.")
     return 0
 
 
@@ -224,8 +247,12 @@ def main() -> int:
     target = pyserial.Serial(port, baudrate=BAUD, rtscts=True, dsrdtr=True,
                              timeout=0.1)
     esp = esptool.detect_chip(port=target, baud=BAUD, connect_mode="no_reset")
-    print(f"# chip {esp.get_chip_description()}  mac {':'.join(f'{b:02x}' for b in esp.read_mac())}",
+    mac = esp.read_mac()
+    print(f"# chip {esp.get_chip_description()}  mac {':'.join(f'{b:02x}' for b in mac)}",
           flush=True)
+    mismatch = identity_mismatch(mac, args.serial)
+    if mismatch:
+        raise SystemExit(mismatch)
     if esp.secure_download_mode:
         raise SystemExit("secure download mode: this is not the unit this script is for")
 

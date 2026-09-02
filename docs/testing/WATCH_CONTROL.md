@@ -394,7 +394,7 @@ time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:1840` "bool configure_meshcore_ble") had exactly one caller,
+(`meshcore_ble.cpp:1841` "bool configure_meshcore_ble") had exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:524`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
@@ -423,7 +423,7 @@ flashed away, which is what showed the round trip never existed. #356's first
 change added the one thing that persists: an accepted six-digit passkey is
 written to NVS by the worker (`meshcore_ble.cpp:1451`
 "store_passkey(event.passkey)") and boot replays it through the same
-`Configure` event (`meshcore_ble.cpp:1825` "restore_passkey();"). The zero of
+`Configure` event (`meshcore_ble.cpp:1826` "restore_passkey();"). The zero of
 `--unpaired-probe` is not a passkey and is not written: it turns pairing and
 link encryption off for one session, and a boot must not do that on its own.
 `mesh-disconnect` is the way back: its `Deconfigure` erases the key

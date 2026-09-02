@@ -199,7 +199,7 @@ esp_err_t send_vendor_table(esp_lcd_panel_io_handle_t io) {
 }
 #endif
 
-esp_err_t initialize_panel() {
+esp_err_t initialize_panel(const attadipa::platform::BoardProfile &profile) {
   spi_bus_config_t bus{};
   bus.sclk_io_num = kLcdSck;
   bus.mosi_io_num = kLcdMosi;
@@ -266,11 +266,11 @@ esp_err_t initialize_panel() {
   display.vres = kHeight;
   display.color_format = LV_COLOR_FORMAT_RGB565;
   display.flags.buff_dma = true;
-  // The ST7789 takes the high byte of a 16-bit pixel first over its serial
-  // interface; LVGL keeps RGB565 little-endian on this Xtensa. If this is the
-  // wrong call the swatch below changes colour rather than mirroring, which is
-  // what its asymmetry is for.
-  display.flags.swap_bytes = true;
+  // A board-level transfer fact, so the profile states it and this port only
+  // reads it, the way waveshare_board.cpp does. If it is the wrong call the
+  // swatch below changes colour rather than mirroring, which is what its
+  // asymmetry is for -- and the fix is the profile's line, not this one.
+  display.flags.swap_bytes = profile.display.rgb565_swap_bytes;
   state.display = lvgl_port_add_disp(&display);
   ESP_RETURN_ON_FALSE(state.display != nullptr, ESP_ERR_NO_MEM, kTag,
                       "add LVGL display");
@@ -427,7 +427,7 @@ esp_err_t start_twatch_ui() {
 
   // §10.1 and §10.3: a failed panel command loses the display and nothing
   // else; a dead touch bus leaves the display alone.
-  const esp_err_t panel_err = initialize_panel();
+  const esp_err_t panel_err = initialize_panel(*profile);
   if (panel_err != ESP_OK) {
     ESP_LOGE(kTag, "display capability absent: %s", esp_err_to_name(panel_err));
   }
