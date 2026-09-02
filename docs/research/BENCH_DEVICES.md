@@ -3,8 +3,8 @@
 > **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
 > development host.
 > Every value below came from `esptool flash-id` and `udevadm`; nothing here is
-> inferred from a product name — **except the last section**, two GNSS modules
-> recorded from their listings on 2026-09-02 and labelled so on every row.
+> inferred from a product name — **except "Two GNSS modules"**, a section
+> recorded from marketplace listings on 2026-09-02 and marked as such.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
@@ -211,14 +211,20 @@ an advertisement, not a datasheet; until a module has been powered, its NMEA
 read on a host and its chip identified from its own version sentence, each row
 is `UNKNOWN` in the sense AGENTS.md means. This section exists so the next
 session knows the boards are on the bench and does not order or assume a
-third. The read-off is [H18](OPEN_QUESTIONS.md#hardware--measurement-required).
+third. The read-off is [H18](OPEN_QUESTIONS.md#hardware--measurement-required),
+and the owner's own plan for it — authenticity check of the u-blox part,
+chipset identification of the GT-U12 by its NMEA prefixes and vendor probes,
+and the L5 check — is section A1 of
+[idei-i-dorabotki](../ideas/idei-i-dorabotki.md), written before the boards
+arrived; that catalogue names the u-blox part as `UBX-M10050-KB`, which is a
+chip designation and not something read off this board either.
 
 | | "GT-U12" | QUESCAN "AN3126" |
 |---|---|---|
 | Listing claims | dual-band GNSS; "new BDS SoC"; BDS, GPS, GLONASS, Galileo, IRNSS, QZSS, SBAS | u-blox **M10** platform; L1 only; GPS, GLONASS, Galileo, BeiDou; QZSS/SBAS; up to 25 Hz "in high-performance mode" |
 | Chip | **UNKNOWN** — the listing names no part; "dual-band" and "BDS SoC" suggest an Allystar or Unicore die, and that is a guess | claimed u-blox M10; which module is a guess nobody has grounds for yet; **UNKNOWN** until `$GNTXT` / `UBX-MON-VER` is read |
 | Header, as printed | `VCC GND TX RX PPS` (5 pins, photographed) | 5 pins; silkscreen not legible in the listing — **UNKNOWN** |
-| Antenna | external: a separate active patch on its own carrier, on a u.FL pigtail | ceramic patch soldered to the board |
+| Antenna, from the product photo | external: a separate active patch on its own carrier, on a u.FL pigtail | ceramic patch soldered to the board |
 | Interface | UART presumed from the header; baud, protocol and level **UNKNOWN** | UART presumed; baud and level **UNKNOWN** |
 | Supply | **UNKNOWN** — whether the carrier regulates, and what `VCC` wants, is not in the listing | **UNKNOWN** — same |
 | Datasheet | none found yet | none found yet; u-blox publishes MIA-M10Q / MAX-M10S sheets, which apply only once the part is identified |
