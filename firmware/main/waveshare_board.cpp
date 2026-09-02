@@ -42,8 +42,8 @@
 
 #if CONFIG_BT_NIMBLE_ENABLED
 #include "meshcore_ble.h"
-#include "meshcore_passkey.h"
 #endif
+#include "meshcore_passkey.h" // plain C++, no NimBLE behind it: every image
 
 #include "physical_input.h"
 
