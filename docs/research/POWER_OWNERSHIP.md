@@ -58,7 +58,7 @@ evidence; it is blocked on nobody owning it, which is this document's subject.
 `watch_control.cpp` as performing the whole Light-sleep transaction. It no
 longer does. The transaction is in the physical-input path, and `WatchControl`
 now learns that a sleep happened by watching a counter change:
-[`firmware/main/watch_control.cpp:245`](../../firmware/main/watch_control.cpp) —
+[`firmware/main/watch_control.cpp:252`](../../firmware/main/watch_control.cpp) —
 "Sleep belongs to the physical path now, and it does not call into here.". That
 is a better arrangement than the one the issue describes, and it is also the
 first instance of the exact pattern this document is about: a consumer

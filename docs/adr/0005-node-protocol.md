@@ -255,6 +255,17 @@ So:
   watch" have opposite remedies. That is `Availability::Incompatible` plus
   `VersionSkew` in ADR-0004, surfaced here.
 
+The debug class carries this epoch since #348, and it is the first place the
+watch's own protocol has needed it: on USB Serial/JTAG a host process that
+exits with the cable in is not a link loss, so nothing reset the session, and
+the next process — restarting its request ids at 1 — read its predecessor's
+late replies as its own. `HelloBody` carries a 32-bit session the host draws
+per connection
+(`debug/include/attadipa/debug/protocol.h:242` — "std::uint32_t session"); the
+device ends the previous session before it echoes the value in `HelloOk`, and
+the host discards everything it read ahead of that echo. A correlation, not a
+credential — `docs/testing/WATCH_CONTROL.md`, "The trust boundary".
+
 ### 6. Push a small event, pull the detail
 
 The node pushes a fixed, tiny notification; the watch pulls the body by
