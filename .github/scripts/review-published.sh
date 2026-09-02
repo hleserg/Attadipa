@@ -72,6 +72,7 @@ attadipa_review_publication_step() {
     [ "$attempt" -lt 3 ] && sleep 5
   done
   labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
+  # shellcheck disable=SC2153  # STARTED, OUTCOME, REPO and PR are the step's env.
   answer="$(attadipa_review_published yes "$OUTCOME" "$comments" "$labels" "$STARTED")"
   case "$answer" in
     published\ *) state=published ;;
