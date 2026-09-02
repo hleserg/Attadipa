@@ -113,6 +113,9 @@ struct BoardState {
   lv_display_t *display = nullptr;
   attadipa::ui::ClockFace clock_face;
   attadipa::core::TimeService time_service;
+  // Default NVS, classified once at boot: ESP_OK, or the `nvs_flash_init()`
+  // verdict that stands for the rest of this boot. Read by `BoardTimeOps`.
+  esp_err_t metadata_storage = ESP_ERR_NVS_NOT_INITIALIZED;
   lv_obj_t *mesh_state = nullptr;
   lv_obj_t *mesh_node = nullptr;
   lv_obj_t *mesh_message = nullptr;
@@ -225,11 +228,34 @@ esp_err_t read_time_metadata(attadipa::firmware::TimeMetadata *out,
   return ESP_OK;
 }
 
-// Puts the stored UTC offset back into the time service at boot. Runs in the
-// product image; a torn write cannot reach here, because a single
-// `nvs_set_blob` lands whole or reads as absent (`provision_time.h`).
+// Initialises default NVS once and keeps the verdict, then puts the stored
+// UTC offset back into the time service. Runs in the product image; a torn
+// write cannot reach here, because a single `nvs_set_blob` lands whole or
+// reads as absent (`provision_time.h`).
+//
+// A verdict other than ESP_OK is logged here, once, and then answered from
+// `BoardTimeOps::read_metadata` for every synchronization of this boot, so
+// the RTC is never written over metadata that cannot be stored. Nothing here
+// erases NVS: ESP_ERR_NVS_NO_FREE_PAGES and ESP_ERR_NVS_NEW_VERSION_FOUND are
+// the two verdicts ESP-IDF answers with "erase the partition and try again",
+// and that erase takes the BLE bonds and the MeshCore pin with the time
+// metadata. It is a factory reset a person performs, not a boot path
+// (ADR-0014).
 esp_err_t restore_time_metadata() {
-  ESP_RETURN_ON_ERROR(nvs_flash_init(), kTag, "initialize time metadata");
+  state.metadata_storage = nvs_flash_init();
+  if (state.metadata_storage != ESP_OK) {
+    const bool factory_reset =
+        state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||
+        state.metadata_storage == ESP_ERR_NVS_NEW_VERSION_FOUND;
+    ESP_LOGW(kTag,
+             "time metadata storage unavailable (%s): the clock runs without "
+             "it and no synchronization will write the RTC%s",
+             esp_err_to_name(state.metadata_storage),
+             factory_reset ? "; factory reset required, this image never "
+                             "erases NVS on its own"
+                           : "");
+    return state.metadata_storage;
+  }
   attadipa::firmware::TimeMetadata stored{};
   bool present = false;
   ESP_RETURN_ON_ERROR(read_time_metadata(&stored, &present), kTag,
@@ -314,6 +340,9 @@ bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
 struct BoardTimeOps {
   attadipa::firmware::MetadataRead
   read_metadata(attadipa::firmware::TimeMetadata *out) {
+    if (state.metadata_storage != ESP_OK) {  // boot's verdict: not opened, so not read
+      return attadipa::firmware::MetadataRead::Unreadable;
+    }
     bool present = false;
     if (read_time_metadata(out, &present) != ESP_OK) {
       return attadipa::firmware::MetadataRead::Unreadable;
@@ -801,11 +830,9 @@ esp_err_t start_waveshare_ui() {
   ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "initialize AXP2101");
   ESP_RETURN_ON_ERROR(add_i2c_device(kPcf85063Address, &state.rtc), kTag,
                       "add PCF85063");
-  const esp_err_t metadata_result = restore_time_metadata();
-  if (metadata_result != ESP_OK) {
-    ESP_LOGW(kTag, "time metadata unavailable; continuing without it: %s",
-             esp_err_to_name(metadata_result));
-  }
+  // Every failure inside says so itself, and the clock runs without the
+  // metadata either way.
+  (void)restore_time_metadata();
   const attadipa::apps::ClockState clock = read_clock_state();
   ESP_LOGI(kTag, "PCF85063: %s",
            clock.availability == attadipa::core::Availability::Ready

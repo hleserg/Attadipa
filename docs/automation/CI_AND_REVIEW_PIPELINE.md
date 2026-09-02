@@ -202,17 +202,18 @@ the cap stay in the ledger comment, which is where that note points.
 The cap counts paid rounds two ways and takes the larger, because the ledger's
 own count stops. `Converge the published reviewer verdict` is what advances
 `round=`, and it is skipped whenever `review-published.sh` answers `unknown` —
-which it does when the comment read behind it returns nothing, a read the
-workflow silences with `2>/dev/null`. Nothing is written and nothing is said;
-the run stays green. #382 is the worked example: its ledger says `round=5`, last
+which it does when the comment read behind it returns nothing. That read used
+to be silenced with `2>/dev/null`, so nothing was written and nothing was said;
+the run stayed green. #382 is the worked example: its ledger says `round=5`, last
 edited at 15:35:45, and the reviewer published findings four more times — 16:08,
 16:34, 17:26, 17:59 — with converge `skipped` on every one. Nine paid rounds, a
 ledger claiming five. Frozen at five the ledger happens to cap correctly; frozen
 at three it would never cap at all. So the gate is also handed a count of the
 published findings blocks, which measures what is being paid for and cannot
-freeze while rounds run, and it judges the larger of the two. **The `unknown`
-verdict that freezes the ledger is a live defect and is not fixed here** — this
-change only stops the cap from depending on it.
+freeze while rounds run, and it judges the larger of the two. Since #391 the
+read is retried and an `unknown` fails the publication step, so a ledger this
+freezes is a red check rather than a green one; the gate keeps both counts,
+because a red run has still converged nothing.
 
 A standing `ai-review:blocking` is the one thing the cap will not clear. The
 invalidation step drops both labels on a push, so a pushed fix reaches the cap

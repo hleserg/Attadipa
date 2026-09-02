@@ -236,7 +236,8 @@ jobs:
             # THE SECOND COUNT, AND THE REASON THE LEDGER ALONE IS NOT ENOUGH.
             # `Converge the published reviewer verdict` is what advances the
             # ledger's `round=`, and it is skipped whenever `review-published.sh`
-            # answers `unknown`. On #382 that happened four times running: the
+            # answers `unknown` (a red step since #391, a green one before). On
+            # #382 that happened four times running: the
             # ledger says `round=5`, and the reviewer published findings at
             # 16:08, 16:34, 17:26 and 17:59 after it, every one of them with
             # converge `skipped` and the run green. Nine paid rounds, a ledger
@@ -379,20 +380,10 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           STARTED: ${{ steps.started.outputs.at }}
           OUTCOME: ${{ steps.review.outcome }}
-        run: |
-          set -uo pipefail
-          comments="$(gh api "repos/$REPO/issues/$PR/comments?per_page=100" --paginate --slurp 2>/dev/null | jq -c 'flatten(1)' 2>/dev/null || true)"
-          labels="$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' 2>/dev/null || true)"
-          answer="$(bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" yes "$OUTCOME" "$comments" "$labels" "$STARTED" || echo 'unknown helper failed')"
-          case "$answer" in
-            published\ *) state=published ;;
-            silent\ *) state=silent ;;
-            *) state=unknown ;;
-          esac
-          echo "state=$state" >> "$GITHUB_OUTPUT"
-          if [ "$state" = published ] && [ "$OUTCOME" = failure ]; then
-            echo "::warning::The review action reported failure after publishing its verdict; the published verdict remains authoritative."
-          fi
+        # The read, its retry and the `unknown` failure live in the script,
+        # so a fix to them is a script change with a test that runs it,
+        # not another workflow-only hand-off (#391).
+        run: bash "$ATTADIPA_TRUSTED_SCRIPTS/review-published.sh" step
 
       - name: Say that the review published nothing
         if: always() && steps.published.outputs.state == 'silent' && steps.review.outcome != 'failure'
