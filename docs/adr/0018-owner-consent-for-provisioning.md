@@ -82,8 +82,9 @@ recorded here so that no option is credited with paying them.
    writer of `firmware/main/meshcore_ble.cpp:225` — "constexpr const char* kNodeKeyNvsKey"
    is the adopt path and there is no eraser beside it. So "be flashed over with
    the HIL image and told to stop" does not restore a watch whose node was
-   factory-reset either — after `mesh-forget-bond` the watch pairs afresh, reads
-   the node's new key and refuses it at
+   factory-reset either — after `mesh-forget-bond` and a `Configure` carrying
+   the node's current digits, the watch pairs afresh, reads the node's new key
+   and refuses it at
    `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;".
    `erase-flash` is the only path, and it takes the bonds, the pin and the time
    metadata together. The decision below does not move — it declines to add a

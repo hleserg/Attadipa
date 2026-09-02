@@ -368,7 +368,8 @@ is the record of what was true at `144459f` and what changed it:
   the sentence said. What it did not say is that ungating that caller would not
   finish the job: the bond is one of two things a reset node invalidates, and
   the other is the **pin**, which no image can clear at all. Deleting the bond
-  re-arms one pairing, the watch then reads the reset node's new public key, and
+  re-arms one pairing; given the node's current digits the watch then pairs,
+  reads the reset node's new public key, and
   `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;" turns
   it away for good. The single writer of that key is
   `firmware/main/meshcore_ble.cpp:383` — "nvs_set_blob(handle, kNodeKeyNvsKey"

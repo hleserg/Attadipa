@@ -309,9 +309,9 @@ reader ends up citing the one that was not updated.
 
 ### No image can clear the pinned MeshCore node key, so deleting the stale bond does not finish the recovery
 
-- **Claim:** `mesh-forget-bond` deletes the bond and re-arms one pairing, but
-  the watch then reads the reset node's **new** public key and refuses it,
-  because the pin in NVS still names the old one. Nothing in the product image,
+- **Claim:** `mesh-forget-bond` deletes the bond and re-arms one pairing, but once a
+  `Configure` carries the node's current digits the watch pairs afresh, reads the reset
+  node's **new** public key and refuses it: the pin, in NVS and in RAM, still names the old one. Nothing in the product image,
   the HIL image or the debug protocol erases that pin. The only recovery is
   `idf.py erase-flash`, which takes the bonds and the time metadata with it.
 - **Source (this repository):** the refusal is

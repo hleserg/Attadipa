@@ -166,9 +166,19 @@ Suppose the bond *is* deleted — today that means the HIL image and
 attempt at [`:1580`](../../firmware/main/meshcore_ble.cpp) —
 "reconnect_allowed.store(true);".
 
-The watch then reconnects, pairs afresh (no LTK now, so section 3's other
-branch), completes the Companion handshake, and reads the node's public key out
-of `RESP_CODE_SELF_INFO`. A factory-reset node's key is a **new** key —
+The watch then reconnects and pairs afresh (no LTK now, so section 3's other
+branch) — **provided a `Configure` has carried the node's current digits.**
+With the stored passkey alone it cannot: the node shows new digits at every
+boot after its reset (§5.3), the watch is keyboard-only with a static passkey —
+[`firmware/main/meshcore_ble.cpp:1685`](../../firmware/main/meshcore_ble.cpp) —
+"ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;" — and `mesh-forget-bond`
+re-arms the attempt without touching it, so the fresh pairing fails on the
+confirm value, [`firmware/main/meshcore_ble.cpp:552`](../../firmware/main/meshcore_ble.cpp) —
+"reconnect_allowed.store(false);" runs, and the transport stops after **one**
+attempt with no handshake, no `RESP_CODE_SELF_INFO` and no refusal — §5.3's
+consequence 2. Given the current digits, the pairing completes, the Companion
+handshake runs, and the watch reads the node's public key out of
+`RESP_CODE_SELF_INFO`. A factory-reset node's key is a **new** key —
 [`MESHCORE_T114_FIRST_CONTACT.md:50`](MESHCORE_T114_FIRST_CONTACT.md) —
 "a factory reset regenerates it" is `MEASURED` on this bench. So:
 
@@ -321,6 +331,7 @@ return a product watch to service is:
 | --- | --- | --- |
 | The conflicting bond | NimBLE NVS, one slot | §3 — while it exists, every attempt encrypts instead of pairing |
 | The pinned node public key | `attadipa_mesh/node` | §4 — while it exists, the reset node is refused after pairing |
+| The RAM copy of that pin — `pinned_`, `status_.pinned_id`, `has_pinned` | the worker-owned `MeshCoreCompanion` singleton, [`firmware/main/meshcore_ble.cpp:117`](../../firmware/main/meshcore_ble.cpp) — "attadipa::link::MeshCoreCompanion provider;" | it is what `settle_node_pin()` actually asks — [`firmware/main/meshcore_ble.cpp:1291`](../../firmware/main/meshcore_ble.cpp) — "return provider.pinned(out);" — never NVS. It is written once at boot ([`:1801`](../../firmware/main/meshcore_ble.cpp) — "provider.pin(pinned);"), `begin()` keeps it across sessions on purpose ([`link/src/meshcore_companion.cpp:106`](../../link/src/meshcore_companion.cpp) — "// `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared"), and there is no unpin: [`link/include/attadipa/link/meshcore_companion.h:81`](../../link/include/attadipa/link/meshcore_companion.h) — "void pin(const core::MeshPeerId& node);" is the whole write side. Clear NVS alone and the next handshake refuses the node exactly as before, until the watch reboots — the reboot this whole report exists to remove. The mesh screen reads the same copy: [`firmware/main/waveshare_board.cpp:731`](../../firmware/main/waveshare_board.cpp) — "if (status.has_refused && status.has_pinned)" |
 | The live session and `reconnect_allowed` | RAM | the deletion cannot happen under a live encrypted session — the existing worker already terminates first, [`firmware/main/meshcore_ble.cpp:1545`](../../firmware/main/meshcore_ble.cpp) "const int deleted = ble_store_util_delete_peer(&address);" is preceded by a terminate |
 | The refusal cooldown and `has_refused` | RAM / `MeshStatus` | otherwise the screen keeps reporting a refusal that has been revoked, and the scan skips the node for up to a minute after the owner acted |
 
@@ -351,7 +362,7 @@ The existing `ForgetBondOperation` slot is the right shape for this and is
 discussed next.
 
 **What must *not* be in scope, and this is not a UI opinion:** peer-triggered
-deletion. Nothing a radio peer does may cause any of the four clears. §325's
+deletion. Nothing a radio peer does may cause any of the five clears. §325's
 whole argument — [`firmware/main/meshcore_bond_recovery.h:85`](../../firmware/main/meshcore_bond_recovery.h) —
 "if (!conflicted_.valid && peer.valid) conflicted_ = peer;" keeps the **first**
 conflict rather than the newest, so a peer cannot aim the owner's next action.
@@ -368,8 +379,8 @@ must act on.
 
 | State | How the watch got there | What the bond store holds | What `BondRecovery` holds | What the operation must act on |
 | --- | --- | --- | --- | --- |
-| **(a)** stale bond, address unchanged | §2: the node was reset, the watch reconnects, encryption fails with `PIN or Key Missing`, and the worker records the peer — [`firmware/main/meshcore_ble.cpp:851`](../../firmware/main/meshcore_ble.cpp) — "(void)record_stale_bond(event->enc_change.conn_handle," | one bond, stale, for the peer the record names | that peer | the recorded bond **and** the pin, together — the scope above |
-| **(b)** bond re-made, pin refused | §4: the bond was deleted (today `mesh-forget-bond`) or evicted, the owner entered the node's current digits, the watch paired and bonded afresh — which empties the record: [`firmware/main/meshcore_ble.cpp:859`](../../firmware/main/meshcore_ble.cpp) — "recovery.pairing_succeeded();" → [`firmware/main/meshcore_bond_recovery.h:107`](../../firmware/main/meshcore_bond_recovery.h) — "void pairing_succeeded() { conflicted_ = BondIdentity{}; }" — and then the pin refused the new key ([`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;") | one bond, **good**, with the reset node. Under `CONFIG_BT_NIMBLE_MAX_BONDS=1` NimBLE evicts the oldest bond on overflow rather than refusing, so nothing stale is left beside it — the worker's own comment traces this: [`firmware/main/meshcore_ble.cpp:1394`](../../firmware/main/meshcore_ble.cpp) — "and on overflow NimBLE evicts rather" | nothing | the pin and the refusal cooldown **only**; the bond must be kept. A revocation that reaches for `take_forget()` here gets `false` — [`firmware/main/meshcore_bond_recovery.h:99`](../../firmware/main/meshcore_bond_recovery.h) — "if (!conflicted_.valid) return false;" — and the worker answers [`firmware/main/meshcore_ble.cpp:1530`](../../firmware/main/meshcore_ble.cpp) — "forget_op.complete(attadipa::firmware::ForgetOutcome::Nothing);" — right about the bond, useless for the recovery. The peer whose key was refused is known only to the pin path — [`firmware/main/meshcore_ble.cpp:1377`](../../firmware/main/meshcore_ble.cpp) — "case attadipa::firmware::PinOutcome::Refused:" — and is recorded nowhere. That record is the second thing an implementation needs, and by §7 it is not `BondRecovery`'s to hold |
+| **(a)** stale bond, address unchanged | §2: the node was reset, the watch reconnects, encryption fails with `PIN or Key Missing`, and the worker records the peer — [`firmware/main/meshcore_ble.cpp:851`](../../firmware/main/meshcore_ble.cpp) — "(void)record_stale_bond(event->enc_change.conn_handle," | one bond, stale, for the peer the record names | that peer | the recorded bond **and** the pin — both copies of it, §6 — together — the scope above |
+| **(b)** bond re-made, pin refused | §4: the bond was deleted (today `mesh-forget-bond`) or evicted, the owner entered the node's current digits, the watch paired and bonded afresh — which empties the record: [`firmware/main/meshcore_ble.cpp:859`](../../firmware/main/meshcore_ble.cpp) — "recovery.pairing_succeeded();" → [`firmware/main/meshcore_bond_recovery.h:107`](../../firmware/main/meshcore_bond_recovery.h) — "void pairing_succeeded() { conflicted_ = BondIdentity{}; }" — and then the pin refused the new key ([`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;") | one bond, **good**, with the reset node. Under `CONFIG_BT_NIMBLE_MAX_BONDS=1` NimBLE evicts the oldest bond on overflow rather than refusing, so nothing stale is left beside it — the worker's own comment traces this: [`firmware/main/meshcore_ble.cpp:1394`](../../firmware/main/meshcore_ble.cpp) — "and on overflow NimBLE evicts rather" | nothing | the pin — both copies — and the refusal cooldown **only**; the bond must be kept. A revocation that reaches for `take_forget()` here gets `false` — [`firmware/main/meshcore_bond_recovery.h:99`](../../firmware/main/meshcore_bond_recovery.h) — "if (!conflicted_.valid) return false;" — and the worker answers [`firmware/main/meshcore_ble.cpp:1530`](../../firmware/main/meshcore_ble.cpp) — "forget_op.complete(attadipa::firmware::ForgetOutcome::Nothing);" — right about the bond, useless for the recovery. The peer whose key was refused is known only to the pin path — [`firmware/main/meshcore_ble.cpp:1377`](../../firmware/main/meshcore_ble.cpp) — "case attadipa::firmware::PinOutcome::Refused:" — and is recorded nowhere. That record is the second thing an implementation needs, and by §7 it is not `BondRecovery`'s to hold |
 | **(c)** identity address changed | §3's open branch: the store misses, the watch pairs afresh, `PIN or Key Missing` never happens and `record_stale_bond()` never runs | **UNKNOWN** | nothing | **UNKNOWN until §10.3 measures whether the address survives the reset.** If it does, this state never occurs. If it does not, the fresh pairing needs the node's current digits like (b); with them the state is (b) after the eviction above, and without them it is §5.3's second consequence — a pairing failure that records nothing and offers nothing |
 
 So "together or not at all" is (a)'s rule. In (b) it is the pin alone, and an
@@ -391,7 +402,7 @@ short form:
 | `ForgetBondOperation` | [`firmware/main/meshcore_forget_outcome.h:59`](../../firmware/main/meshcore_forget_outcome.h) — "class ForgetBondOperation {" | **Yes, with one honest caveat.** The slot crosses the same two tasks and enforces the same one-at-a-time rule. Its outcome enum is named for a bond (`Deleted`, `Refused`, `Nothing`); an operation that also clears the pin and the passkey either widens those names or reports a partial completion under a name that says "the bond" |
 | The worker `ForgetBond` event | [`firmware/main/meshcore_ble.cpp:1519`](../../firmware/main/meshcore_ble.cpp) — "taken = recovery.take_forget(peer);" | **Yes as the seam**, and it is the only place that may touch the bond store: it already runs on the mesh worker, already terminates the live session first, and already re-arms exactly one attempt |
 | `erase_passkey()` | [`firmware/main/meshcore_ble.cpp:372`](../../firmware/main/meshcore_ble.cpp) — "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);" | **Not needed.** A recovery replaces the passkey through `store_passkey()` and never erases it (§5.3, §6); erasing leaves the watch unconfigured at the next boot. The function stays what it is, `Deconfigure`'s |
-| An erase for the pin | — | **Does not exist.** This is the one new line of storage code any implementation needs, and it is the mirror of `erase_passkey()` on `kNodeKeyNvsKey` |
+| An erase for the pin | — | **Does not exist, and it is two things, not one line.** The NVS half is the mirror of `erase_passkey()` on `kNodeKeyNvsKey`. The RAM half is a new method on `MeshCoreCompanion` — a reverse of `pin()` that clears `pinned_`, `pinned_set_`, `status_.pinned_id` and `has_pinned` — on a host-tested `link/` class whose header sends readers to the transport for where the pin is *kept*. Without the second, the first takes hold at the next reboot (§6) |
 | `core::Provisioner` | PR #406, `core/include/attadipa/core/provisioning.h` | **The right seam, and it is two methods wide.** A revocation is a third; ADR-0018 already argues why `apps/` must not reach `configure_meshcore_ble()` directly |
 
 Licence and maintenance risk: all of the above is this repository's own code

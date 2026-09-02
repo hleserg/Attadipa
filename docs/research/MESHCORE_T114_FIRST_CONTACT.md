@@ -688,7 +688,9 @@ step two does not exist.** Corrected 2026-09-02 by
 gone is a node that was factory-reset, and a factory reset also regenerates its
 public key — the row at [`:50`](MESHCORE_T114_FIRST_CONTACT.md)
 "a factory reset regenerates it" is the `MEASURED` fact three paragraphs of this
-section rest on. So after `mesh-forget-bond` the watch pairs afresh, completes
+section rest on. So after `mesh-forget-bond` — and a `Configure` carrying the
+node's current digits, since a reset node shows new ones at every boot — the
+watch pairs afresh, completes
 the handshake, reads a key that is not the one it is pinned to, and refuses the
 node: [`../../firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
 — "return PinOutcome::Refused;". Nothing in any image erases the pin — the sole
