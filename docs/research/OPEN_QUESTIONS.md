@@ -347,7 +347,7 @@ is the record of what was true at `144459f` and what changed it:
   sequence compile in every image; its second gave a product image the caller:
   `firmware/main/waveshare_board.cpp:429` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
   is ungated and is reached from the entry screen a long press on the clock
-  opens (`firmware/main/waveshare_board.cpp:788` — "void long_press(lv_event_t *) {").
+  opens (`firmware/main/waveshare_board.cpp:818` — "void long_press(lv_event_t *) {").
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same
@@ -359,7 +359,7 @@ is the record of what was true at `144459f` and what changed it:
   the entry screen store one:
   `firmware/main/waveshare_board.cpp:460` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
-  `firmware/main/meshcore_ble.cpp:1174` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1185` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
 - **A changed node cannot be recovered from.** `meshcore_ble_forget_bond()` has

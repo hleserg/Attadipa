@@ -46,6 +46,21 @@ void ProvisioningEntry::press(EntryKey key) {
   if (field_ == EntryField::Done) {
     return;
   }
+  // While the radio has a passkey of ours, the only key that means anything is
+  // the way out. A second OK here would post a second configure over an answer
+  // nobody has read, and the digit keys would edit a value that has already
+  // gone; both would also clear the line telling the person to wait.
+  if (awaiting_) {
+    if (key == EntryKey::Cancel) {
+      // Neither "skipped" nor "set up" is true: the passkey is with the radio
+      // and this screen is no longer here to hear how it ended.
+      verdict_ = EntryVerdict::Pending;
+      awaiting_ = false;
+      field_ = EntryField::Done;
+      count_ = 0;
+    }
+    return;
+  }
   verdict_ = EntryVerdict::None;
   if (key >= EntryKey::Digit0 && key <= EntryKey::Digit9) {
     if (count_ < capacity()) {
@@ -71,12 +86,17 @@ void ProvisioningEntry::press(EntryKey key) {
     return;
   case EntryKey::Cancel:
     // Past the offset the clock is already the board's; leaving then is the
-    // empty-passkey skip by another key, and says so. Leaving after the board
-    // failed a write is not "nothing changed": the RTC may hold the typed
-    // time with no rollback behind it, so the last answer stands.
-    verdict_ = field_ == EntryField::Passkey ? EntryVerdict::Skipped
-               : board_failed_               ? EntryVerdict::Failed
-                                             : EntryVerdict::Cancelled;
+    // empty-passkey skip by another key, and says so -- unless a passkey did
+    // reach the radio and came back badly, because "no passkey; the clock is
+    // set" would then be describing a watch that may be armed for this boot
+    // and unprovisioned at the next. Leaving after the board failed a write is
+    // not "nothing changed" either: the RTC may hold the typed time with no
+    // rollback behind it, so the last answer stands.
+    if (field_ == EntryField::Passkey) {
+      verdict_ = passkey_failed_ ? EntryVerdict::Failed : EntryVerdict::Skipped;
+    } else {
+      verdict_ = board_failed_ ? EntryVerdict::Failed : EntryVerdict::Cancelled;
+    }
     field_ = EntryField::Done;
     count_ = 0;
     return;
@@ -145,6 +165,11 @@ void ProvisioningEntry::accept() {
     case core::ProvisionOutcome::Rejected:
       verdict_ = EntryVerdict::Rejected;
       return;
+    case core::ProvisionOutcome::Pending:
+      // The clock is written by the task that asks it -- `set_wall_clock` is
+      // terminal by contract, and there is no second half to wait for. A board
+      // that answers this has an answer nobody will ever collect, so it is the
+      // failure it already is rather than a screen that waits for ever.
     case core::ProvisionOutcome::Failed:
       verdict_ = EntryVerdict::Failed;
       board_failed_ = true;
@@ -163,12 +188,21 @@ void ProvisioningEntry::accept() {
       return;
     }
     switch (sink_.set_mesh_passkey(number(digits_, 0, 6))) {
+    case core::ProvisionOutcome::Pending:
+      // The radio has it and has not armed it yet. The digits stay on the
+      // screen, the field does not advance, and poll() is the only thing that
+      // can move either -- which is the whole of #416.
+      verdict_ = EntryVerdict::Pending;
+      awaiting_ = true;
+      return;
     case core::ProvisionOutcome::Accepted:
       break;
     case core::ProvisionOutcome::Rejected:
       verdict_ = EntryVerdict::Rejected;
       return;
     case core::ProvisionOutcome::Failed:
+      // Refused before the radio saw it -- no queue for it, or no storage to
+      // keep it in. Nothing is armed, so leaving from here is still the skip.
       verdict_ = EntryVerdict::Failed;
       return;
     }
@@ -180,6 +214,38 @@ void ProvisioningEntry::accept() {
   verdict_ = EntryVerdict::Accepted;
   field_ = static_cast<EntryField>(static_cast<std::uint8_t>(field_) + 1);
   count_ = 0;
+}
+
+// The other half of the passkey, arriving on the tick rather than on a key.
+// Terminal either way: the board consumes its answer, so this asks once and
+// then stops asking.
+bool ProvisioningEntry::poll() {
+  if (!awaiting_) {
+    return false;
+  }
+  switch (sink_.mesh_passkey_outcome()) {
+  case core::ProvisionOutcome::Pending:
+    return false;
+  case core::ProvisionOutcome::Accepted:
+    // Armed, and on flash where it had to be. The one route to Done.
+    awaiting_ = false;
+    verdict_ = EntryVerdict::Accepted;
+    field_ = EntryField::Done;
+    count_ = 0;
+    return true;
+  case core::ProvisionOutcome::Rejected:
+    // A refusal this late is not a statement about the digits -- they were
+    // taken. It is the request ending badly, and it ends the same way.
+  case core::ProvisionOutcome::Failed:
+    // The stack refused the passkey, or flash did. The digits stay where they
+    // are, so OK asks again; leaving instead no longer claims the passkey was
+    // skipped, because it may be armed for this boot and gone at the next.
+    awaiting_ = false;
+    passkey_failed_ = true;
+    verdict_ = EntryVerdict::Failed;
+    return true;
+  }
+  return false;
 }
 
 EntryText ProvisioningEntry::text(l10n::Locale locale) const {
@@ -231,6 +297,12 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
     break;
   case EntryVerdict::Cancelled:
     hint = StringId::ProvisionCancelled;
+    break;
+  case EntryVerdict::Pending:
+    // On the passkey field this is "wait"; on a screen that was left during
+    // the wait it is "this is where it got to". One sentence for both,
+    // because it is one fact.
+    hint = StringId::ProvisionPending;
     break;
   }
   out.title = l10n::tr(title, locale);

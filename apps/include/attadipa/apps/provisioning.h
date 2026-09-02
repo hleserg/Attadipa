@@ -21,6 +21,14 @@
 // end as OK on an empty passkey. A long press is easy to make by accident on
 // a face that invites a tap, and a screen that can only be left by retyping a
 // correct clock is a trap (#406 round 1).
+//
+// The passkey does not finish where it is typed. The radio arms and stores it
+// on its own task, so OK on six digits ends in `Pending` and this screen waits
+// -- `poll()`, driven by whatever redraws the face -- until the board says
+// which way it went. Done is reachable from a terminal success and from
+// nowhere else (#416): before that the watch had said "the watch is set up"
+// while the stack was still being asked, and a passkey the flash write then
+// refused was gone at the next boot with nobody told.
 
 namespace attadipa::apps {
 
@@ -39,6 +47,8 @@ enum class EntryKey : std::uint8_t {
 enum class EntryVerdict : std::uint8_t {
     None, Accepted, Rejected, Failed, Skipped,
     Cancelled,  // Left before the board was asked anything.
+    Pending,    // The radio has the passkey and has not answered yet -- or,
+                // on a finished screen, still had not when the person left.
 };
 
 struct EntryText {
@@ -57,11 +67,21 @@ public:
     explicit ProvisioningEntry(core::Provisioner& sink);
 
     void press(EntryKey key);
+
+    // Asks the board whether the passkey it took has finished, and says whether
+    // anything on the screen changed. Cheap and idempotent when nothing is in
+    // flight: whatever redraws this face may call it every tick. Nothing else
+    // moves the screen off `Pending`, so a face that never calls it never
+    // reaches Done.
+    bool poll();
+
     EntryText text(l10n::Locale locale) const;
 
     EntryField field() const { return field_; }
     EntryVerdict verdict() const { return verdict_; }
     bool finished() const { return field_ == EntryField::Done; }
+    // The board has a passkey of this screen's that it has not answered.
+    bool waiting() const { return awaiting_; }
 
 private:
     unsigned capacity() const;
@@ -74,6 +94,10 @@ private:
     unsigned count_ = 0;
     bool offset_west_ = false;
     bool board_failed_ = false;  // a set_wall_clock the board could not finish
+    bool awaiting_ = false;      // a passkey the radio has not answered
+    // A passkey the radio answered badly: it may have been armed for this boot
+    // and not stored, so leaving now is not the empty-passkey skip.
+    bool passkey_failed_ = false;
     // Kept across fields so the offset can be committed with them.
     std::int64_t year_ = 0;
     unsigned month_ = 0, day_ = 0, hour_ = 0, minute_ = 0;
