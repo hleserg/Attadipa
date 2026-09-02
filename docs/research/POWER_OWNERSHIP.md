@@ -259,8 +259,11 @@ measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
 a supply), so they stay as written and the log says so:
 [`firmware/main/waveshare_board.cpp:1171`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". And the whole display stack — LVGL, the display, the
-panel, its IO and the QSPI host — when the failure *was* the LVGL lock: a task
-that has held it past a second is inside `lv_timer_handler()`, most plausibly
+panel, its IO and the QSPI host — whenever the LVGL lock cannot be had, whether
+boot's own second timed out or the rollback's did after a later step failed
+([`firmware/main/waveshare_board.cpp:1059`](../../firmware/main/waveshare_board.cpp) —
+"if (state.display != nullptr && lvgl_reachable && !lvgl_port_lock(1000)) {"): a
+task that has held it past a second is inside `lv_timer_handler()`, most plausibly
 a flush the panel never acknowledged; `lvgl_port_remove_disp()` would wait on
 that lock forever, and freeing the panel or the host under a flush in
 progress is a use-after-free on the next byte, so that path leaves all five
