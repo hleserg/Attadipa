@@ -487,8 +487,11 @@ question.** Two terms dominate and neither is in the table.
 **The SoC floor.** `ESP32-S3` light sleep is **240 µA typ, plus 140 µA with 8 MB
 octal PSRAM at 3.3 V** (`PUBLISHED-SPEC`,
 [TAGS_TRACKS_RECKONING](TAGS_TRACKS_RECKONING.md):233 "8 MB octal PSRAM @ 3.3 V";
-octal is `VERIFIED` at [HARDWARE_MATRIX](HARDWARE_MATRIX.md):87 "8 MB, **octal**",
-and the die's own eFuses agree). That is **≈ 380 µA =
+octal is `VERIFIED` at [HARDWARE_MATRIX](HARDWARE_MATRIX.md):377 "8 MB **octal**" — the
+Waveshare row, not the T-Watch's — and the die's own eFuses carry the capacity
+and the 3.3 V rail, [WAVESHARE_EFUSE_READ](WAVESHARE_EFUSE_READ.md):62
+"The eFuse states *capacity* and *vendor" — bus width is still the datasheet
+table's step). That is **≈ 380 µA =
 9.12 mAh/day = 3.04 %/day**, four times the entire "cheapest" sensor figure,
 before a single wake-up occurs.
 
@@ -1934,8 +1937,8 @@ decision**, coupled to T-105, T-097 and #64. `needs-owner`.
 **Answered by the 2026-08-23 bus scan.** One row said the address was
 `CONFLICTING` between `0x6A` and `0x6B`; the other said *"nothing collides and
 `0x6A` is free"*. Both now say `0x6B`, MEASURED, `0x6A` free:
-`docs/research/HARDWARE_MATRIX.md:392` — "was address CONFLICTING" and ` line 401` —
-"`0x6A` is free". Nothing left to do. `docs`.
+`docs/research/HARDWARE_MATRIX.md:392` — "was address CONFLICTING" and
+`docs/research/HARDWARE_MATRIX.md:401` — "`0x6A` is free". Nothing left to do. `docs`.
 
 **Still open and untouched by any of this: A6 — does the Attadipa node carry a
 magnetometer?** A5 and Q2 are answered by events, by a route none of the three
