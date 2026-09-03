@@ -59,13 +59,27 @@ namespace attadipa::core {
 // what this predicate may claim. `Absent` is "the peripheral or radio is not
 // there at all" and `Suspended` is "deliberately quiesced, e.g. for a sleep
 // state" (`core/include/attadipa/core/transport_state.h:26` — "Absent,      // the peripheral or radio is not there at all").
-// `Faulted` is "it failed, and needs a reset rather than a retry" — a link that
-// is not carrying traffic, which is what a lease declares. **None of those three
-// is a claim about the controller.** `TransportPhase` is a statement about the
-// link, and this repository has no source saying what the radio draws in them;
-// the declaration is therefore known-incomplete on exactly that axis, and a
-// future plan that gates a rail on `NodeLink` needs a controller-level fact
-// this file does not have.
+// **Neither of those two is a claim about the controller.** `TransportPhase` is
+// a statement about the link, this repository has no source saying what the
+// radio draws in them, and the declaration is therefore known-incomplete on
+// exactly that axis: a future plan that gates a rail on `NodeLink` needs a
+// controller-level fact this file does not have.
+//
+// `Faulted` is the third release and it is not that case, because here the tree
+// does hold the fact and the fact says the radio can still be on. The phase is
+// "it failed, and needs a reset rather than a retry", and the fault taken when
+// the stack refuses the passkey cancels nothing —
+// `firmware/main/meshcore_ble.cpp:1683` — "                    provider.fault(now());"
+// — nor does the lifecycle's fault step,
+// `firmware/main/meshcore_ble.cpp:1273` — "        case SessionStep::Fault:".
+// Every `ble_gap_disc_cancel()` in that file sits on a path that is not a fault
+// — a matched advertisement, forget-node, deconfigure — so the unbounded scan
+// started at `:1271` can outlive the phase that dropped the lease. Released
+// anyway, and deliberately: `Faulted` needs a reset rather than a retry, so a
+// declaration that held through it would refuse every sleep until that reset
+// arrived, on a watch whose power key is the thing asking. The defect is the
+// transport not cancelling discovery when it faults; the first plan that gates
+// a rail on `NodeLink` needs that fixed rather than this predicate widened.
 constexpr bool node_link_wants_power(TransportPhase phase)
 {
     return phase == TransportPhase::Attached || phase == TransportPhase::Connecting ||

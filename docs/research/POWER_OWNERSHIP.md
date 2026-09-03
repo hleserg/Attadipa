@@ -142,7 +142,7 @@ owner would be allowed to do.
 
 *It has one now. #367 item 7 gave the node link a lease, and the boundary this
 section said could be drawn once is drawn:*
-`core/include/attadipa/core/node_link_lease.h:95` — "class NodeLinkLease {".
+`core/include/attadipa/core/node_link_lease.h:109` — "class NodeLinkLease {".
 *The paragraph below is what it was, and the reasoning it records is why the
 declaration is recorded on the sleeper's task rather than in the transport's.*
 
@@ -609,7 +609,7 @@ the lease — it publishes a phase and the sleeping task records the declaration
 which is decision item 2 of [ADR-0016](../adr/0016-one-power-owner.md); the
 lease is not confined to a live connection, because `Attached` is a radio
 running an unbounded active scan and holds it too
-(`core/include/attadipa/core/node_link_lease.h:71` — "return phase == TransportPhase::Attached");
+(`core/include/attadipa/core/node_link_lease.h:85` — "return phase == TransportPhase::Attached");
 and `maybe_sleep()` still decides, because nothing gates a rail on `NodeLink`
 yet. The paragraph below is the design as proposed.*
 

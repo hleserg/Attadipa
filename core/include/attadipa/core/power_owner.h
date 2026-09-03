@@ -319,7 +319,7 @@ struct SleepReport {
 // That decision is made, in ADR-0016: such a consumer does not call `acquire()`
 // at all. It publishes a state the owner's task already reads, and the owner's
 // task records the declaration on its own side, immediately before `sleep()`.
-// #367 item 7 is the first one — `attadipa/core/node_link_lease.h:95` —
+// #367 item 7 is the first one — `attadipa/core/node_link_lease.h:109` —
 // "class NodeLinkLease {" — for the BLE transport.
 //
 // It leaves one thing open, and it is written here because this is the file
