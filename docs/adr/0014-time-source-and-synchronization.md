@@ -56,7 +56,7 @@ cannot honestly resume where it left off.
   that failed that write may have moved the chip (the RTC is written last, and
   nothing puts it back), so a Cancel after it keeps the failure on screen rather
   than saying nothing changed. The board's
-  `firmware/main/waveshare_board.cpp:446` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
+  `firmware/main/waveshare_board.cpp:447` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
   runs the same `provision_time()` sequence as the opcode, with the same
   order and the same one-day lifetime. Whoever holds the watch may set it —
   [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26 decided that.
@@ -65,7 +65,7 @@ cannot honestly resume where it left off.
   deadline. If it does not, local time becomes stale rather than silently
   asserting that an old seasonal offset is current.
 - Default NVS is initialised once per boot and its verdict kept
-  (`firmware/main/waveshare_board.cpp:270` — "state.metadata_storage = nvs_flash_init();").
+  (`firmware/main/waveshare_board.cpp:271` — "state.metadata_storage = nvs_flash_init();").
   A verdict other than success is logged once and every
   synchronization of that boot fails before the RTC is touched, with the same
   `Failed` (the host's `OperationFailed`) as a store that cannot be read: the

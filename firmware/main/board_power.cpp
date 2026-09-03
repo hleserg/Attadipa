@@ -186,6 +186,15 @@ public:
 
   void set_debug_timer_wake(bool on) { debug_timer_wake_ = on; }
 
+  void detach() {
+    pmu_ = nullptr;
+    panel_ = nullptr;
+    touch_interrupt_ = GPIO_NUM_NC;
+    touch_armed_ = false;
+    awake_brightness_ = 0;
+    debug_timer_wake_ = false;
+  }
+
   bool suspend(attadipa::core::PowerDomain domain) override {
     if (panel_ == nullptr) {
       return false;
@@ -507,6 +516,8 @@ esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
                             std::uint8_t awake_brightness) {
   return hardware.attach(pmu, panel, touch_interrupt, awake_brightness);
 }
+
+void board_power_detach() { hardware.detach(); }
 
 attadipa::core::PowerOwner &board_power_owner() { return owner; }
 

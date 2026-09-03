@@ -83,12 +83,12 @@ add_executable(test_meshcore_passkey test_meshcore_passkey.cpp)
 target_include_directories(test_meshcore_passkey PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 add_test(NAME meshcore_passkey COMMAND test_meshcore_passkey)
 
-# The T-Watch rollback order is firmware code with no ESP-IDF dependency, so
-# the host test compiles the same template the board instantiates.
-add_executable(test_twatch_boot_rollback test_twatch_boot_rollback.cpp)
-target_include_directories(test_twatch_boot_rollback PRIVATE
+# Both boards' rollback order is firmware code with no ESP-IDF dependency, so
+# the host test compiles the same templates the two boards instantiate.
+add_executable(test_boot_rollback test_boot_rollback.cpp)
+target_include_directories(test_boot_rollback PRIVATE
     ${PROJECT_SOURCE_DIR}/firmware/main)
-add_test(NAME twatch_boot_rollback COMMAND test_twatch_boot_rollback)
+add_test(NAME boot_rollback COMMAND test_boot_rollback)
 
 # The other boundary, and it points the opposite way. An application must not
 # learn which chip answered; the core must not learn which language will be
