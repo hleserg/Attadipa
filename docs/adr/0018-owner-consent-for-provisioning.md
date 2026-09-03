@@ -106,7 +106,7 @@ recorded here so that no option is credited with paying them.
    cost until then.
 
 3. **Touch already works, as an LVGL pointer device.**
-   `firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);".
+   `firmware/main/physical_input.cpp:88` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);".
    No screen in this tree uses an `lv_keyboard`, `lv_textarea` or
    `lv_buttonmatrix` — the names appear only in `tools/ui/lvgl_inventory.py`,
    which catalogues LVGL's API, and in `sim/lv_conf_simulator.h`, which
@@ -130,11 +130,12 @@ interchangeable: `docs/research/HARDWARE_MATRIX.md:399` — "| Buttons | **two c
 
 **BOOT is available and measured.** It is a plain GPIO, its edges were observed
 through this project's own input queue, and it is in the product image today
-with nothing gating it: `firmware/main/physical_input.cpp:52` —
+with nothing gating it: `firmware/main/physical_input.cpp:54` —
 "    buttons.pin_bit_mask = 1ULL << GPIO_NUM_0;",
-`firmware/main/physical_input.cpp:468` —
+`firmware/main/physical_input.cpp:493` —
 "  PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};", and
-`firmware/main/physical_input.cpp:511` — "  ESP_LOGI(kTag, ".
+`firmware/main/physical_input.cpp:536` —
+"physical input ready: %s, GPIO0 and the AXP2101 power key".
 So a gesture is not something B or C would have to invent. It costs two things
 instead: BOOT is a reset strap, so it cannot be injected remotely and a
 provisioning gesture built on it is not testable the way touch is; and on the

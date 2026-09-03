@@ -1,6 +1,7 @@
 #include "physical_input.h"
 
 #include "board_power.h"
+#include "meshcore_ble.h"
 #include "power_button_edges.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 #include "lvgl.h"
 
 #include "attadipa/core/input.h"
+#include "attadipa/core/node_link_lease.h"
 #include "attadipa/core/power_owner.h"
 #include "attadipa/core/power_state.h"
 #include "attadipa/platform/board_profile.h"
@@ -165,6 +167,28 @@ private:
       return;
     }
     sleep_requested_ = false;
+
+    // #367 item 7. The BLE transport's power declaration is recorded here,
+    // immediately before the only thing that reads it: `sleep()` takes
+    // `held()` once, further down, and nothing else in the tree reads the
+    // lease table at all. `NodeLinkLease` carries the reasoning for doing it
+    // on this task rather than in `meshcore_ble.cpp`; the short version is
+    // that the transport lives in `mesh_task` and the owner is not
+    // thread-safe by design, so the transport declares through the phase
+    // snapshot this task already reads, and the sleeper records.
+    //
+    // Refusals are logged and the lease is retried on the next sleep, which is
+    // why this is a warning and not a refusal to sleep: the plan below names
+    // `Display` alone, so an absent NodeLink lease changes no outcome today.
+    // The day a plan names `NodeLink`, a lease that could not be taken must
+    // stop being invisible, and this log is where that starts.
+    attadipa::core::LeaseError lease_why = attadipa::core::LeaseError::None;
+    if (!node_link_lease_.reconcile(attadipa::firmware::board_power_owner(),
+                                    meshcore_ble_status().transport,
+                                    lease_why)) {
+      ESP_LOGW(kTag, "node link lease: %s",
+               attadipa::core::to_string(lease_why));
+    }
 
     // The decision stays here -- whether the watch is quiet enough to sleep is
     // a question about input, and this is where input lives. The *episode* is
@@ -465,6 +489,7 @@ private:
   std::size_t input_read_burst_ = 0;
   std::uint32_t last_pmu_poll_ms_ = 0;
   bool sleep_requested_ = false;
+  attadipa::core::NodeLinkLease node_link_lease_;
   PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};
 };
 

@@ -69,6 +69,18 @@ release below zero is a reported error, never a wrap; a lease past its deadline
 is reported and **not** silently reclaimed, because a consumer believing it
 holds hardware it does not is the Meshtastic failure with its polarity reversed.
 
+The lease table takes no lock, and a consumer on another task does not get one.
+`sleep()` reads the held set once and then holds hardware for as long as the
+sleep lasts, so a lease acquired from a second task inside that window is a
+lease the sleeper never saw, and a mutex around the table closes the table
+rather than the window. **A consumer that does not run on the owner's task
+declares through a snapshot the owner's task already reads, and the owner's
+task records the declaration.** #367 item 7 is the first one:
+`core/include/attadipa/core/node_link_lease.h:54` — "class NodeLinkLease {" —
+takes the BLE transport's phase, published behind the transport's own critical
+section, and reconciles the lease immediately before `sleep()` reads it. The
+window closes by construction, and no ESP-IDF primitive enters `core/`.
+
 **3. A transition is an ordered transaction with a journal.** Prepare, validate,
 suspend consumers in dependency order *recording each success*, apply the rail
 plan, sleep, classify, resume exactly the recorded consumers in exact reverse
