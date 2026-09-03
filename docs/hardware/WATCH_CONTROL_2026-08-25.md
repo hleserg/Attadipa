@@ -129,7 +129,7 @@ Both transcripts above are what those runs printed and are left as they were
 recorded. A repeat prints the same lines under the tag `physical-input` rather
 than `watch-control`: the producers moved to `firmware/main/physical_input.cpp`
 in #346 so that they survive a build with no debug endpoint, and the log tag
-moved with them (`physical_input.cpp:28` — "physical-input"). The behaviour did
+moved with them (`physical_input.cpp:30` — "physical-input"). The behaviour did
 not change, and
 this was not re-measured — **NOT EXECUTED — HARDWARE REQUIRED**.
 

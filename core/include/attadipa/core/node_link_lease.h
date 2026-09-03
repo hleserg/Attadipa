@@ -83,7 +83,7 @@ constexpr bool node_link_wants_power(TransportPhase phase)
 //
 // Called by the sleeper immediately before `sleep()`, and nowhere else — which
 // today means once per power-key release, the one place that asks for a sleep
-// (`firmware/main/physical_input.cpp:451` — "sleep_requested_ = true;").
+// (`firmware/main/physical_input.cpp:467` — "sleep_requested_ = true;").
 // So the table is sampled per sleep request rather than held as a running
 // declaration, and between requests it can report the link held long after the
 // link went `Absent`. Nothing observes that: `sleep()`'s own `held()` read is

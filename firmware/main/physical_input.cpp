@@ -1,7 +1,9 @@
 #include "physical_input.h"
 
 #include "board_power.h"
+#if CONFIG_BT_NIMBLE_ENABLED
 #include "meshcore_ble.h"
+#endif
 #include "power_button_edges.h"
 
 #include <algorithm>
@@ -182,10 +184,24 @@ private:
     // `Display` alone, so an absent NodeLink lease changes no outcome today.
     // The day a plan names `NodeLink`, a lease that could not be taken must
     // stop being invisible, and this log is where that starts.
+#if CONFIG_BT_NIMBLE_ENABLED
+    const attadipa::core::TransportPhase link_phase =
+        meshcore_ble_status().transport;
+#else
+    // No radio in this image, so the link is not there at all -- which is
+    // exactly what `Absent` states. Declaring it, rather than compiling the
+    // reconcile away with the transport, keeps one behaviour for both images:
+    // the lease is released if anything ever took it, and `sleep()` reads the
+    // same table either way. `meshcore_ble.cpp` is compiled only under this
+    // symbol (`firmware/main/CMakeLists.txt:9` -- "if(CONFIG_BT_NIMBLE_ENABLED)")
+    // while this file is compiled into every non-T-Watch image, so the guard is
+    // what every other caller of `meshcore_ble_status()` here already has.
+    const attadipa::core::TransportPhase link_phase =
+        attadipa::core::TransportPhase::Absent;
+#endif
     attadipa::core::LeaseError lease_why = attadipa::core::LeaseError::None;
     if (!node_link_lease_.reconcile(attadipa::firmware::board_power_owner(),
-                                    meshcore_ble_status().transport,
-                                    lease_why)) {
+                                    link_phase, lease_why)) {
       ESP_LOGW(kTag, "node link lease: %s",
                attadipa::core::to_string(lease_why));
     }

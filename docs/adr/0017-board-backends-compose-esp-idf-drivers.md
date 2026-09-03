@@ -20,7 +20,7 @@ drive this decision, all read at a pinned revision or in a datasheet:
 
 1. **The shipping tree already has the seam.** `waveshare_board.cpp:120-124` —
    "esp_lcd_panel_handle_t panel" — holds an `esp_lcd_panel_handle_t` and an
-   `esp_lcd_touch_handle_t` and hands them on; `physical_input.cpp:500` —
+   `esp_lcd_touch_handle_t` and hands them on; `physical_input.cpp:516` —
    "start_physical_input(esp_lcd_touch_handle_t touch" — takes exactly those
    two types. Nothing above that line knows which board it is. A second backend
    either reuses that

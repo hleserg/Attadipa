@@ -454,6 +454,19 @@ transport to declare a lease, and the transport does not run on the task that
 sleeps. That is the whole of this question, and it is not the data race it looks
 like at first.
 
+*Answered, in the half that was asked. #367 item 7 shipped the first cross-task
+consumer, and the rule it brought is decision item 2 of
+[ADR-0016](../adr/0016-one-power-owner.md) — such a consumer does not call
+`acquire()` at all; it publishes a state the owner's task already reads, and the
+owner's task records the declaration immediately before `sleep()`
+(`core/include/attadipa/core/power_owner.h:319` — "// That decision is made, in ADR-0016: such a consumer does not call `acquire()`").
+What stays open is narrower than this question describes and is stated where it
+would be fixed: a declaration published after the sleeper read its snapshot is
+still one the sleeper never saw, so the pattern moves that window off the lease
+table rather than closing it. The paragraphs below are what the question looked
+like before a consumer existed; the reasoning in them is why the answer is that
+one.*
+
 **The sequence that has no lock-shaped answer.** The sleeper reads `held()`,
 finds nothing that blocks its plan, and commits. Between that read and the
 hardware actually stopping, the other task acquires a lease. The sleeper has
@@ -465,7 +478,7 @@ task blocked on a lock there is a task that cannot un-take the decision anyway.
 **Why nothing is broken today, stated so the reason is checkable rather than
 reassuring.** The only sleep plan the firmware issues suspends the display and
 nothing else
-([`firmware/main/physical_input.cpp:213`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:229`](../../firmware/main/physical_input.cpp) —
 "plan.suspend = attadipa::core::domain_bit(attadipa::core::PowerDomain::Display);"), and the refusal it could
 trip is an intersection
 ([`core/src/power_owner.cpp:382`](../../core/src/power_owner.cpp) —
@@ -480,11 +493,12 @@ intent, a late acquire either refuses or aborts it, and every consumer learns a
 protocol. That is a general power-management framework, and this project has
 one standing instruction against building one before a consumer needs it
 ([ADR-0016](../adr/0016-one-power-owner.md) — the smallest mechanism the current
-product needs). The honest state is: the contract says single-task, the first
+product needs). The honest state was: the contract says single-task, the first
 cross-task consumer brings the answer, and until one exists there is nothing to
-measure a design against.
+measure a design against. One exists now, and the answer it brought is above.
 
-**Not a blocker.** It blocks #367 item 7 and nothing else. Radio, GNSS and
+**Not a blocker.** It blocked #367 item 7, which has shipped, and nothing
+else. Radio, GNSS and
 T-Watch bring-up all reach a working device without it; each of them arriving
 with a lease is what will make the question answerable, because only then is
 there a plan whose `suspend` set a cross-task lease can intersect.
