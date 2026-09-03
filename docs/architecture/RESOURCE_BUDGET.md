@@ -65,7 +65,7 @@ the watch boots and runs, where an octal init against a quad part bails out
 The eFuses carry the rest: 8 MB, vendor `AP_3v3`, and Table 1-1 has no 8 MB
 quad in-package part. Octal, MEASURED, and the vendor document is wrong —
 `docs/research/HARDWARE_MATRIX.md:87` — "Closes D12b" and
-`docs/research/OPEN_QUESTIONS.md:127` — "RESOLVED 2026-08-27 — octal".
+`docs/research/OPEN_QUESTIONS.md:130` — "RESOLVED 2026-08-27 — octal".
 
 Quad and octal differ by roughly a factor of two in bandwidth and need different
 `sdkconfig` settings; getting it wrong is not a performance nuance, it is a board

@@ -66,7 +66,8 @@ want to inherit the experience, not only the code.
 | `lvgl` | github.com/lvgl/lvgl | `85aa60d1` (**v9.5.0**) | 2026-08-23 | the UI toolkit. **T2 is settled**: [`DEPENDENCIES.md`](DEPENDENCIES.md) pins v9.5.0 = `85aa60d1…`, verified by `git ls-remote` and observed in CI, and source **S14** in [`VERIFIED_FACTS`](VERIFIED_FACTS.md) reads that revision. This row carried `7cc13aaf…` with *"version choice is open question T2"* until 2026-08-24, so the ledger and the dependency record named two different revisions of the same dependency — the ledger being the file `CLAUDE.md` sends an agent to before implementing anything. Found in review |
 | `T-Watch-S3` | github.com/Xinyuan-LilyGO/TTGO_TWatch_Library | `e5a0f825a21198f97d2bafee03ea853766483d20` | 2025-02-28 | LilyGO vendor library for one of the two target boards. **Superseded as evidence 2026-09-01**: this is the *previous-generation* library and it is not what the bench unit runs. The current library for the S3 Plus is the row below, and until that row existed this ledger pinned a revision no T-Watch decision was actually taken against |
 | `LilyGoLib` | github.com/Xinyuan-LilyGO/LilyGoLib | `38e6f8dee3ba78b340512af9a013365ef248a7d0` (v0.2.0) | 2026-08-11 | **the current vendor library for the T-Watch S3 Plus, and the exact-board prior art**: the recovered factory image on our own unit is built from its `examples/factory/factory.ino`. MIT. **Read, never linked** — [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md). Re-checked 2026-09-01: still the default-branch tip. `library.json` declares `"frameworks": ["arduino"]` and pins RadioLib 7.1.2, LVGL 9.2.2, XPowersLib 0.2.9, SensorLib 0.3.1 — colliding with our LVGL 9.5.0 and RadioLib 7.7.1 before any code is read |
-| `SensorLib` | github.com/lewisxhe/SensorLib | `2b9e591f245e447d3d00ec8798c3f49b897882d9` (0.4.1) | 2026-07-30 | MIT at the root, **BSD-3-Clause under `src/bosch/`**, which the component manifest's `exclude` list does not exclude. The only pinnable ESP-IDF-native source for PCF8563, BMA423 and DRV2605. `EVALUATE` — examined under #328, not adopted, because the slice that would consume it does not exist yet |
+| `SensorLib` | github.com/lewisxhe/SensorLib | `2b9e591f245e447d3d00ec8798c3f49b897882d9` (0.4.1) | 2026-07-30 | MIT at the root, **BSD-3-Clause under `src/bosch/`**, which the component manifest's `exclude` list does not exclude. The only pinnable ESP-IDF-native source for PCF8563, BMA423 and DRV2605. **Evaluated in full 2026-09-03 under #422: `REJECT` for the PCF8563 path** — seven defects in `src/time/pcf8563/SensorPCF8563.hpp`, including a read whose result is discarded over uninitialised stack and a `void` API that cannot report an I²C failure. Read as evidence, never linked. The record is below and the detail is in [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §2 |
+| `XPowersLib` | github.com/lewisxhe/XPowersLib | `d6997586e68f65afd51baa775903df930db39821` (0.3.4) | 2026-07-01 | MIT. The AXP2101 driver both vendors use. Read 2026-09-03 under #422: that commit is *"fix axp2101 getIrqStatus byte order"* and touches only `src/XPowersAXP2101.hpp`, so **any older copy returns a wrong IRQ word** — LilyGoLib's pinned 0.2.9 included. `REJECT` as a dependency: `readRegister()` returns `-1` on failure into a `uint8_t`, so a bus error reads as every interrupt pending. Evidence only — [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §6.1 |
 | `arduino-esp32` | github.com/espressif/arduino-esp32 | `3.3.2` | — | read for one thing only: `variants/lilygo_twatch_s3/pins_arduino.h`, which is where LilyGoLib's `DISP_*` pin macros actually come from. **The vendor library does not itself contain the T-Watch pin numbers** — a surprise worth recording, because "read the pins out of LilyGoLib" is the obvious plan and it does not work |
 | `esp-bsp` | github.com/espressif/esp-bsp | `2f519317d5375f7bbb0190b29a4988c2ea2453e2` | 2026-08-13 | Espressif's BSP collection and the source of the `esp_lcd_touch_ft5x06` dependency. **It does not contain the Waveshare board** — `esp-bsp/bsp` holds 26 board entries and none is a Waveshare AMOLED. Recorded here as `waveshare-bsp` until 2026-08-22, which sent readers to the wrong repository |
 | `waveshare-components` | github.com/waveshareteam/Waveshare-ESP32-components | — | 2026-08-22 | where the Waveshare BSP actually lives. Drives display, touch, audio and SD only: `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`, and it never touches the QMI8658, AXP2101 or PCF85063 on the board. Its `esp_lcd_sh8601` is a fork of Espressif's in which `tx_color()` goes unchecked, so a failed frame reports success — **inherited from upstream rather than introduced by the fork**, and fixed upstream in `v2.0.1` (2025-12-10); the "two-line" count is withdrawn pending a re-derivation against the right base, see [WAVESHARE_ARRIVAL.md](WAVESHARE_ARRIVAL.md) §3.3. Espressif ships both an unforked `esp_lcd_sh8601` and a purpose-named `esp_lcd_co5300`, same Apache-2.0, in `esp-iot-solution` |
@@ -201,7 +202,7 @@ anything equivalent is written by hand.
 | ~~`Xinyuan-LilyGO/LilyGoLib`~~ | **evaluated 2026-09-01 at `38e6f8d` — see the record below.** `REJECT` as a dependency, `ADAPT` as data. The "authoritative pin map" half of this line was half wrong: the `DISP_*` macros live in `arduino-esp32`'s `variants/lilygo_twatch_s3`, not in LilyGoLib, and LilyGO's own hardware page for this board states a panel size that D15 disproved by measurement | MIT |
 | `waveshare/esp32_s3_touch_amoled_2_06` | vendor BSP for the second board — display, touch, audio, SD only | Apache-2.0 |
 | `waveshare/esp_lcd_sh8601` | the driver the vendor uses for the CO5300 AMOLED panel | **Apache-2.0** at the pinned `==1.0.2`, checked 2026-08-22 (§ the xiaozhi record). Upstream is `espressif/esp-iot-solution`, **not** `esp-bsp`, whose `components/lcd` contains neither this driver nor `esp_lcd_co5300`. Read 2026-08-23 for D21. **The unchecked `tx_color()` was upstream's own code, not a fork divergence** — see the correction in [WAVESHARE_ARRIVAL](WAVESHARE_ARRIVAL.md) §3.3 — and upstream fixed it in `v2.0.1`, 2025-12-10 |
-| XPowersLib | AXP2101 driver used by **both** vendors — covers the one shared part | to check |
+| ~~XPowersLib~~ | **evaluated 2026-09-03 at `d6997586` — see the record below.** `REJECT` as a dependency, read as evidence. What Attadipa needs is four register addresses and the fact that INTSTS is write-1-to-clear; the library brings two unchecked-read defects into the one place [ADR-0016](../adr/0016-one-power-owner.md) requires to propagate failure | MIT |
 | `MarcoRR/S3NTRY` | an existing smartwatch firmware for the Waveshare 2.06 | to check |
 | ~~`78/xiaozhi-esp32`~~ | **evaluated 2026-08-22 — see the record below.** MIT, and it carries a board directory for this exact board. Its *audio-path dependencies* are the finding: `esp-sr`, `esp_audio_codec` and `esp_audio_effects` are **not** MIT | MIT; deps vary |
 | `joaquimorg/OLEDS3Watch` | another, built on ESP-Brookesia | to check |
@@ -2473,11 +2474,24 @@ second, *dead* command table inside `#if 0` that differs from the live one in
 `COLMOD`, `PORCTRL` and `RAMCTRL`; and the vendor's specification table for this
 exact board says the panel is 1.3″, which D15 disproved by measurement.
 
-**`lewisxhe/SensorLib@2b9e591` (0.4.1) — `EVALUATE`, not adopted.** MIT, with
-BSD-3-Clause under `src/bosch/` that the component manifest does not exclude. It
-is the only pinnable ESP-IDF-native source for PCF8563, BMA423 and DRV2605, and
-the first T-Watch slice needs none of them. Deferred to the slice that adds the
-RTC and the IMU, with the size and IRQ audit attached rather than promised.
+**`lewisxhe/SensorLib@2b9e591` (0.4.1) — was `EVALUATE`; now `REJECT` for the
+PCF8563 path.** MIT, with BSD-3-Clause under `src/bosch/` that the component
+manifest does not exclude. It is the only pinnable ESP-IDF-native source for
+PCF8563, BMA423 and DRV2605, and the first T-Watch slice needed none of them, so
+this record deferred the audit "to the slice that adds the RTC and the IMU".
+**That slice is #422 and the audit is done**: seven defects in
+`src/time/pcf8563/SensorPCF8563.hpp`, none of them in the happy path and every
+one of them in the error path. The verdict and the evidence are the record
+[below](#a-pcf8563-driver-and-the-axp2101-interrupt-registers-behind-it), and the
+detail is [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §2. The BMA423 and
+DRV2605 halves are **not** audited and stay open for the slice that needs them —
+which is the deferral this paragraph originally made, kept only for the parts it
+still applies to. **No licence obligation is incurred by any of this**: a
+`REJECT` means no line is copied, and reading a header to learn what a register
+means is not use of the work. The MIT notice and the `src/bosch/`
+BSD-3-Clause attribution would attach to a distributed derivative, and there is
+none — which is also why the BMA423 and DRV2605 deferral costs nothing to keep
+open.
 
 **`espressif/esp_bsp_generic` 3.1.1 — `REJECT`; `esp-box-3` — `INSPIRE
 ARCHITECTURE`.** Apache-2.0. The generic BSP's scope is simple I2C, SPIFFS, SD,
@@ -2671,3 +2685,65 @@ code under its own licence — no new dependency, no new licence surface:
 
 Evidence: [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md).
 Physical stale-bond recovery remains `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### A PCF8563 driver, and the AXP2101 interrupt registers behind it
+
+**Problem:** Read and set the T-Watch S3 Plus wall clock over I²C, report an
+invalid oscillator rather than a plausible wrong time, and arm the four
+interrupt lines the board actually has so that a light sleep can be woken and
+re-entered without spinning.
+
+**Projects investigated:** `lewisxhe/SensorLib` (PCF8563 and BMA423 wrappers),
+`lewisxhe/XPowersLib` (AXP2101 interrupt controller),
+`Xinyuan-LilyGO/LilyGoLib` (the exact-board vendor firmware), and this
+repository's own PCF85063 adapter for the Waveshare board.
+
+**Useful implementation:** The register semantics, and nothing else. NXP's
+datasheet is the authority for the PCF8563; XPowersLib supplies the AXP2101
+INTEN/INTSTS addresses and the write-1-to-clear convention; LilyGoLib supplies
+init order, pin usage and the `rtc_gpio_pullup_en()` call before sleep that the
+1.8 V pull-up on GPIO21 makes necessary.
+
+**License:** SensorLib MIT at the root and **BSD-3-Clause under `src/bosch/`**,
+which the manifest does not exclude. XPowersLib MIT. LilyGoLib MIT.
+
+**Strengths:** All three are pinnable, ESP-IDF-reachable and describe this
+exact board. They are the fastest way to learn what the registers mean.
+
+**Weaknesses:** Seven defects in SensorLib's `SensorPCF8563.hpp`, two in
+XPowersLib's `XPowersAXP2101.hpp`, and one class shared by both: a failed I²C
+read is not distinguished from data. In XPowersLib it becomes `0xFF` — every
+interrupt pending — which on this board would clear and re-arm sources that
+never fired. LilyGoLib aborts on a missing PMU (`assert(0)`), routes every
+interrupt through one file-scope FreeRTOS event group, deliberately never
+clears its touch bit, and pins XPowersLib 0.2.9, which predates the byte-order
+fix above.
+
+**Decision:** `REIMPLEMENT` the PCF8563 driver. `REJECT` all three as
+dependencies; read all three as evidence.
+
+**Reason:** The PCF8563 surface this product needs is small — eight registers,
+a VL bit, a BCD conversion and two flags that must be cleared without
+clobbering each other — and every defect found is in the error path, which is
+the half a watch depends on and the half the wrappers do not have. Adopting a
+library to obtain a register map imports its failure model as well, into the
+one place [ADR-0016](../adr/0016-one-power-owner.md) requires to be
+single-owner and to propagate failure. This is
+[ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md) reaching its
+stated outcome rather than being strained: a vendor BSP is read, not linked.
+
+**Source revision:** SensorLib `2b9e591f245e447d3d00ec8798c3f49b897882d9`
+(0.4.1); XPowersLib `d6997586e68f65afd51baa775903df930db39821` (0.3.4);
+LilyGoLib `38e6f8dee3ba78b340512af9a013365ef248a7d0` (0.2.0). All three
+re-checked 2026-09-03.
+
+**Attadipa integration:** A board backend publishes what the four lines are and
+how each is cleared; the [#367](https://github.com/hleserg/Attadipa/issues/367)
+power owner remains the only caller of `esp_light_sleep_start()` and the only
+writer of a PMU register. No `#ifdef BOARD_X` reaches `core/` or `apps/`, and
+no ADR changes — [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §6.3 and
+§6.4.
+
+**Tests required:** The bench procedure in that report, §4. Every hardware row
+of it is `NOT EXECUTED — HARDWARE REQUIRED`, and the six questions it cannot
+answer from a desk are H19–H24 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
