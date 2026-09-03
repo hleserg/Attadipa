@@ -279,8 +279,8 @@ void ProvisioningEntry::forget() {
     advance();
     return;
   case core::ProvisionOutcome::Failed:
-    // The request never reached the radio. Nothing changed, the node is
-    // still on the screen, and the key can be pressed again.
+    // The request never reached the worker. The node stays on screen and the
+    // common failure line asks for a retry without claiming transport state.
     verdict_ = EntryVerdict::Failed;
     return;
   }
@@ -297,11 +297,11 @@ bool ProvisioningEntry::poll() {
     }
     awaiting_forget_ = false;
     forget_outcome_ = outcome;
-    if (outcome == core::MeshForgetOutcome::BondKept) {
-      // The store refused and nothing changed. The node stays on the screen
-      // so the key can be pressed again, as the report's §6.1 requires: a
-      // pin cleared beside a bond that is still there is the dead end this
-      // screen exists to end.
+    if (outcome == core::MeshForgetOutcome::BondKept ||
+        outcome == core::MeshForgetOutcome::ReplayInhibited) {
+      // Trust stayed, either because the store refused or because its durable
+      // rollback did. The node stays on the screen so the key can retry it;
+      // the hint below distinguishes the reboot-inhibited case.
       verdict_ = EntryVerdict::Failed;
       return true;
     }
@@ -392,8 +392,11 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const {
     hint = StringId::ProvisionRejected;
     break;
   case EntryVerdict::Failed:
-    hint = field_ == EntryField::Node ? StringId::ProvisionNodeKept
-                                      : StringId::ProvisionFailed;
+    hint = field_ != EntryField::Node
+               ? StringId::ProvisionFailed
+               : forget_outcome_ == core::MeshForgetOutcome::ReplayInhibited
+                     ? StringId::ProvisionNodeReplayInhibited
+                     : StringId::ProvisionNodeKept;
     break;
   case EntryVerdict::Skipped:
     // "the clock is set" is true either way; "no passkey" after a forget

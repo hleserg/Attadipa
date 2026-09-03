@@ -475,8 +475,12 @@ en = "forgot till reboot; type digits"
 ru = "забыт до рестарта; цифры"
 
 [provision_node_kept]
-en = "not forgotten; nothing changed"
-ru = "не забыт; всё как было"
+en = "not forgotten; retry"
+ru = "не забыт; повторите"
+
+[provision_node_replay_inhibited]
+en = "not forgotten; reboot scan is blocked"
+ru = "не забыт; поиск после рестарта закрыт"
 
 [provision_node_nothing]
 en = "nothing to forget"

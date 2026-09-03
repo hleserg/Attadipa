@@ -41,9 +41,9 @@ enum class ForgetNodeOutcome : std::uint8_t {
     // No stale bond was recorded, so the bond -- a good one, made after the
     // node's reset -- is kept, and the pin alone is gone. §6.1 state (b).
     Unpinned,
-    // The bond store refused. The record is put back so the request can be
-    // made again, and nothing after the store was touched: the pin is where
-    // it was, in both places.
+    // A prerequisite or the bond store refused. Any taken record is put back
+    // and neither pin copy is changed. Transport may already be stopped, so
+    // the request must report a retry rather than claiming nothing changed.
     BondKept,
     // The pin is gone from memory and the NVS erase refused. The next
     // adoption overwrites the key anyway, so this holds until the watch is
@@ -53,9 +53,9 @@ enum class ForgetNodeOutcome : std::uint8_t {
     // Neither a recorded bond nor a pin: nothing to forget, and nothing
     // was.
     Nothing,
-    // A prerequisite (transport termination or durable recovery marker)
-    // refused, so neither the bond nor either pin copy was changed.
-    NotForgotten,
+    // Trust was kept, but rolling back the durable recovery marker failed.
+    // Boot therefore stays disarmed until this is retried successfully.
+    ReplayInhibited,
 };
 
 // `Pending` includes NimBLE's already-terminating answer; `Gone` is its
@@ -77,6 +77,7 @@ ForgetTransportTermination terminate_forget_session(
 {
     const auto session = snapshot();
     if (session.connection == no_connection) {
+        end(session.generation);
         return ForgetTransportTermination::Absent;
     }
     const ForgetTransportTermination result = start(session.connection);
@@ -88,7 +89,7 @@ ForgetTransportTermination terminate_forget_session(
 //   void disarm();                          reconnect_allowed <- false
 //   bool terminate();                       end the live session, if any
 //   bool mark_reprovision();                durable boot-replay inhibitor
-//   void cancel_reprovision();              undo it when trust was unchanged
+//   bool cancel_reprovision();              undo it when trust was unchanged
 //   bool take_forget(BondIdentity& out);    BondRecovery::take_forget
 //   bool delete_bond(const BondIdentity&);  ble_store_util_delete_peer == 0
 //   void record(const BondIdentity&);       BondRecovery::record, on refusal
@@ -102,12 +103,12 @@ ForgetNodeOutcome forget_node(Ops& ops)
     // the terminate below causes must not be the reconnect that adopts a
     // node while the clears are half done.
     ops.disarm();
-    if (!ops.terminate()) return ForgetNodeOutcome::NotForgotten;
+    if (!ops.terminate()) return ForgetNodeOutcome::BondKept;
 
     // The passkey itself is deliberately retained. This marker is therefore
     // the crash-safe half of disarm(): a reboot after any clear below still
     // waits for new owner-entered digits instead of replaying the old ones.
-    if (!ops.mark_reprovision()) return ForgetNodeOutcome::NotForgotten;
+    if (!ops.mark_reprovision()) return ForgetNodeOutcome::BondKept;
 
     BondIdentity peer{};
     const bool taken = ops.take_forget(peer);
@@ -117,8 +118,8 @@ ForgetNodeOutcome forget_node(Ops& ops)
         // it beside a bond that still blocks every connection would be
         // today's dead end with the one clue to it removed.
         ops.record(peer);
-        ops.cancel_reprovision();
-        return ForgetNodeOutcome::BondKept;
+        return ops.cancel_reprovision() ? ForgetNodeOutcome::BondKept
+                                        : ForgetNodeOutcome::ReplayInhibited;
     }
 
     // Flash before memory. A restart between the two then finds no pin,
@@ -129,8 +130,8 @@ ForgetNodeOutcome forget_node(Ops& ops)
     ops.clear_refusal();
 
     if (!taken && !was_pinned && erased) {
-        ops.cancel_reprovision();
-        return ForgetNodeOutcome::Nothing;
+        return ops.cancel_reprovision() ? ForgetNodeOutcome::Nothing
+                                        : ForgetNodeOutcome::ReplayInhibited;
     }
     if (!erased) return ForgetNodeOutcome::PinOnFlash;
     return taken ? ForgetNodeOutcome::Forgotten : ForgetNodeOutcome::Unpinned;

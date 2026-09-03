@@ -1372,6 +1372,14 @@ struct RealForgetOps {
                 return false;
             }
         }
+        if (ble_gap_conn_active()) {
+            const int rc = ble_gap_conn_cancel();
+            if (rc != 0 && rc != BLE_HS_EALREADY) {
+                ESP_LOGE(kTag,
+                         "forget-node: connection cancel refused (rc=%d)", rc);
+                return false;
+            }
+        }
         using attadipa::firmware::ForgetTransportTermination;
         const ForgetTransportTermination result =
             attadipa::firmware::terminate_forget_session(
@@ -1406,13 +1414,15 @@ struct RealForgetOps {
                  "forget-node: recovery marker was not stored; trust kept");
         return false;
     }
-    void cancel_reprovision()
+    bool cancel_reprovision()
     {
-        if (!clear_reprovision_pending()) {
+        const bool cleared = clear_reprovision_pending();
+        if (!cleared) {
             ESP_LOGE(kTag,
                      "forget-node: recovery marker could not be rolled back; "
                      "boot replay stays inhibited");
         }
+        return cleared;
     }
     bool take_forget(attadipa::firmware::BondIdentity& out)
     {
@@ -1456,10 +1466,10 @@ const char* forget_node_name(attadipa::firmware::ForgetNodeOutcome outcome)
     switch (outcome) {
     case ForgetNodeOutcome::Forgotten:  return "bond deleted and pin cleared";
     case ForgetNodeOutcome::Unpinned:   return "pin cleared; no stale bond was recorded, the bond is kept";
-    case ForgetNodeOutcome::BondKept:   return "the store refused; nothing changed";
+    case ForgetNodeOutcome::BondKept:   return "a prerequisite or the store refused; trust kept";
     case ForgetNodeOutcome::PinOnFlash: return "pin cleared in memory only; the NVS erase refused";
     case ForgetNodeOutcome::Nothing:    return "nothing to forget";
-    case ForgetNodeOutcome::NotForgotten: return "a prerequisite refused; trust kept";
+    case ForgetNodeOutcome::ReplayInhibited: return "trust kept; boot replay stays inhibited";
     case ForgetNodeOutcome::Idle:
     case ForgetNodeOutcome::InFlight:   break;
     }

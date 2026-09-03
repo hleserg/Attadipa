@@ -127,6 +127,7 @@ struct FakeBoard final : attadipa::core::Provisioner {
     bool erase_refuses = false; // nvs_erase_key says no
     bool terminate_refuses = false;
     bool marker_refuses = false;
+    bool marker_clear_refuses = false;
     bool reprovision_pending = false;
     bool delete_saw_marker = false;
     bool erase_saw_marker = false;
@@ -185,6 +186,8 @@ struct FakeBoard final : attadipa::core::Provisioner {
         case ForgetNodeOutcome::Unpinned:   return MeshForgetOutcome::Unpinned;
         case ForgetNodeOutcome::PinOnFlash: return MeshForgetOutcome::PinOnFlash;
         case ForgetNodeOutcome::Nothing:    return MeshForgetOutcome::Nothing;
+        case ForgetNodeOutcome::ReplayInhibited:
+            return MeshForgetOutcome::ReplayInhibited;
         default:                            return MeshForgetOutcome::BondKept;
         }
     }
@@ -202,7 +205,12 @@ struct FakeBoard final : attadipa::core::Provisioner {
         reprovision_pending = true;
         return true;
     }
-    void cancel_reprovision() { reprovision_pending = false; }
+    bool cancel_reprovision()
+    {
+        if (marker_clear_refuses) return false;
+        reprovision_pending = false;
+        return true;
+    }
     bool take_forget(BondIdentity& out) { return recovery.take_forget(out); }
     bool delete_bond(const BondIdentity&)
     {
@@ -872,18 +880,21 @@ int main()
         board.stale_bond();
         board.terminate_refuses = true;
         CHECK(attadipa::firmware::forget_node(board) ==
-              ForgetNodeOutcome::NotForgotten);
+              ForgetNodeOutcome::BondKept);
         CHECK(board.pinned && board.pin_on_flash);
         CHECK(board.recovery.recovery_required());
         CHECK(board.deletes == 0 && !board.reprovision_pending);
+        CHECK(!board.armed && board.terminates == 1);
 
         board.terminate_refuses = false;
         board.marker_refuses = true;
+        board.armed = true;
         CHECK(attadipa::firmware::forget_node(board) ==
-              ForgetNodeOutcome::NotForgotten);
+              ForgetNodeOutcome::BondKept);
         CHECK(board.pinned && board.pin_on_flash);
         CHECK(board.recovery.recovery_required());
         CHECK(board.deletes == 0 && !board.reprovision_pending);
+        CHECK(!board.armed && board.terminates == 2);
     }
     // The store refuses. The record goes back, the pin is untouched in both
     // places, the node stays on the screen, and the key works again once
@@ -893,6 +904,7 @@ int main()
         board.pinned = board.pin_on_flash = true;
         board.stale_bond();
         board.store_refuses = true;
+        board.marker_clear_refuses = true;
         ProvisioningEntry entry(board);
         to_passkey(entry);
         entry.press(EntryKey::Backspace);
@@ -900,12 +912,14 @@ int main()
         CHECK(entry.poll());
         CHECK(entry.verdict() == EntryVerdict::Failed);
         CHECK(entry.field() == EntryField::Node && !entry.waiting());
-        CHECK(hint_is(entry, "not forgotten; nothing changed"));
+        CHECK(hint_is(entry, "not forgotten; reboot scan is blocked"));
         CHECK(value_is(entry, "5c62d9bc"));
         CHECK(board.deletes == 1);
         CHECK(board.recovery.recovery_required());
         CHECK(board.pinned && board.pin_on_flash);
+        CHECK(board.reprovision_pending);
         board.store_refuses = false;
+        board.marker_clear_refuses = false;
         entry.press(EntryKey::Backspace);
         board.forget_worker();
         CHECK(entry.poll());
@@ -998,7 +1012,7 @@ int main()
         to_passkey(entry);
         entry.press(EntryKey::Backspace);
         CHECK(entry.verdict() == EntryVerdict::Failed && !entry.waiting());
-        CHECK(hint_is(entry, "not forgotten; nothing changed"));
+        CHECK(hint_is(entry, "not forgotten; retry"));
         CHECK(board.pinned && entry.field() == EntryField::Node);
         board.queue_full = false;
         entry.press(EntryKey::Backspace);

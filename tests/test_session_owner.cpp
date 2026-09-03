@@ -390,6 +390,28 @@ void forget_termination_invalidates_only_an_accepted_disconnect()
     CHECK(refused == ForgetTransportTermination::Refused);
     CHECK(!should_not_end);
     CHECK(refused_owner.live(refused_generation));
+
+    // A CONNECT can still be in flight without a handle between
+    // peer_arriving() and BLE_GAP_EVENT_CONNECT. Forgetting in that window
+    // must retire its generation too, so the late callback is rejected and
+    // closes the orphaned link instead of re-pinning the node.
+    SessionOwner arriving_owner;
+    const std::uint32_t arriving_generation = arriving_owner.peer_arriving();
+    bool start_called = false;
+    bool arriving_invalidated = false;
+    const auto absent = terminate_forget_session(
+        [&] { return arriving_owner.snapshot(); },
+        [&](std::uint16_t) {
+            start_called = true;
+            return ForgetTransportTermination::Pending;
+        },
+        [&](std::uint32_t ended) {
+            arriving_invalidated = arriving_owner.ended(ended);
+        }, kNoSessionHandle);
+    CHECK(absent == ForgetTransportTermination::Absent);
+    CHECK(!start_called);
+    CHECK(arriving_invalidated);
+    CHECK(!arriving_owner.connected(arriving_generation, 11));
 }
 
 // ---------------------------------------------------------------------------

@@ -43,8 +43,10 @@ enum class MeshForgetOutcome : std::uint8_t {
     Unpinned,    // No stale bond was recorded, so the bond was kept and the
                  // pin alone is gone -- the state where the watch had paired
                  // afresh and then refused the node's new key.
-    BondKept,    // The bond store refused to delete the bond. Nothing
-                 // changed; the same request can be made again.
+    BondKept,    // Trust was kept after a prerequisite or bond-store refusal;
+                 // transport may be stopped, and the request can be retried.
+    ReplayInhibited,  // Trust was kept, but durable rollback failed. Boot
+                      // stays disarmed until a successful retry.
     PinOnFlash,  // Forgotten in memory and not on flash: a restart before
                  // the next node is adopted brings the old pin back.
     Nothing,     // There was neither a bond nor a pin to forget.
