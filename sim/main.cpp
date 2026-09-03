@@ -382,6 +382,7 @@ int main(int argc, char **argv) {
         options.clock_validity,
     };
     g_clock_state.availability = options.clock_availability;
+    g_clock_state.touch_absent = options.touch_absent;
     g_clock_state.locale = options.locale;
     g_clock_state.mode =
         options.child_mode ? apps::ClockMode::Child : apps::ClockMode::Adult;

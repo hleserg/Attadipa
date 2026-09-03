@@ -109,10 +109,18 @@ constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
 };
 
 struct BoardState {
+  // Every handle boot creates, kept so that boot can un-create it. A null is
+  // a step that did not run, and `abandon_board()` reads the journal from
+  // these rather than from a stage number (#367 item 6).
   i2c_master_bus_handle_t i2c = nullptr;
   i2c_master_dev_handle_t pmu = nullptr;
   i2c_master_dev_handle_t rtc = nullptr;
+  bool spi_bus_up = false;
+  esp_lcd_panel_io_handle_t panel_io = nullptr;
   esp_lcd_panel_handle_t panel = nullptr;
+  bool lvgl_up = false;
+  lv_timer_t *ui_timer = nullptr;  // create_ui()'s refresh tick
+  esp_lcd_panel_io_handle_t touch_io = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
   attadipa::ui::ClockFace clock_face;
@@ -174,6 +182,9 @@ esp_err_t read_rtc(attadipa::firmware::RtcDateTime *time,
                    attadipa::firmware::RtcDecodeStatus *status) {
   constexpr std::uint8_t kSecondsRegister = 0x04;
   std::uint8_t raw[7]{};
+  if (state.rtc == nullptr) {
+    return ESP_ERR_INVALID_STATE;  // boot could not add it; the clock is unavailable
+  }
   esp_err_t err = i2c_master_transmit_receive(state.rtc, &kSecondsRegister, 1,
                                               raw, sizeof(raw), 100);
   if (err != ESP_OK) {
@@ -191,6 +202,9 @@ esp_err_t write_rtc(const attadipa::firmware::RtcDateTime &time) {
   std::uint8_t request[8] = {0x04};
   for (std::size_t i = 0; i < sizeof(raw); ++i) {
     request[i + 1] = raw[i];
+  }
+  if (state.rtc == nullptr) {
+    return ESP_ERR_INVALID_STATE;
   }
   // NXP PCF85063A Rev. 7.3 section 7.4 requires seconds through years in one
   // access shorter than one second; splitting time and date can corrupt them.
@@ -719,9 +733,17 @@ void round_flush_area(lv_area_t *area) {
   area->x2 |= 1;
 }
 
+// A boot without the touch controller (#367 item 6) shows a correct clock
+// that ignores every finger, and the long press that opens the entry screen
+// is gone with it; the face says so.
+attadipa::apps::ClockText clock_text() {
+  attadipa::apps::ClockState clock = read_clock_state();
+  clock.touch_absent = state.touch == nullptr;
+  return attadipa::apps::format_clock(clock, false);
+}
+
 void refresh_clock(lv_timer_t *timer) {
-  const attadipa::apps::ClockState clock = read_clock_state();
-  state.clock_face.update(attadipa::apps::format_clock(clock, false));
+  state.clock_face.update(clock_text());
   if (timer != nullptr) {
     lv_timer_set_period(timer,
                         attadipa::apps::clock_manifest().tick_period.value);
@@ -862,7 +884,6 @@ void refresh_mesh() {
 #endif
 
 void build_clock_screen() {
-  const attadipa::apps::ClockState clock = read_clock_state();
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
   state.clock_face.build(lv_screen_active(),
@@ -870,7 +891,7 @@ void build_clock_screen() {
                           attadipa::ui::PixelCost::PerPixel,
                           attadipa::ui::Metrics::for_dpi(
                               profile != nullptr ? profile->display.dpi() : 0)},
-                         attadipa::apps::format_clock(clock, false));
+                         clock_text());
 }
 
 constexpr unsigned kDoneTicks = 3;
@@ -943,6 +964,7 @@ esp_err_t initialize_display() {
   bus.flags = SPICOMMON_BUSFLAG_QUAD;
   ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO),
                       kTag, "initialize QSPI");
+  state.spi_bus_up = true;
 
   esp_lcd_panel_io_spi_config_t io_config{};
   io_config.cs_gpio_num = kLcdCs;
@@ -953,9 +975,8 @@ esp_err_t initialize_display() {
   io_config.lcd_cmd_bits = 32;
   io_config.lcd_param_bits = 8;
   io_config.flags.quad_mode = true;
-  esp_lcd_panel_io_handle_t panel_io = nullptr;
   ESP_RETURN_ON_ERROR(
-      esp_lcd_new_panel_io_spi(SPI2_HOST, &io_config, &panel_io), kTag,
+      esp_lcd_new_panel_io_spi(SPI2_HOST, &io_config, &state.panel_io), kTag,
       "create panel IO");
 
   co5300_vendor_config_t vendor{};
@@ -969,7 +990,7 @@ esp_err_t initialize_display() {
   panel_config.bits_per_pixel = 16;
   panel_config.vendor_config = &vendor;
   ESP_RETURN_ON_ERROR(
-      esp_lcd_new_panel_co5300(panel_io, &panel_config, &state.panel), kTag,
+      esp_lcd_new_panel_co5300(state.panel_io, &panel_config, &state.panel), kTag,
       "create CO5300 panel");
   ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(state.panel), kTag, "reset CO5300");
   ESP_RETURN_ON_ERROR(esp_lcd_panel_init(state.panel), kTag,
@@ -983,6 +1004,7 @@ esp_err_t initialize_display() {
   port.task_priority = 1;
   port.task_affinity = 1;
   ESP_RETURN_ON_ERROR(lvgl_port_init(&port), kTag, "initialize LVGL");
+  state.lvgl_up = true;
 
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
@@ -990,7 +1012,7 @@ esp_err_t initialize_display() {
                       "board profile missing");
 
   lvgl_port_display_cfg_t display{};
-  display.io_handle = panel_io;
+  display.io_handle = state.panel_io;
   display.panel_handle = state.panel;
   display.buffer_size = kWidth * 20;
   display.hres = kWidth;
@@ -1016,9 +1038,8 @@ esp_err_t initialize_touch() {
   io_config.scl_speed_hz = 400000;
   io_config.flags.disable_control_phase = true;
 
-  esp_lcd_panel_io_handle_t touch_io = nullptr;
   ESP_RETURN_ON_ERROR(
-      esp_lcd_new_panel_io_i2c(state.i2c, &io_config, &touch_io), kTag,
+      esp_lcd_new_panel_io_i2c(state.i2c, &io_config, &state.touch_io), kTag,
       "create touch IO");
 
   esp_lcd_touch_config_t touch_config{};
@@ -1030,7 +1051,7 @@ esp_err_t initialize_touch() {
   touch_config.levels.interrupt = 0;
 
   ESP_RETURN_ON_ERROR(
-      esp_lcd_touch_new_i2c_ft5x06(touch_io, &touch_config, &state.touch), kTag,
+      esp_lcd_touch_new_i2c_ft5x06(state.touch_io, &touch_config, &state.touch), kTag,
       "initialize FT3168 via FT5x06 driver");
   ESP_LOGI(kTag, "FT3168: I2C 0x38, reset GPIO 9, interrupt GPIO 38");
   return ESP_OK;
@@ -1040,17 +1061,153 @@ void create_ui() {
   build_clock_screen();
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
-  lv_timer_create(refresh_ui,
-                  attadipa::apps::clock_manifest().tick_period.value, nullptr);
+  state.ui_timer = lv_timer_create(
+      refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
+}
+
+// One teardown step: issue it, keep the first failure, and null the handle
+// either way -- a handle whose delete failed is not one anybody may use again.
+template <typename Handle, typename Undo>
+void undo(Handle &handle, esp_err_t &first_failure, const char *what,
+          Undo undo_step) {
+  if (handle == nullptr) {
+    return;
+  }
+  const esp_err_t err = undo_step(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "boot rollback: %s failed: %s", what, esp_err_to_name(err));
+    if (first_failure == ESP_OK) {
+      first_failure = err;
+    }
+  }
+  handle = nullptr;
+}
+
+// Undo every boot step that succeeded, in reverse, so a boot that fails at
+// step n does not leave n-1 subsystems up and unreported (POWER_OWNERSHIP §2.5,
+// #367 item 6). The journal is the handles above: null means the step never
+// ran. Takes the LVGL lock itself (recursive, so a caller holding it is fine)
+// for the UI part, because the LVGL task reads the default display before it
+// blocks on the lock, and a display removed between those two reads is a
+// `lv_timer_handler()` over freed objects.
+//
+// `lvgl_reachable == false` is the one caller whose failure *was* that lock:
+// the LVGL task has held it past a second, which means it is inside
+// `lv_timer_handler()`, most plausibly a flush the panel never acknowledged.
+// `lvgl_port_remove_disp()` would wait on that lock forever (it locks with no
+// timeout), and freeing the panel, its IO or the QSPI host under a flush in
+// progress is a use-after-free on the next byte. So the whole display stack
+// -- LVGL, display, panel, panel IO, SPI2 -- is left where it is and said so;
+// only what nothing below LVGL is using is undone. A leak is recoverable and
+// a hang or a panic is not.
+//
+// What "undone" means for LVGL itself is narrower than for the rest:
+// `lvgl_port_deinit()` only asks the LVGL task to stop, and `lv_deinit()` runs
+// on that task after this returns. Whether a QSPI transfer the last flush
+// started is drained before the panel below it is deleted is UNKNOWN; the port
+// offers no synchronous stop.
+//
+// The one thing it cannot undo is the rails: `board_power_bring_up_rails()`
+// wrote them, and switching any of them off is authorised by a measurement
+// nobody has made (ADR-0016 Consequences; ALDO2 is a pull-up, not a supply).
+// They stay as written, and the log says so, because "the PMU is programmed
+// and nothing else is" is a known state and a dark board is not.
+//
+// Returns the first teardown failure. A failed step is logged and skipped,
+// not retried: the board is then in a state nobody read back, and the honest
+// report to the caller is that error, not ESP_OK.
+esp_err_t abandon_board(bool lvgl_reachable) {
+  esp_err_t first_failure = ESP_OK;
+  // One rule for both: a lock this rollback cannot get -- the caller's own
+  // timeout, or a second of ours here -- means the display stack stays.
+  if (state.display != nullptr && lvgl_reachable && !lvgl_port_lock(1000)) {
+    lvgl_reachable = false;
+  }
+  if (state.display != nullptr && !lvgl_reachable) {
+    ESP_LOGE(kTag, "boot rollback: LVGL holds its lock; LVGL, the panel and "
+                   "QSPI are left in place rather than freed under it");
+    state.display = nullptr;
+    state.lvgl_up = false;
+    state.panel = nullptr;
+    state.panel_io = nullptr;
+    state.spi_bus_up = false;
+  }
+  if (state.display != nullptr) {
+    // Locked above. create_ui()'s objects go first, under the lock, or the
+    // refresh tick outlives the screen it draws on.
+    state.provision_face.clear();
+    state.entry.reset();
+    state.clock_face.clear();
+    if (state.ui_timer != nullptr) {
+      lv_timer_delete(state.ui_timer);
+      state.ui_timer = nullptr;
+    }
+    undo(state.display, first_failure, "remove LVGL display",
+         lvgl_port_remove_disp);
+    lvgl_port_unlock();
+  }
+  if (state.lvgl_up) {
+    (void)lvgl_port_deinit();  // always ESP_OK: a request, not a result
+    state.lvgl_up = false;
+  }
+  undo(state.touch, first_failure, "delete touch", esp_lcd_touch_del);
+  undo(state.touch_io, first_failure, "delete touch IO", esp_lcd_panel_io_del);
+  undo(state.panel, first_failure, "delete panel", esp_lcd_panel_del);
+  undo(state.panel_io, first_failure, "delete panel IO", esp_lcd_panel_io_del);
+  if (state.spi_bus_up) {
+    const esp_err_t err = spi_bus_free(SPI2_HOST);
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag, "boot rollback: free QSPI failed: %s", esp_err_to_name(err));
+      if (first_failure == ESP_OK) {
+        first_failure = err;
+      }
+    }
+    state.spi_bus_up = false;
+  }
+  undo(state.rtc, first_failure, "remove PCF85063", i2c_master_bus_rm_device);
+  if (state.pmu != nullptr) {
+    ESP_LOGW(kTag, "boot rollback: AXP2101 rails stay as written -- no "
+                   "measurement authorises switching one off (ADR-0016)");
+  }
+  undo(state.pmu, first_failure, "remove AXP2101", i2c_master_bus_rm_device);
+  undo(state.i2c, first_failure, "delete I2C bus", i2c_del_master_bus);
+  return first_failure;
+}
+
+// A required step failed: roll back, and report the step's error -- a rollback
+// that itself failed is already in the log, and the caller cannot act on two.
+esp_err_t abandon_board_after(esp_err_t err, const char *step,
+                              bool lvgl_reachable = true) {
+  ESP_LOGE(kTag, "%s failed: %s; rolling the boot back", step,
+           esp_err_to_name(err));
+  (void)abandon_board(lvgl_reachable);
+  return err;
 }
 
 } // namespace
 
+// Boot is a transaction. Three steps are required -- the bus, the rails and
+// the display -- and a failure in any of them rolls back the ones before it
+// and returns that error. The rest is reported, never fatal: a watch with a
+// dead RTC shows an unavailable clock, and a watch with dead touch still shows
+// the clock and answers its buttons, which is more use than a dark one
+// (TWATCH_S3_PLUS_BSP_REUSE §10, rules 3 and 6).
 esp_err_t start_waveshare_ui() {
-  ESP_RETURN_ON_ERROR(initialize_i2c(), kTag, "initialize I2C");
-  ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "initialize AXP2101");
-  ESP_RETURN_ON_ERROR(add_i2c_device(kPcf85063Address, &state.rtc), kTag,
-                      "add PCF85063");
+  esp_err_t err = initialize_i2c();
+  if (err != ESP_OK) {
+    return abandon_board_after(err, "initialize I2C");
+  }
+  err = initialize_pmu();
+  if (err != ESP_OK) {
+    return abandon_board_after(err, "initialize AXP2101");
+  }
+  err = add_i2c_device(kPcf85063Address, &state.rtc);
+  if (err != ESP_OK) {
+    state.rtc = nullptr;
+    ESP_LOGW(kTag, "PCF85063 not added (%s): the clock is unavailable and "
+                   "nothing will set it this boot",
+             esp_err_to_name(err));
+  }
   // Every failure inside says so itself, and the clock runs without the
   // metadata either way.
   (void)restore_time_metadata();
@@ -1059,10 +1216,25 @@ esp_err_t start_waveshare_ui() {
            clock.availability == attadipa::core::Availability::Ready
                ? "ready"
                : "unavailable");
-  ESP_RETURN_ON_ERROR(initialize_display(), kTag, "initialize display");
-  ESP_RETURN_ON_ERROR(initialize_touch(), kTag, "initialize touch");
+  err = initialize_display();
+  if (err != ESP_OK) {
+    return abandon_board_after(err, "initialize display");
+  }
+  err = initialize_touch();
+  if (err != ESP_OK) {
+    // A half-made touch is torn down here rather than kept as a journal
+    // entry, so the rest of boot sees one thing: no touch.
+    esp_err_t ignored = ESP_OK;
+    undo(state.touch, ignored, "delete touch", esp_lcd_touch_del);
+    undo(state.touch_io, ignored, "delete touch IO", esp_lcd_panel_io_del);
+    ESP_LOGW(kTag, "FT3168 not started (%s): no touch this boot; the buttons "
+                   "and the clock still work",
+             esp_err_to_name(err));
+  }
 
-  ESP_RETURN_ON_FALSE(lvgl_port_lock(1000), ESP_ERR_TIMEOUT, kTag, "lock LVGL");
+  if (!lvgl_port_lock(1000)) {
+    return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL", false);
+  }
   create_ui();
   // Which of the two images this is, said out loud once per boot. The endpoint
   // is unauthenticated by construction, so an operator holding a board needs to
@@ -1093,16 +1265,38 @@ esp_err_t start_waveshare_ui() {
                                   );
 #endif
   lvgl_port_unlock();
-  ESP_RETURN_ON_ERROR(physical_result, kTag, "start physical input");
+  if (physical_result != ESP_OK) {
+    // The service did not start, but board_power_attach() may have: the
+    // owner then keeps a pmu and a panel the rollback frees. Harmless while
+    // every route to board_power_owner() runs inside the service, which is
+    // assigned only on success -- a second caller would have to know this.
+    return abandon_board_after(physical_result, "start physical input");
+  }
 #if CONFIG_ATTADIPA_WATCH_CONTROL
-  ESP_RETURN_ON_ERROR(watch_control_result, kTag, "start watch control");
+  if (watch_control_result != ESP_OK) {
+    // The bench endpoint is the HIL image's reason to exist, but not the
+    // watch's: without it this boot is a product image, and the bench tool
+    // says "no watch found" rather than the wearer seeing nothing.
+    ESP_LOGE(kTag, "watch-control endpoint not started (%s): this boot "
+                   "answers no cable",
+             esp_err_to_name(watch_control_result));
+  }
 #endif
 
-  ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(state.panel, true), kTag,
-                      "turn display on");
-  ESP_RETURN_ON_ERROR(
-      esp_lcd_panel_co5300_set_brightness(state.panel, kBrightnessPercent),
-      kTag, "set safe brightness");
-  ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%%", kBrightnessPercent);
+  // Past here the input service is running and has no stop, so a panel that
+  // stops answering now is reported, not rolled back: the owner's sleep path
+  // is what talks to it next, and ADR-0016 §4 is what it does with a refusal.
+  err = esp_lcd_panel_disp_on_off(state.panel, true);
+  if (err == ESP_OK) {
+    err = esp_lcd_panel_co5300_set_brightness(state.panel, kBrightnessPercent);
+  }
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "CO5300 did not turn on (%s): the UI runs on a dark panel",
+             esp_err_to_name(err));
+    return err;
+  }
+  ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%%, touch %s, RTC %s",
+           kBrightnessPercent, state.touch != nullptr ? "present" : "absent",
+           state.rtc != nullptr ? "present" : "absent");
   return ESP_OK;
 }

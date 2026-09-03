@@ -2251,7 +2251,7 @@ ones that heading states.
   would make the second call see a different partition.
 - **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
   re-reads it.
-- **Consequence:** `firmware/main/waveshare_board.cpp:256` —
+- **Consequence:** `firmware/main/waveshare_board.cpp:270` —
   "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
   the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
   cannot contradict it (ADR-0014).
@@ -2272,7 +2272,7 @@ ones that heading states.
 - **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
   header: a third member of the family would make the boot log recommend the
   wrong recovery for it.
-- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:259` —
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:273` —
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.

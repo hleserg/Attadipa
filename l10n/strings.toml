@@ -212,6 +212,10 @@ ru = "готово"
 en = "time unavailable"
 ru = "время недоступно"
 
+[clock_no_touch]
+en = "no touch"
+ru = "нет сенсора"
+
 [clock_time_stale]
 en = "time may be outdated"
 ru = "время могло устареть"
