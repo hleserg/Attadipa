@@ -797,6 +797,17 @@ void test_a_room_login_that_is_never_answered_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
+        // The handshake's own CMD_GET_CUSTOM_VARS is answered before anything
+        // else, and it has to be. It goes out at END_OF_CONTACTS, so it is the
+        // *older* outstanding command here, and an untagged RESP_CODE_ERR is
+        // its before it is the login's. Leaving it open would quietly turn this
+        // into a test of the attribution rule instead of the one thing it is
+        // for. Answering it first is not a workaround: a node that defines
+        // opcode 40 does exactly this.
+        {
+            const std::uint8_t vars[] = {21};
+            CHECK(client.receive(vars, sizeof(vars), at(7)));
+        }
         CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
         const std::uint8_t error[] = {1, 2};
         CHECK(client.receive(error, sizeof(error), at(8)));
@@ -910,6 +921,17 @@ void test_a_send_that_is_never_confirmed_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
+        // The handshake's own CMD_GET_CUSTOM_VARS is answered before anything
+        // else, and it has to be. It goes out at END_OF_CONTACTS, so it is the
+        // *older* outstanding command here, and an untagged RESP_CODE_ERR is
+        // its before it is the send's. Leaving it open would quietly turn this
+        // into a test of the attribution rule instead of the one thing it is
+        // for. Answering it first is not a workaround: a node that defines
+        // opcode 40 does exactly this.
+        {
+            const std::uint8_t vars[] = {21};
+            CHECK(client.receive(vars, sizeof(vars), at(7)));
+        }
         CHECK(service.send_private(peer.id, "text", WallTime{1000}));
         const std::uint8_t error[] = {1, 4};
         CHECK(client.receive(error, sizeof(error), at(8)));
@@ -1078,6 +1100,73 @@ void test_an_unanswered_custom_vars_request_stops_taking_the_blame()
     CHECK(client.status().availability == Availability::Ready);
 }
 
+// The failure the round-2 review reproduced, in both directions. A node too old
+// for CMD_GET_CUSTOM_VARS refuses it with an error that names nothing, and the
+// refusal crosses BLE in milliseconds while our own command is still waiting on
+// a radio round trip. Opcode 40 went out at END_OF_CONTACTS, before either
+// operation below, so it is the older outstanding command and the error is its.
+//
+// Charging it to the operation instead is not a lost race, it is the ordinary
+// case on such a node: the room text is discarded, the LOGIN_SUCCESS that
+// follows lands on an operation that no longer exists and is counted malformed,
+// and a private message the node had accepted is reported Failed.
+void test_an_old_node_refusing_opcode_40_does_not_fail_a_room_login()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);  // CMD_GET_CUSTOM_VARS goes out at at(7)
+
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) {
+        room[i] = static_cast<std::uint8_t>(0x40 + i);
+    }
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 41 && frame.bytes[0] == 26);
+
+    const std::uint8_t error[] = {1, 1};  // ERR_CODE_UNSUPPORTED_CMD
+    CHECK(client.receive(error, sizeof(error), at(8)));
+
+    // Untouched: still owed an answer, still holding the one slot.
+    CHECK(client.status().delivery == MeshDelivery::Queued);
+    CHECK(client.send_busy());
+
+    std::uint8_t login_ok[] = {0x85, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(&login_ok[2], room.data(), 6);
+    CHECK(client.receive(login_ok, sizeof(login_ok), at(9)));
+
+    // And the text the login was carrying reaches the wire.
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 18 && frame.bytes[0] == 2);
+    CHECK(std::memcmp(&frame.bytes[13], "Hello", 5) == 0);
+    CHECK(client.malformed_frames() == 0);
+}
+
+void test_an_old_node_refusing_opcode_40_does_not_fail_a_queued_send()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+
+    const std::uint8_t error[] = {1, 1};
+    CHECK(client.receive(error, sizeof(error), at(8)));
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    CHECK(client.send_busy());
+
+    // The node answers the send itself next, in the order it was asked, and the
+    // operation runs to its own terminal outcome.
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 10, 0, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(9)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+    CHECK(client.receive(ack, sizeof(ack), at(10)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+    CHECK(client.malformed_frames() == 0);
+}
+
 void test_signed_message_does_not_render_signature_as_text()
 {
     MeshCoreCompanion client;
@@ -1171,6 +1260,8 @@ int main()
     test_a_send_that_is_never_confirmed_still_ends();
     test_a_custom_vars_error_does_not_fail_an_accepted_send();
     test_an_unanswered_custom_vars_request_stops_taking_the_blame();
+    test_an_old_node_refusing_opcode_40_does_not_fail_a_room_login();
+    test_an_old_node_refusing_opcode_40_does_not_fail_a_queued_send();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
     test_self_info_carries_the_node_identity();

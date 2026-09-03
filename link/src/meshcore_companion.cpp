@@ -93,6 +93,7 @@ void MeshCoreCompanion::end_operation()
     room_text_.fill('\0');
     room_timestamp_ = {};
     op_budget_ = core::Millis{};
+    op_answered_ = false;
 }
 
 void MeshCoreCompanion::reset_session()
@@ -145,6 +146,7 @@ void MeshCoreCompanion::reset_session()
     node_receiver_ = core::ReceiverPresence::Unknown;
     custom_vars_requested_ = false;
     awaiting_custom_vars_ = false;
+    custom_vars_since_ = {};
     op_since_ = {};
     end_operation();
 }
@@ -267,6 +269,10 @@ bool MeshCoreCompanion::enqueue(const std::uint8_t* data, std::size_t size)
     std::memcpy(frame.bytes.data(), data, size);
     frame.size = static_cast<std::uint16_t>(size);
     ++tx_size_;
+    // The single place a frame joins the queue, so the single place its order
+    // can be recorded. A caller that needs its frame's place reads `tx_seq_`
+    // straight after a successful call, as the two below do.
+    ++tx_seq_;
     return true;
 }
 
@@ -590,6 +596,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
                 custom_vars_requested_ = true;
                 awaiting_custom_vars_ = true;
                 custom_vars_since_ = now;
+                custom_vars_seq_ = tx_seq_;
             }
         }
         break;
@@ -621,6 +628,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // RESP_CODE_SENT for CMD_SEND_LOGIN too, and gating the budget on
         // `awaiting_send_` discarded the one estimate the login ever carries.
         {
+            op_answered_ = true;
             op_since_ = now;
             const std::uint32_t estimate = little_u32(&data[6]);
             op_budget_ = core::Millis{
@@ -680,7 +688,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseNoMoreMessages:
         if (size != 1) { ++malformed_frames_; return false; }
         break;
-    case kResponseError:
+    case kResponseError: {
         if (size < 2) { ++malformed_frames_; return false; }
         // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
         // command that fails its guard falls through to RESP_CODE_ERR, so a
@@ -706,12 +714,34 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // the confirmation needs a radio round trip -- 720 ms MEASURED
         // (MESHCORE_T114_FIRST_CONTACT.md:326-329 "estimated round trip").
         //
-        // `awaiting_response()` is the narrower question and the right one. A
-        // send that is still owed its answer keeps the error, which is the
-        // fail-closed direction #315 established: silently clearing a send that
-        // really did fail is the worse mistake, and the node answers in order,
-        // so an unanswered send is the nearer claim on an untagged error.
-        if (awaiting_custom_vars_ && !awaiting_response()) {
+        // SO THE ERROR GOES TO WHICHEVER COMMAND WAS ASKED FIRST AND IS STILL
+        // OWED AN ANSWER. Both parts matter. `op_owed_an_answer()` is what
+        // excludes `awaiting_confirm_` above, and excludes an answered login
+        // for the same reason. The order then settles which of the two
+        // remaining claimants it is, because the node answers in the order it
+        // was asked and this queue preserves that order.
+        //
+        // Neither ordering alone would do. A room message sent while the
+        // contact burst is still arriving is queued *before* the opcode 40 that
+        // END_OF_CONTACTS asks for -- that overlap is MEASURED, and it is why
+        // `enqueue_private()` refuses to gate on `contacts_complete_` -- so the
+        // login is the older command, and on an old node the error it takes the
+        // blame for is opcode 40's. Its own answer arrived first, in order, and
+        // `op_answered_` is the record of it.
+        //
+        // #315's fail-closed direction is kept, not traded away, and this is
+        // the part to check before believing that. A send whose error the hint
+        // takes here is not cleared: it never receives RESP_CODE_SENT either,
+        // so tick() fails it at `kMaxAckWait`. It is failed by budget instead
+        // of instantly, which is later, not softer.
+        //
+        // Only the *attribution* narrows. Once the error is the operation's,
+        // `send_busy()` decides it exactly as before -- including in
+        // `awaiting_confirm_`, where an unattributable error still fails an
+        // accepted send rather than vanishing
+        // (test_a_send_that_is_never_confirmed_still_ends pins that).
+        const bool op_owed = op_owed_an_answer();
+        if (awaiting_custom_vars_ && (!op_owed || custom_vars_seq_ < op_seq_)) {
             awaiting_custom_vars_ = false;
             break;
         }
@@ -720,6 +750,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             end_operation();
         }
         break;
+    }
     default:
         // A response code this build does not know is a frame we did not
         // understand, not a frame we accepted. The node's output is a peer's
@@ -824,6 +855,8 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
         return false;
     }
     awaiting_send_ = true;
+    op_answered_ = false;
+    op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
     return true;
@@ -861,6 +894,8 @@ bool MeshCoreCompanion::send_room(
     room_text_[text.size()] = '\0';
     room_timestamp_ = timestamp;
     awaiting_login_ = true;
+    op_answered_ = false;
+    op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
     return true;

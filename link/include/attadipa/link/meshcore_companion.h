@@ -187,9 +187,19 @@ private:
     // `awaiting_confirm_`, which is a phase the node has already answered with
     // RESP_CODE_SENT and is now waiting out a radio round trip for. A response
     // arriving during that phase cannot belong to the send, because the send's
-    // response has been and gone; only these two flags mean a command of ours
-    // is still owed one.
-    bool awaiting_response() const { return awaiting_send_ || awaiting_login_; }
+    // response has been and gone.
+    //
+    // THE TWO HALVES ARE NOT SYMMETRIC, AND `op_answered_` IS WHY. RESP_CODE_SENT
+    // clears `awaiting_send_` and cannot clear `awaiting_login_`: the login's
+    // slot has to stay claimed until PUSH_CODE_LOGIN_SUCCESS or the budget
+    // decides it. So an *answered* login still reads as `awaiting_login_`, and
+    // reasoning from that flag alone charges it for errors whose own answer had
+    // already been and gone -- the same mistake as `awaiting_confirm_`, one
+    // phase over.
+    bool op_owed_an_answer() const
+    {
+        return (awaiting_send_ || awaiting_login_) && !op_answered_;
+    }
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
     bool enqueue_private(const core::MeshPeerId& peer, std::string_view text,
@@ -247,6 +257,21 @@ private:
     bool custom_vars_requested_ = false;
     bool awaiting_custom_vars_ = false;
     core::MonotonicTime custom_vars_since_{};
+    // WHICH COMMAND AN UNTAGGED ERROR BELONGS TO IS A QUESTION ONLY THE ORDER
+    // ANSWERS. The frame carries no correlation field, and a defined command
+    // that fails its own guard is refused with the code an undefined one gets:
+    // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:519` -- "indistinguishable
+    // from a genuinely unknown opcode". So there is nothing on the wire to read
+    // and no flag combination to infer it from; what is left is that the node
+    // answers in the order it was asked, and this queue is FIFO, so the order
+    // it was asked in is the order `enqueue()` handed out. `tx_seq_` records
+    // it, and the two stamps below are the only frames whose place in it we
+    // ever need. Neither stamp is read unless its own flag says that command is
+    // still outstanding, so a stale one from a finished operation is never
+    // compared against anything.
+    std::uint32_t tx_seq_ = 0;
+    std::uint32_t custom_vars_seq_ = 0;
+    std::uint32_t op_seq_ = 0;
     bool awaiting_send_ = false;
     // The half of a send that used to have no state at all. `awaiting_send_`
     // ends at `RESP_CODE_SENT`; the operation does not, because the ack bytes
@@ -266,6 +291,12 @@ private:
     // then re-arms it with the node's estimate for the phase it starts.
     core::MonotonicTime op_since_{};
     core::Millis op_budget_{};
+    // Set by RESP_CODE_SENT for either half of an operation, and the reason
+    // `op_owed_an_answer()` above can tell an answered login from a waiting
+    // one. `op_budget_` cannot stand in for it: tick() gives an unanswered
+    // operation `kMaxAckWait` on its first pass, so a non-zero budget does not
+    // mean the node has said anything.
+    bool op_answered_ = false;
     core::MeshPeerId room_peer_{};
     std::array<char, core::kMeshTextBytes + 1> room_text_{};
     core::WallTime room_timestamp_{};
