@@ -24,16 +24,17 @@ REQUIRED_SYMBOLS = {
     "attadipa_l10n": "attadipa::l10n::tr(attadipa::l10n::StringId)",
 }
 
-# The pure-RAM probe is not a smaller version of the product: it disables
-# Bluetooth (bonds live in NVS, and the image promises to touch no flash) and
-# the watch-control endpoint, which between them are every consumer of
-# attadipa_link in that variant. Requiring the link library there would only be
-# satisfiable by carrying a LinkState the image never uses -- scaffolding kept
-# alive to pass its own check. The flash image, which is the product, still
-# requires all four.
+# The pure-RAM probe and T-Watch image disable Bluetooth; the probe because
+# bonds live in NVS and it promises to touch no flash, and T-Watch because
+# sdkconfig.twatch scopes slice #417 to panel, touch and their rails. CI checks
+# the generated CONFIG_BT_ENABLED state immediately before selecting this
+# variant. These images therefore have no attadipa_link consumer. Requiring the
+# library would only keep dead scaffolding alive to pass its own check. The
+# Waveshare flash image still requires all four.
 VARIANT_EXEMPTIONS = {
     "flash": frozenset(),
     "pure-ram": frozenset({"attadipa_link"}),
+    "twatch": frozenset({"attadipa_link"}),
     "hil": frozenset(),
 }
 
@@ -58,6 +59,7 @@ DEBUG_ENDPOINT_SYMBOL = (
 VARIANT_ENDPOINT = {
     "flash": "absent",
     "pure-ram": "absent",
+    "twatch": "absent",
     "hil": "present",
 }
 
@@ -143,8 +145,8 @@ def main() -> int:
     parser.add_argument("--nm", default="xtensa-esp32s3-elf-nm")
     parser.add_argument("--variant", choices=sorted(VARIANT_EXEMPTIONS),
                         default="flash",
-                        help="which image this ELF is; pure-ram exempts the "
-                             "libraries that variant legitimately drops, and "
+                        help="which image this ELF is; pure-ram and twatch "
+                             "exempt libraries those variants legitimately drop, and "
                              "hil is the only variant allowed to carry the USB "
                              "watch-control endpoint")
     parser.add_argument("--self-test", action="store_true")

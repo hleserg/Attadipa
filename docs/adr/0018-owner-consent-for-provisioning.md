@@ -47,7 +47,7 @@ recorded here so that no option is credited with paying them.
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:2094` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   `firmware/main/meshcore_ble.cpp:2095` — "bool configure_meshcore_ble(std::uint32_t passkey)"
    reaches `firmware/main/meshcore_ble.cpp:1642` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
    `firmware/main/meshcore_ble.cpp:168` — "std::atomic_bool configured{false};"
@@ -56,7 +56,7 @@ recorded here so that no option is credited with paying them.
    there by #304: `firmware/main/meshcore_ble.cpp:232` — "constexpr const char* kMeshNvsNamespace = ",
    read at `firmware/main/meshcore_ble.cpp:322` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
    and written at `firmware/main/meshcore_ble.cpp:437` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2041` —
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2042` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
@@ -116,7 +116,7 @@ recorded here so that no option is credited with paying them.
 
 4. **Both sink interfaces live in the same header as the forbidden symbol.**
    `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {" and `:191` —
-   "class MeshSink {", while `tools/flash/firmware_elf_check.py:47` — "# Bridge::handle is the single function every privileged opcode is dispatched"
+   "class MeshSink {", while `tools/flash/firmware_elf_check.py:48` — "# Bridge::handle is the single function every privileged opcode is dispatched"
    names what a product image may not contain. The interfaces are pure virtual
    and a header is not a symbol, so reuse is probably fine — but any option that
    reuses them **shows** the elf check still passes rather than assuming it.
@@ -176,7 +176,7 @@ The decisive fact is one the firmware already asserts to its peer:
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:2094` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:2095` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.
@@ -371,7 +371,7 @@ Beyond B and C:
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes
   and the firmware answers, which is the shape this needs. Neither is missing
-  and neither is merely uncalled. `firmware/main/CMakeLists.txt:31` —
+  and neither is merely uncalled. `firmware/main/CMakeLists.txt:37` —
   "if(CONFIG_ATTADIPA_WATCH_CONTROL)" — is what adds the `debug` layer, and
   `debug/CMakeLists.txt:14` — "target_include_directories(attadipa_debug PUBLIC include)"
   — is the only route its headers take into `firmware/main/`. So under the
@@ -397,7 +397,7 @@ Beyond B and C:
 - Does not decide the timezone-offset UI, only that the offset is entered on the
   device like everything else.
 - Does **not** change what a product image pays for the BLE stack:
-  `firmware/main/attadipa_main.cpp:310` — "const esp_err_t mesh_err = start_meshcore_ble();"
+  `firmware/main/attadipa_main.cpp:322` — "const esp_err_t mesh_err = start_meshcore_ble();"
   is unconditional, so a product image still brings the controller up. #356
   records that; it stays open here.
 - ADR-0014's "first real input is the existing physical USB debug connection"

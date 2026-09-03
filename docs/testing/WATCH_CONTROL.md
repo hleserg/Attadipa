@@ -394,7 +394,7 @@ time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:2094` "bool configure_meshcore_ble") had exactly one caller,
+(`meshcore_ble.cpp:2095` "bool configure_meshcore_ble") had exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:634`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
@@ -431,7 +431,7 @@ flashed away, which is what showed the round trip never existed. #356's first
 change added the one thing that persists: an accepted six-digit passkey is
 written to NVS by the worker (`meshcore_ble.cpp:1664`
 "store_passkey(event.passkey) && clear_reprovision_pending())") and boot replays it through the same
-`Configure` event (`meshcore_ble.cpp:2079` "restore_passkey();"). The zero of
+`Configure` event (`meshcore_ble.cpp:2080` "restore_passkey();"). The zero of
 `--unpaired-probe` is not a passkey and is not written: it turns pairing and
 link encryption off for one session, and a boot must not do that on its own.
 `mesh-disconnect` is the way back: its `Deconfigure` erases the key
@@ -451,7 +451,7 @@ event. What stays HIL-only is watching it happen: the mesh screen's
 scans without showing that it does.
 
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
-(`attadipa_main.cpp:310` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
+(`attadipa_main.cpp:322` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
 `nimble_port_init()` (`meshcore_ble.cpp:1914` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
@@ -466,7 +466,7 @@ The scan itself is the part nobody has priced. A restored or typed passkey
 starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:566` —
 "BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:159` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
-(`firmware/main/board_power.cpp:329` — "esp_light_sleep_start();") without a PM
+(`firmware/main/board_power.cpp:372` — "esp_light_sleep_start();") without a PM
 lock, because `CONFIG_PM_ENABLE` is not set. Whether the scan survives that
 sleep, and what a node out of range costs a worn watch per day, is
 **NOT EXECUTED — HARDWARE REQUIRED** — the row

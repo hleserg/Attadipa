@@ -73,6 +73,12 @@ BoardProfile make_twatch()
     p.name                        = "LilyGO T-Watch S3 Plus";
     p.display.width_px            = 240;
     p.display.height_px           = 240;
+    // The ST7789 takes the high byte of a 16-bit pixel first over its serial
+    // interface and LVGL keeps RGB565 little-endian on this Xtensa, so the
+    // flush port swaps. UNKNOWN until the §11 swatch photograph in
+    // docs/research/TWATCH_S3_PLUS_BSP_REUSE.md: a swatch that changes hue
+    // rather than mirroring flips this line, and only this line.
+    p.display.rgb565_swap_bytes   = true;
     // MEASURED, not inherited — OPEN_QUESTIONS D15, closed 2026-08-28. The
     // active area is 27.72 mm across, −0.2 to +0.7 mm two-sided, a 1.544"
     // diagonal, measured off the running unit from a committed photograph

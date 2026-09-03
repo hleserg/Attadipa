@@ -41,7 +41,11 @@
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_feature.h"
 
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+#include "twatch_board.h"
+#else
 #include "waveshare_board.h"
+#endif
 #if CONFIG_BT_NIMBLE_ENABLED
 #include "meshcore_ble.h"
 #endif
@@ -54,7 +58,11 @@ constexpr char kTag[] = "attadipa";
 // because there is exactly one board on the desk; when the T-Watch arrives this
 // becomes a Kconfig choice rather than a constant, and the profile lookup below
 // is already the seam for it.
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+constexpr char kBoardProfileId[] = "t-watch-s3-plus";
+#else
 constexpr char kBoardProfileId[] = "waveshare-amoled-206";
+#endif
 
 // ESP-IDF's reset reason is a device fact; core::ResetReason is the vocabulary
 // the rest of Attadipa reports in. Translating here rather than passing the
@@ -302,9 +310,13 @@ extern "C" void app_main(void)
 #endif
 
 #if !CONFIG_APP_BUILD_TYPE_PURE_RAM_APP
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+    const esp_err_t ui_err = start_twatch_ui();
+#else
     const esp_err_t ui_err = start_waveshare_ui();
+#endif
     if (ui_err != ESP_OK) {
-        ESP_LOGE(kTag, "Waveshare UI failed safely: %s", esp_err_to_name(ui_err));
+        ESP_LOGE(kTag, "Board UI failed safely: %s", esp_err_to_name(ui_err));
     }
 #if CONFIG_BT_NIMBLE_ENABLED
     const esp_err_t mesh_err = start_meshcore_ble();

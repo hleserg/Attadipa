@@ -1,5 +1,11 @@
-set(ATTADIPA_MAIN_SOURCES "attadipa_main.cpp" "waveshare_board.cpp"
-                          "physical_input.cpp" "board_power.cpp")
+# The board is chosen here and nowhere above it (Kconfig.projbuild, ADR-0007 §5).
+if(CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS)
+    set(ATTADIPA_MAIN_SOURCES "attadipa_main.cpp" "twatch_board.cpp"
+                              "board_power.cpp")
+else()
+    set(ATTADIPA_MAIN_SOURCES "attadipa_main.cpp" "waveshare_board.cpp"
+                              "physical_input.cpp" "board_power.cpp")
+endif()
 if(CONFIG_BT_NIMBLE_ENABLED)
     list(APPEND ATTADIPA_MAIN_SOURCES "meshcore_ble.cpp")
 endif()

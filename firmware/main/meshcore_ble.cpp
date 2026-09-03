@@ -2021,9 +2021,10 @@ esp_err_t start_meshcore_ble()
     // done. The only other call in the image is inside the UI --
     // `firmware/main/waveshare_board.cpp:245` --
     // "state.metadata_storage = nvs_flash_init();"
-    // -- and `firmware/main/attadipa_main.cpp:307` logs a UI failure and starts
-    // the mesh anyway, so on that path the pin would be read out of an
-    // uninitialised partition.
+    // -- and `firmware/main/attadipa_main.cpp:319` --
+    // "ESP_LOGE(kTag, \"Board UI failed safely: %s\", esp_err_to_name(ui_err));"
+    // -- logs a UI failure and starts the mesh anyway, so on that path the pin
+    // would be read out of an uninitialised partition.
     //
     // Calling it twice is safe, VERIFIED against the pinned toolchain: the
     // partition manager returns early for a partition it has already

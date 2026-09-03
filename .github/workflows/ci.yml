@@ -671,6 +671,11 @@ jobs:
       - name: The power-owner check tests itself
         run: python3 tools/flash/one_power_owner.py --selftest
 
+      # The bench flasher's plan (sorted offsets, RESTORE_SPAN, esptool argv)
+      # is decided host-side before esptool is imported, so it is checkable here.
+      - name: The no-reset flasher tests its plan
+        run: python3 tools/flash/flash_no_reset.py --selftest
+
       - name: Sleep, wake arming and AXP2101 rails have one owner
         run: python3 tools/flash/one_power_owner.py .
 
@@ -745,6 +750,30 @@ jobs:
           # to carry the endpoint, so a HIL build that quietly lost it is
           # caught here rather than at the bench.
           python3 ../tools/flash/firmware_elf_check.py --variant hil build-hil/attadipa.elf
+
+      # Nothing else here selects CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS, so
+      # without this step twatch_board.cpp and the T-Watch branch of
+      # board_power.cpp -- static_assert on the rail table included -- compile
+      # only in a hand-run on the bench. Arm B (the vendor command table) is
+      # behind its own symbol, default n, so it is built once more with the
+      # symbol on: the code a bench session reaches for after arm C shows
+      # nothing must not be code no compiler has read.
+      - name: Build the T-Watch S3 Plus image, both panel arms
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py -B build-twatch -DSDKCONFIG=build-twatch/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch" build
+          grep -q "^CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y$" build-twatch/sdkconfig
+          grep -q "^CONFIG_ESPTOOLPY_FLASHMODE_DIO=y$" build-twatch/sdkconfig
+          # This generated-config check is the predicate for the twatch
+          # attadipa_link exemption below: slice #417 deliberately disables
+          # Bluetooth; the board itself is not claimed to lack it.
+          grep -q "^# CONFIG_BT_ENABLED is not set$" build-twatch/sdkconfig
+          python3 ../tools/flash/firmware_elf_check.py --variant twatch build-twatch/attadipa.elf
+          echo "CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE=y" > "$RUNNER_TEMP/sdkconfig.armb"
+          idf.py -B build-twatch-b -DSDKCONFIG=build-twatch-b/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;$RUNNER_TEMP/sdkconfig.armb" build
+          grep -q "^CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE=y$" build-twatch-b/sdkconfig
 
       # The RAM route is the one proved to work on the received unit and the one
       # with nothing to undo, so it is the one a bench session reaches for first.

@@ -39,7 +39,7 @@ to zero and the CO5300 is commanded off before `esp_light_sleep_start()`. On
 return the panel is enabled, safe brightness is restored, the PCF85063-backed
 Clock is refreshed and LVGL is forced to render a new frame. The log names the
 state being entered, and on return the route back and the wake source
-([`firmware/main/board_power.cpp:324-326`](../../firmware/main/board_power.cpp) —
+([`firmware/main/board_power.cpp:367-369`](../../firmware/main/board_power.cpp) —
 "attadipa::core::to_string(state)," and
 [`firmware/main/physical_input.cpp:256-259`](../../firmware/main/physical_input.cpp) —
 "attadipa::firmware::board_power_owner().cycles()),"). It does not name
@@ -109,7 +109,7 @@ moved again in [#367](https://github.com/hleserg/Attadipa/issues/367): it comes
 from the board's power owner now, so its tag is `board-power`, and it has lost
 the `display off;` prefix — turning the panel off became a `suspend(Display)`
 the owner records and un-does, rather than a step the log narrates
-([`firmware/main/board_power.cpp:324-326`](../../firmware/main/board_power.cpp) —
+([`firmware/main/board_power.cpp:367-369`](../../firmware/main/board_power.cpp) —
 "attadipa::core::to_string(state),"). The wake line kept `physical-input` and
 lost the `(cause=4 gpio=0x0)` suffix: causes are a bitmap now, and every one of
 them is named
@@ -123,7 +123,7 @@ Fourth, the wake line no longer says `by Button` on this route. The PWR key is
 still classified from register `0x49`, but it is classified *during* a timer
 wake, so the board's derived `Button` is now reported alongside the SoC's own
 `Timer`
-([`firmware/main/board_power.cpp:368-370`](../../firmware/main/board_power.cpp) —
+([`firmware/main/board_power.cpp:411-413`](../../firmware/main/board_power.cpp) —
 "attadipa::core::wake_bit(attadipa::core::WakeSource::Button);")
 rather than replacing it — the owner publishes the union of the two halves
 ([`core/src/power_owner.cpp:474`](../../core/src/power_owner.cpp) —

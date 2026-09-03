@@ -405,21 +405,23 @@ is not inferable from one successful `begin()`.
    watch with a working screen and dead touch is more useful than one that
    halted, and it is what a user with a damaged unit actually has.
 
-## 11. The experiment, which needs a board — NOT EXECUTED — HARDWARE REQUIRED
+## 11. The experiment — first-slice hardware run recorded; full matrix remains
 
-One physical T-Watch S3 Plus, USB serial `DC:B4:D9:18:49:40`, ESP32-S3 rev
-v0.2, 8 MB octal PSRAM, 16 MB flash. One firmware SHA across all arms. Entry via
-the verified manual download-mode route (hold BOOT while connecting USB) —
-[TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md).
+The issue-sized arm-C panel and touch run is recorded in
+[TWATCH_S3_PLUS_PANEL_TOUCH_2026-09-03](TWATCH_S3_PLUS_PANEL_TOUCH_2026-09-03.md).
+The full matrix below remains **NOT EXECUTED — HARDWARE REQUIRED**. Its unit is
+the T-Watch S3 Plus with USB serial `DC:B4:D9:18:49:40`, ESP32-S3 rev v0.2,
+8 MB octal PSRAM and 16 MB flash. Entry is via the verified download-mode route
+in [TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md).
 Nothing here burns an eFuse or touches a security setting.
 
 **Three arms, not two.** §4 is the reason.
 
 | Arm | Reset → SLPOUT | Vendor table |
 |---|---|---|
-| **A** | ESP-IDF as shipped: `SWRESET` + 20 ms | no |
-| **C** | `SWRESET` + **120 ms**, datasheet-conforming | no |
-| **B** | `SWRESET` + 120 ms | yes, §5, sent between `esp_lcd_panel_init()` and the orientation calls |
+| **A** | ESP-IDF as shipped: `SWRESET` + nominal 20 ms | no |
+| **C** | `SWRESET` + **at least 120 ms**, runtime-reported | no |
+| **B** | `SWRESET` + at least 120 ms | yes, §5, sent between `esp_lcd_panel_init()` and the orientation calls |
 
 Reading the result:
 
@@ -434,11 +436,30 @@ Reading the result:
 
 Per arm, from cold: full power removal, then boot; then ten reset cycles and ten
 display off/on cycles. Each arm renders an asymmetric RGB565 swatch (so a byte
-swap is visible as a colour change rather than a mirror), corner and edge
+swap is visible as a colour change rather than a mirror; a swatch that is
+*complemented* — red reading cyan, the white block black — is inversion, the
+`CONFIG_ATTADIPA_TWATCH_PANEL_INVERT` switch every arm shares, which defaults
+to the vendor's `INVON` and is flipped, not re-armed), corner and edge
 coordinate markers, a grey ramp, a one-pixel checkerboard, and both a full and a
 partial flush. Then rotation and gap, then display sleep and wake **with the
 120 ms `SLPOUT`→`SLPIN` interval of §4 respected and, separately, deliberately
 violated**, because that is the clause the driver's own 100 ms breaks.
+
+The ten reset cycles are operator-driven, after the diagnostic reaches its
+stable final screen; firmware must not issue SWRESET underneath a live LVGL
+display or queued SPI transfer. For each cycle, reset the whole ESP32-S3 by the
+bench method being evaluated, retain the complete serial log from boot, record
+the reported reset reason, and wait for the diagnostic to finish again before
+the next reset. If no external reset method was established for that run, write
+`NOT EXECUTED — HARDWARE REQUIRED`; do not substitute an in-process panel reset.
+
+The sleep comparison needs **two photographs per arm**, not one final picture.
+The diagnostic holds `M<observed-ms> SHORT` for five seconds immediately after
+the deliberately short sequence, then holds `M<observed-ms> CONFORM` for five
+seconds after the datasheet-conforming sequence. The value comes from the
+runtime timer and is logged as `MEASURED`; capture both labelled states. A
+conforming wake that recovers the panel does not turn an earlier short-interval
+failure into a pass.
 
 Touch, once a panel arm passes: all four corners, all four edges, centre;
 coordinate transform checked against what is drawn; INT behaviour including a
