@@ -385,41 +385,41 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:270` "restore_time_metadata()") is outside the `#if` — and,
+(`waveshare_board.cpp:277` "restore_time_metadata()") is outside the `#if` — and,
 since #356's second change, writes one too: `provision_time()` has two callers,
-`BoardProvisioner` (`waveshare_board.cpp:454` "provision_time(ops, request,")
-outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:612`
+`BoardProvisioner` (`waveshare_board.cpp:461` "provision_time(ops, request,")
+outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:619`
 "provision_time(ops, provision,") inside it. Flashing the HIL image, setting the
 time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:2163` "bool configure_meshcore_ble") had exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:635`
+(`meshcore_ble.cpp:2174` "bool configure_meshcore_ble") had exactly one caller,
+`BoardMeshSink::configure` (`waveshare_board.cpp:642`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
-(`waveshare_board.cpp:491`
+(`waveshare_board.cpp:498`
 "if (meshcore_ble_configure_passkey(passkey, passkey_ticket_) != ESP_OK) {") is
 the ungated second, and since #416 it is a different function for a reason that
 is this document's subject: the screen has to be told how the request *ended*,
 not that the queue took it, so it reserves an answer slot and reads it back
-(`waveshare_board.cpp:502`
+(`waveshare_board.cpp:509`
 "switch (meshcore_ble_passkey_outcome(passkey_ticket_)) {"). The debug
 channel's caller keeps the old one, because the console it is read on is where
 the worker's refusals were already being written. What that call set was
 per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
-(`meshcore_ble.cpp:183` "std::atomic_bool configured", `meshcore_ble.cpp:185`
+(`meshcore_ble.cpp:188` "std::atomic_bool configured", `meshcore_ble.cpp:190`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
-that sets `configured` **true** (`meshcore_ble.cpp:1700`
-"configured.store(true)", `meshcore_ble.cpp:1701`
+that sets `configured` **true** (`meshcore_ble.cpp:1705`
+"configured.store(true)", `meshcore_ble.cpp:1706`
 "reconnect_allowed.store(true)" — every other write clears them), and
-`start_scan()` returns unless both are true (`meshcore_ble.cpp:570`
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:575`
 "void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
 bond buys nothing without a scan.
 
 One other event re-arms `reconnect_allowed`: `ForgetBond`
-(`meshcore_ble.cpp:1701` "reconnect_allowed.store(true)"), which is #325's
+(`meshcore_ble.cpp:1706` "reconnect_allowed.store(true)"), which is #325's
 recovery from a stale bond. It changes nothing here — it is reached only
 through `MeshForgetBond`, inside the same `#if`, and it re-arms a scan that
 `configured` still gates. A product image cannot reach it and would gain
@@ -429,33 +429,33 @@ When this boundary was drawn, that was the whole of it: provisioning over the
 HIL image did not survive a power cycle of the HIL image, let alone being
 flashed away, which is what showed the round trip never existed. #356's first
 change added the one thing that persists: an accepted six-digit passkey is
-written to NVS by the worker (`meshcore_ble.cpp:1694`
+written to NVS by the worker (`meshcore_ble.cpp:1699`
 "store_passkey(event.passkey) && clear_reprovision_pending())") and boot replays it through the same
-`Configure` event (`meshcore_ble.cpp:2148` "restore_passkey();"). The zero of
+`Configure` event (`meshcore_ble.cpp:2159` "restore_passkey();"). The zero of
 `--unpaired-probe` is not a passkey and is not written: it turns pairing and
 link encryption off for one session, and a boot must not do that on its own.
 `mesh-disconnect` is the way back: its `Deconfigure` erases the key
-(`meshcore_ble.cpp:1742` "if (!erase_passkey()) {"), so a watch told to stop
+(`meshcore_ble.cpp:1747` "if (!erase_passkey()) {"), so a watch told to stop
 stays stopped across a power cycle, where before this change the power cycle
 was itself the off switch. So the MeshCore round trip now exists the way the
 clock's does — flash the HIL image, configure, flash back, and the product
 image scans for and pairs with its node until the HIL image is flashed back
 and told to stop — and since #356's second change a product image can also
 put that key there itself, though not take it away: the entry screen a long
-press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:475`
+press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:482`
 "set_mesh_passkey(std::uint32_t passkey) override {" sends the same `Configure`
 event. What stays HIL-only is watching it happen: the mesh screen's
-`mesh_screen_requested` (`waveshare_board.cpp:148`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:638`
+`mesh_screen_requested` (`waveshare_board.cpp:155`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:645`
 "mesh_screen_requested.store(true)", inside the `#if`, so a product image
 scans without showing that it does.
 
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:322` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:1982` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:1993` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:2003` "xTaskCreate(mesh_task") for a subsystem that scans
+(`meshcore_ble.cpp:2014` "xTaskCreate(mesh_task") for a subsystem that scans
 only once a passkey is on flash — left by a HIL image, or, since #356's second
 change, typed on the entry screen. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
@@ -463,7 +463,7 @@ gating the BLE start is a change to what the product does, and this change is
 about the USB control plane.
 
 The scan itself is the part nobody has priced. A restored or typed passkey
-starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:581` —
+starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:586` —
 "BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:170` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
 (`firmware/main/board_power.cpp:381` — "esp_light_sleep_start();") without a PM
