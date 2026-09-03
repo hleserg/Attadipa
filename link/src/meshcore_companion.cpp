@@ -25,6 +25,7 @@ constexpr std::uint8_t kSendText = 2;
 constexpr std::uint8_t kGetContacts = 4;
 constexpr std::uint8_t kSyncNextMessage = 10;
 constexpr std::uint8_t kDeviceQuery = 22;
+constexpr std::uint8_t kGetCustomVars = 40;
 constexpr std::uint8_t kSendLogin = 26;
 constexpr std::uint8_t kAppProtocolVersion = 3;
 
@@ -36,6 +37,7 @@ constexpr std::uint8_t kResponseSelfInfo = 5;
 constexpr std::uint8_t kResponseSent = 6;
 constexpr std::uint8_t kResponseContactMessage = 7;
 constexpr std::uint8_t kResponseNoMoreMessages = 10;
+constexpr std::uint8_t kResponseCustomVars = 21;
 constexpr std::uint8_t kResponseDeviceInfo = 13;
 constexpr std::uint8_t kResponseContactMessageV3 = 16;
 constexpr std::uint8_t kResponseChannelMessageV3 = 17;
@@ -91,6 +93,7 @@ void MeshCoreCompanion::end_operation()
     room_text_.fill('\0');
     room_timestamp_ = {};
     op_budget_ = core::Millis{};
+    op_answered_ = false;
 }
 
 void MeshCoreCompanion::reset_session()
@@ -131,6 +134,19 @@ void MeshCoreCompanion::reset_session()
     device_info_seen_ = false;
     self_info_seen_ = false;
     contacts_complete_ = false;
+    // THE COORDINATE IS SESSION STATE, like the identity above and for the same
+    // reason. A reconnect re-reads RESP_CODE_SELF_INFO, so carrying the last
+    // session's coordinate would let a node that has gone away keep answering.
+    // Nothing is lost by clearing it: what outlives a session is the *aged*
+    // observation `core::LocationService` retains, which is the one place that
+    // decides how old a coordinate has become.
+    has_node_position_ = false;
+    node_position_ = core::Position{};
+    node_position_at_ = {};
+    node_receiver_ = core::ReceiverPresence::Unknown;
+    custom_vars_requested_ = false;
+    awaiting_custom_vars_ = false;
+    custom_vars_since_ = {};
     op_since_ = {};
     end_operation();
 }
@@ -201,6 +217,17 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
         status_.delivery = core::MeshDelivery::Failed;
         end_operation();
     }
+    // The receiver hint gets a bound of its own, and it is not the operation's:
+    // nobody is waiting on this answer, so it has nothing to fail. What it must
+    // not do is outlive its usefulness and then absorb a real send's error --
+    // an unanswered request that stayed outstanding for the session would take
+    // the blame for the next command the node refused. It is asked once, so
+    // giving up on it costs the receiver state and nothing else: `Unknown` is
+    // where it started and is a truthful answer for a node that did not reply.
+    if (awaiting_custom_vars_ &&
+        core::elapsed(custom_vars_since_, now) >= kMaxAckWait) {
+        awaiting_custom_vars_ = false;
+    }
     update_availability();
 }
 
@@ -242,6 +269,10 @@ bool MeshCoreCompanion::enqueue(const std::uint8_t* data, std::size_t size)
     std::memcpy(frame.bytes.data(), data, size);
     frame.size = static_cast<std::uint16_t>(size);
     ++tx_size_;
+    // The single place a frame joins the queue, so the single place its order
+    // can be recorded. A caller that needs its frame's place reads `tx_seq_`
+    // straight after a successful call, as the two below do.
+    ++tx_seq_;
     return true;
 }
 
@@ -348,6 +379,103 @@ void MeshCoreCompanion::accept_channel_message_v3(const std::uint8_t* data,
         copy_text(status_.last_message, &data[kTextOffset], size - kTextOffset);
 }
 
+void MeshCoreCompanion::accept_self_position(const std::uint8_t* data,
+                                             core::MonotonicTime now)
+{
+    // Degrees x 10^6 on the wire, degrees x 10^7 in `core::Position`. The
+    // multiplication happens in 64 bits and the result is bounds-checked before
+    // it is narrowed: a node is a peer, its output is a peer's output
+    // (MESHCORE_PARSER_BOUNDS.md §5), and 214.8 degrees of latitude multiplied
+    // by ten in an `int32` is signed overflow -- undefined behaviour that the
+    // sanitiser build would find, in a decoder fed by whatever is on the air.
+    const std::int64_t latitude =
+        static_cast<std::int64_t>(static_cast<std::int32_t>(little_u32(&data[0]))) * 10;
+    const std::int64_t longitude =
+        static_cast<std::int64_t>(static_cast<std::int32_t>(little_u32(&data[4]))) * 10;
+
+    constexpr std::int64_t kNarrows = 2147483647;
+    if (latitude < -kNarrows || latitude > kNarrows || longitude < -kNarrows ||
+        longitude > kNarrows) {
+        has_node_position_ = false;
+        return;
+    }
+    const core::Position position{static_cast<std::int32_t>(latitude),
+                                  static_cast<std::int32_t>(longitude)};
+    // The canonical check, reused rather than restated. A coordinate off the
+    // globe is dropped and the frame is *not* counted malformed: the name and
+    // the public key in it are well formed and are what the rest of the session
+    // runs on, so refusing the whole frame would cost the identity to punish a
+    // field. (0, 0) is legal, plausible and almost certainly an unset
+    // preference, and is accepted exactly like any other coordinate -- deciding
+    // it is "really" absent is the kind of guess this layer does not make.
+    if (!core::in_range(position)) {
+        has_node_position_ = false;
+        return;
+    }
+    node_position_ = position;
+    node_position_at_ = now;
+    has_node_position_ = true;
+}
+
+void MeshCoreCompanion::accept_custom_vars(const std::uint8_t* data,
+                                           std::size_t size)
+{
+    // No `gps` name at all is itself the answer, and it is the reason this
+    // starts at `NotDetected` rather than at `Unknown`: the node publishes the
+    // key only when something answered its GPS UART within a second of boot, so
+    // its absence is a statement and not a silence. `Unknown` is what stands
+    // before any of this arrives, and what an unparseable value falls back to.
+    node_receiver_ = core::ReceiverPresence::NotDetected;
+
+    std::size_t index = 0;
+    while (index < size) {
+        const std::size_t start = index;
+        while (index < size && data[index] != ',') ++index;
+        const std::size_t length = index - start;
+        if (length >= 4 && data[start] == 'g' && data[start + 1] == 'p' &&
+            data[start + 2] == 's' && data[start + 3] == ':') {
+            // `length >= 5` before the value is read, not `>= 4`. A bare `gps:`
+            // ending the buffer would otherwise index one past the last byte of
+            // the frame -- the pair's own length is what bounds this, never the
+            // frame's, because a pair can end at a comma or at the end.
+            const std::uint8_t value = length >= 5 ? data[start + 4] : 0;
+            node_receiver_ = value == '1'   ? core::ReceiverPresence::Running
+                             : value == '0' ? core::ReceiverPresence::PoweredOff
+                                            : core::ReceiverPresence::Unknown;
+        }
+        if (index < size) ++index;  // the separator
+    }
+}
+
+bool MeshCoreCompanion::node_position(core::Position& out,
+                                      core::MonotonicTime& arrived) const
+{
+    // A REFUSED NODE IS NOT A SOURCE, AND THE COORDINATE STILL HELD IS NOT ITS.
+    // `receive()` writes `status_.node_id` *before* it compares that key
+    // against the pin, so in the window between a refusal and the transport's
+    // disconnect `node_id()` answers with the stranger's key while
+    // `has_node_position_` still holds what the *previous, accepted* node said.
+    // Nothing pairs those two on purpose -- `NodePositionProvider::sample()`
+    // asks them separately because they are separate questions -- so without
+    // this line one node's coordinate goes out under another node's name, and
+    // `LocationService`'s changed-identity rule launders it instead of
+    // discarding it: the key is new, so the retained observation is dropped and
+    // the same coordinate immediately re-adopted under the stranger.
+    //
+    // Refused rather than cleared, and the distinction is the same one this
+    // file draws everywhere else. The previous node did say this coordinate and
+    // it is still true about the moment it arrived; what is unavailable is any
+    // way to attribute it while the session is disowned. A caller that gets
+    // `false` retains what it had, under the origin it already had.
+    //
+    // `availability()` reads this too, so it also stops answering `Ready` for a
+    // session the companion has stopped listening to at `receive()`'s gate.
+    if (wrong_node_ || !has_node_position_) return false;
+    out = node_position_;
+    arrived = node_position_at_;
+    return true;
+}
+
 bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
                                 core::MonotonicTime now)
 {
@@ -415,6 +543,26 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             status_.refused_id = core::MeshPeerId{};
             status_.has_refused = false;
         }
+        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every
+        // branch above that refuses a node breaks before this line, so a
+        // stranger's latitude is never recorded -- which matters more here than
+        // for the name, because a coordinate is the one field a wrong node can
+        // put on a map.
+        //
+        // Bytes 36-43 of RESP_CODE_SELF_INFO: two little-endian `int32`, each
+        // degrees x 10^6, immediately after the 32-byte public key at offset 4
+        // (docs/research/NODE_POSITION_FROM_MESHCORE.md:71
+        // "36  .. 39   int32 lat = node_lat  * 1e6   little-endian"). The
+        // `size < 58` bound above already guarantees both are present, so no
+        // second length check is added.
+        //
+        // What this does NOT establish is whether the node has a fix. It never
+        // sends one: `isValid()` on the node gates the *write* into these bytes
+        // and not the send, so a receiver that stops solving leaves the last
+        // coordinate here unchanged and indistinguishable from a live one. That
+        // is why the provider above this states `FixType::Unknown` and why no
+        // path in this repository can reach `PositionValidity::Valid` from it.
+        accept_self_position(&data[36], now);
         if (self_info_seen_) break;
         self_info_seen_ = true;
         {
@@ -449,6 +597,36 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
                 return false;
             }
         }
+        // AND THE ONE QUESTION THIS SESSION ASKS ABOUT THE NODE'S RECEIVER,
+        // here and nowhere earlier. The contacts iteration is over by the time
+        // this frame arrives, which is the property that matters: a command
+        // sent while one is running is how a client aborts its own sync, and
+        // `_iter_started` on the node is cleared by anything that restarts the
+        // app session.
+        //
+        // Once per session. A node that answers RESP_CODE_ERR to it -- every
+        // node too old to define opcode 40, and indistinguishable from one that
+        // merely disliked the frame (docs/research/MESHCORE_COMPANION_PROTOCOL.md:520
+        // "A client cannot use that error to probe") -- is not asked again and is
+        // not an error to the user: the receiver state stays `Unknown`, the
+        // coordinate is unaffected, and nothing about the session changes.
+        if (!custom_vars_requested_) {
+            const std::uint8_t vars[] = {kGetCustomVars};
+            if (enqueue(vars, sizeof(vars))) {
+                custom_vars_requested_ = true;
+                awaiting_custom_vars_ = true;
+                custom_vars_since_ = now;
+                custom_vars_seq_ = tx_seq_;
+            }
+        }
+        break;
+    case kResponseCustomVars:
+        // Code byte, then `name:value` pairs separated by commas
+        // (docs/research/NODE_POSITION_FROM_MESHCORE.md:159 "comma-separated").
+        // A one-byte frame is an empty list, which is a legitimate answer and
+        // the one that means no receiver was detected.
+        accept_custom_vars(&data[1], size - 1);
+        awaiting_custom_vars_ = false;
         break;
     case kResponseSent:
         if (size < 10 || (!awaiting_send_ && !awaiting_login_)) {
@@ -470,6 +648,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // RESP_CODE_SENT for CMD_SEND_LOGIN too, and gating the budget on
         // `awaiting_send_` discarded the one estimate the login ever carries.
         {
+            op_answered_ = true;
             op_since_ = now;
             const std::uint32_t estimate = little_u32(&data[6]);
             op_budget_ = core::Millis{
@@ -529,18 +708,69 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseNoMoreMessages:
         if (size != 1) { ++malformed_frames_; return false; }
         break;
-    case kResponseError:
+    case kResponseError: {
         if (size < 2) { ++malformed_frames_; return false; }
         // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
         // command that fails its guard falls through to RESP_CODE_ERR, so a
         // CMD_SEND_LOGIN for a room the node does not hold arrives here and
         // nowhere else. Leaving `awaiting_login_` set was one of the two ways
         // the slot became permanent.
+        //
+        // A CMD_GET_CUSTOM_VARS this node does not define is answered by the
+        // same code with nothing in the frame to correlate it by, so the
+        // attribution is made from what we know about the order instead of
+        // guessed from what matters most.
+        //
+        // AND `send_busy()` WAS THE WRONG QUESTION TO DECIDE IT WITH.
+        //
+        // It stays true through `awaiting_confirm_`, and that phase begins
+        // *because* the node already answered our send with RESP_CODE_SENT.
+        // What is outstanding then is a radio round trip, not a response, so an
+        // error arriving in that window cannot be the send's: the send's answer
+        // has been and gone. Charging it there failed a message the node had
+        // accepted and then discarded the confirmation that would have proved
+        // it. On a node too old for opcode 40 this was not a race but the
+        // ordinary case, because RESP_CODE_ERR crosses BLE in milliseconds and
+        // the confirmation needs a radio round trip -- 720 ms MEASURED
+        // (MESHCORE_T114_FIRST_CONTACT.md:326-329 "estimated round trip").
+        //
+        // SO THE ERROR GOES TO WHICHEVER COMMAND WAS ASKED FIRST AND IS STILL
+        // OWED AN ANSWER. Both parts matter. `op_owed_an_answer()` is what
+        // excludes `awaiting_confirm_` above, and excludes an answered login
+        // for the same reason. The order then settles which of the two
+        // remaining claimants it is, because the node answers in the order it
+        // was asked and this queue preserves that order.
+        //
+        // Neither ordering alone would do. A room message sent while the
+        // contact burst is still arriving is queued *before* the opcode 40 that
+        // END_OF_CONTACTS asks for -- that overlap is MEASURED, and it is why
+        // `enqueue_private()` refuses to gate on `contacts_complete_` -- so the
+        // login is the older command, and on an old node the error it takes the
+        // blame for is opcode 40's. Its own answer arrived first, in order, and
+        // `op_answered_` is the record of it.
+        //
+        // #315's fail-closed direction is kept, not traded away, and this is
+        // the part to check before believing that. A send whose error the hint
+        // takes here is not cleared: it never receives RESP_CODE_SENT either,
+        // so tick() fails it at `kMaxAckWait`. It is failed by budget instead
+        // of instantly, which is later, not softer.
+        //
+        // Only the *attribution* narrows. Once the error is the operation's,
+        // `send_busy()` decides it exactly as before -- including in
+        // `awaiting_confirm_`, where an unattributable error still fails an
+        // accepted send rather than vanishing
+        // (test_a_send_that_is_never_confirmed_still_ends pins that).
+        const bool op_owed = op_owed_an_answer();
+        if (awaiting_custom_vars_ && (!op_owed || custom_vars_seq_ < op_seq_)) {
+            awaiting_custom_vars_ = false;
+            break;
+        }
         if (send_busy()) {
             status_.delivery = core::MeshDelivery::Failed;
             end_operation();
         }
         break;
+    }
     default:
         // A response code this build does not know is a frame we did not
         // understand, not a frame we accepted. The node's output is a peer's
@@ -578,6 +808,17 @@ bool MeshCoreCompanion::unpin()
     pinned_set_ = false;
     pinned_ = core::MeshPeerId{};
     wrong_node_ = false;
+    // AND WHAT THE NODE SAID, BECAUSE UNPINNING IS THE REPUDIATION.
+    //
+    // `reset_session()` already drops this on a disconnect, which is the
+    // *other* statement: a node that went away did not take its coordinate
+    // back. Unpinning does take it back, and the position is the one retained
+    // thing that outlives the pin. While this stayed set, telling
+    // `LocationService` to forget achieved nothing -- `sample()` went on
+    // answering out of here, and the very next worker pass re-adopted the
+    // coordinate the owner had just dropped. Clearing it at the source is what
+    // makes the order of those two calls stop mattering.
+    has_node_position_ = false;
     status_.pinned_id = core::MeshPeerId{};
     status_.has_pinned = false;
     status_.refused_id = core::MeshPeerId{};
@@ -645,6 +886,8 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
         return false;
     }
     awaiting_send_ = true;
+    op_answered_ = false;
+    op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
     return true;
@@ -682,6 +925,8 @@ bool MeshCoreCompanion::send_room(
     room_text_[text.size()] = '\0';
     room_timestamp_ = timestamp;
     awaiting_login_ = true;
+    op_answered_ = false;
+    op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
     return true;
