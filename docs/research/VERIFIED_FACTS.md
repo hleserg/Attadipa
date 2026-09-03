@@ -336,13 +336,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:1716`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1921`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
-  ([`firmware/main/meshcore_ble.cpp:167`](../../firmware/main/meshcore_ble.cpp)
+  ([`firmware/main/meshcore_ble.cpp:169`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1452`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1642`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -376,9 +376,9 @@ reader ends up citing the one that was not updated.
   `espressif/esp-idf@v5.5.5` records for
   `components/bt/host/nimble/nimble`.
 - **Source (this repository):** the watch is the central and takes that branch
-  from [`firmware/main/meshcore_ble.cpp:840`](../../firmware/main/meshcore_ble.cpp)
+  from [`firmware/main/meshcore_ble.cpp:911`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1481`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1671`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on
@@ -403,10 +403,10 @@ reader ends up citing the one that was not updated.
   "return PinOutcome::Refused;", latched by
   [`link/src/meshcore_companion.cpp:397`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
-  is [`firmware/main/meshcore_ble.cpp:389`](../../firmware/main/meshcore_ble.cpp)
+  is [`firmware/main/meshcore_ble.cpp:437`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
   the passkey instead —
-  [`firmware/main/meshcore_ble.cpp:378`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:426`](../../firmware/main/meshcore_ble.cpp)
   "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". The mesh opcode
   block ends at
   [`debug/include/attadipa/debug/protocol.h:84`](../../debug/include/attadipa/debug/protocol.h)
@@ -417,12 +417,12 @@ reader ends up citing the one that was not updated.
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No node has been reset while a
   watch was pinned to it.
-- **Consequence:** two comments in the tree say the gap closes with #356 —
+- **Consequence:** two comments said the gap would close with #356, which
+  excluded it. #411 closed it — the entry screen's node field forgets the bond
+  and the pin together — and rewrote both comments to say so:
   [`firmware/main/meshcore_ble.cpp:225`](../../firmware/main/meshcore_ble.cpp)
-  "re-pin**: nothing erases the " and
-  [`core/include/attadipa/core/mesh_service.h:61`](../../core/include/attadipa/core/mesh_service.h)
-  "until #356 there is no in-image way to re-pin". #356's implementation
-  excludes it, so the expectation expires with nothing behind it.
+  "What the image has since #411 is the reverse" and
+  [`core/include/attadipa/core/mesh_service.h:61`](../../core/include/attadipa/core/mesh_service.h) "the way out, the entry screen's node field (#411)".
 
 ### A factory-reset MeshCore node shows a new random BLE passkey at every boot
 

@@ -79,6 +79,13 @@ public:
     // is *kept* is the transport's business, because this class has no storage
     // that outlives a session.
     void pin(const core::MeshPeerId& node);
+    // The reverse, and the only one: the pin, the refusal it caused and the
+    // two lines the mesh screen shows for them are all cleared, so the next
+    // SELF_INFO is adopted instead of compared. Says whether there was a pin
+    // to clear. It is `pinned_set_` that decides -- a clear that zeroed the
+    // key and left it set would refuse every node (#411). Where the pin is
+    // *kept* is still the transport's business, and so is erasing it there.
+    bool unpin();
     bool pinned(core::MeshPeerId& out) const;
     bool node_id(core::MeshPeerId& out) const;
 

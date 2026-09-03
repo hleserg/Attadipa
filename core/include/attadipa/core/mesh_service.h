@@ -58,8 +58,9 @@ struct MeshStatus {
     // not clear them. That is the point of them: a watch that refuses the only
     // node in range ends up with no session at all, so everything session-scoped
     // on the mesh screen is empty exactly when an operator most needs to know
-    // why -- and until #356 there is no in-image way to re-pin, so the recovery
-    // is `idf.py erase-flash` and nothing on a blank screen says so.
+    // why -- and the way out, the entry screen's node field (#411), is one an
+    // operator goes looking for only if this screen says the watch is silent
+    // on purpose.
     //
     // `has_refused` is set when a handshake reads a key that is not `pinned_id`,
     // and cleared when one reads a key that is. Nothing else clears it; in

@@ -32,16 +32,28 @@ enum class StoredPasskey : std::uint8_t {
     Found,       // `out` holds whatever flash held, unchecked
 };
 
+// A retained passkey is normally replayed at boot. Forgetting a node keeps
+// those digits for the holder to replace, so a separate durable gate prevents
+// a reboot in between from arming them on an unpinned watch.
+enum class PasskeyReplay : std::uint8_t {
+    Allowed,
+    Inhibited,
+    Unreadable,
+};
+
 enum class PasskeyRestore : std::uint8_t {
     Restored,   // a pairing passkey was on flash and is queued for the worker
     Absent,
     Unreadable,
     Refused,    // on flash, and not a pairing passkey: the probe zero, or junk
     NotQueued,  // a pairing passkey was on flash and the worker's queue is full
+    ReplayInhibited,  // a completed forget still awaits new owner-entered digits
+    ReplayUnreadable, // the durable replay gate could not be read; fail closed
 };
 
 // `Ops` supplies:
 //
+//   PasskeyReplay replay_permission()
 //   StoredPasskey load(std::uint32_t& out)
 //   bool configure(std::uint32_t passkey, bool persist)
 //       -- queue a Configure for the worker; `persist` is whether the worker
@@ -64,6 +76,11 @@ bool request_passkey(Ops& ops, std::uint32_t passkey)
 template <typename Ops>
 PasskeyRestore restore_passkey(Ops& ops)
 {
+    switch (ops.replay_permission()) {
+    case PasskeyReplay::Inhibited: return PasskeyRestore::ReplayInhibited;
+    case PasskeyReplay::Unreadable: return PasskeyRestore::ReplayUnreadable;
+    case PasskeyReplay::Allowed: break;
+    }
     std::uint32_t passkey = 0;
     switch (ops.load(passkey)) {
     case StoredPasskey::Absent: return PasskeyRestore::Absent;

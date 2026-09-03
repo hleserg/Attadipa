@@ -37,9 +37,9 @@ recorded here so that no option is credited with paying them.
    `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image. Its second gave the sequence an ungated caller,
    `firmware/main/waveshare_board.cpp:443` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
-   next to the HIL-only one that `firmware/main/waveshare_board.cpp:533` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   next to the HIL-only one that `firmware/main/waveshare_board.cpp:599` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates,
-   `firmware/main/waveshare_board.cpp:534` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
+   `firmware/main/waveshare_board.cpp:600` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side was always unconditional:
    `firmware/main/waveshare_board.cpp:269` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
@@ -47,25 +47,26 @@ recorded here so that no option is credited with paying them.
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:1876` — "bool configure_meshcore_ble(std::uint32_t passkey)"
-   reaches `firmware/main/meshcore_ble.cpp:1452` — "secure_pairing.store(event.passkey != 0);"
+   `firmware/main/meshcore_ble.cpp:2094` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   reaches `firmware/main/meshcore_ble.cpp:1642` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
-   `firmware/main/meshcore_ble.cpp:166` — "std::atomic_bool configured{false};"
-   and `firmware/main/meshcore_ble.cpp:168` — "std::atomic_bool reconnect_allowed{false};".
+   `firmware/main/meshcore_ble.cpp:168` — "std::atomic_bool configured{false};"
+   and `firmware/main/meshcore_ble.cpp:170` — "std::atomic_bool reconnect_allowed{false};".
    But the seam that would hold it is already in this translation unit, put
-   there by #304: `firmware/main/meshcore_ble.cpp:230` — "constexpr const char* kMeshNvsNamespace = ",
-   read at `firmware/main/meshcore_ble.cpp:319` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
-   and written at `firmware/main/meshcore_ble.cpp:389` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:1823` —
+   there by #304: `firmware/main/meshcore_ble.cpp:232` — "constexpr const char* kMeshNvsNamespace = ",
+   read at `firmware/main/meshcore_ble.cpp:322` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
+   and written at `firmware/main/meshcore_ble.cpp:437` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2041` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
    persisting what was provisioned is orthogonal to the channel that delivered
    it. #356's first change added that key: an accepted pairing passkey is
    stored once the stack has taken it
-   (`firmware/main/meshcore_ble.cpp:1474` — "!event.persist_passkey || store_passkey(event.passkey);"),
-   replayed at boot through the same event, and erased again by `Deconfigure`
-   (`firmware/main/meshcore_ble.cpp:1522` — "if (!erase_passkey()) {").
+   (`firmware/main/meshcore_ble.cpp:1663` — "const bool stored = !event.persist_passkey ||"),
+   replayed at boot through the same event unless a durable node-forget marker
+   requires new owner-entered digits, and erased again by `Deconfigure`
+   (`firmware/main/meshcore_ble.cpp:1712` — "if (!erase_passkey()) {").
    `Deconfigure` is reached only from the HIL
    image's `mesh-disconnect`, so a product image cannot revoke on its own: it
    can be given another passkey, or be flashed over with the HIL image and
@@ -79,7 +80,7 @@ recorded here so that no option is credited with paying them.
    not.** It erases the passkey and leaves behind the two pieces of state that
    actually block a reconnect: the bond, and the pinned node public key. The
    bond a HIL image can delete; the pin **no image can**, because the only
-   writer of `firmware/main/meshcore_ble.cpp:231` — "constexpr const char* kNodeKeyNvsKey"
+   writer of `firmware/main/meshcore_ble.cpp:233` — "constexpr const char* kNodeKeyNvsKey"
    is the adopt path and there is no eraser beside it. So "be flashed over with
    the HIL image and told to stop" does not restore a watch whose node was
    factory-reset either — after `mesh-forget-bond` and a `Configure` carrying
@@ -91,6 +92,18 @@ recorded here so that no option is credited with paying them.
    revocation gesture under either reading — but the cost of declining is larger
    than this fact stated, and the record should carry the larger number. Traced
    in [MESHCORE_NODE_RESET_RECOVERY.md](../research/MESHCORE_NODE_RESET_RECOVERY.md).
+
+   **Note, 2026-09-02 ([#411](https://github.com/hleserg/Attadipa/issues/411)):
+   the pin has an eraser now, and a product image can forget its node on its
+   own** — as one field on the entry screen this ADR chose, shown only on a
+   pinned watch and placed before the passkey, because a forgotten node's
+   *current* passkey is the next thing typed:
+   `apps/include/attadipa/apps/provisioning.h:44` — "enum class EntryField : std::uint8_t { Date, Time, Offset, Node,".
+   It is not the revocation gesture the decision declines: no listener, no
+   mode, the same finger on the same panel (the report's §9), and it arms
+   nothing — the passkey entry that follows is the one arm, as for a first
+   provisioning. The correction above stands as the record of what declining
+   cost until then.
 
 3. **Touch already works, as an LVGL pointer device.**
    `firmware/main/physical_input.cpp:86` — "lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);".
@@ -159,11 +172,11 @@ Consent is that a person is holding this watch and touching its screen. Nothing
 on a cable or a radio can do that.
 
 The decisive fact is one the firmware already asserts to its peer:
-`firmware/main/meshcore_ble.cpp:1717` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
+`firmware/main/meshcore_ble.cpp:1922` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:1876` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:2094` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.
@@ -204,9 +217,9 @@ Priced against the current build, B is **A plus a radio**:
 
   One qualifier, because the cost lands later than it looks: the watch only
   reaches the SMP path once a passkey has been armed —
-  `firmware/main/meshcore_ble.cpp:167` — "std::atomic_bool secure_pairing{false};",
-  set at `firmware/main/meshcore_ble.cpp:1452` — "secure_pairing.store(event.passkey != 0);"
-  and read at `firmware/main/meshcore_ble.cpp:840` — "if (secure_pairing.load()) {". An image nobody has provisioned
+  `firmware/main/meshcore_ble.cpp:169` — "std::atomic_bool secure_pairing{false};",
+  set at `firmware/main/meshcore_ble.cpp:1642` — "secure_pairing.store(event.passkey != 0);"
+  and read at `firmware/main/meshcore_ble.cpp:911` — "if (secure_pairing.load()) {". An image nobody has provisioned
   writes no bond at all, so the eviction is a cost of the *second* provisioning
   and of bench images, not of every build. It is still B's cost, because B's
   whole purpose is to provision a second peer.
@@ -314,9 +327,9 @@ Beyond B and C:
   of it is asynchronous.** The clock is written by the task that asks and
   answers terminally; the passkey is armed and stored on the MeshCore worker, so
   `core::ProvisionOutcome` carries a fourth value —
-  `core/include/attadipa/core/provisioning.h:24` — "Pending,   // Taken by hardware that answers on another task, and not" —
+  `core/include/attadipa/core/provisioning.h:28` — "Pending,   // Taken by hardware that answers on another task, and not" —
   and the screen stays on the field until
-  `core/include/attadipa/core/provisioning.h:60` — "virtual ProvisionOutcome mesh_passkey_outcome() = 0;"
+  `core/include/attadipa/core/provisioning.h:83` — "virtual ProvisionOutcome mesh_passkey_outcome() = 0;"
   says which way it went. This is not decoration: until #416 the screen said
   "the watch is set up" on the strength of a queue post, and both of the
   worker's failures — a stack that refuses the passkey, and an NVS write that
@@ -351,7 +364,7 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:534` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  by `firmware/main/waveshare_board.cpp:600` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
   `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
@@ -366,7 +379,7 @@ Beyond B and C:
   `MeshSink` or `MeshSinkResult` in any signature at all. That is a stronger
   constraint than a missing caller and it points somewhere else: what #356 adds
   is a seam a product image can compile.
-  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:83` —
+  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:84` —
   "class MeshProvider {" — is four methods — status, peer count, peer, send —
   and not one of them arms a passkey, while
   `core/include/attadipa/core/time_service.h:60` —
@@ -374,7 +387,7 @@ Beyond B and C:
   clock sequence and the step that does not persist; nothing in `core/` reaches
   the PCF85063 or NVS. So what an option here buys is that seam and the firmware
   behind it, not an NVS key: the shortest path from `apps/` to
-  `firmware/main/meshcore_ble.h:18` — "bool configure_meshcore_ble(std::uint32_t passkey);"
+  `firmware/main/meshcore_ble.h:19` — "bool configure_meshcore_ble(std::uint32_t passkey);"
   — is the application-layer hardware access `AGENTS.md` forbids, and an
   implementer reading a cost list that stops at `firmware/main/` will take it.
 - Leaves the AXP2101 long-press question UNKNOWN and untouched, because A needs
@@ -394,6 +407,6 @@ Beyond B and C:
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
   `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:702` — "void build_mesh_screen() {" — is
+  `firmware/main/waveshare_board.cpp:768` — "void build_mesh_screen() {" — is
   full of literal colours. Building the entry screen where the mesh screen was
   built would silently opt it out of the check.

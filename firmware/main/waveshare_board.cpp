@@ -517,6 +517,71 @@ public:
 #endif
   }
 
+  bool mesh_node(attadipa::core::MeshPeerId &out) override {
+#if CONFIG_BT_NIMBLE_ENABLED
+    const attadipa::core::MeshStatus status = meshcore_ble_status();
+    if (!status.has_pinned) {
+      return false;
+    }
+    out = status.pinned_id;
+    return true;
+#else
+    (void)out;
+    return false;
+#endif
+  }
+
+  // Queued, and that is all this says, as the passkey above: the clears run
+  // on the radio worker and `mesh_forget_outcome()` is where they finish.
+  attadipa::core::ProvisionOutcome forget_mesh_node() override {
+#if CONFIG_BT_NIMBLE_ENABLED
+    switch (meshcore_ble_forget_node(forget_ticket_)) {
+    case ESP_OK:
+      return attadipa::core::ProvisionOutcome::Pending;
+    case ESP_ERR_INVALID_STATE:
+      return attadipa::core::ProvisionOutcome::Rejected;
+    default:
+      return attadipa::core::ProvisionOutcome::Failed;
+    }
+#else
+    return attadipa::core::ProvisionOutcome::Failed;
+#endif
+  }
+
+  attadipa::core::MeshForgetOutcome mesh_forget_outcome() override {
+#if CONFIG_BT_NIMBLE_ENABLED
+    using attadipa::firmware::ForgetNodeOutcome;
+    const ForgetNodeOutcome outcome =
+        meshcore_ble_forget_node_outcome(forget_ticket_);
+    if (outcome != ForgetNodeOutcome::InFlight) {
+      forget_ticket_ = 0;
+    }
+    switch (outcome) {
+    case ForgetNodeOutcome::InFlight:
+      return attadipa::core::MeshForgetOutcome::Pending;
+    case ForgetNodeOutcome::Forgotten:
+      return attadipa::core::MeshForgetOutcome::Forgotten;
+    case ForgetNodeOutcome::Unpinned:
+      return attadipa::core::MeshForgetOutcome::Unpinned;
+    case ForgetNodeOutcome::PinOnFlash:
+      return attadipa::core::MeshForgetOutcome::PinOnFlash;
+    case ForgetNodeOutcome::Nothing:
+      return attadipa::core::MeshForgetOutcome::Nothing;
+    case ForgetNodeOutcome::ReplayInhibited:
+      return attadipa::core::MeshForgetOutcome::ReplayInhibited;
+    case ForgetNodeOutcome::BondKept:
+    case ForgetNodeOutcome::Idle:
+      // Idle: the answer was already taken, or the ticket is not the
+      // slot's any more. Nothing of this screen's is outstanding, and
+      // "nothing changed" is the one answer that cannot be a stale success.
+      break;
+    }
+    return attadipa::core::MeshForgetOutcome::BondKept;
+#else
+    return attadipa::core::MeshForgetOutcome::BondKept;
+#endif
+  }
+
 private:
   // A day. The RTC keeps counting after that; what expires is the trust in
   // the offset a person typed, the same way it would for a host's.
@@ -526,6 +591,7 @@ private:
   // made by the entry screen, which is the LVGL task. The worker's half of the
   // handover is the slot in `meshcore_passkey_outcome.h`, which is.
   std::uint32_t passkey_ticket_ = 0;
+  std::uint32_t forget_ticket_ = 0;
 };
 
 BoardProvisioner provisioner;
@@ -765,9 +831,9 @@ void refresh_mesh() {
   // A REFUSAL IS THE ONE THING ON THIS SCREEN THAT IS NOT SESSION STATE, and it
   // is here because a refused watch has no session: the state line says
   // SCANNING, the name is blank, and without this the screen is silent about
-  // the one fact that explains all of it. Until #356 the recovery is
-  // `idf.py erase-flash`, and a serial cable is not how an operator should have
-  // to discover that they need one.
+  // the one fact that explains all of it. Since #411 the recovery is the
+  // entry screen's node field, a long press on the clock away, and this line
+  // is how an operator learns that there is something to go there for.
   //
   // Third line, and the label has room for it: line_height is 22 px
   // (assets/fonts/generated/attadipa_nunito_sans_20.c:2892 ".line_height = 22,")
