@@ -389,22 +389,40 @@ simulator driving timed frames, or a board.
   Sensortec GmbH … BSD-3-Clause"*, and the component manifest's `exclude` list
   does **not** exclude `src/bosch/`, so those files ship with the component.
   Notices must be retained for both licences.
-- **Status: `EVALUATE`, and deliberately not adopted for the first T-Watch
-  slice**, which is display and touch — neither of which SensorLib supplies
-  better than the components already pinned. Adding it to the slice that cannot
-  exercise it is how a dependency arrives unexamined. The audit it needs — size
-  delta after per-driver exclusion, error propagation, IRQ semantics, and the
-  BMA423 feature blob — belongs to the slice that adds the RTC and the IMU.
+- **Status: `REJECT` for the PCF8563 path, decided 2026-09-03 under #422.** The
+  audit this entry was waiting for has now been done, and the finding is in the
+  error path: `SensorPCF8563.hpp` discards a read result over uninitialised
+  stack, splits the VL flag across two transactions, does a read-modify-write on
+  the flag register that can clear the alarm flag it did not mean to touch, and
+  gives `setDateTime()` a `void` return so an I²C failure cannot be reported at
+  all. Seven defects in one file, all of them in the half a watch depends on.
+  Read as evidence for the register semantics; write a minimal direct driver.
+  [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §2 has each one with its
+  line.
+- **The BMA423 half is not decided by this.** It was not audited under #422,
+  which scoped the part to a motion interrupt source under OD-20, and the
+  feature-blob size question is still open for whichever slice adds the IMU.
 - **Do not inherit LilyGoLib's pin:** its `library.json` pins SensorLib `0.3.1`,
   which predates the FT6X36 interrupt and BMA423 fixes released in `0.3.3`.
 
-### XPowersLib (AXP2101 driver)
+### XPowersLib (AXP2101 driver) — evaluated, rejected
 
-- **Source:** used by *both* vendors for the AXP2101 — the one part the two
+- **Source:** `lewisxhe/XPowersLib@d6997586e68f65afd51baa775903df930db39821`,
+  version `0.3.4`. Used by *both* vendors for the AXP2101 — the one part the two
   boards share.
-- **Status:** not evaluated. A strong reuse candidate precisely because it
-  covers both targets.
-- **License:** not yet checked.
+- **Licence:** MIT, from the header of `src/XPowersAXP2101.hpp`.
+- **Status: `REJECT` as a dependency, decided 2026-09-03 under #422; read as
+  evidence.** What Attadipa needs from it is four register addresses — INTEN1-3
+  at `0x40`-`0x42`, INTSTS1-3 at `0x48`-`0x4A` — and the fact that the status
+  registers are write-1-to-clear. Taking the library to obtain them also takes
+  `getIrqStatus()`, which assigns `readRegister()`'s `int` return straight into a
+  `uint8_t`: a failed I²C read becomes `0xFF` and reads as *every interrupt
+  pending*. On the T-Watch that is the worst available direction to fail in.
+  [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §6.1.
+- **The pin matters more than usual here.** `d6997586` (2026-07-01) is
+  *"fix axp2101 getIrqStatus byte order"* and touches only that one file, so
+  every earlier copy returns a wrong IRQ word — including the `0.2.9` LilyGoLib
+  pins. Any future re-evaluation starts at or after that commit.
 
 ### nanopb
 
@@ -423,6 +441,9 @@ simulator driving timed frames, or a board.
 | **LVGL 8.x** | the SDL simulator driver is out-of-tree there, and the simulator is a first-class target |
 | **LVGL `master`** | floating versions are forbidden (final §76), and pinning docs to one version while building against another is worse than either |
 | **Meshtastic (any part)** | **GPL-3.0.** Licence-compatible after the project migration, but still rejected by owner decision [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence); no code is imported |
+| **SensorLib (PCF8563 path)** | evaluated 2026-09-03 at `2b9e591f`; MIT + BSD-3-Clause. Seven defects in `SensorPCF8563.hpp`, all in the error path — a `void` setter that cannot report an I²C failure among them. Read as evidence, driver written directly |
+| **XPowersLib** | evaluated 2026-09-03 at `d6997586`; MIT. A failed register read is reported as every interrupt pending. Four register addresses are what was actually needed |
+| **LilyGoLib** | evaluated 2026-09-01 at `38e6f8d`; MIT. Arduino-only composition, `assert(0)` on a missing PMU, and it pins an XPowersLib that predates the fix above. Exact-board evidence, never linked — [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md) |
 | **`rweather/Crypto`** | licence **UNVERIFIED**. Not cloned, not read, not usable until that changes. Recorded so it is not re-proposed |
 
 Record rejections here with the reason — it stops the same option being

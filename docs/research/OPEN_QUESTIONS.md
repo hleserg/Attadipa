@@ -265,6 +265,23 @@ not say.
 | M26 | **What datum is the altitude in an `LPP_GPS` record?** Cayenne LPP says "meters" and stops. MicroNMEA reads NMEA GGA field 9, which is orthometric height above mean sea level, so MSL is the better guess — but the chain passes through `LocationProvider::getAltitude()`, which any variant may implement differently, and a geoid separation is tens of metres | **UNKNOWN** | reading every in-tree `getAltitude` implementation, or a bench comparison against a known elevation. Until then populate `altitude_msl_mm` with the provenance recorded, and never `altitude_ellipsoid_mm` |
 | M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?** It is the only way to re-read the node's coordinate, and its handler also sets `_iter_started = false`, aborting a contacts iteration in progress. Read from source; the practical cost — whether a client notices, whether contacts resync cleanly — is unmeasured | **UNKNOWN** | a bench session that starts a contacts sync and interrupts it. `NOT EXECUTED — HARDWARE REQUIRED` |
 
+### What the T-Watch RTC, input and wake desk pass could not close
+
+Opened 2026-09-03 by [#422](https://github.com/hleserg/Attadipa/issues/422). The
+PCF8563 protocol, the SensorLib verdict and the four interrupt nets are closed
+in [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md). What is left needs either
+a datasheet nobody has read yet or the board on a bench; §4 of that report is
+the procedure, and each row below names its step.
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| H19 | **Is the FT6336U interrupt a pulse or a latch, and what clears it?** It decides whether touch can be a light-sleep wake at all: a latched line nothing clears re-wakes the device immediately, and a pulse can be missed entirely. The vendor also forbids sleeping the touch controller, so it cannot simply be silenced | **UNKNOWN** | the FocalTech FT6336U datasheet, `G_MODE` register `0xA4` and the interrupt section. A document, not a bench |
+| H20 | **What is the BMA423 INT1 output driver mode, active level and latch configuration?** The net has no external pull (S3, sheet 4), so the part's own driver decides whether the line is usable. It is configuration rather than a board fact, which is why the schematic cannot answer it | **UNKNOWN** | the Bosch BMA423 datasheet, `INT1_IO_CTRL (0x53)` and `INT_LATCH (0x55)`. The SensorLib source is evidence level 2 and not a substitute |
+| H21 | **What voltage is `VRTC` actually set to on this unit?** The AXP2101 allows 1.8, 2.5, 3 or 3.3 V, chosen by EFUSE/OTP with no documented user register, and it is the pull-up rail for the PMU IRQ into GPIO21. At 1.8 V the idle level sits in the SoC's indeterminate band; at 3.3 V the question disappears | **UNKNOWN** | bench step **B3** — measure the net. No document answers this for a specific unit. `NOT EXECUTED — HARDWARE REQUIRED` |
+| H22 | **What are the AXP2101 REG 40H and REG 42H power-on IRQ-enable defaults?** They decide whether a freshly reset PMU is already asserting IRQ before any Attadipa code runs, which is the "line already active on entry to sleep" case | **UNKNOWN** | the AXP2101 datasheet V1.4 §6.13 default columns. A document, not a bench |
+| H23 | **What PCB revision is `DC:B4:D9:18:49:40`, and does the `25-03-24` schematic describe it?** Every net fact in the report is sourced to that drawing, so this is the question the others rest on | **UNKNOWN** | bench step **B0** — photograph the board marking. `NOT EXECUTED — HARDWARE REQUIRED` |
+| H24 | **Does this unit's coin cell hold the PCF8563 oscillator across a main-battery removal?** VL reads as invalid either way, so a watch that loses time on every disconnect is indistinguishable from one whose backup is simply absent — until it is measured | **UNKNOWN** | bench step **B2**. `NOT EXECUTED — HARDWARE REQUIRED` |
+
 ## Architecture
 
 | # | Question | Status | Resolved by |
