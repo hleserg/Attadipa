@@ -568,6 +568,7 @@ public:
     case ForgetNodeOutcome::Nothing:
       return attadipa::core::MeshForgetOutcome::Nothing;
     case ForgetNodeOutcome::BondKept:
+    case ForgetNodeOutcome::NotForgotten:
     case ForgetNodeOutcome::Idle:
       // Idle: the answer was already taken, or the ticket is not the
       // slot's any more. Nothing of this screen's is outstanding, and

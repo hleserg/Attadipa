@@ -79,13 +79,6 @@ void SessionOwner::ended()
     (void)ended(state_.generation);
 }
 
-std::uint16_t SessionOwner::end_and_take_connection()
-{
-    const std::uint16_t connection = state_.connection;
-    ended();
-    return connection;
-}
-
 bool SessionOwner::connected(std::uint32_t generation, std::uint16_t connection)
 {
     if (!live(generation) || state_.phase != SessionPhase::Arriving) return false;

@@ -234,6 +234,7 @@ constexpr const char* kNodeKeyNvsKey    = "node";
 // The passkey, once provisioned, so that a power cycle does not unprovision
 // the watch (ADR-0018, fact 2). Plain NVS, like the pin and the bonds.
 constexpr const char* kPasskeyNvsKey    = "passkey";
+constexpr const char* kReprovisionNvsKey = "reprovision";
 
 // The address of the peer this session is with, and the address of the last one
 // refused, packed as type<<48 | the six address bytes. Atomics rather than a
@@ -355,6 +356,51 @@ attadipa::firmware::StoredPasskey load_passkey(std::uint32_t& out)
         return StoredPasskey::Unreadable;
     }
     return StoredPasskey::Found;
+}
+
+attadipa::firmware::PasskeyReplay load_replay_permission()
+{
+    using attadipa::firmware::PasskeyReplay;
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READONLY, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return PasskeyReplay::Allowed;
+    if (opened != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore replay gate: nvs_open: %s",
+                 esp_err_to_name(opened));
+        return PasskeyReplay::Unreadable;
+    }
+    std::uint8_t pending = 0;
+    const esp_err_t err = nvs_get_u8(handle, kReprovisionNvsKey, &pending);
+    nvs_close(handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return PasskeyReplay::Allowed;
+    if (err != ESP_OK || pending != 1) {
+        ESP_LOGE(kTag, "MeshCore replay gate is unreadable or invalid");
+        return PasskeyReplay::Unreadable;
+    }
+    return PasskeyReplay::Inhibited;
+}
+
+bool mark_reprovision_pending()
+{
+    nvs_handle_t handle{};
+    if (nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
+    esp_err_t err = nvs_set_u8(handle, kReprovisionNvsKey, 1);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+bool clear_reprovision_pending()
+{
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return true;
+    if (opened != ESP_OK) return false;
+    esp_err_t err = nvs_erase_key(handle, kReprovisionNvsKey);
+    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
 }
 
 bool store_passkey(std::uint32_t passkey)
@@ -1317,19 +1363,56 @@ void handle_frame(const Event& event)
 // touch the bond store.
 struct RealForgetOps {
     void disarm() { reconnect_allowed.store(false); }
-    void terminate()
+    bool terminate()
     {
-        // Make queued frames stale before asynchronous termination clears trust.
-        if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
-        std::uint16_t connection;
-        { SessionGuard guard; connection = owner.end_and_take_connection(); }
-        if (connection == attadipa::link::kNoSessionHandle) {
-            // No session to end, so the disconnect path will not run
-            // provider.begin() for us; Deconfigure makes the same call here.
-            provider.begin(now());
-            return;
+        if (ble_gap_disc_active()) {
+            const int rc = ble_gap_disc_cancel();
+            if (rc != 0 && rc != BLE_HS_EALREADY) {
+                ESP_LOGE(kTag, "forget-node: scan cancel refused (rc=%d)", rc);
+                return false;
+            }
         }
-        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+        using attadipa::firmware::ForgetTransportTermination;
+        const ForgetTransportTermination result =
+            attadipa::firmware::terminate_forget_session(
+                [] { return session_snapshot(); },
+                [](std::uint16_t connection) {
+                    const int rc = ble_gap_terminate(
+                        connection, BLE_ERR_REM_USER_CONN_TERM);
+                    if (rc == 0 || rc == BLE_HS_EALREADY) {
+                        return ForgetTransportTermination::Pending;
+                    }
+                    if (rc == BLE_HS_ENOTCONN) {
+                        return ForgetTransportTermination::Gone;
+                    }
+                    ESP_LOGE(kTag,
+                             "forget-node: disconnect refused (rc=%d)", rc);
+                    return ForgetTransportTermination::Refused;
+                },
+                [](std::uint32_t generation) {
+                    SessionGuard guard;
+                    (void)owner.ended(generation);
+                }, attadipa::link::kNoSessionHandle);
+        if (result == ForgetTransportTermination::Absent) {
+            // No disconnect callback will reset the provider in this case.
+            provider.begin(now());
+        }
+        return result != ForgetTransportTermination::Refused;
+    }
+    bool mark_reprovision()
+    {
+        if (mark_reprovision_pending()) return true;
+        ESP_LOGE(kTag,
+                 "forget-node: recovery marker was not stored; trust kept");
+        return false;
+    }
+    void cancel_reprovision()
+    {
+        if (!clear_reprovision_pending()) {
+            ESP_LOGE(kTag,
+                     "forget-node: recovery marker could not be rolled back; "
+                     "boot replay stays inhibited");
+        }
     }
     bool take_forget(attadipa::firmware::BondIdentity& out)
     {
@@ -1376,6 +1459,7 @@ const char* forget_node_name(attadipa::firmware::ForgetNodeOutcome outcome)
     case ForgetNodeOutcome::BondKept:   return "the store refused; nothing changed";
     case ForgetNodeOutcome::PinOnFlash: return "pin cleared in memory only; the NVS erase refused";
     case ForgetNodeOutcome::Nothing:    return "nothing to forget";
+    case ForgetNodeOutcome::NotForgotten: return "a prerequisite refused; trust kept";
     case ForgetNodeOutcome::Idle:
     case ForgetNodeOutcome::InFlight:   break;
     }
@@ -1566,12 +1650,12 @@ void mesh_task(void*)
                 // and now says it to the screen as well, because "it will be
                 // gone at the next boot" is not a fact a serial log can carry
                 // to somebody holding the watch.
-                const bool stored =
-                    !event.persist_passkey || store_passkey(event.passkey);
+                const bool stored = !event.persist_passkey ||
+                    (store_passkey(event.passkey) && clear_reprovision_pending());
                 if (!stored) {
                     ESP_LOGE(kTag,
-                             "MeshCore passkey armed but not stored; it will "
-                             "not survive a power cycle");
+                             "MeshCore passkey armed but durable provisioning "
+                             "did not finish; boot replay stays disabled");
                 }
                 configured.store(true);
                 reconnect_allowed.store(true);
@@ -1863,6 +1947,11 @@ struct PasskeyOps {
     // Zero unless somebody is waiting on the answer; see Event::ticket.
     std::uint32_t ticket = 0;
 
+    attadipa::firmware::PasskeyReplay replay_permission()
+    {
+        return load_replay_permission();
+    }
+
     attadipa::firmware::StoredPasskey load(std::uint32_t& out)
     {
         return load_passkey(out);
@@ -1896,6 +1985,14 @@ void restore_passkey()
         break;
     case PasskeyRestore::Refused:
         ESP_LOGE(kTag, "MeshCore passkey on flash is not six digits; ignored");
+        break;
+    case PasskeyRestore::ReplayInhibited:
+        ESP_LOGW(kTag,
+                 "MeshCore node was forgotten; retained passkey is not replayed");
+        break;
+    case PasskeyRestore::ReplayUnreadable:
+        ESP_LOGE(kTag,
+                 "MeshCore replay gate could not be read; BLE stays unconfigured");
         break;
     }
 }

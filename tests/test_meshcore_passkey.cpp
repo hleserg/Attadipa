@@ -27,9 +27,11 @@ int failures = 0;
     } while (false)
 
 using attadipa::firmware::PasskeyRestore;
+using attadipa::firmware::PasskeyReplay;
 using attadipa::firmware::StoredPasskey;
 
 struct FakeStore {
+    PasskeyReplay replay = PasskeyReplay::Allowed;
     StoredPasskey on_flash = StoredPasskey::Absent;
     std::uint32_t value = 0;
     bool queue_full = false;
@@ -38,6 +40,8 @@ struct FakeStore {
     unsigned configures = 0;
     std::uint32_t configured = 0;
     bool persisted = false;
+
+    PasskeyReplay replay_permission() const { return replay; }
 
     StoredPasskey load(std::uint32_t& out)
     {
@@ -87,6 +91,22 @@ void test_restore()
     FakeStore store;
     CHECK(restore_passkey(store) == PasskeyRestore::Absent);
     CHECK(store.configures == 0);
+
+    // Forget is crash-safe: while the durable recovery marker is present,
+    // boot must not replay the retained old digits into an unpinned watch.
+    store.replay = PasskeyReplay::Inhibited;
+    store.on_flash = StoredPasskey::Found;
+    store.value = 123456;
+    CHECK(restore_passkey(store) == PasskeyRestore::ReplayInhibited);
+    CHECK(store.configures == 0);
+
+    // An unreadable gate fails closed too. Treating it as absent would be the
+    // same silent first-answer adoption as losing the marker entirely.
+    store.replay = PasskeyReplay::Unreadable;
+    CHECK(restore_passkey(store) == PasskeyRestore::ReplayUnreadable);
+    CHECK(store.configures == 0);
+
+    store.replay = PasskeyReplay::Allowed;
 
     store.on_flash = StoredPasskey::Unreadable;
     CHECK(restore_passkey(store) == PasskeyRestore::Unreadable);

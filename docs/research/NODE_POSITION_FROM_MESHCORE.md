@@ -629,7 +629,7 @@ than papering over it.
 
 A fake provider drives every `Availability` a node provider can produce —
 `Unprovisioned` (no node pinned), `Unreachable`, `Incompatible` (the version
-handshake fails), `Failed` (the transport fault: `firmware/main/meshcore_ble.cpp:1213` — "provider.fault(now());"
+handshake fails), `Failed` (the transport fault: `firmware/main/meshcore_ble.cpp:1259` — "provider.fault(now());"
 lands as `link/src/meshcore_companion.cpp:211` — "status_.availability = core::Availability::Failed;")
 and `Ready` — and, under `Ready`, `PositionValidity::NoFix` (the first slice's
 only verdict, §4.1), plus disconnect and recovery, without the consumer learning which provider

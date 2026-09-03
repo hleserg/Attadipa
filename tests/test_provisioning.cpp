@@ -110,7 +110,11 @@ struct FakeBoard final : attadipa::core::Provisioner {
 
     // The mesh worker's three lines, run when a test says so: the stack took
     // the passkey and flash holds it, or one of them refused.
-    void worker(PasskeyOutcome outcome) { op.complete(queued, outcome); }
+    void worker(PasskeyOutcome outcome)
+    {
+        if (outcome == PasskeyOutcome::Armed) reprovision_pending = false;
+        op.complete(queued, outcome);
+    }
 
     // --- The node, and what forgetting it touches --------------------------
     //
@@ -121,6 +125,11 @@ struct FakeBoard final : attadipa::core::Provisioner {
     bool pin_on_flash = false;  // the NVS key
     bool store_refuses = false; // ble_store_util_delete_peer says no
     bool erase_refuses = false; // nvs_erase_key says no
+    bool terminate_refuses = false;
+    bool marker_refuses = false;
+    bool reprovision_pending = false;
+    bool delete_saw_marker = false;
+    bool erase_saw_marker = false;
     bool armed = true;          // reconnect_allowed
     bool cooling_down = true;   // a refusal cooldown still running
     int forgets = 0, deletes = 0, terminates = 0, forget_polls = 0;
@@ -180,18 +189,31 @@ struct FakeBoard final : attadipa::core::Provisioner {
         }
     }
 
-    // `Ops` for forget_node(): the eight things the worker does to the board.
+    // `Ops` for forget_node(): the worker's ordered changes to the board.
     void disarm() { armed = false; }
-    void terminate() { ++terminates; }
+    bool terminate()
+    {
+        ++terminates;
+        return !terminate_refuses;
+    }
+    bool mark_reprovision()
+    {
+        if (marker_refuses) return false;
+        reprovision_pending = true;
+        return true;
+    }
+    void cancel_reprovision() { reprovision_pending = false; }
     bool take_forget(BondIdentity& out) { return recovery.take_forget(out); }
     bool delete_bond(const BondIdentity&)
     {
+        delete_saw_marker = reprovision_pending;
         ++deletes;
         return !store_refuses;
     }
     void record(const BondIdentity& peer) { recovery.record(peer); }
     bool erase_pin()
     {
+        erase_saw_marker = reprovision_pending;
         if (erase_refuses) return false;
         pin_on_flash = false;
         return true;
@@ -820,8 +842,10 @@ int main()
         CHECK(entry.poll());
         CHECK(entry.verdict() == EntryVerdict::Forgotten);
         CHECK(board.deletes == 1);
+        CHECK(board.delete_saw_marker && board.erase_saw_marker);
         CHECK(!board.recovery.recovery_required());
         CHECK(!board.pinned && !board.pin_on_flash && !board.armed);
+        CHECK(board.reprovision_pending);
         CHECK(entry.field() == EntryField::Passkey);
         // A restart between the clear and the next adoption finds no pin:
         // what boot would read is `pin_on_flash`, and it is gone.
@@ -836,8 +860,30 @@ int main()
         entry.press(EntryKey::Ok);
         CHECK(board.passkeys == 1 && board.passkey == 654321);
         board.worker(PasskeyOutcome::Armed);
+        CHECK(!board.reprovision_pending);
         CHECK(entry.poll() && entry.finished());
         CHECK(hint_is(entry, "the watch is set up"));
+    }
+    // Refusing the transport termination or the crash-safe marker is a
+    // truthful failure before either trust copy is changed.
+    {
+        FakeBoard board;
+        board.pinned = board.pin_on_flash = true;
+        board.stale_bond();
+        board.terminate_refuses = true;
+        CHECK(attadipa::firmware::forget_node(board) ==
+              ForgetNodeOutcome::NotForgotten);
+        CHECK(board.pinned && board.pin_on_flash);
+        CHECK(board.recovery.recovery_required());
+        CHECK(board.deletes == 0 && !board.reprovision_pending);
+
+        board.terminate_refuses = false;
+        board.marker_refuses = true;
+        CHECK(attadipa::firmware::forget_node(board) ==
+              ForgetNodeOutcome::NotForgotten);
+        CHECK(board.pinned && board.pin_on_flash);
+        CHECK(board.recovery.recovery_required());
+        CHECK(board.deletes == 0 && !board.reprovision_pending);
     }
     // The store refuses. The record goes back, the pin is untouched in both
     // places, the node stays on the screen, and the key works again once

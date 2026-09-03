@@ -31,6 +31,7 @@
 #include "attadipa/link/meshcore_companion.h"
 #include "attadipa/link/session_owner.h"
 #include "meshcore_boot.h"
+#include "meshcore_node_forget.h"
 #include "meshcore_node_pin.h"
 #include "meshcore_bond_recovery.h"
 #include "meshcore_forget_outcome.h"
@@ -345,17 +346,50 @@ void ending_a_session_clears_everything_stamped_with_it()
 // an asynchronous transport to disconnect. Otherwise a notification already
 // in the worker queue can still mutate the pin after the screen reports that
 // the node was forgotten.
-void taking_the_connection_for_termination_ends_the_session_first()
+void forget_termination_invalidates_only_an_accepted_disconnect()
 {
+    using attadipa::firmware::ForgetTransportTermination;
+    using attadipa::firmware::terminate_forget_session;
+
     SessionOwner owner;
     const std::uint32_t generation = establish(owner, 7);
+    const std::uint32_t queued_frame = generation;
+    bool invalidated = false;
 
-    CHECK(owner.end_and_take_connection() == 7);
+    const auto pending = terminate_forget_session(
+        [&] { return owner.snapshot(); },
+        [&](std::uint16_t connection) {
+            CHECK(connection == 7);
+            CHECK(owner.live(generation));
+            return ForgetTransportTermination::Pending;
+        },
+        [&](std::uint32_t ended) {
+            invalidated = owner.ended(ended);
+        }, kNoSessionHandle);
+
+    CHECK(pending == ForgetTransportTermination::Pending);
+    CHECK(invalidated);
     CHECK(!owner.live(generation));
     CHECK(owner.snapshot().connection == kNoSessionHandle);
+    // A SELF_INFO frame already queued by the host task now names a dead
+    // generation before forget_node() is allowed to clear either trust copy.
+    CHECK(!owner.live(queued_frame));
 
     // The later transport callback is stale and cannot end anything twice.
     CHECK(!owner.ended(generation));
+
+    // A controller refusal leaves the real session live and makes the forget
+    // operation fail before it changes the bond, pin, or durable boot gate.
+    SessionOwner refused_owner;
+    const std::uint32_t refused_generation = establish(refused_owner, 9);
+    bool should_not_end = false;
+    const auto refused = terminate_forget_session(
+        [&] { return refused_owner.snapshot(); },
+        [](std::uint16_t) { return ForgetTransportTermination::Refused; },
+        [&](std::uint32_t) { should_not_end = true; }, kNoSessionHandle);
+    CHECK(refused == ForgetTransportTermination::Refused);
+    CHECK(!should_not_end);
+    CHECK(refused_owner.live(refused_generation));
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,7 +1573,7 @@ int main()
     a_stale_completion_cannot_release_a_live_sessions_slot();
     a_previous_generation_cannot_write_the_current_ones_handles();
     ending_a_session_clears_everything_stamped_with_it();
-    taking_the_connection_for_termination_ends_the_session_first();
+    forget_termination_invalidates_only_an_accepted_disconnect();
     a_worker_that_keeps_up_is_told_each_transition_once();
     a_starved_worker_is_told_where_the_session_actually_got_to();
     a_session_that_never_established_is_not_replayed_as_ready();

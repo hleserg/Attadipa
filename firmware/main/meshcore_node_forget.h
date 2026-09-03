@@ -53,11 +53,42 @@ enum class ForgetNodeOutcome : std::uint8_t {
     // Neither a recorded bond nor a pin: nothing to forget, and nothing
     // was.
     Nothing,
+    // A prerequisite (transport termination or durable recovery marker)
+    // refused, so neither the bond nor either pin copy was changed.
+    NotForgotten,
 };
+
+// `Pending` includes NimBLE's already-terminating answer; `Gone` is its
+// already-disconnected answer, while `Absent` means SessionOwner had no handle.
+enum class ForgetTransportTermination : std::uint8_t {
+    Absent,
+    Pending,
+    Gone,
+    Refused,
+};
+
+// The exact production seam between SessionOwner and the asynchronous radio.
+// `start` runs outside the session lock. Only an accepted disconnect makes the
+// captured generation stale, and that happens before forget_node() can clear
+// trust, so frames already queued by the host task cannot put the pin back.
+template <typename Snapshot, typename Start, typename End>
+ForgetTransportTermination terminate_forget_session(
+    Snapshot snapshot, Start start, End end, std::uint16_t no_connection)
+{
+    const auto session = snapshot();
+    if (session.connection == no_connection) {
+        return ForgetTransportTermination::Absent;
+    }
+    const ForgetTransportTermination result = start(session.connection);
+    if (result != ForgetTransportTermination::Refused) end(session.generation);
+    return result;
+}
 
 // `Ops` is the board:
 //   void disarm();                          reconnect_allowed <- false
-//   void terminate();                       end the live session, if any
+//   bool terminate();                       end the live session, if any
+//   bool mark_reprovision();                durable boot-replay inhibitor
+//   void cancel_reprovision();              undo it when trust was unchanged
 //   bool take_forget(BondIdentity& out);    BondRecovery::take_forget
 //   bool delete_bond(const BondIdentity&);  ble_store_util_delete_peer == 0
 //   void record(const BondIdentity&);       BondRecovery::record, on refusal
@@ -71,7 +102,12 @@ ForgetNodeOutcome forget_node(Ops& ops)
     // the terminate below causes must not be the reconnect that adopts a
     // node while the clears are half done.
     ops.disarm();
-    ops.terminate();
+    if (!ops.terminate()) return ForgetNodeOutcome::NotForgotten;
+
+    // The passkey itself is deliberately retained. This marker is therefore
+    // the crash-safe half of disarm(): a reboot after any clear below still
+    // waits for new owner-entered digits instead of replaying the old ones.
+    if (!ops.mark_reprovision()) return ForgetNodeOutcome::NotForgotten;
 
     BondIdentity peer{};
     const bool taken = ops.take_forget(peer);
@@ -81,6 +117,7 @@ ForgetNodeOutcome forget_node(Ops& ops)
         // it beside a bond that still blocks every connection would be
         // today's dead end with the one clue to it removed.
         ops.record(peer);
+        ops.cancel_reprovision();
         return ForgetNodeOutcome::BondKept;
     }
 
@@ -91,7 +128,10 @@ ForgetNodeOutcome forget_node(Ops& ops)
     const bool was_pinned = ops.unpin();
     ops.clear_refusal();
 
-    if (!taken && !was_pinned) return ForgetNodeOutcome::Nothing;
+    if (!taken && !was_pinned && erased) {
+        ops.cancel_reprovision();
+        return ForgetNodeOutcome::Nothing;
+    }
     if (!erased) return ForgetNodeOutcome::PinOnFlash;
     return taken ? ForgetNodeOutcome::Forgotten : ForgetNodeOutcome::Unpinned;
 }
