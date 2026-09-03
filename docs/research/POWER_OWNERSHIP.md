@@ -111,7 +111,7 @@ What it does not have is a way for anyone else to take part.
 `initialize_pmu()` programs three rails and enables two:
 [`firmware/main/board_power.cpp:495`](../../firmware/main/board_power.cpp) —
 "DC1 3.3 V", then ALDO1 and
-[`firmware/main/board_power.cpp:483`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:497`](../../firmware/main/board_power.cpp) —
 "ALDO2 3.3 V", enabling them read-modify-write at
 [`firmware/main/board_power.cpp:504`](../../firmware/main/board_power.cpp) —
 "ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,". Its comment
@@ -241,7 +241,7 @@ nothing torn down — a partially initialised board reported as a failure.
 
 The owner contract's `prepare → commit → rollback` shape is the same shape
 boot needs, and boot has it now. Each required-step failure calls
-[`firmware/main/waveshare_board.cpp:1110`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1162`](../../firmware/main/waveshare_board.cpp) —
 "esp_err_t abandon_board() {", which reads the journal from `BoardState`'s
 handles. Before an LVGL display exists, it releases every completed step in
 reverse. After a display exists, the display stack is deliberately retained;
@@ -255,7 +255,7 @@ Two things the rollback leaves behind, on purpose. The rails, always: the
 bring-up wrote them, and switching any of them off is authorised by a
 measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
 a supply), so they stay as written and the log says so:
-[`firmware/main/waveshare_board.cpp:1139`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1152`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". And the whole display stack — LVGL, the display, the
 panel, its IO and the QSPI host — whenever rollback cannot prove that a queued
 transfer has completed. The LVGL mutex serialises API calls; it is not a QSPI
@@ -270,22 +270,40 @@ the header read on 2026-09-03 has SHA-256
 `0938ac0f248c03bac10427baebe0c674a90eed90c64769d835d9947fadd73227`.
 
 There is consequently no release-with-display branch or caller-provided
-quiescence claim: [`firmware/main/waveshare_board.cpp:1112`](../../firmware/main/waveshare_board.cpp) —
-"if (state.display != nullptr) {" — always retains a registered display.
+quiescence claim: a registered display is always retained.
+
+**Two boards, one question, two answers, and the difference is not style.**
+The decision is written once, board-agnostic and template-only, in
+[`firmware/main/boot_rollback.h:32`](../../firmware/main/boot_rollback.h) —
+"void rollback_boot_retaining_all(Ops &ops) {" for the T-Watch and
+[`firmware/main/boot_rollback.h:53`](../../firmware/main/boot_rollback.h) —
+"void rollback_boot_retaining_display(Ops &ops) {" for the Waveshare, and
+`tests/test_boot_rollback.cpp` pins every branch of both off a board. The DMA
+argument above reaches the display stack and nothing else: it authorises
+retaining neither board's I2C. What separates the answers is who owns the
+touch handle. On the T-Watch the LVGL port does —
+[`firmware/main/twatch_board.cpp:719`](../../firmware/main/twatch_board.cpp) —
+"state.indev = lvgl_port_add_touch(&touch);" — and rollback removes no indev,
+so an LVGL still running still reads that `esp_lcd_touch_t`; retaining the
+display has to retain touch and its bus with it. On the Waveshare the input
+service owns its own `lv_indev_t` and deletes it on its own failure
+([`firmware/main/physical_input.cpp:181`](../../firmware/main/physical_input.cpp) —
+"A boot that got no touch controller"), so nothing LVGL keeps points at the
+touch controller and only the display stack is retained.
 That path is reached both when boot's LVGL lock times out
-([`firmware/main/waveshare_board.cpp:1205`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1226`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(ESP_ERR_TIMEOUT,") and when
 physical-input startup fails after `create_ui()` may have queued the first frame
-([`firmware/main/waveshare_board.cpp:1250`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1271`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
 use-after-free. On the physical-input failure, both callbacks installed by
 `create_ui()` are disarmed while the caller still owns the LVGL lock:
-[`firmware/main/waveshare_board.cpp:1239`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1260`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), long_press);" — removes the path
 into provisioning/RTC and the adjacent timer deletion removes `refresh_ui()`.
 The board power adapter is detached before its PMU handle and I2C bus are
-released ([`firmware/main/waveshare_board.cpp:1134`](../../firmware/main/waveshare_board.cpp) —
+released ([`firmware/main/waveshare_board.cpp:1140`](../../firmware/main/waveshare_board.cpp) —
 "attadipa::firmware::board_power_detach();"), so the retained panel cannot
 leave the owner paired with a dangling PMU handle. The retained UI stays
 allocated but inert, and `BoardState` keeps its live display handles rather

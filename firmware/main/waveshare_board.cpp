@@ -3,6 +3,7 @@
 
 #include "waveshare_board.h"
 #include "board_power.h"
+#include "boot_rollback.h"
 
 #include "pcf85063_time.h"
 #include "provision_time.h"
@@ -1088,60 +1089,80 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // Undo every boot step that succeeded, in reverse, so a boot that fails at
 // step n does not leave n-1 subsystems up and unreported (POWER_OWNERSHIP §2.5,
 // #367 item 6). The journal is the handles above: null means the step never
-// ran. A registered display is retained; there is no production state in
-// which this rollback can prove its asynchronous transfer completed.
+// ran. Which steps a registered display forbids, and why, is `boot_rollback.h`.
 //
-// Once an LVGL display is registered, no production path can prove that its
-// queued QSPI DMA callback has completed. The pinned esp_lvgl_port 2.8.0~1
-// public display API exposes add and remove only; remove has no timeout or
-// completion barrier. Rollback therefore retains the whole display stack --
-// LVGL, display, panel, panel IO and SPI2 -- whenever `state.display` is set.
-// A leak is recoverable and a callback into a freed display is not.
-//
-// The one thing it cannot undo is the rails: `board_power_bring_up_rails()`
+// The one thing rollback cannot undo is the rails: `board_power_bring_up_rails()`
 // wrote them, and switching any of them off is authorised by a measurement
 // nobody has made (ADR-0016 Consequences; ALDO2 is a pull-up, not a supply).
 // They stay as written, and the log says so, because "the PMU is programmed
 // and nothing else is" is a known state and a dark board is not.
 //
-// Returns the first teardown failure. A failed step is logged and skipped,
-// not retried: the board is then in a state nobody read back, and the honest
-// report to the caller is that error, not ESP_OK.
-esp_err_t abandon_board() {
+// `abandon_board()` returns the first teardown failure. A failed step is logged
+// and skipped, not retried: the board is then in a state nobody read back, and
+// the honest report to the caller is that error, not ESP_OK.
+// The steps, as the board can undo them. The decision that orders them --
+// what a registered display forbids freeing -- is `boot_rollback.h`, shared
+// with the T-Watch and pinned by `tests/test_boot_rollback.cpp` off a board.
+struct WaveshareRollbackOps {
   esp_err_t first_failure = ESP_OK;
-  if (state.display != nullptr) {
+
+  bool display_registered() const { return state.display != nullptr; }
+
+  void retain_display_stack() {
     ESP_LOGE(kTag, "boot rollback: display transfer is not proven idle; LVGL, "
                    "the panel and QSPI are left in place rather than freed");
-  } else {
+  }
+  void stop_lvgl() {
     if (state.lvgl_up) {
       (void)lvgl_port_deinit();  // always ESP_OK: a request, not a result
       state.lvgl_up = false;
     }
+  }
+  void remove_panel() {
     undo(state.panel, first_failure, "delete panel", esp_lcd_panel_del);
+  }
+  void remove_panel_io() {
     undo(state.panel_io, first_failure, "delete panel IO", esp_lcd_panel_io_del);
-    if (state.spi_bus_up) {
-      const esp_err_t err = spi_bus_free(SPI2_HOST);
-      if (err != ESP_OK) {
-        ESP_LOGE(kTag, "boot rollback: free QSPI failed: %s",
-                 esp_err_to_name(err));
-        if (first_failure == ESP_OK) {
-          first_failure = err;
-        }
-      }
-      state.spi_bus_up = false;
+  }
+  void free_spi() {
+    if (!state.spi_bus_up) {
+      return;
     }
+    const esp_err_t err = spi_bus_free(SPI2_HOST);
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag, "boot rollback: free QSPI failed: %s", esp_err_to_name(err));
+      if (first_failure == ESP_OK) {
+        first_failure = err;
+      }
+    }
+    state.spi_bus_up = false;
   }
-  attadipa::firmware::board_power_detach();
-  undo(state.touch, first_failure, "delete touch", esp_lcd_touch_del);
-  undo(state.touch_io, first_failure, "delete touch IO", esp_lcd_panel_io_del);
-  undo(state.rtc, first_failure, "remove PCF85063", i2c_master_bus_rm_device);
-  if (state.pmu != nullptr) {
-    ESP_LOGW(kTag, "boot rollback: AXP2101 rails stay as written -- no "
-                   "measurement authorises switching one off (ADR-0016)");
+  void detach_power_owner() { attadipa::firmware::board_power_detach(); }
+  void remove_touch() {
+    undo(state.touch, first_failure, "delete touch", esp_lcd_touch_del);
   }
-  undo(state.pmu, first_failure, "remove AXP2101", i2c_master_bus_rm_device);
-  undo(state.i2c, first_failure, "delete I2C bus", i2c_del_master_bus);
-  return first_failure;
+  void remove_touch_io() {
+    undo(state.touch_io, first_failure, "delete touch IO", esp_lcd_panel_io_del);
+  }
+  void remove_rtc() {
+    undo(state.rtc, first_failure, "remove PCF85063", i2c_master_bus_rm_device);
+  }
+  void remove_pmu() {
+    if (state.pmu != nullptr) {
+      ESP_LOGW(kTag, "boot rollback: AXP2101 rails stay as written -- no "
+                     "measurement authorises switching one off (ADR-0016)");
+    }
+    undo(state.pmu, first_failure, "remove AXP2101", i2c_master_bus_rm_device);
+  }
+  void remove_main_bus() {
+    undo(state.i2c, first_failure, "delete I2C bus", i2c_del_master_bus);
+  }
+};
+
+esp_err_t abandon_board() {
+  WaveshareRollbackOps ops;
+  attadipa::firmware::rollback_boot_retaining_display(ops);
+  return ops.first_failure;
 }
 
 // A required step failed: roll back, and report the step's error -- a rollback

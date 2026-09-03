@@ -34,7 +34,7 @@
 
 #include "attadipa/platform/board_profile.h"
 #include "board_power.h"
-#include "twatch_boot_rollback.h"
+#include "boot_rollback.h"
 #include "twatch_panel_exercise.h"
 
 namespace {
@@ -671,7 +671,7 @@ esp_err_t abandon_twatch_after(esp_err_t err, const char *step) {
   ESP_LOGE(kTag, "%s failed: %s; rolling the boot back", step,
            esp_err_to_name(err));
   TwatchRollbackOps ops;
-  attadipa::firmware::rollback_twatch_boot(ops);
+  attadipa::firmware::rollback_boot_retaining_all(ops);
   return err;
 }
 
