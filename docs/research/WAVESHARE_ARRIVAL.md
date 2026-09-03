@@ -76,7 +76,7 @@ flatly contradicts.
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:377](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:1208](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+[VERIFIED_FACTS.md:1219](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
@@ -88,9 +88,9 @@ has since added and exercised `sdkconfig.defaults` and a partition CSV. What
 is narrower and was already filed: whether that PSRAM is quad or octal, open
 question D12, named there as a blocker on the LVGL draw-buffer decision. That
 question has since been split on the strength of §3.1 — D12a resolved octal for
-this board ([OPEN_QUESTIONS.md:126](OPEN_QUESTIONS.md) "Waveshare: quad or octal?"),
+this board ([OPEN_QUESTIONS.md:132](OPEN_QUESTIONS.md) "Waveshare: quad or octal?"),
 and D12b, the T-Watch half, was then settled octal on a physical unit
-([OPEN_QUESTIONS.md:127](OPEN_QUESTIONS.md) "RESOLVED 2026-08-27 — octal").
+([OPEN_QUESTIONS.md:133](OPEN_QUESTIONS.md) "RESOLVED 2026-08-27 — octal").
 
 **The I2C topology was known; the addresses were not.** The main bus at SDA 15 /
 SCL 14 and the membership of the touch, PMU, IMU and RTC are all VERIFIED
@@ -113,7 +113,7 @@ pin facts?", UNKNOWN, with a decision row reading "open" and a sentence in
 `DEPENDENCIES.md` reading "This is a reuse-ledger decision, not a default". All
 three have since been answered the other way, by
 [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md): T6 is struck
-([OPEN_QUESTIONS.md:304](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
+([OPEN_QUESTIONS.md:298](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
 the decision row reads decided
 ([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "a board backend composes ESP-IDF"),
 and the sentence is the decision itself
@@ -195,7 +195,7 @@ nobody had re-examined. So the question was split rather than closed: D12a
 records the Waveshare as resolved and octal, and D12b held the T-Watch
 CONFLICTING pending its own readback — which came on 2026-08-27, from the die's
 own eFuses on a physical unit, and closed it octal
-([OPEN_QUESTIONS.md:127](OPEN_QUESTIONS.md) "RESOLVED 2026-08-27 — octal";
+([OPEN_QUESTIONS.md:133](OPEN_QUESTIONS.md) "RESOLVED 2026-08-27 — octal";
 [HARDWARE_MATRIX.md:87](HARDWARE_MATRIX.md) "Closes D12b").
 
 **A flash conflict comes with it, and is not resolved.** Those same five vendor
@@ -364,7 +364,7 @@ no user expansion header on this board. Both records now say so:
 [HARDWARE_MATRIX.md:403](HARDWARE_MATRIX.md) "not an expansion header" carries a
 Display FPC row instead,
 and D3 is struck as mis-stated at
-[OPEN_QUESTIONS.md:111](OPEN_QUESTIONS.md) "there is no expansion connector". This retires the hot-unplug and
+[OPEN_QUESTIONS.md:117](OPEN_QUESTIONS.md) "there is no expansion connector". This retires the hot-unplug and
 bus-capacitance worry that D3 inherited from the T-Watch, where main-I2C `SDA`
 genuinely does reach a detachable GNSS connector
 ([HARDWARE_MATRIX.md](HARDWARE_MATRIX.md), *"The GNSS daughterboard is not only
@@ -732,7 +732,7 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:377](HARDWARE_MATRIX.md) "8 MB **octal**" and
-   [VERIFIED_FACTS.md:1208](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   [VERIFIED_FACTS.md:1219](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
    Only the build-configuration reading was true at the time; T-165 has since
    added and exercised that configuration.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
@@ -792,7 +792,7 @@ twice. **Two are still live.**
    expansion header. Now a Display FPC row at
    [HARDWARE_MATRIX.md:403](HARDWARE_MATRIX.md) "Display FPC", with D3 struck
    as mis-stated rather than answered at
-   [OPEN_QUESTIONS.md:111](OPEN_QUESTIONS.md) "there is no expansion connector".
+   [OPEN_QUESTIONS.md:117](OPEN_QUESTIONS.md) "there is no expansion connector".
 2. REUSE_LEDGER recorded the Waveshare BSP as coming from
    `github.com/espressif/esp-bsp`. It does not: `esp-bsp/bsp` holds 26 board
    entries and none is a Waveshare AMOLED board. The confusion was understandable

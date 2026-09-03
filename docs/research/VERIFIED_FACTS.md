@@ -813,7 +813,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1913`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1924`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1102,16 +1102,21 @@ is sourced to the drawing itself.
 ### The RTC interrupt line is pulled up, and the matrix did not say so
 
 - **Claim:** PCF8563 (U45) pin 3 `INT` reaches net `IO17`, and **R288, 10 kΩ,
-  pulls that net to `+3V3`**.
+  pulls that net to `+3V3`**. The resistor and the net are the verified part.
+  **Whether `+3V3` is always on is not**: it is **H8**, `CONFLICTING`, thirty-odd
+  lines above in this same file — "if the schematic is right, `+3V3` is
+  switchable and carries the" RTC among four other parts. Nothing here upgrades
+  that.
 - **Source:** S3, sheet 3.
 - **Impact:** the pull-up is what makes an open-drain, active-low interrupt
   usable as a level-triggered light-sleep wake at all, and
   [`HARDWARE_MATRIX.md`](HARDWARE_MATRIX.md) named the pin without it — so the
-  matrix could not answer whether the line needs an internal pull enabled.
-  Detail and the consequences for arming are in
-  [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §3.1.
+  matrix could not answer whether the line needs an internal pull enabled. The
+  pull-up is only as always-on as its rail, so arming IO17 as a wake source
+  depends on H8 and not on this entry alone. Detail and the consequences for
+  arming are in [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §3.1.
 
-### The PMU interrupt line is pulled up to 1.8 V, which is not a logic high for the SoC
+### The PMU interrupt line is pulled up to net `1.8V`, whose actual voltage is H21
 
 - **Claim:** AXP2101 pin 38 `IRQ` is pulled up by **R8226, 47 kΩ, to net
   `1.8V`**, then passes **R53, 2 kΩ, in series** to `PMU_IRQ1` and GPIO21. There
@@ -1119,12 +1124,18 @@ is sourced to the drawing itself.
   AXP2101 pin 28 `VRTC`, the PMU's own always-on RTC LDO.
 - **Source:** S3, sheets 1 and 2, with the rail's identity from the AXP2101
   datasheet V1.4 pin table ("28 VRTC P RTC power output").
-- **Impact:** ESP32-S3 datasheet v2.2 §5.4 Table 5-4, p.65 gives VIH min
-  0.75 × VDD = 2.475 V. An idle 1.8 V sits in the indeterminate band, so the
+- **Impact:** `1.8V` is the **net label** on the drawing, which is what is
+  verified here; the voltage `VRTC` is actually trimmed to on this unit is
+  **H21**, `UNKNOWN` — the AXP2101 allows 1.8, 2.5, 3 or 3.3 V by EFUSE/OTP —
+  and B3 is the step that reads it. Everything below is the 1.8 V case, and at
+  3.3 V it does not arise at all. ESP32-S3 datasheet v2.2 §5.4 Table 5-4, p.65
+  gives VIH min 0.75 × VDD = 2.475 V. An idle 1.8 V would sit in the
+  indeterminate band, so the
   line can read as permanently asserted unless the SoC's internal pull-up is
   enabled — including for the sleeping domain, which the vendor firmware does
-  with `rtc_gpio_pullup_en()` immediately before light sleep. Any Attadipa code
-  arming GPIO21 must do the same, and **must never drive GPIO21 as an output**:
+  with `rtc_gpio_pullup_en()` immediately before light sleep. Until H21 is
+  answered, any Attadipa code arming GPIO21 must do the same — the pull costs
+  nothing in the 3.3 V case and is required in the 1.8 V one — and **must never drive GPIO21 as an output**:
   the AXP2101 marks that pin `DIO` and a low held past 16 ms is a power-on
   request to the PMU. Working and `ESTIMATED` levels in
   [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §3.1.

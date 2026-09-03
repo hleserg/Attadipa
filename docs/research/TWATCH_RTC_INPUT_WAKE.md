@@ -415,7 +415,10 @@ vendor code.
 `UNKNOWN`: the BMA423 register writes that set INT1's output driver mode, active
 level and latch behaviour. The vendor calls `configInterrupt()` with no
 arguments, so the values live inside the Bosch driver, and the BMA423 datasheet
-is not in hand. "GPIO14 is active-high" is VERIFIED by vendor firmware, but the
+is not in hand. The vendor firmware *configures* GPIO14 active-high — which is
+`VERIFIED` about the vendor's build and about nothing else, because
+`INT1_IO_CTRL (0x53)` belongs to whichever driver owns the part and Attadipa's
+own may set either level. It is **H20**, not a board fact. The
 *latch* behaviour — whether the line stays high until the status register is
 read or self-clears — is genuinely UNKNOWN, and it decides whether a level wake
 spins. What would settle it: the Bosch BMA423 datasheet sections for
@@ -437,18 +440,30 @@ new work.
 | --- | --- | --- |
 | Polarity | Active LOW | Datasheet Table 3, p.8 |
 | Drive | Open-drain, high-impedance when AIE and TIE are both 0 | Datasheet Figure 5 caption, p.12 |
-| External pull | **R288 10 kΩ to `+3V3`**, the always-on rail — `docs/research/HARDWARE_MATRIX.md:200` — "pin 18 → net `+3V3`, the rail every always-on part sits on" | Schematic sheet 3 |
-| Needs an internal pull? | **No** — the only one of the four with a hard 3.3 V external pull-up, so it survives RTC peripherals being powered down | Derived |
+| External pull | **R288 10 kΩ to `+3V3`** — `docs/research/HARDWARE_MATRIX.md:200` — "pin 18 → net `+3V3`, the rail every always-on part sits on". That description is the schematic's, and whether the rail is *always* on is **H8, `CONFLICTING`**: `docs/research/HARDWARE_MATRIX.md:209` — "**`+3V3` is a switchable rail**, and" — prices cutting it, the RTC chip included | Schematic sheet 3; rail status H8 |
+| Needs an internal pull? | **Not while `+3V3` is up** — the only one of the four with a hard 3.3 V external pull-up, so it survives the *RTC peripheral domain* being powered down. It does not survive the *rail* going down, and H8 leaves open whether ALDO1 can take it down | Derived |
 | Wake mode | `GPIO_INTR_LOW_LEVEL` for light sleep, or EXT0/EXT1 `ANY_LOW` | Datasheet and `esp_sleep.h` |
 | Latched? | **Yes** — INT stays low until AF, or TF with `TI_TP = 0`, is cleared over I2C | Datasheet §8.6.5, p.19 |
 | Mandatory wake step | Clear AF by writing 01h with **AF = 0 and TF = 1** before re-arming; skipping it produces an immediate re-wake spin | Datasheet §8.3.2.1, p.12 |
 | Vendor precedent | **None** — the vendor never uses GPIO17 as a wake source, only parking it in the deep-sleep pin list | Vendor firmware |
 | Behaviour on hardware | **NOT EXECUTED — HARDWARE REQUIRED** | — |
 
-This is the strongest of the four candidates: its pull-up is on the always-on
-rail, its polarity is unambiguous, its latch is documented and its clear is a
-single register write. If the firmware needs one armed hardware wake source on
-this board, this is it.
+This is the strongest of the four candidates: its pull-up is external and hard
+rather than internal, its polarity is unambiguous, its latch is documented and
+its clear is a single register write. If the firmware needs one armed hardware
+wake source on this board, this is it.
+
+**With one open dependency, and it is not small.** The pull-up is only as
+always-on as `+3V3`, and `+3V3` is **H8**. `docs/research/HARDWARE_MATRIX.md:205` — "Do not pick" the convenient reading —
+says so about this exact rail, and the fact index carries the same warning:
+`docs/research/VERIFIED_FACTS.md:1066` — "if the schematic is right". If
+ALDO1 is the rail and #367's power owner ever gates it, R288 dies with it, IO17
+floats or is dragged low, and an armed `GPIO_INTR_LOW_LEVEL` fires immediately
+and forever — the failure this section prices for ALDO3 and touch at §3.4 ("and
+its pull-up dies"), stated there because that rail's status is known. **No bench
+step below takes `+3V3` down**: B3 reads IO17 with the PMU awake and B6 varies
+only `ESP_PD_DOMAIN_RTC_PERIPH`. Arming this line is therefore gated on H8 as
+well, and §5 says so.
 
 **Line 2 — FT6336U INT to GPIO16, touch.**
 
@@ -646,16 +661,22 @@ than opened as a separate issue.
    into `TimeService` with the same availability and validity reporting the
    Waveshare path already uses. No `#ifdef` in `core/` or `apps/`.
 3. **The T-Watch wake arming** gains exactly **one** new source to begin with:
-   the RTC alarm on GPIO17, the only line with a 3.3 V always-on external
-   pull-up, a documented latch and a one-write clear. The arming must be paired
-   with a clear-before-re-arm in the wake path, or the mechanism is a busy loop.
+   the RTC alarm on GPIO17, the only line with a hard 3.3 V external pull-up, a
+   documented latch and a one-write clear. The arming must be paired with a
+   clear-before-re-arm in the wake path, or the mechanism is a busy loop — and
+   it is gated on **H8**, because that pull-up is only as always-on as `+3V3`.
 4. **`REUSE_LEDGER.md`** moves SensorLib's PCF8563 row from `EVALUATE` to
    rejected, citing section 2 — seven defects and no error propagation — and
    records that no licence obligation is incurred because nothing is taken.
-5. **`HARDWARE_MATRIX.md`** gains the three schematic facts it lacks: R288 10 kΩ
-   to `+3V3` on the RTC INT; the AXP2101 IRQ's 47 kΩ pull-up to `VRTC` at 1.8 V
-   with R53 2 kΩ in series and no 3.3 V pull; and that GPIO14 / BMA423 INT1 is
-   active-HIGH with no external pull.
+5. **`HARDWARE_MATRIX.md`** gains the two schematic facts it lacks: R288 10 kΩ
+   to `+3V3` on the RTC INT, carrying `+3V3`'s own **H8** status with it; and the
+   AXP2101 IRQ's 47 kΩ pull-up to net `1.8V` with R53 2 kΩ in series and no
+   3.3 V pull, the net's *voltage* being **H21**. It gains a third row for
+   GPIO14 / BMA423 INT1 saying only what the schematic shows — **no external
+   pull** — because the active level is a register the owning driver writes and
+   is **H20**. Recording the vendor's configuration as a board fact is the
+   mistake this repository already has on record —
+   `docs/research/OPEN_QUESTIONS.md:135` — "A software choice had been promoted".
 
 **Explicitly out of scope until the bench has run.** Arming GPIO21, GPIO16 or
 GPIO14 as wake sources: B3 may show GPIO21 is unusable without an external part,
@@ -666,9 +687,12 @@ register write outside the ADR-0016 power owner, and any change to the PCF85063
 path, because the two RTCs share a shape and not a register map.
 
 **Gating.** Items 1, 2, 4 and 5 are desk-verifiable and can land now — item 1's
-decode logic is fully determined by section 1 and testable on the host. Item 3
-needs **B1, B2, B4 and B6** to pass on `DC:B4:D9:18:49:40` before it is more than
-an untested arming call, and the pull request must say so.
+decode logic is fully determined by section 1 and testable on the host, and item
+5 as reworded records only what the drawing shows. Item 3 needs **B1, B2, B4 and
+B6** to pass on `DC:B4:D9:18:49:40`, **and H8 answered**, before it is more than
+an untested arming call, and the pull request must say so. H8 is listed
+separately because no bench step here takes `+3V3` down, so passing all four
+would not discover it.
 
 ## 6. The other two candidates, the ADRs, and where this meets #367
 
@@ -683,9 +707,9 @@ The three register groups the issue asked to locate, at that commit:
 
 | What | Where | Registers |
 | --- | --- | --- |
-| Enable / mask | `enableIRQ()` `src/XPowersAXP2101.hpp:2640`, `disableIRQ()` `:2651`, both into `setInterruptImpl()` `:3096` | INTEN1–3, `0x40`–`0x42` |
-| Status | `getIrqStatus()` `:2590` | INTSTS1–3, `0x48`–`0x4A` |
-| Clear | `clearIrqStatus()` `:2602`, writing `0xFF` to each | write-1-to-clear, same three |
+| Enable / mask | `enableIRQ()` `src/XPowersAXP2101.hpp:2640`, `disableIRQ()` `src/XPowersAXP2101.hpp:2651`, both into `setInterruptImpl()` `src/XPowersAXP2101.hpp:3096` | INTEN1–3, `0x40`–`0x42` |
+| Status | `getIrqStatus()` `src/XPowersAXP2101.hpp:2590` | INTSTS1–3, `0x48`–`0x4A` |
+| Clear | `clearIrqStatus()` `src/XPowersAXP2101.hpp:2602`, writing `0xFF` to each | write-1-to-clear, same three |
 
 Two defects, both in the same class as SensorLib's D9 and both `VERIFIED` by
 reading the source:
@@ -699,7 +723,7 @@ reading the source:
   direction to fail in — the wake handler would clear and re-arm sources that
   never fired and report a PWR key press that did not happen.
 - **X2 — read-modify-write over an unchecked read.** `setInterruptImpl()` reads
-  INTEN back at `:3104` without checking it, then writes the modified value. On
+  INTEN back at `src/XPowersAXP2101.hpp:3104` without checking it, then writes the modified value. On
   a bus error the mask is rewritten from `0xFF`. `clearIrqStatus()` returns
   `void` and ignores its writes' results.
 
@@ -716,9 +740,9 @@ Verified at `38e6f8d`:
 | Finding | Evidence |
 | --- | --- |
 | Pins **XPowersLib 0.2.9** and **SensorLib 0.3.1** | `library.json` dependencies. 0.2.9 predates §6.1's byte-order fix by construction, so adopting LilyGoLib adopts a `getIrqStatus()` already known to be wrong |
-| A missing PMU aborts the firmware | `src/LilyGoWatchS3.cpp:128` — `assert(0);` inside `if (!initPMU())` |
-| One file-scope FreeRTOS event group is the whole interrupt plumbing | `:26` — `EventGroupHandle_t LilyGoWatch2022::_event;` |
-| The touch bit is deliberately never cleared | `:387` — `// xEventGroupClearBits(_event, HW_IRQ_TOUCHPAD);  //No clear`, so `getTouched()` latches true for the life of the session |
+| A missing PMU aborts the firmware | `src/LilyGoWatchS3.cpp:129` — `assert(0);` inside `if (!initPMU())` |
+| One file-scope FreeRTOS event group is the whole interrupt plumbing | `src/LilyGoWatchS3.cpp:26` — `EventGroupHandle_t LilyGoWatch2022::_event;` |
+| The touch bit is deliberately never cleared | `src/LilyGoWatchS3.cpp:387` — `// xEventGroupClearBits(_event, HW_IRQ_TOUCHPAD);  //No clear`, so `getTouched()` latches true for the life of the session |
 
 The last row is the useful one, and it is evidence rather than a complaint: it
 is exactly the behaviour §3.5 identifies as fatal for a light-sleep re-arm, and
