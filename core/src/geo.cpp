@@ -1,5 +1,7 @@
 #include "attadipa/core/geo.h"
 
+#include <cmath>
+
 namespace attadipa::core {
 namespace {
 
@@ -168,6 +170,69 @@ std::uint32_t distance_mm(Position a, Position b)
     const std::uint64_t result = isqrt(squared);
 
     return result >= kDistanceSaturated ? kDistanceSaturated : static_cast<std::uint32_t>(result);
+}
+
+bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg)
+{
+    if (!in_range(a) || !in_range(b)) {
+        return false;
+    }
+    if (a.latitude_e7 == b.latitude_e7 && a.longitude_e7 == b.longitude_e7) {
+        return false;
+    }
+    // STANDING ON A POLE THERE IS NO NORTH TO MEASURE FROM, so there is no
+    // bearing to state either — every direction is the same one. This also
+    // takes the case the comparison above cannot: two different longitudes at
+    // the same pole are two coordinates and one physical point. Only the
+    // *origin* is refused; the bearing **to** a pole is due north or due south
+    // and perfectly ordinary.
+    //
+    // It is a test on the integer coordinate rather than on the arithmetic,
+    // because the arithmetic does not degenerate cleanly: cos(pi/2) in double
+    // is 6.1e-17 and not 0, so the products below stay non-zero and `atan2`
+    // goes on answering with a direction assembled from rounding error.
+    if (a.latitude_e7 == kLatitudeMaxE7 || a.latitude_e7 == -kLatitudeMaxE7) {
+        return false;
+    }
+
+    constexpr double kPi        = 3.14159265358979323846;
+    constexpr double kRadPerE7  = kPi / 180.0 / 10000000.0;
+    constexpr double kDegPerRad = 180.0 / kPi;
+
+    // The one subtraction that matters, done in int64 where it is exact. Two
+    // points a metre apart differ by about 9 in this unit; taken as a
+    // difference of two doubles already scaled to radians it would be a
+    // difference of two numbers near 1.0, and most of the mantissa would go
+    // into agreeing about the part that cancels.
+    const double dlon =
+        static_cast<double>(static_cast<std::int64_t>(b.longitude_e7) -
+                            static_cast<std::int64_t>(a.longitude_e7)) * kRadPerE7;
+
+    const double lat_a = static_cast<double>(a.latitude_e7) * kRadPerE7;
+    const double lat_b = static_cast<double>(b.latitude_e7) * kRadPerE7;
+
+    const double y = std::sin(dlon) * std::cos(lat_b);
+    const double x = std::cos(lat_a) * std::sin(lat_b) -
+                     std::sin(lat_a) * std::cos(lat_b) * std::cos(dlon);
+
+    double degrees = std::atan2(y, x) * kDegPerRad;
+    if (degrees < 0.0) {
+        degrees += 360.0;
+    }
+
+    // Rounding is what puts a value on the 0/360 seam: 359.998° rounds to
+    // 36000 centidegrees, which is not in the range this function promises.
+    // Folded rather than clamped, because the answer there is north, not
+    // "just short of north".
+    long centi = std::lround(degrees * 100.0);
+    if (centi >= 36000) {
+        centi -= 36000;
+    }
+    if (centi < 0) {
+        centi += 36000;
+    }
+    out_centideg = static_cast<std::uint16_t>(centi);
+    return true;
 }
 
 }  // namespace attadipa::core

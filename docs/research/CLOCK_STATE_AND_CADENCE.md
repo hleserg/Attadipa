@@ -651,7 +651,7 @@ foreach(_board t-watch-s3-plus waveshare-amoled-206)
                      --screenshot ${_attadipa_shot_dir}/${_board}.png)
 ```
 
-— [`tests/CMakeLists.txt:296`](../../tests/CMakeLists.txt) —
+— [`tests/CMakeLists.txt:301`](../../tests/CMakeLists.txt) —
 "foreach(_board t-watch-s3-plus waveshare-amoled-206)". Two boards, EN,
 Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with

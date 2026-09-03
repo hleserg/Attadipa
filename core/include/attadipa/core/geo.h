@@ -4,20 +4,27 @@
 
 #include "attadipa/core/position.h"
 
-// Just enough geometry to ask "how far did that move?" — and no more.
+// Just enough geometry to ask "how far, and which way?" — and no more.
 //
-// This is not a geodesy library and must not become one. It exists for one
-// consumer, the trust engine's jump detector (docs/adr/0011-gnss-integrity.md
-// §6), which compares two positions taken seconds apart and asks whether the
-// distance between them is physically possible. At that scale an
-// equirectangular approximation is correct to well within the error of the fixes
-// being compared, and it costs no floating point, no trigonometry at runtime and
-// no library.
+// This is not a geodesy library and must not become one. It has two consumers
+// and they are not alike:
 //
-// What it is NOT good for, written here because the temptation is real: route
-// distances, anything crossing a pole, anything spanning more than a few
-// kilometres, or a bearing. A real geodesic belongs to whoever needs one, and
-// the reuse ledger already names GeographicLib (MIT) with a reference data set.
+//   * `distance_mm()` serves the trust engine's jump detector
+//     (docs/adr/0011-gnss-integrity.md §6), which compares two positions taken
+//     seconds apart and asks whether the distance between them is physically
+//     possible. At that scale an equirectangular approximation is correct to
+//     well within the error of the fixes being compared, and it costs no
+//     floating point, no trigonometry at runtime and no library.
+//   * `initial_bearing()` serves a screen, at the rate a screen refreshes. It
+//     does use `<cmath>`, for the reason written above it.
+//
+// What this file is still NOT good for, written here because the temptation is
+// real: route distances, anything crossing a pole, and anything spanning more
+// than a few kilometres. A real geodesic belongs to whoever needs one, and the
+// reuse ledger already names GeographicLib (MIT) with a reference data set.
+// "Or a bearing" used to be on that list and is not any more — an initial
+// great-circle bearing is six lines of trigonometry with a known answer, which
+// is a different thing from a geodesic and does not open the door to one.
 //
 // Integers throughout, and saturating rather than wrapping — a distance that
 // overflows must come back as "very far", never as "very near", because the
@@ -76,5 +83,30 @@ inline constexpr std::uint32_t kDistanceSaturated = 1000000000U;  // 1000 km in 
 // constant are worth a few tenths of a percent of their own, and neither is
 // improved by anything in here.
 std::uint32_t distance_mm(Position a, Position b);
+
+// The initial great-circle bearing from `a` to `b`, in centidegrees clockwise
+// from true north — 0..35999, the same unit and frame as
+// `GnssObservation::course_centideg`.
+//
+// False, and `out_centideg` untouched, when there is no bearing to state:
+// either position out of range, or nothing to point at. `std::atan2(0, 0)` is
+// 0 rather than an error, so without that second refusal "due north" and "you
+// are standing on it" would be the same answer, and turning a user north
+// because they arrived is the kind of confident wrong direction this file's
+// neighbours exist to prevent.
+//
+// **This one uses `<cmath>`, and the paragraph above about not linking libm
+// still stands** — it is a statement about `distance_mm()`, which the trust
+// engine runs on every fix. A bearing is computed when a screen refreshes,
+// at a rate a person can read, and buying a correct great-circle angle for
+// that is a different trade from buying one per fix.
+//
+// Where the precision is spent: the latitude and longitude *differences* are
+// formed in integers and only then scaled, so the subtraction of two nearly
+// equal angles — the one step that would cost most of the mantissa — never
+// happens in floating point. No wrap is applied to the longitude difference
+// because none is needed: sine and cosine are periodic, so a pair straddling
+// the antimeridian comes out right without help.
+bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg);
 
 }  // namespace attadipa::core
