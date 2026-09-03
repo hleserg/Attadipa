@@ -2474,11 +2474,19 @@ second, *dead* command table inside `#if 0` that differs from the live one in
 `COLMOD`, `PORCTRL` and `RAMCTRL`; and the vendor's specification table for this
 exact board says the panel is 1.3″, which D15 disproved by measurement.
 
-**`lewisxhe/SensorLib@2b9e591` (0.4.1) — `EVALUATE`, not adopted.** MIT, with
-BSD-3-Clause under `src/bosch/` that the component manifest does not exclude. It
-is the only pinnable ESP-IDF-native source for PCF8563, BMA423 and DRV2605, and
-the first T-Watch slice needs none of them. Deferred to the slice that adds the
-RTC and the IMU, with the size and IRQ audit attached rather than promised.
+**`lewisxhe/SensorLib@2b9e591` (0.4.1) — was `EVALUATE`; now `REJECT` for the
+PCF8563 path.** MIT, with BSD-3-Clause under `src/bosch/` that the component
+manifest does not exclude. It is the only pinnable ESP-IDF-native source for
+PCF8563, BMA423 and DRV2605, and the first T-Watch slice needed none of them, so
+this record deferred the audit "to the slice that adds the RTC and the IMU".
+**That slice is #422 and the audit is done**: seven defects in
+`src/time/pcf8563/SensorPCF8563.hpp`, none of them in the happy path and every
+one of them in the error path. The verdict and the evidence are the record
+[below](#a-pcf8563-driver-and-the-axp2101-interrupt-registers-behind-it), and the
+detail is [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §2. The BMA423 and
+DRV2605 halves are **not** audited and stay open for the slice that needs them —
+which is the deferral this paragraph originally made, kept only for the parts it
+still applies to.
 
 **`espressif/esp_bsp_generic` 3.1.1 — `REJECT`; `esp-box-3` — `INSPIRE
 ARCHITECTURE`.** Apache-2.0. The generic BSP's scope is simple I2C, SPIFFS, SD,

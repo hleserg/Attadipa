@@ -676,7 +676,7 @@ than opened as a separate issue.
    pull** — because the active level is a register the owning driver writes and
    is **H20**. Recording the vendor's configuration as a board fact is the
    mistake this repository already has on record —
-   `docs/research/OPEN_QUESTIONS.md:135` — "A software choice had been promoted".
+   `docs/research/OPEN_QUESTIONS.md:132` — "A software choice had been promoted".
 
 **Explicitly out of scope until the bench has run.** Arming GPIO21, GPIO16 or
 GPIO14 as wake sources: B3 may show GPIO21 is unusable without an external part,
