@@ -88,7 +88,7 @@ recursiveness and per-handle thread-safety caveat (§3.1), and the XPowersLib
 ### 2.1 One sleep transaction, in the input loop
 
 `maybe_sleep()` is the whole of it:
-[`firmware/main/physical_input.cpp:163`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:170`](../../firmware/main/physical_input.cpp) —
 "void maybe_sleep() {". It is the only caller of `esp_light_sleep_start()` in
 the tree — now
 [`firmware/main/board_power.cpp:381`](../../firmware/main/board_power.cpp) —
@@ -99,7 +99,7 @@ Its shape is already close to the transaction the issue asks for, and saying so
 matters: this is not a codebase that needs to be told what a power transaction
 is. It refuses on a busy input queue or a held button; it builds a wake plan and
 validates it against the product model before touching hardware —
-[`firmware/main/physical_input.cpp:215`](../../firmware/main/physical_input.cpp) —
+[`firmware/main/physical_input.cpp:222`](../../firmware/main/physical_input.cpp) —
 "plan.state = attadipa::core::PowerState::LightSleep;"; it arms wake sources;
 it takes the AMOLED down; it sleeps in a loop that re-arms the PMU poll timer;
 it restores the panel and republishes the UI.
@@ -142,7 +142,7 @@ owner would be allowed to do.
 
 *It has one now. #367 item 7 gave the node link a lease, and the boundary this
 section said could be drawn once is drawn:*
-`core/include/attadipa/core/node_link_lease.h:109` — "class NodeLinkLease {".
+`core/include/attadipa/core/node_link_lease.h:119` — "class NodeLinkLease {".
 *The paragraph below is what it was, and the reasoning it records is why the
 declaration is recorded on the sleeper's task rather than in the transport's.*
 
@@ -254,7 +254,7 @@ reverse. After a display exists, the display stack is deliberately retained;
 the rest of the journal still rolls back. RTC and touch failures are reported
 and boot continues: the clock shows unavailable, the input service runs
 without a touch controller and never names a touch wake
-([`firmware/main/physical_input.cpp:221`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:228`](../../firmware/main/physical_input.cpp) —
 "A boot that got no touch controller"), and the face says `no touch`.
 
 Two things the rollback leaves behind, on purpose. The rails, always: the
@@ -293,9 +293,9 @@ touch handle. On the T-Watch the LVGL port does —
 so an LVGL still running still reads that `esp_lcd_touch_t`; retaining the
 display has to retain touch and its bus with it. On the Waveshare the input
 service owns its own `lv_indev_t` and deletes it on its own failure
-([`firmware/main/physical_input.cpp:86`](../../firmware/main/physical_input.cpp) —
+([`firmware/main/physical_input.cpp:93`](../../firmware/main/physical_input.cpp) —
 "lv_indev_t *indev = lv_indev_create();" — created there and released at
-[`firmware/main/physical_input.cpp:100`](../../firmware/main/physical_input.cpp) — "lv_indev_delete(indev);"),
+[`firmware/main/physical_input.cpp:107`](../../firmware/main/physical_input.cpp) — "lv_indev_delete(indev);"),
 so nothing LVGL keeps points at the touch controller and only the display stack
 is retained.
 That path is reached both when boot's LVGL lock times out
@@ -609,7 +609,7 @@ the lease — it publishes a phase and the sleeping task records the declaration
 which is decision item 2 of [ADR-0016](../adr/0016-one-power-owner.md); the
 lease is not confined to a live connection, because `Attached` is a radio
 running an unbounded active scan and holds it too
-(`core/include/attadipa/core/node_link_lease.h:85` — "return phase == TransportPhase::Attached");
+(`core/include/attadipa/core/node_link_lease.h:95` — "return phase == TransportPhase::Attached");
 and `maybe_sleep()` still decides, because nothing gates a rail on `NodeLink`
 yet. The paragraph below is the design as proposed.*
 

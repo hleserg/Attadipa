@@ -1,6 +1,13 @@
 #include "physical_input.h"
 
 #include "board_power.h"
+// Explicit, although `physical_input.h` already reaches it through
+// `driver/i2c_master.h` on the pinned IDF. A green build does not prove the
+// macro was visible: if it is not, both guards in this file are false together,
+// the `#else` arm compiles, nothing fails, and the declaration ships as a
+// permanent `Absent` on a radio that is running. That failure is silent, so it
+// does not rest on an include chain inside somebody else's header.
+#include "sdkconfig.h"
 #if CONFIG_BT_NIMBLE_ENABLED
 #include "meshcore_ble.h"
 #endif

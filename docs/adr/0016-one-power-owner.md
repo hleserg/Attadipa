@@ -76,7 +76,7 @@ lease the sleeper never saw, and a mutex around the table closes the table
 rather than the window. **A consumer that does not run on the owner's task
 declares through a snapshot the owner's task already reads, and the owner's
 task records the declaration.** #367 item 7 is the first one:
-`core/include/attadipa/core/node_link_lease.h:109` — "class NodeLinkLease {" —
+`core/include/attadipa/core/node_link_lease.h:119` — "class NodeLinkLease {" —
 takes the BLE transport's phase, published behind the transport's own critical
 section, and reconciles the lease immediately before `sleep()` reads it. No
 ESP-IDF primitive enters `core/`.

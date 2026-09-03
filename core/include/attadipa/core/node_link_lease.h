@@ -20,9 +20,19 @@
 // snapshot is the marshal the audit asked for — the issue's own second option,
 // via a channel that exists rather than a new queue entry duplicating it. So
 // `acquire()` and `release()` stay on the one task that calls `sleep()`, and
-// the reconcile below runs immediately before it. The window closes by
-// construction: there is no instant at which a lease exists that the next
-// `held()` will not see, because the same task does both, in that order.
+// the reconcile below runs immediately before it. Be exact about which window
+// that closes, because it is not the one named above. The **table** race is
+// closed by construction: there is no instant at which a lease exists that the
+// next `held()` will not see, because the same task does both, in that order.
+// The **declaration** window is not closed, it is moved — a phase the BLE task
+// publishes after this reconcile has read the snapshot, and during
+// `esp_light_sleep_start()`, is still a declaration the sleeper never saw, the
+// same width as before with the snapshot carrying it instead of the table.
+// Closing that needs the sleep itself to be refusable by the transport, which
+// `core/include/attadipa/core/power_owner.h:330` — "// does not yet have and which nothing in the current firmware needs, because"
+// — records as absent, and which
+// `docs/adr/0016-one-power-owner.md:93` — "consumer declares; **the first plan that does must close this window before it"
+// — requires of the first plan gating a rail on `NodeLink`, before that plan ships.
 //
 // What this deliberately does not do is gate anything. `sleep()` refuses on
 // `held() & (plan.suspend | plan.rails_off)`, and the only plan the firmware
@@ -97,7 +107,7 @@ constexpr bool node_link_wants_power(TransportPhase phase)
 //
 // Called by the sleeper immediately before `sleep()`, and nowhere else — which
 // today means once per power-key release, the one place that asks for a sleep
-// (`firmware/main/physical_input.cpp:467` — "sleep_requested_ = true;").
+// (`firmware/main/physical_input.cpp:474` — "sleep_requested_ = true;").
 // So the table is sampled per sleep request rather than held as a running
 // declaration, and between requests it can report the link held long after the
 // link went `Absent`. Nothing observes that: `sleep()`'s own `held()` read is
