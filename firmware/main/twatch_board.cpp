@@ -332,6 +332,10 @@ esp_err_t initialize_touch() {
   config.rst_gpio_num = GPIO_NUM_NC;  // R39 not fitted; no reset line exists
   config.int_gpio_num = kTouchInt;
   config.levels.interrupt = 0;
+  // The FT6336U glass is mounted 180 degrees from this display orientation.
+  // The first physical run on 2026-09-03 put every marker opposite the finger.
+  config.flags.mirror_x = true;
+  config.flags.mirror_y = true;
   // No sleep command is ever sent to this controller. The only recovery from a
   // wedged FT6336U is cycling ALDO3, which blanks the display
   // (TWATCH_S3_PLUS_BSP_REUSE.md §8, §10.5).
