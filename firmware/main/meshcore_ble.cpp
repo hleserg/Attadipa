@@ -1466,7 +1466,22 @@ struct RealForgetOps {
         recovery.record(peer);
     }
     bool erase_pin() { return erase_node_pin(); }
-    bool unpin() { return provider.unpin(); }
+    bool unpin()
+    {
+        // The pin and the position go together, and this is the step that
+        // makes them go. `provider.unpin()` stops the companion answering for
+        // this node; `location` is a separate object that retains what the
+        // node said across a disconnect on purpose, and nothing else in the
+        // forget sequence reaches it -- so without this line the forgotten
+        // node's coordinate and the first four bytes of its key stay on the
+        // diagnostics line, ageing, until some other node states a position.
+        // If none ever does, indefinitely.
+        //
+        // Same task as every other member here: `provider`, `location` and
+        // `publish()` are all `mesh_task`.
+        location.forget();
+        return provider.unpin();
+    }
     void clear_refusal()
     {
         refused_addr.store(0);

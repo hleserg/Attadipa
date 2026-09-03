@@ -99,6 +99,17 @@ void LocationService::poll()
     has_origin_  = sample.has_origin;
 }
 
+void LocationService::forget()
+{
+    observation_.reset();
+    origin_     = MeshPeerId{};
+    has_origin_ = false;
+    // Not "the receiver is off" -- that would be a claim about a node this
+    // watch no longer talks to. `Unknown` is the absence of a claim, which is
+    // the only honest thing to hold about a source that has been repudiated.
+    receiver_ = ReceiverPresence::Unknown;
+}
+
 LocationState LocationService::state(MonotonicTime now) const
 {
     LocationState out;

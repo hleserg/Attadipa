@@ -450,7 +450,27 @@ void MeshCoreCompanion::accept_custom_vars(const std::uint8_t* data,
 bool MeshCoreCompanion::node_position(core::Position& out,
                                       core::MonotonicTime& arrived) const
 {
-    if (!has_node_position_) return false;
+    // A REFUSED NODE IS NOT A SOURCE, AND THE COORDINATE STILL HELD IS NOT ITS.
+    // `receive()` writes `status_.node_id` *before* it compares that key
+    // against the pin, so in the window between a refusal and the transport's
+    // disconnect `node_id()` answers with the stranger's key while
+    // `has_node_position_` still holds what the *previous, accepted* node said.
+    // Nothing pairs those two on purpose -- `NodePositionProvider::sample()`
+    // asks them separately because they are separate questions -- so without
+    // this line one node's coordinate goes out under another node's name, and
+    // `LocationService`'s changed-identity rule launders it instead of
+    // discarding it: the key is new, so the retained observation is dropped and
+    // the same coordinate immediately re-adopted under the stranger.
+    //
+    // Refused rather than cleared, and the distinction is the same one this
+    // file draws everywhere else. The previous node did say this coordinate and
+    // it is still true about the moment it arrived; what is unavailable is any
+    // way to attribute it while the session is disowned. A caller that gets
+    // `false` retains what it had, under the origin it already had.
+    //
+    // `availability()` reads this too, so it also stops answering `Ready` for a
+    // session the companion has stopped listening to at `receive()`'s gate.
+    if (wrong_node_ || !has_node_position_) return false;
     out = node_position_;
     arrived = node_position_at_;
     return true;

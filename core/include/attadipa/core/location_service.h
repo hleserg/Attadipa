@@ -188,6 +188,22 @@ public:
     // thing. Empty until one arrives, and it outlives a disconnect.
     const std::optional<GnssObservation>& observation() const { return observation_; }
 
+    // THE SOURCE WAS REPUDIATED, WHICH IS NOT "NO SAMPLE THIS PASS".
+    //
+    // `poll()` retains an observation across a disconnect deliberately: a node
+    // that went away did not withdraw what it said, and the stamp keeps saying
+    // it about the moment it arrived. Forgetting a node *is* a withdrawal.
+    // After it the watch is not paired with that node, will not reconnect to
+    // it and has deleted its bond, so going on reporting its coordinate and
+    // four bytes of its key states a source this watch has repudiated -- with
+    // an age that only grows and nothing that can ever end it, because the one
+    // thing that clears a retained observation is another node stating one.
+    //
+    // Only what the node said is dropped. `availability` and `receiver` are
+    // re-derived from the provider on the next `poll()`, so they are left for
+    // it rather than guessed at here.
+    void forget();
+
 private:
     PositionProvider& provider_;
     ValidityPolicy    policy_{};

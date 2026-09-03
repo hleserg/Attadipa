@@ -319,6 +319,96 @@ void test_a_changed_identity_discards_rather_than_re_attributes()
     CHECK(state.position.age_at_us_ms == 0);
 }
 
+// A REFUSED NODE DOES NOT INHERIT THE ACCEPTED ONE'S COORDINATE.
+//
+// The refusal happens between the two writes: `receive()` copies the key into
+// `status_.node_id` and only then compares it against the pin, breaking before
+// the coordinate. So for the whole window until the transport disconnects,
+// `node_id()` answers with the stranger and `node_position()` still holds what
+// the previous, accepted node said -- and the provider asks them separately,
+// because they are separate questions.
+//
+// Left alone that is worse than a stale reading. The identity is new, so the
+// rule above discards the retained observation and immediately re-adopts the
+// same coordinate under the stranger's key, which launders one node's position
+// into another node's name and reports `Ready` for a session the companion has
+// already stopped listening to. It does not self-heal either: a second
+// RESP_CODE_SELF_INFO does not re-run the identity settle, so it stands until
+// BLE drops for some other reason.
+void test_a_refused_node_does_not_inherit_the_accepted_coordinate()
+{
+    MeshCoreCompanion client;
+    link::NodePositionProvider provider(client);
+    core::LocationService location(provider);
+
+    client.pin(key_of(0x01));
+    session_with_position(client, key_of(0x01), 10000000, 20000000, 0, 5);
+    location.poll();
+    CHECK(location.state(at(5)).origin == key_of(0x01));
+    CHECK(location.state(at(5)).position.value.latitude_e7 == 100000000);
+
+    // The same session, a second RESP_CODE_SELF_INFO, a different key.
+    const auto stranger = self_info(key_of(0x77), 30000000, 40000000);
+    CHECK(client.receive(stranger.data(), stranger.size(), at(8)));
+    CHECK(client.wrong_node());
+
+    location.poll();
+    const core::LocationState state = location.state(at(9));
+
+    // The accepted node keeps its coordinate and its name, and the age goes on
+    // measuring from when *it* arrived.
+    CHECK(state.origin == key_of(0x01));
+    CHECK(state.has_position);
+    CHECK(state.position.value.latitude_e7 == 100000000);
+    CHECK(state.position.age_at_us_ms == 4);
+    // And nothing claims the refused node is a working source.
+    CHECK(state.availability != Availability::Ready);
+    CHECK(state.receiver == core::ReceiverPresence::Unknown);
+}
+
+// FORGETTING A NODE WITHDRAWS WHAT IT SAID; A DISCONNECT DOES NOT.
+//
+// The two are one line apart in the owner and opposite in meaning, which is why
+// both are pinned here. `test_a_disconnect_retains_and_ages` fixes the first:
+// a node that went away did not take back its coordinate. `forget()` is the
+// second: after #411 the watch is unpaired, will not reconnect and has deleted
+// the bond, so continuing to report that node's position and key prefix states
+// a source the watch has repudiated -- for as long as no other node states one,
+// which may be forever.
+void test_forgetting_a_node_withdraws_its_coordinate()
+{
+    MeshCoreCompanion client;
+    link::NodePositionProvider provider(client);
+    core::LocationService location(provider);
+
+    session_with_position(client, key_of(0x01), 10000000, 20000000, 0, 5);
+    location.poll();
+    CHECK(location.state(at(5)).has_position);
+    CHECK(location.state(at(5)).has_origin);
+
+    // A disconnect alone retains -- the case the line above this one exists for.
+    client.disconnected(at(10));
+    location.poll();
+    CHECK(location.state(at(20)).has_position);
+    CHECK(location.state(at(20)).origin == key_of(0x01));
+
+    location.forget();
+    const core::LocationState state = location.state(at(30));
+    CHECK(!state.has_position);
+    CHECK(!state.has_origin);
+    CHECK(!location.observation().has_value());
+    CHECK(!location.age_at_us(at(30)).has_value());
+    CHECK(state.receiver == core::ReceiverPresence::Unknown);
+
+    // And it is a withdrawal, not a mute: a node that states one afterwards is
+    // adopted normally.
+    session_with_position(client, key_of(0x55), 50000000, 60000000, 40, 45);
+    location.poll();
+    CHECK(location.state(at(45)).has_position);
+    CHECK(location.state(at(45)).origin == key_of(0x55));
+    CHECK(location.state(at(45)).position.value.latitude_e7 == 500000000);
+}
+
 // THE THREE STATES OF THE `gps` KEY REACH THE CONSUMER AND CHANGE NOTHING ELSE.
 //
 // The receiver state is a fact about the coordinate's provenance, never a
@@ -594,6 +684,8 @@ int main()
     test_a_disconnect_retains_and_ages();
     test_the_receiver_state_does_not_outlive_its_session();
     test_a_changed_identity_discards_rather_than_re_attributes();
+    test_a_refused_node_does_not_inherit_the_accepted_coordinate();
+    test_forgetting_a_node_withdraws_its_coordinate();
     test_the_receiver_state_is_carried_and_changes_no_verdict();
     test_a_typed_coordinate_is_indistinguishable_from_a_solved_one();
     test_the_boundary_values_and_the_one_past_it();
