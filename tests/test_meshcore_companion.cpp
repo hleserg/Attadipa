@@ -920,11 +920,20 @@ void test_a_send_that_is_never_confirmed_still_ends()
 
     // An explicit RESP_CODE_ERR after RESP_CODE_SENT. This half used to be
     // unreachable: the slot was already free, so the error had nothing to end.
+    //
+    // The custom-vars answer comes first here, and it has to: with that request
+    // still outstanding this error is the receiver hint's and not the send's,
+    // because RESP_CODE_SENT already answered the send. That is a case of its
+    // own -- test_a_custom_vars_error_does_not_fail_an_accepted_send. What this
+    // one pins is the other node: nothing else is owed a response, so an
+    // unattributable error fails the operation rather than vanishing.
     {
         MeshCoreCompanion client;
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
+        const std::uint8_t vars[] = {21};
+        CHECK(client.receive(vars, sizeof(vars), at(7)));
         CHECK(service.send_private(peer.id, "text", WallTime{1000}));
         CHECK(client.receive(sent, sizeof(sent), at(8)));
         const std::uint8_t error[] = {1, 4};
@@ -994,6 +1003,79 @@ void test_a_send_that_is_never_confirmed_still_ends()
         CHECK(!client.send_busy());
         CHECK(client.status().delivery == MeshDelivery::None);
     }
+}
+
+// RESP_CODE_ERR carries no opcode, so who it belongs to is decided by what we
+// know about the order -- and `send_busy()` was never that. It stays true
+// through the confirmation wait, which begins *because* the node already
+// answered the send with RESP_CODE_SENT. An error arriving then is somebody
+// else's, and on a node too old for opcode 40 it always arrived then: BLE
+// delivers it in milliseconds while PUSH_CODE_SEND_CONFIRMED needs a radio
+// round trip (720 ms MEASURED on the T114).
+void test_a_custom_vars_error_does_not_fail_an_accepted_send()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);  // leaves CMD_GET_CUSTOM_VARS outstanding
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 18 && frame.bytes[0] == 2);
+
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 10, 0, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+
+    // The node refuses opcode 40 while the confirmation is still in the air.
+    const std::uint8_t err[] = {1, 0};
+    CHECK(client.receive(err, sizeof(err), at(9)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(client.send_busy());
+
+    // And the confirmation the old code discarded still lands.
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+    CHECK(client.receive(ack, sizeof(ack), at(10)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+    CHECK(!client.send_busy());
+
+    // A well-formed RESP_CODE_SENT is not counted against the node either.
+    CHECK(client.malformed_frames() == 0);
+}
+
+// A node that answers CMD_GET_CUSTOM_VARS with nothing at all must not keep the
+// right to absorb somebody else's error for the rest of the session. Without
+// the bound this send stays Accepted forever: the error is handed to a request
+// that is never going to be answered, and the confirmation never comes either.
+void test_an_unanswered_custom_vars_request_stops_taking_the_blame()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);  // opcode 40 goes out at at(7)
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    client.tick(at(7 + 14999));
+    client.tick(at(7 + 15000));  // kMaxAckWait; the request is given up on
+
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 18 && frame.bytes[0] == 2);
+
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 10, 0, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(7 + 15001)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+
+    // Past the confirmation boundary, so nothing is awaiting a *response* -- the
+    // window the receiver hint would have taken this error in.
+    const std::uint8_t err[] = {1, 4};
+    CHECK(client.receive(err, sizeof(err), at(7 + 15002)));
+    CHECK(service.status().delivery == MeshDelivery::Failed);
+    CHECK(!client.send_busy());
+    CHECK(client.status().availability == Availability::Ready);
 }
 
 void test_signed_message_does_not_render_signature_as_text()
@@ -1087,6 +1169,8 @@ int main()
     test_a_room_send_owns_the_slot_through_its_login();
     test_a_room_login_that_is_never_answered_still_ends();
     test_a_send_that_is_never_confirmed_still_ends();
+    test_a_custom_vars_error_does_not_fail_an_accepted_send();
+    test_an_unanswered_custom_vars_request_stops_taking_the_blame();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
     test_self_info_carries_the_node_identity();

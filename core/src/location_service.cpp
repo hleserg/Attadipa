@@ -55,6 +55,18 @@ void LocationService::poll()
         // growing: a link that went away is not a source saying "no position",
         // and clearing here would put words in its mouth. `NoFix` is already
         // the verdict, so there is nothing to downgrade either.
+        //
+        // THE RECEIVER STATE IS NOT RETAINED WITH IT, AND THE DIFFERENCE IS THE
+        // WHOLE POINT OF KEEPING THEM APART. An observation is a thing the node
+        // said at a stamped moment, and it stays true about that moment however
+        // old it gets. "The receiver is running" is not about a moment; it is a
+        // claim about the node *now*, and a provider with no sample is a
+        // provider that cannot make one. Left alone it read `recv running`
+        // beside `avail unreachable` for a node that had been gone for an hour,
+        // and flipped back to `unknown` on the next reconnect without the
+        // coordinate ever changing -- the same fact asserted, retracted and
+        // re-asserted by nothing but the link.
+        receiver_ = ReceiverPresence::Unknown;
         return;
     }
 

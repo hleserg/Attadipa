@@ -182,6 +182,15 @@ private:
     static constexpr core::Millis kMinAckWait{1000};
     static constexpr core::Millis kMaxAckWait{15000};
 
+    // The narrower question, and the one an untagged response has to be matched
+    // against. `send_busy()` is about the *operation* -- it stays true through
+    // `awaiting_confirm_`, which is a phase the node has already answered with
+    // RESP_CODE_SENT and is now waiting out a radio round trip for. A response
+    // arriving during that phase cannot belong to the send, because the send's
+    // response has been and gone; only these two flags mean a command of ours
+    // is still owed one.
+    bool awaiting_response() const { return awaiting_send_ || awaiting_login_; }
+
     bool enqueue(const std::uint8_t* data, std::size_t size);
     bool enqueue_private(const core::MeshPeerId& peer, std::string_view text,
                          core::WallTime timestamp);
@@ -225,10 +234,19 @@ private:
     bool has_node_position_ = false;
     core::ReceiverPresence node_receiver_ = core::ReceiverPresence::Unknown;
     // Asked once per session, and tracked only so that the error a node too old
-    // for opcode 40 answers with can be told apart from a send's error. Both
-    // clear at `reset_session()`.
+    // for opcode 40 answers with can be told apart from a send's error. All
+    // three clear at `reset_session()`.
+    //
+    // `custom_vars_since_` bounds the wait, and the bound is what keeps the
+    // attribution honest rather than merely tidy. A node that answers this
+    // command with neither RESP_CODE_CUSTOM_VARS nor RESP_CODE_ERR would
+    // otherwise leave the flag set for the session, and every later error that
+    // arrives outside a send's response window would be charged to a request
+    // that is never going to be answered -- a real send's failure silently
+    // absorbed by a receiver hint nobody is waiting on.
     bool custom_vars_requested_ = false;
     bool awaiting_custom_vars_ = false;
+    core::MonotonicTime custom_vars_since_{};
     bool awaiting_send_ = false;
     // The half of a send that used to have no state at all. `awaiting_send_`
     // ends at `RESP_CODE_SENT`; the operation does not, because the ack bytes

@@ -262,6 +262,39 @@ void test_a_disconnect_retains_and_ages()
     CHECK(state.validity == core::PositionValidity::NoFix);
 }
 
+// A RECEIVER STATE IS A CLAIM ABOUT NOW, AND AN OBSERVATION IS NOT.
+//
+// The coordinate is retained across a disconnect on purpose: it is a thing the
+// node said at a stamped moment and it stays true about that moment. "The
+// receiver is running" has no moment attached -- it is a claim about the node
+// as it is -- so when the provider can no longer make one, keeping the last is
+// asserting a fact from a session that has ended. It printed `recv running`
+// beside `avail unreachable` for a node an hour gone, and flipped back to
+// `unknown` on the next reconnect with the coordinate never changing.
+void test_the_receiver_state_does_not_outlive_its_session()
+{
+    MeshCoreCompanion client;
+    link::NodePositionProvider provider(client);
+    core::LocationService location(provider);
+
+    session_with_position(client, key_of(0x33), 12345678, -87654321, 0, 10);
+    finish_contacts(client, 11);
+    send_custom_vars(client, "gps:1", 14);
+    location.poll();
+    CHECK(location.state(at(15)).receiver == core::ReceiverPresence::Running);
+
+    client.disconnected(at(20));
+    location.poll();
+
+    const core::LocationState gone = location.state(at(kHourMs));
+    CHECK(gone.availability == Availability::Unreachable);
+    CHECK(gone.receiver == core::ReceiverPresence::Unknown);
+    // And the observation beside it is untouched, which is the distinction.
+    CHECK(gone.has_position);
+    CHECK(gone.position.value.latitude_e7 == 123456780);
+    CHECK(gone.validity == core::PositionValidity::NoFix);
+}
+
 // A NEW KEY IS A NEW NODE. The retained coordinate is discarded rather than
 // re-attributed, because attributing one node's position to another is a fact
 // neither of them stated.
@@ -559,6 +592,7 @@ int main()
     test_the_verdict_is_nofix_at_every_age();
     test_an_unchanged_coordinate_is_not_evidence_of_a_live_fix();
     test_a_disconnect_retains_and_ages();
+    test_the_receiver_state_does_not_outlive_its_session();
     test_a_changed_identity_discards_rather_than_re_attributes();
     test_the_receiver_state_is_carried_and_changes_no_verdict();
     test_a_typed_coordinate_is_indistinguishable_from_a_solved_one();

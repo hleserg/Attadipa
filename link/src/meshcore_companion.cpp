@@ -215,6 +215,17 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
         status_.delivery = core::MeshDelivery::Failed;
         end_operation();
     }
+    // The receiver hint gets a bound of its own, and it is not the operation's:
+    // nobody is waiting on this answer, so it has nothing to fail. What it must
+    // not do is outlive its usefulness and then absorb a real send's error --
+    // an unanswered request that stayed outstanding for the session would take
+    // the blame for the next command the node refused. It is asked once, so
+    // giving up on it costs the receiver state and nothing else: `Unknown` is
+    // where it started and is a truthful answer for a node that did not reply.
+    if (awaiting_custom_vars_ &&
+        core::elapsed(custom_vars_since_, now) >= kMaxAckWait) {
+        awaiting_custom_vars_ = false;
+    }
     update_availability();
 }
 
@@ -578,6 +589,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             if (enqueue(vars, sizeof(vars))) {
                 custom_vars_requested_ = true;
                 awaiting_custom_vars_ = true;
+                custom_vars_since_ = now;
             }
         }
         break;
@@ -677,13 +689,29 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // the slot became permanent.
         //
         // A CMD_GET_CUSTOM_VARS this node does not define is answered by the
-        // same code with nothing to correlate it by, so attribution is a choice
-        // and this is the one made: the outstanding custom-vars request takes
-        // the error only when no send is in flight. With both outstanding the
-        // send keeps it, because a send is what somebody is waiting on and a
-        // lost receiver hint costs nothing -- and the alternative, silently
-        // clearing a send that really did fail, is the defect #315 was about.
-        if (awaiting_custom_vars_ && !send_busy()) {
+        // same code with nothing in the frame to correlate it by, so the
+        // attribution is made from what we know about the order instead of
+        // guessed from what matters most.
+        //
+        // AND `send_busy()` WAS THE WRONG QUESTION TO DECIDE IT WITH.
+        //
+        // It stays true through `awaiting_confirm_`, and that phase begins
+        // *because* the node already answered our send with RESP_CODE_SENT.
+        // What is outstanding then is a radio round trip, not a response, so an
+        // error arriving in that window cannot be the send's: the send's answer
+        // has been and gone. Charging it there failed a message the node had
+        // accepted and then discarded the confirmation that would have proved
+        // it. On a node too old for opcode 40 this was not a race but the
+        // ordinary case, because RESP_CODE_ERR crosses BLE in milliseconds and
+        // the confirmation needs a radio round trip -- 720 ms MEASURED
+        // (MESHCORE_T114_FIRST_CONTACT.md:326-329 "estimated round trip").
+        //
+        // `awaiting_response()` is the narrower question and the right one. A
+        // send that is still owed its answer keeps the error, which is the
+        // fail-closed direction #315 established: silently clearing a send that
+        // really did fail is the worse mistake, and the node answers in order,
+        // so an unanswered send is the nearer claim on an untagged error.
+        if (awaiting_custom_vars_ && !awaiting_response()) {
             awaiting_custom_vars_ = false;
             break;
         }
