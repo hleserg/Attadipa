@@ -98,7 +98,7 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
 
   title_ = lv_label_create(screen);
   bare(title_);
-  lv_label_set_text(title_, "NODE");
+  lv_label_set_text(title_, text.title);
   lv_obj_set_style_text_font(title_, title_font, LV_PART_MAIN);
   lv_obj_set_style_text_color(title_, accent, LV_PART_MAIN);
   lv_obj_set_style_text_letter_space(title_, m.px(Dp{2}), LV_PART_MAIN);
@@ -117,7 +117,7 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
 
   north_ = lv_label_create(screen);
   bare(north_);
-  lv_label_set_text(north_, "N");
+  lv_label_set_text(north_, text.north);
   lv_obj_set_style_text_font(north_, body_font, LV_PART_MAIN);
   lv_obj_set_style_text_color(north_, muted, LV_PART_MAIN);
   lv_obj_add_flag(north_, LV_OBJ_FLAG_IGNORE_LAYOUT);
@@ -125,8 +125,9 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   needle_ = lv_line_create(screen);
   bare(needle_);
   lv_obj_add_flag(needle_, LV_OBJ_FLAG_IGNORE_LAYOUT);
-  lv_obj_set_pos(needle_, 0, 0);
-  lv_obj_set_size(needle_, config.width_px, config.height_px);
+  // Sized to the ring in point_needle(), not to the panel: an lv_line
+  // invalidates its own area, and a needle the size of the screen makes every
+  // bearing change a full-panel flush.
   lv_obj_set_style_line_width(needle_, m.px(Dp{6}), LV_PART_MAIN);
   lv_obj_set_style_line_color(needle_, accent, LV_PART_MAIN);
   lv_obj_set_style_line_rounded(needle_, true, LV_PART_MAIN);
@@ -202,10 +203,14 @@ void NavFace::point_needle(const apps::NavText &text) {
     // printing `000°`, drawn instead of written.
     lv_obj_add_flag(needle_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(hub_, LV_OBJ_FLAG_HIDDEN);
+    needle_drawn_ = false;
     return;
   }
   lv_obj_remove_flag(needle_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_remove_flag(hub_, LV_OBJ_FLAG_HIDDEN);
+  if (needle_drawn_ && needle_centideg_ == text.bearing_centideg) {
+    return;
+  }
 
   // Screen y grows downward and a bearing grows clockwise from north, so the
   // sine goes on x and the *negated* cosine on y. Getting this pair the wrong
@@ -219,22 +224,34 @@ void NavFace::point_needle(const apps::NavText &text) {
   const double tip = radius * 0.62;
   const double tail = radius * 0.24;
 
+  // Points are relative to the needle object, and the object is the ring, so
+  // the ring's origin comes off each of them.
+  const std::int32_t local_x = lv_obj_get_width(ring_) / 2;
+  const std::int32_t local_y = lv_obj_get_height(ring_) / 2;
   needle_points_[0] = {
-      static_cast<lv_value_precise_t>(centre_x - std::sin(radians) * tail),
-      static_cast<lv_value_precise_t>(centre_y + std::cos(radians) * tail)};
-  needle_points_[1] = {static_cast<lv_value_precise_t>(centre_x),
-                       static_cast<lv_value_precise_t>(centre_y)};
+      static_cast<lv_value_precise_t>(local_x - std::sin(radians) * tail),
+      static_cast<lv_value_precise_t>(local_y + std::cos(radians) * tail)};
+  needle_points_[1] = {static_cast<lv_value_precise_t>(local_x),
+                       static_cast<lv_value_precise_t>(local_y)};
   needle_points_[2] = {
-      static_cast<lv_value_precise_t>(centre_x + std::sin(radians) * tip),
-      static_cast<lv_value_precise_t>(centre_y - std::cos(radians) * tip)};
+      static_cast<lv_value_precise_t>(local_x + std::sin(radians) * tip),
+      static_cast<lv_value_precise_t>(local_y - std::cos(radians) * tip)};
+  lv_obj_set_size(needle_, lv_obj_get_width(ring_), lv_obj_get_height(ring_));
+  lv_obj_set_pos(needle_, lv_obj_get_x(ring_), lv_obj_get_y(ring_));
   lv_line_set_points(needle_, needle_points_, 3);
-  lv_obj_set_pos(needle_, 0, 0);
+  needle_drawn_ = true;
+  needle_centideg_ = text.bearing_centideg;
 }
 
 void NavFace::update(const apps::NavText &text) {
   if (!built_) {
     return;
   }
+  // Both re-read on every update: a locale change is a new NavText, not a
+  // rebuild, and a title left from the previous language is the bug that
+  // pattern exists to avoid.
+  lv_label_set_text(title_, text.title);
+  lv_label_set_text(north_, text.north);
   lv_label_set_text(distance_, text.distance);
   if (text.cardinal[0] != '\0') {
     lv_label_set_text_fmt(bearing_, "%s %s", text.bearing, text.cardinal);
@@ -267,6 +284,7 @@ void NavFace::clear() {
   status_ = nullptr;
   caveat_ = nullptr;
   built_ = false;
+  needle_drawn_ = false;
 }
 
 } // namespace attadipa::ui

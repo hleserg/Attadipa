@@ -52,6 +52,13 @@ private:
   lv_obj_t *status_ = nullptr;
   lv_obj_t *caveat_ = nullptr;
   lv_point_precise_t needle_points_[3]{};
+
+  // What the needle was last drawn from. `lv_line_set_points()` invalidates the
+  // whole line object, and the readout re-formats every tick whether or not the
+  // bearing moved, so re-pointing it unconditionally costs a flush per tick for
+  // nothing.
+  bool          needle_drawn_ = false;
+  std::uint16_t needle_centideg_ = 0;
   bool built_ = false;
 };
 

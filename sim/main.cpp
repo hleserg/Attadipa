@@ -182,8 +182,8 @@ void on_long_press(lv_event_t *) {
 // half a degree north, one degree east, in the Gulf of Guinea. No real location
 // belonging to anybody appears in this repository.
 //
-// This exists because a screenshot of `Ready` proves nothing about the six
-// other things the readout can say, and those six are where a number appears
+// This exists because a screenshot of `Ready` proves nothing about the seven
+// other things the readout can say, and those seven are where a number appears
 // that should not have.
 bool stage_nav_scenario(const char *name) {
   constexpr core::Position kHere{5000000, 10000000};
@@ -224,6 +224,12 @@ bool stage_nav_scenario(const char *name) {
     own.validity = core::PositionValidity::Stale;
     g_nav_state.own = own;
     g_nav_state.target = node;
+  } else if (std::strcmp(name, "own-degraded") == 0) {
+    // Current, and solved badly. The numbers still render; the status is what
+    // carries the caveat.
+    own.validity = core::PositionValidity::Degraded;
+    g_nav_state.own = own;
+    g_nav_state.target = node;
   } else if (std::strcmp(name, "node-unavailable") == 0) {
     node.availability = core::Availability::Unreachable;
     node.position.age_at_us_ms = 45000;
@@ -247,8 +253,8 @@ bool stage_nav_scenario(const char *name) {
   } else {
     std::fprintf(stderr,
                  "unknown --nav-state \"%s\"; one of: ready waiting no-fix "
-                 "own-stale node-unavailable node-unknown node-stale arrived "
-                 "far\n",
+                 "own-stale own-degraded node-unavailable node-unknown "
+                 "node-stale arrived far\n",
                  name);
     return false;
   }
@@ -256,6 +262,9 @@ bool stage_nav_scenario(const char *name) {
 }
 
 void rebuild_nav_screen() {
+  // The locale is read at the rebuild, the way the clock reads it, so `L` at
+  // runtime switches this screen too.
+  g_nav_state.locale = l10n::locale();
   g_nav_face.build(lv_screen_active(), g_nav_config,
                    apps::format_navigation(g_nav_state));
 }

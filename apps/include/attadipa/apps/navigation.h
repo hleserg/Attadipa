@@ -5,6 +5,7 @@
 #include "attadipa/apps/app_manifest.h"
 #include "attadipa/core/location_service.h"
 #include "attadipa/core/position.h"
+#include "attadipa/l10n/locale.h"
 
 // Where the other node is, from here.
 //
@@ -22,16 +23,21 @@
 
 namespace attadipa::apps {
 
-// Seven sentences, and each of them is a different thing being wrong.
+// Eight sentences, and each of them is a different thing being wrong.
 //
-// The owner's brief named six. `OwnPositionStale` is the seventh and it is not
-// scope creep: `NoFix != stale != current != unknown` is the brief's own rule,
-// and a local fix that has aged past its policy is precisely the case that
-// would otherwise have to be reported as one of the six it is not.
+// The owner's brief named six. `OwnPositionStale` and `OwnPositionDegraded` are
+// the other two and neither is scope creep: `NoFix != stale != current !=
+// unknown` is the brief's own rule, and `core::PositionValidity` already
+// separates a fix that has aged from one that solved on too few satellites or
+// too wide an error. Folding either into `Ready` would report a caveat the
+// interface must show (`core/include/attadipa/core/position.h:188` —
+// "    Degraded,  // usable, with a caveat the interface must show") as though
+// there were none.
 enum class NavStatus : std::uint8_t {
     WaitingForGps,        // no usable local position has arrived yet
     NoFix,                // a receiver answered, and the answer is that it cannot solve
     OwnPositionStale,     // there was a local fix and it is too old to act on
+    OwnPositionDegraded,  // there is a current local fix and it solved badly
     NodeUnavailable,      // the link to the node is not up
     NodePositionUnknown,  // the node is reachable and has stated no coordinate
     NodePositionStale,    // it stated one, long enough ago that the age is the story
@@ -54,20 +60,33 @@ struct NavState {
     // forever, and a readout that waited for `Stale` to appear there would wait
     // for something that never comes.
     core::Millis target_stale_after{120000};
+
+    // Every sentence this readout says comes out of `l10n/strings.toml`, so the
+    // locale has to arrive with the state. It sits here rather than in the
+    // face's config because the words are chosen where the meaning is.
+    l10n::Locale locale{l10n::Locale::En};
 };
 
 // What the screen draws. Every field is already a string, and a field that has
 // no answer is an em dash rather than a zero — `0 m` and `000°` are the two
 // lies this readout exists to not tell.
 struct NavText {
+    char title[16]    = "";
     char distance[16] = "—";
     char bearing[8]   = "—";
-    char cardinal[4]  = "";
+    char cardinal[8]  = "";
     char status[48]   = "";
+    // The letter on top of the compass ring. Here rather than in the face
+    // because it is a translated word, and the face draws, it does not choose.
+    char north[8]     = "";
     // What is not known, whenever something is not — including in `Ready`,
     // because a node coordinate arrives with no fix type and no observation
     // time and that stays true on the good days.
-    char caveat[64]   = "";
+    // 96, not 64: Cyrillic is two bytes a character in UTF-8 and the longest
+    // Russian caveat is 94 bytes with its age filled in. A field sized for the
+    // English sentence cuts the Russian one mid-word, which is what the first
+    // render of this face at `--locale ru` did.
+    char caveat[96]   = "";
 
     NavStatus     status_code     = NavStatus::WaitingForGps;
     std::uint16_t bearing_centideg = 0;
@@ -80,11 +99,13 @@ struct NavText {
 
 NavText format_navigation(const NavState &state);
 
-// Eight points, from a bearing in centidegrees. "N" at 0, and each sector is
+// Eight points, from a bearing in centidegrees. North at 0, and each sector is
 // 45° wide centred on its own point.
-const char *cardinal_of(std::uint16_t bearing_centideg);
+const char *cardinal_of(std::uint16_t bearing_centideg,
+                        l10n::Locale locale = l10n::Locale::En);
 
-const char *to_string(NavStatus status);
+const char *to_string(NavStatus status,
+                      l10n::Locale locale = l10n::Locale::En);
 
 const AppManifest &navigation_manifest();
 

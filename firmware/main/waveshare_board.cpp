@@ -777,6 +777,11 @@ void build_mesh_screen() {
   lv_obj_t *screen = lv_screen_active();
   state.clock_face.clear();
   lv_obj_clean(screen);
+  // The screen object outlives every face, so it carries the last one's styles
+  // into the next. NavFace makes it a flex column; this screen aligns its five
+  // labels absolutely, and a flex parent ignores every one of them. Strip it
+  // first, the way ClockFace and ProvisionFace already do.
+  lv_obj_remove_style_all(screen);
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x05080B), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_font(screen, &attadipa_nunito_sans_20, 0);
@@ -904,12 +909,20 @@ attadipa::ui::NavFaceConfig nav_config() {
 }
 
 void refresh_nav() {
-  // `own` is left at its default, and that default is the honest one: this
-  // board has no receiver (docs/research/HARDWARE_MATRIX.md:407 "| GNSS | — |
-  // **not present** | — | — | VERIFIED |") and no local provider exists yet.
-  // So the readout says "Waiting for GPS" and draws no needle, which is what
-  // it should say until #429 gives it something.
+  // `own` is left at its default, and that default is the honest one:
+  // `Unprovisioned`, "a supported provider would give it; none is bound"
+  // (`core/include/attadipa/core/availability.h:18`). Not `Unsupported`, which
+  // is terminal: no receiver is fitted today
+  // (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |"),
+  // and #429 exists to wire one to this board's own pads, so this device's
+  // configuration is exactly what would change the answer.
+  //
+  // So the readout says "Waiting for GPS", names the missing provider, and
+  // draws no needle, which is what it should say until #429 gives it a fix.
   attadipa::apps::NavState nav;
+  // The same locale the clock takes, and from the same place, so the two pages
+  // of one watch never disagree about their language.
+  nav.locale = attadipa::l10n::Locale::En;
   nav.target = meshcore_ble_location();
   const attadipa::apps::NavText text = attadipa::apps::format_navigation(nav);
   if (state.nav_face.built()) {
@@ -919,9 +932,10 @@ void refresh_nav() {
   }
 }
 
-// A tap on the node pages between the two things there are to say about it:
-// what the link is doing, and where it is. It does nothing anywhere else --
-// the clock's gesture is a long press and this must not steal it.
+// A short tap on the node pages between the two things there are to say about
+// it: what the link is doing, and where it is. It does nothing anywhere else --
+// the clock's gesture is a long press and this must not steal it, and a long
+// press on the node itself must do nothing rather than page away.
 void node_page_turn(lv_event_t *) {
   if (!mesh_screen_requested.load()) {
     return;
@@ -950,7 +964,7 @@ constexpr unsigned kDoneTicks = 3;
 // leaves its children unclickable and the press lands here, while the
 // keypad's buttons take theirs and never let one through.
 void long_press(lv_event_t *) {
-  if (state.entry.has_value() || state.mesh_screen) {
+  if (state.entry.has_value() || state.mesh_screen || state.nav_screen) {
     return;
   }
   const attadipa::platform::BoardProfile *profile =
@@ -1115,8 +1129,11 @@ void create_ui() {
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
 #if CONFIG_BT_NIMBLE_ENABLED
-  lv_obj_add_event_cb(lv_screen_active(), node_page_turn, LV_EVENT_CLICKED,
-                      nullptr);
+  // SHORT_CLICKED, not CLICKED: LVGL sends CLICKED on release whatever the
+  // duration, so a long press on the node would turn the page on its way out
+  // of the handler that is meant to ignore it.
+  lv_obj_add_event_cb(lv_screen_active(), node_page_turn,
+                      LV_EVENT_SHORT_CLICKED, nullptr);
 #endif
   state.ui_timer = lv_timer_create(
       refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
@@ -1312,7 +1329,7 @@ esp_err_t start_waveshare_ui() {
     // Still under the LVGL lock: disarm everything create_ui() armed, before
     // rollback removes the RTC and I2C handles those callbacks can reach.
     //
-    // FOUR THINGS, NOT TWO, AND THE TWO THAT ARE EASY TO MISS ARE THE CLOCK
+    // FIVE THINGS, NOT TWO, AND THE TWO THAT ARE EASY TO MISS ARE THE CLOCK
     // FACE'S. `build_clock_screen()` reaches `ClockFace::build()`, which adds a
     // press handler and a 50 ms motion timer to the same screen. The handler is
     // harmless once no indev survives, but the timer is not: the retain branch
@@ -1326,6 +1343,9 @@ esp_err_t start_waveshare_ui() {
     // `clear()` deletes the timer and the transient animation and removes the
     // handler. It deletes no LVGL object, so the face stays drawn.
     lv_obj_remove_event_cb(lv_screen_active(), long_press);
+#if CONFIG_BT_NIMBLE_ENABLED
+    lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);
+#endif
     if (state.ui_timer != nullptr) {
       lv_timer_delete(state.ui_timer);
       state.ui_timer = nullptr;

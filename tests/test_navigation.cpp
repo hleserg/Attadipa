@@ -7,7 +7,7 @@
 //
 // The subject is not the arithmetic — `tests/test_position.cpp` owns distance
 // and bearing. It is the rule the owner's brief states as
-// `NoFix != stale != current != unknown`: which of seven sentences the screen
+// `NoFix != stale != current != unknown`: which of eight sentences the screen
 // says, and, in every one of them, whether a number appears at all. A readout
 // that prints `0 m` or `000°` where it means "nobody knows" is the defect this
 // file exists to catch, and it is a defect that no build and no crash reveals.
@@ -273,13 +273,95 @@ void test_the_compass_points_are_centred_on_their_own_directions() {
 void test_every_status_has_words() {
   const apps::NavStatus all[] = {
       apps::NavStatus::WaitingForGps,       apps::NavStatus::NoFix,
-      apps::NavStatus::OwnPositionStale,    apps::NavStatus::NodeUnavailable,
-      apps::NavStatus::NodePositionUnknown, apps::NavStatus::NodePositionStale,
-      apps::NavStatus::Ready};
+      apps::NavStatus::OwnPositionStale,    apps::NavStatus::OwnPositionDegraded,
+      apps::NavStatus::NodeUnavailable,     apps::NavStatus::NodePositionUnknown,
+      apps::NavStatus::NodePositionStale,   apps::NavStatus::Ready};
+  // In both locales, because `l10n/strings.toml` is where the sentences live
+  // now and a missing entry is a silent empty label rather than a link error.
   for (const apps::NavStatus status : all) {
-    CHECK(apps::to_string(status) != nullptr);
-    CHECK(apps::to_string(status)[0] != '\0');
+    for (const l10n::Locale locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+      CHECK(apps::to_string(status, locale) != nullptr);
+      CHECK(apps::to_string(status, locale)[0] != '\0');
+    }
+    CHECK(!is(apps::to_string(status, l10n::Locale::En),
+              apps::to_string(status, l10n::Locale::Ru)));
   }
+}
+
+// A degraded own fix is usable and is not `Ready`.
+//
+// `core/include/attadipa/core/position.h:188` — "    Degraded,  // usable, with
+// a caveat the interface must show". Both halves are load-bearing: folding it
+// into `Ready` hides the caveat, and refusing on it hides a position the person
+// can act on.
+void test_a_degraded_own_fix_still_measures_and_still_says_so() {
+  apps::NavState state;
+  state.own = own_fix(kHere, core::PositionValidity::Degraded);
+  state.target = node_coordinate({5100000, 10000000}, 1000);
+
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::OwnPositionDegraded);
+  CHECK(text.status_code != apps::NavStatus::Ready);
+  CHECK(text.has_distance);
+  CHECK(text.has_bearing);
+  CHECK(!is(text.distance, "—"));
+
+  // The same state with a clean fix is the control: only the validity moved.
+  state.own = own_fix(kHere, core::PositionValidity::Valid);
+  CHECK(apps::format_navigation(state).status_code == apps::NavStatus::Ready);
+}
+
+// The two answers `availability.h` separates are two different sentences.
+//
+// `core/include/attadipa/core/availability.h:17` — "    Unsupported,    // no
+// configuration of this device can provide it. Terminal." against
+// `core/include/attadipa/core/availability.h:18` — "    Unprovisioned,  // a
+// supported provider would give it; none is bound". Telling the second reader
+// there is no receiver sends them to buy hardware they already own.
+void test_an_unbound_provider_is_not_a_missing_receiver() {
+  apps::NavState state;
+  state.own.availability = core::Availability::Unsupported;
+  const apps::NavText none = apps::format_navigation(state);
+
+  state.own.availability = core::Availability::Unprovisioned;
+  const apps::NavText unbound = apps::format_navigation(state);
+
+  CHECK(none.caveat[0] != '\0');
+  CHECK(unbound.caveat[0] != '\0');
+  CHECK(!is(none.caveat, unbound.caveat));
+}
+
+// Every string on the screen comes out of the catalogue, so switching the
+// locale has to change every one of them that carries a word.
+void test_the_readout_speaks_the_locale_it_was_given() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 4000);
+
+  const apps::NavText en = apps::format_navigation(state);
+  state.locale = l10n::Locale::Ru;
+  const apps::NavText ru = apps::format_navigation(state);
+
+  CHECK(!is(en.status, ru.status));
+  CHECK(!is(en.title, ru.title));
+  CHECK(!is(en.north, ru.north));
+  CHECK(!is(en.caveat, ru.caveat));
+  // The unit travels with the number: "4 m" is not "4 м".
+  CHECK(!is(en.distance, ru.distance));
+  // The bearing is digits and a degree sign, and those do not translate.
+  CHECK(is(en.bearing, ru.bearing));
+  // Nothing was cut on the longer language. `snprintf` always terminates, so
+  // a NUL at the end proves nothing; the field has to still end in the same
+  // characters the catalogue does. The first Russian render of this face lost
+  // the last two words of the caveat and looked fine.
+  CHECK(std::strlen(ru.caveat) < sizeof(ru.caveat) - 1);
+  CHECK(std::strlen(ru.status) < sizeof(ru.status) - 1);
+  CHECK(std::strlen(ru.cardinal) < sizeof(ru.cardinal) - 1);
+  // The longest one there is: the age at its widest, in the longer language.
+  apps::NavState longest = state;
+  longest.target = node_coordinate({5100000, 10000000}, 4444U * 3600U * 1000U);
+  const apps::NavText wide = apps::format_navigation(longest);
+  CHECK(std::strlen(wide.caveat) < sizeof(wide.caveat) - 1);
 }
 
 }  // namespace
@@ -300,6 +382,9 @@ int main() {
   test_the_distance_changes_unit_where_a_person_would();
   test_the_compass_points_are_centred_on_their_own_directions();
   test_every_status_has_words();
+  test_a_degraded_own_fix_still_measures_and_still_says_so();
+  test_an_unbound_provider_is_not_a_missing_receiver();
+  test_the_readout_speaks_the_locale_it_was_given();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);
