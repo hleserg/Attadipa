@@ -243,7 +243,8 @@ The owner contract's `prepare → commit → rollback` shape is the same shape
 boot needs, and boot has it now. Five steps roll back — the bus, the rails,
 the display, the LVGL lock and the input service — and each failure calls
 [`firmware/main/waveshare_board.cpp:1120`](../../firmware/main/waveshare_board.cpp) —
-"esp_err_t abandon_board(bool lvgl_reachable) {", which reads the journal
+"esp_err_t abandon_board(attadipa::firmware::DisplayQuiescence quiescence) {",
+which reads the journal
 off `BoardState`'s handles and undoes every step that succeeded, in reverse —
 except LVGL, which it can only ask to stop: `lvgl_port_deinit()` sets a flag
 and `lv_deinit()` runs later on the LVGL task, so the UI part is torn down
@@ -257,21 +258,25 @@ Two things the rollback leaves behind, on purpose. The rails, always: the
 bring-up wrote them, and switching any of them off is authorised by a
 measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
 a supply), so they stay as written and the log says so:
-[`firmware/main/waveshare_board.cpp:1170`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1173`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". And the whole display stack — LVGL, the display, the
 panel, its IO and the QSPI host — whenever rollback cannot prove that a queued
 transfer has completed. The LVGL mutex serialises API calls; it is not a QSPI
 DMA completion barrier, and the public port has no bounded drain operation.
 Boot therefore selects the retain path both when its LVGL lock times out
-([`firmware/main/waveshare_board.cpp:1237`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1242`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(ESP_ERR_TIMEOUT,") and when
 physical-input startup fails after `create_ui()` may have queued the first frame
-([`firmware/main/waveshare_board.cpp:1273`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1285`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
 use-after-free, so that branch leaves all five where they are and logs it
-([`firmware/main/waveshare_board.cpp:1127`](../../firmware/main/waveshare_board.cpp) —
-"if (state.display != nullptr && !lvgl_reachable) {"). That leak is
+([`firmware/main/waveshare_board.cpp:1128`](../../firmware/main/waveshare_board.cpp) —
+"display_rollback(state.display != nullptr, quiescence,"). The physical-input
+failure first deletes the UI refresh timer while it still holds the LVGL lock
+([`firmware/main/waveshare_board.cpp:1274`](../../firmware/main/waveshare_board.cpp) —
+"if (physical_result != ESP_OK && state.ui_timer != nullptr) {"); the retained
+UI therefore has no callback left that can race the RTC/I2C teardown. That leak is
 unbounded — the LVGL task and its buffers stay allocated for the life of the
 boot — and it is the trade made: a leak is recoverable and a hang or a panic
 is not. **NOT EXECUTED — HARDWARE REQUIRED:** every path through

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "waveshare_board.h"
-
 #include "board_power.h"
+#include "display_rollback.h"
 #include "pcf85063_time.h"
 #include "provision_time.h"
 
@@ -1093,8 +1093,8 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // blocks on the lock, and a display removed between those two reads is a
 // `lv_timer_handler()` over freed objects.
 //
-// `lvgl_reachable == false` means the caller cannot prove the display stack is
-// idle. The LVGL mutex serialises API calls but is not a flush barrier: QSPI
+// `DisplayQuiescence::Unknown` means the caller cannot prove the display stack
+// is idle. The LVGL mutex serialises API calls but is not a flush barrier: QSPI
 // DMA completion can arrive after it is released, and this port exposes no
 // bounded drain. A lock timeout or a later boot failure after create_ui() may
 // therefore still have a transfer in flight. The whole display stack -- LVGL,
@@ -1117,14 +1117,17 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // Returns the first teardown failure. A failed step is logged and skipped,
 // not retried: the board is then in a state nobody read back, and the honest
 // report to the caller is that error, not ESP_OK.
-esp_err_t abandon_board(bool lvgl_reachable) {
+esp_err_t abandon_board(attadipa::firmware::DisplayQuiescence quiescence) {
+  using attadipa::firmware::DisplayRollback;
   esp_err_t first_failure = ESP_OK;
-  // One rule for both: a caller that cannot prove the stack idle, or a lock
-  // this rollback cannot get, leaves the display stack in place.
-  if (state.display != nullptr && lvgl_reachable && !lvgl_port_lock(1000)) {
-    lvgl_reachable = false;
+  bool lvgl_locked = false;
+  if (state.display != nullptr &&
+      quiescence == attadipa::firmware::DisplayQuiescence::Proven) {
+    lvgl_locked = lvgl_port_lock(1000);
   }
-  if (state.display != nullptr && !lvgl_reachable) {
+  if (attadipa::firmware::display_rollback(state.display != nullptr, quiescence,
+                                           lvgl_locked) ==
+      DisplayRollback::Retain) {
     ESP_LOGE(kTag, "boot rollback: display transfer is not proven idle; LVGL, "
                    "the panel and QSPI are left in place rather than freed");
     state.display = nullptr;
@@ -1177,11 +1180,12 @@ esp_err_t abandon_board(bool lvgl_reachable) {
 
 // A required step failed: roll back, and report the step's error -- a rollback
 // that itself failed is already in the log, and the caller cannot act on two.
-esp_err_t abandon_board_after(esp_err_t err, const char *step,
-                              bool lvgl_reachable = true) {
+esp_err_t abandon_board_after(
+    esp_err_t err, const char *step,
+    attadipa::firmware::DisplayQuiescence quiescence) {
   ESP_LOGE(kTag, "%s failed: %s; rolling the boot back", step,
            esp_err_to_name(err));
-  (void)abandon_board(lvgl_reachable);
+  (void)abandon_board(quiescence);
   return err;
 }
 
@@ -1194,13 +1198,14 @@ esp_err_t abandon_board_after(esp_err_t err, const char *step,
 // the clock and answers its buttons, which is more use than a dark one
 // (TWATCH_S3_PLUS_BSP_REUSE §10, rules 3 and 6).
 esp_err_t start_waveshare_ui() {
+  using attadipa::firmware::DisplayQuiescence;
   esp_err_t err = initialize_i2c();
   if (err != ESP_OK) {
-    return abandon_board_after(err, "initialize I2C");
+    return abandon_board_after(err, "initialize I2C", DisplayQuiescence::Proven);
   }
   err = initialize_pmu();
   if (err != ESP_OK) {
-    return abandon_board_after(err, "initialize AXP2101");
+    return abandon_board_after(err, "initialize AXP2101", DisplayQuiescence::Proven);
   }
   err = add_i2c_device(kPcf85063Address, &state.rtc);
   if (err != ESP_OK) {
@@ -1219,7 +1224,7 @@ esp_err_t start_waveshare_ui() {
                : "unavailable");
   err = initialize_display();
   if (err != ESP_OK) {
-    return abandon_board_after(err, "initialize display");
+    return abandon_board_after(err, "initialize display", DisplayQuiescence::Proven);
   }
   err = initialize_touch();
   if (err != ESP_OK) {
@@ -1234,7 +1239,8 @@ esp_err_t start_waveshare_ui() {
   }
 
   if (!lvgl_port_lock(1000)) {
-    return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL", false);
+    return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL",
+                               DisplayQuiescence::Unknown);
   }
   create_ui();
   // Which of the two images this is, said out loud once per boot. The endpoint
@@ -1265,12 +1271,19 @@ esp_err_t start_waveshare_ui() {
 #endif
                                   );
 #endif
+  if (physical_result != ESP_OK && state.ui_timer != nullptr) {
+    // Still under the LVGL lock, so the timer cannot be in refresh_ui(). The
+    // retained UI then has no route to the RTC/I2C handles rollback removes.
+    lv_timer_delete(state.ui_timer);
+    state.ui_timer = nullptr;
+  }
   lvgl_port_unlock();
   if (physical_result != ESP_OK) {
     // create_ui() may already have queued a DMA-backed flush, and the LVGL
     // mutex above does not prove its callback completed. Keep the whole display
     // stack because the public port has no bounded drain operation.
-    return abandon_board_after(physical_result, "start physical input", false);
+    return abandon_board_after(physical_result, "start physical input",
+                               DisplayQuiescence::Unknown);
   }
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   if (watch_control_result != ESP_OK) {

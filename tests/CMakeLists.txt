@@ -504,6 +504,11 @@ target_link_libraries(test_power_owner PRIVATE attadipa_core)
 add_test(NAME power_owner COMMAND test_power_owner)
 set_tests_properties(power_owner PROPERTIES LABELS power)
 
+add_executable(test_display_rollback test_display_rollback.cpp)
+target_include_directories(test_display_rollback PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME display_rollback COMMAND test_display_rollback)
+set_tests_properties(display_rollback PROPERTIES LABELS power)
+
 # The third compile boundary, and the same argument as the two above.
 #
 # `GnssCapabilities` was four `bool`s, so `{false, false, false, false}` said
