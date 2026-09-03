@@ -253,7 +253,7 @@ reader ends up citing the one that was not updated.
 - **Independently corroborated:** the same arithmetic puts `node_name` at offset
   58, which is where a bench capture found it in a 72-byte frame and where this
   repository's own parser reads it —
-  `link/src/meshcore_companion.cpp:396` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
+  `link/src/meshcore_companion.cpp:487` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
   The coordinate sits between two fields already read correctly.
 - **Not verified:** nothing has read bytes 36–43 off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -336,13 +336,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:1921`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1974`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
-  ([`firmware/main/meshcore_ble.cpp:169`](../../firmware/main/meshcore_ble.cpp)
+  ([`firmware/main/meshcore_ble.cpp:184`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1642`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1657`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -376,9 +376,9 @@ reader ends up citing the one that was not updated.
   `espressif/esp-idf@v5.5.5` records for
   `components/bt/host/nimble/nimble`.
 - **Source (this repository):** the watch is the central and takes that branch
-  from [`firmware/main/meshcore_ble.cpp:911`](../../firmware/main/meshcore_ble.cpp)
+  from [`firmware/main/meshcore_ble.cpp:926`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1671`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1686`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on
@@ -401,12 +401,12 @@ reader ends up citing the one that was not updated.
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
   [`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
-  [`link/src/meshcore_companion.cpp:397`](../../link/src/meshcore_companion.cpp)
+  [`link/src/meshcore_companion.cpp:488`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
-  is [`firmware/main/meshcore_ble.cpp:437`](../../firmware/main/meshcore_ble.cpp)
+  is [`firmware/main/meshcore_ble.cpp:452`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
   the passkey instead —
-  [`firmware/main/meshcore_ble.cpp:426`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:441`](../../firmware/main/meshcore_ble.cpp)
   "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". The mesh opcode
   block ends at
   [`debug/include/attadipa/debug/protocol.h:84`](../../debug/include/attadipa/debug/protocol.h)
@@ -420,7 +420,7 @@ reader ends up citing the one that was not updated.
 - **Consequence:** two comments said the gap would close with #356, which
   excluded it. #411 closed it — the entry screen's node field forgets the bond
   and the pin together — and rewrote both comments to say so:
-  [`firmware/main/meshcore_ble.cpp:225`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:240`](../../firmware/main/meshcore_ble.cpp)
   "What the image has since #411 is the reverse" and
   [`core/include/attadipa/core/mesh_service.h:61`](../../core/include/attadipa/core/mesh_service.h) "the way out, the entry screen's node field (#411)".
 

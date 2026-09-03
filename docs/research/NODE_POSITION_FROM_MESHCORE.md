@@ -88,9 +88,9 @@ The upstream lines are `lat = (sensors.node_lat * 1000000.0);` and the two
 **The offsets are confirmed twice, from two independent directions.** The
 arithmetic above puts the name at 58; the bench capture already in the tree put
 it at 58 in a 72-byte frame, and this repository's parser reads it from there —
-`link/src/meshcore_companion.cpp:396` —
+`link/src/meshcore_companion.cpp:487` —
 "(void)copy_text(status_.node_name, &data[58], size - 58);" — with the public
-key at 4, `link/src/meshcore_companion.cpp:393` — "std::memcpy(status_.node_id.public_key.data(), &data[4],".
+key at 4, `link/src/meshcore_companion.cpp:484` — "std::memcpy(status_.node_id.public_key.data(), &data[4],".
 Bytes 36–43 sit between two fields we already read correctly, and we discard
 them.
 
@@ -501,7 +501,7 @@ and it is stronger than the power one.
 
 PLATFORM_AUDIT is explicit about the shape:
 `docs/architecture/PLATFORM_AUDIT.md:259` — "One provider contract is enough" —
-and `docs/architecture/PLATFORM_AUDIT.md:555` — "do not add a second forwarding HAL".
+and `docs/architecture/PLATFORM_AUDIT.md:556` — "There is no second forwarding HAL".
 
 **Recommendation: build the first `PositionProvider` on path A.**
 
@@ -589,10 +589,10 @@ the equator and the prime meridian; the truncate-toward-zero bias of §3.2 as an
 explicit case rather than an accident of rounding.
 
 Frame parsing, buildable in the first slice — and *above* the length check,
-which the companion owns: `link/src/meshcore_companion.cpp:384` — "if (size < 58) { ++malformed_frames_; return false; }"
+which the companion owns: `link/src/meshcore_companion.cpp:475` — "if (size < 58) { ++malformed_frames_; return false; }"
 — drops a `RESP_CODE_SELF_INFO` shorter than the name offset before any
 provider sees it. The companion's suite fails closed on a short *contact* frame
-(`tests/test_meshcore_companion.cpp:541` — "CHECK(client.malformed_frames() == 1);")
+(`tests/test_meshcore_companion.cpp:548` — "CHECK(client.malformed_frames() == 1);")
 and has no short `SELF_INFO` case; that missing case is the one length test this
 plan names, and it belongs in that file, not in the provider's. Bytes 36–43 are
 therefore present in every frame the provider is handed, and a 44-byte case in
@@ -629,8 +629,8 @@ than papering over it.
 
 A fake provider drives every `Availability` a node provider can produce —
 `Unprovisioned` (no node pinned), `Unreachable`, `Incompatible` (the version
-handshake fails), `Failed` (the transport fault: `firmware/main/meshcore_ble.cpp:1259` — "provider.fault(now());"
-lands as `link/src/meshcore_companion.cpp:211` — "status_.availability = core::Availability::Failed;")
+handshake fails), `Failed` (the transport fault: `firmware/main/meshcore_ble.cpp:1274` — "provider.fault(now());"
+lands as `link/src/meshcore_companion.cpp:225` — "status_.availability = core::Availability::Failed;")
 and `Ready` — and, under `Ready`, `PositionValidity::NoFix` (the first slice's
 only verdict, §4.1), plus disconnect and recovery, without the consumer learning which provider
 answered. `Degraded` is a validity, not an availability —
@@ -643,7 +643,7 @@ all; the second has no producer because a node hands over its coordinate with
 the receiver off (§6.1, `gps:0`) and the watch cannot bring that receiver up.
 `Failed` stays, but its producer is the transport fault named above, not a
 short frame: a frame the companion cannot parse is counted at
-`link/src/meshcore_companion.cpp:384` — "if (size < 58) { ++malformed_frames_; return false; }"
+`link/src/meshcore_companion.cpp:475` — "if (size < 58) { ++malformed_frames_; return false; }"
 and never reaches the provider, and a
 provider that came up over a link that then sent garbage has not failed to come
 up — `Failed` is

@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "attadipa/core/mesh_service.h"
+#include "attadipa/core/position.h"
 #include "attadipa/link/meshcore_companion.h"
 
 namespace {
@@ -74,6 +75,12 @@ void connect_and_handshake(MeshCoreCompanion& client)
     CHECK(client.status().availability == Availability::Ready);
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    // And CMD_GET_CUSTOM_VARS behind it, which is the one question this session
+    // asks about the node's receiver. It goes out here and not earlier because
+    // the contacts iteration is finished by the time RESP_CODE_END_OF_CONTACTS
+    // arrives; a command sent during one is how a client aborts its own sync.
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
     CHECK(!client.next_tx(frame));
 }
 
@@ -1029,6 +1036,40 @@ void test_channel_message_is_rendered_without_a_contact_prefix()
 
 }  // namespace
 
+// The length guard the coordinate rides on, and the case the suite did not
+// have. `size < 58` drops a RESP_CODE_SELF_INFO shorter than the name offset
+// before anything reads it, so bytes 36-43 are present in every frame a
+// position provider is ever handed -- which is why the provider's own tests do
+// not repeat this check and why it has to exist here instead. The suite already
+// failed closed on a short *contact* frame and had no short self-info case.
+void test_a_short_self_info_is_refused_before_anything_reads_it()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+
+    // One byte short of the name offset: the public key and the coordinate are
+    // both fully present, and it is still refused. The bound is the frame's
+    // shape, not the fields this build happens to read.
+    std::uint8_t truncated[57]{};
+    truncated[0] = 5;
+    for (std::size_t i = 0; i < core::kMeshPublicKeyBytes; ++i) {
+        truncated[4 + i] = static_cast<std::uint8_t>(i + 1);
+    }
+    CHECK(!client.receive(truncated, sizeof(truncated), at(3)));
+    CHECK(client.malformed_frames() == 1);
+    CHECK(!client.status().has_node_id);
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(!client.node_position(position, arrived));
+    // And the handshake did not continue: no CMD_DEVICE_QUERY went out.
+    CHECK(!client.next_tx(frame));
+}
+
 int main()
 {
     test_handshake_contacts_and_service_boundary();
@@ -1053,6 +1094,7 @@ int main()
     test_another_node_answers_and_the_handshake_stops_there();
     test_the_pin_outlives_the_session_and_the_identity_does_not();
     test_unpin_clears_the_pin_and_the_refusal_it_caused();
+    test_a_short_self_info_is_refused_before_anything_reads_it();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

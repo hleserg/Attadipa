@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <string_view>
 
+#include "attadipa/core/location_service.h"
 #include "attadipa/core/mesh_service.h"
+#include "attadipa/core/position.h"
 #include "attadipa/link/link_state.h"
 
 namespace attadipa::link {
@@ -103,6 +105,31 @@ public:
     // and put the reply on the mesh screen.
     bool wrong_node() const { return wrong_node_; }
 
+    // THE COORDINATE THE NODE PUTS IN ITS OWN ADVERTISEMENT, and when this
+    // session read it. False until a RESP_CODE_SELF_INFO from an accepted node
+    // has been parsed, and false again after a disconnect -- it is session
+    // state, exactly like `node_id`.
+    //
+    // It is deliberately not a `MeshStatus` field. `MeshStatus` is what the
+    // mesh screen renders, and a coordinate is not mesh status; the reader that
+    // wants this is `NodePositionProvider`, which turns it into a
+    // `core::GnssObservation` and hands it to the one owner of position in this
+    // tree. Growing the status struct instead would have put a wire fact on a
+    // screen with no owner in between, which is the shape P0.3 exists to end.
+    //
+    // **What it is not** is a fix. The node transmits no fix flag, no satellite
+    // count and no observation time, and writes these bytes only when its own
+    // receiver is solving -- so a receiver that has stopped leaves the last
+    // coordinate here, unchanged and unmarked. Everything above this treats it
+    // accordingly.
+    bool node_position(core::Position& out, core::MonotonicTime& arrived) const;
+
+    // What RESP_CODE_CUSTOM_VARS said about the node's receiver, which is a
+    // different question from whether the coordinate is any good. `Unknown`
+    // until an answer arrives, and `Unknown` for good on a node that does not
+    // define the command.
+    core::ReceiverPresence node_receiver() const { return node_receiver_; }
+
     std::uint32_t malformed_frames() const { return malformed_frames_; }
     std::uint8_t firmware_version_code() const { return firmware_version_code_; }
 
@@ -162,6 +189,8 @@ private:
     void reset_session();
     void update_availability();
     void accept_contact(const std::uint8_t* data, std::size_t size);
+    void accept_self_position(const std::uint8_t* data, core::MonotonicTime now);
+    void accept_custom_vars(const std::uint8_t* data, std::size_t size);
     void accept_message(const std::uint8_t* data, std::size_t size, bool v3);
     void accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
@@ -191,6 +220,15 @@ private:
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
+    core::Position node_position_{};
+    core::MonotonicTime node_position_at_{};
+    bool has_node_position_ = false;
+    core::ReceiverPresence node_receiver_ = core::ReceiverPresence::Unknown;
+    // Asked once per session, and tracked only so that the error a node too old
+    // for opcode 40 answers with can be told apart from a send's error. Both
+    // clear at `reset_session()`.
+    bool custom_vars_requested_ = false;
+    bool awaiting_custom_vars_ = false;
     bool awaiting_send_ = false;
     // The half of a send that used to have no state at all. `awaiting_send_`
     // ends at `RESP_CODE_SENT`; the operation does not, because the ack bytes

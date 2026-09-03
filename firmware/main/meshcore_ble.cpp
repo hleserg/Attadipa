@@ -13,9 +13,12 @@
 #include <atomic>
 #include <cinttypes>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
+#include "attadipa/core/location_service.h"
 #include "attadipa/link/meshcore_companion.h"
+#include "attadipa/link/node_position_provider.h"
 #include "attadipa/link/session_owner.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -124,6 +127,18 @@ struct Event {
 QueueHandle_t event_queue = nullptr;
 attadipa::link::MeshCoreCompanion provider;
 attadipa::core::MeshService service(provider);
+
+// THE FIRST OWNER OF A POSITION IN THIS FIRMWARE, and the first consumer of one.
+//
+// It sits beside the mesh service rather than inside it because a coordinate is
+// not mesh status: the node states one in its own advertisement, and what turns
+// those eight bytes into something with an availability, a validity and two
+// ages is `core::LocationService`, which knows no wire format at all. Nothing
+// here allocates, starts a task or opens a timer -- the worker below polls it
+// on the pass it already runs, which is what ADR-0015 and ADR-0016 require of
+// anything that wants to live on this session.
+attadipa::link::NodePositionProvider position_provider(provider);
+attadipa::core::LocationService location(position_provider);
 
 // Two locks, and they are never nested. `snapshot_lock` guards the status any
 // task may read; `session_lock` guards the BLE session that the NimBLE host
@@ -1841,6 +1856,44 @@ void mesh_task(void*)
         // It costs nothing: liveness is disabled on this link, so link_.tick()
         // has no work.
         provider.tick(now());
+        // AND THE POSITION, ON THE SAME PASS AND WITH NO CLOCK OF ITS OWN.
+        //
+        // The line is logged only when it changes, which on this input means
+        // when the node states a different coordinate, when the link changes
+        // state, or when the receiver hint arrives -- not once per pass, and
+        // never on the age alone, which advances continuously and would print
+        // forever. It is an engineering surface and it is deliberately the
+        // *first* consumer: it shows both ages, the validity and the node's key
+        // beside the coordinate, so the uncertainty is the subject rather than
+        // a footnote. A map built on this input before that was visible would
+        // present a coordinate the node cannot vouch for as a fix.
+        location.poll();
+        {
+            static char last_line[192];
+            char line[sizeof(last_line)];
+            // TWO LINES, AND THE DIFFERENCE BETWEEN THEM IS THE POINT.
+            //
+            // The one compared against the last is rendered at the coordinate's
+            // own arrival, so its age is always zero and a second passing is not
+            // a change -- otherwise this would print on every pass forever. The
+            // one *logged* is rendered at `now()`, so it carries the age the
+            // coordinate actually has. Printing the fixed-point line instead
+            // would put `age_us 0ms` beside `avail Unreachable` for a
+            // coordinate an hour old, which is exactly the misreading this
+            // consumer exists to prevent.
+            const attadipa::core::MonotonicTime anchor =
+                location.observation().has_value()
+                    ? location.observation()->observed_at
+                    : attadipa::core::MonotonicTime{};
+            attadipa::core::format_location_line(location.state(anchor), line,
+                                                 sizeof(line));
+            if (std::strcmp(line, last_line) != 0) {
+                std::snprintf(last_line, sizeof(last_line), "%s", line);
+                attadipa::core::format_location_line(location.state(now()), line,
+                                                     sizeof(line));
+                ESP_LOGI(kTag, "Position   : %s", line);
+            }
+        }
         // A terminal outcome -- confirmed, an explicit error, the ack budget
         // running out, or the session resetting -- releases the slot for the
         // next request. Read once per pass rather than signalled, for the same

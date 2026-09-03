@@ -376,7 +376,7 @@ is the record of what was true at `144459f` and what changed it:
   the entry screen store one:
   `firmware/main/waveshare_board.cpp:475` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
-  `firmware/main/meshcore_ble.cpp:1256` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1271` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
 - **A changed node cannot be recovered from, and this bullet understated it.**
@@ -388,7 +388,7 @@ is the record of what was true at `144459f` and what changed it:
   reads the reset node's new public key, and
   `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;" turns
   it away for good. The single writer of that key is
-  `firmware/main/meshcore_ble.cpp:437` — "nvs_set_blob(handle, kNodeKeyNvsKey"
+  `firmware/main/meshcore_ble.cpp:452` — "nvs_set_blob(handle, kNodeKeyNvsKey"
   and there is no eraser; the file's one `nvs_erase_key` names the passkey
   instead. So this is not "the product image lacks a surface the HIL image has";
   no image has the operation. Traced in

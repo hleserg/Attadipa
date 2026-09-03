@@ -402,6 +402,13 @@ target_link_libraries(test_link PRIVATE attadipa_link)
 add_test(NAME link COMMAND test_link)
 set_tests_properties(link PROPERTIES LABELS transport)
 
+# The first position owner, driven through the shipping seam: real frames into
+# a real companion, out through NodePositionProvider and LocationService.
+add_executable(test_location_service test_location_service.cpp)
+target_link_libraries(test_location_service PRIVATE attadipa_link)
+add_test(NAME location_service COMMAND test_location_service)
+set_tests_properties(location_service PROPERTIES LABELS "position;mesh")
+
 add_executable(test_meshcore_companion test_meshcore_companion.cpp)
 target_link_libraries(test_meshcore_companion PRIVATE attadipa_link)
 add_test(NAME meshcore_companion COMMAND test_meshcore_companion)

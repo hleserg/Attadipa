@@ -2654,7 +2654,7 @@ code under its own licence — no new dependency, no new licence surface:
   instance. This slot stays the HIL bridge's, its bond-shaped names
   (`Deleted`, `Refused`, `Nothing`) intact.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:1741`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:1756`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. #411 put its

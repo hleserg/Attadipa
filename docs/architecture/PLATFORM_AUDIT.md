@@ -547,17 +547,36 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
 
 #### P0.3 — Add Location ownership with the first real provider
 
-- **Problem:** rich GNSS/domain types exist, but a new GNSS or node-position
-  path has no application-facing owner and could be wired directly to apps.
-- **Minimal solution:** in the same slice as the first provider, add one bounded
-  `PositionProvider` contract and a Location owner that publishes the existing
-  observation, availability, validity, trust, provenance, and ages. Translate
-  module protocol below it; do not add a second forwarding HAL.
-- **Likely files:** `core/include/attadipa/core/position.h`, new minimal core
-  service/provider files, board or node provider, capability registry, host
-  tests, ADR-0011 only if its accepted contract truly changes.
-- **Risk:** medium-high; coordinate frames, stale data, and invalid fixes can
-  become safety-relevant if flattened.
+- **Problem, and it is answered:** the rich GNSS domain types had no producer,
+  so the first module wanting a coordinate would have had to wire one into an
+  application. The owner exists now — `core/include/attadipa/core/location_service.h:101`
+  — "class PositionProvider {" is the one contract and
+  `core/include/attadipa/core/location_service.h:150` — "class LocationService {"
+  is the owner above it, publishing availability, validity, trust, provenance
+  and both ages. There is no second forwarding HAL and applications name no
+  provider.
+- **The first provider, and what it is allowed to claim:**
+  `link/include/attadipa/link/node_position_provider.h:22` —
+  "class NodePositionProvider final : public core::PositionProvider {" reads the
+  coordinate a MeshCore node states in its own advertisement. It lives in
+  `link/` because it knows a wire format. It states
+  `link/src/node_position_provider.cpp:38` —
+  "out.observation.fix_type = core::FixType::Unknown;" and therefore no path
+  through it reaches `PositionValidity::Valid`: the node holds the fix flag, the
+  satellite count and the receiver's UTC and transmits none of them, and its own
+  `isValid()` gates the write rather than the send, so a receiver that stops
+  solving leaves the last coordinate on the wire unchanged
+  (`docs/research/NODE_POSITION_FROM_MESHCORE.md:204` — "keeps being transmitted").
+  The age only
+  the node could have stated has no answer at all —
+  `core/src/location_service.cpp:133` — "report; returning `Millis{0}` would be the false measurement" — rather than a
+  zero that would read as a measurement.
+- **What is still open, deliberately:** the LPP decoder, local GNSS, any
+  estimator or fusion, GNSS power policy, provider selection between two live
+  providers, and the ADR-0011 amendment that would give `classify()` a case for
+  a coordinate whose fix type was never stated. Until that amendment lands,
+  every node observation is `NoFix`, and the host tests assert exactly that so
+  it cannot land silently.
 - **Platform value:** basic, dual-band, and node-provided location become
   interchangeable to applications.
 
