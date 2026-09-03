@@ -116,7 +116,7 @@ recorded here so that no option is credited with paying them.
 
 4. **Both sink interfaces live in the same header as the forbidden symbol.**
    `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {" and `:191` —
-   "class MeshSink {", while `tools/flash/firmware_elf_check.py:47` — "# Bridge::handle is the single function every privileged opcode is dispatched"
+   "class MeshSink {", while `tools/flash/firmware_elf_check.py:46` — "# Bridge::handle is the single function every privileged opcode is dispatched"
    names what a product image may not contain. The interfaces are pure virtual
    and a header is not a symbol, so reuse is probably fine — but any option that
    reuses them **shows** the elf check still passes rather than assuming it.
