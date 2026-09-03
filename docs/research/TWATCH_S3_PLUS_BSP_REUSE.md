@@ -443,6 +443,21 @@ partial flush. Then rotation and gap, then display sleep and wake **with the
 120 ms `SLPOUT`→`SLPIN` interval of §4 respected and, separately, deliberately
 violated**, because that is the clause the driver's own 100 ms breaks.
 
+The ten reset cycles are operator-driven, after the diagnostic reaches its
+stable final screen; firmware must not issue SWRESET underneath a live LVGL
+display or queued SPI transfer. For each cycle, reset the whole ESP32-S3 by the
+bench method being evaluated, retain the complete serial log from boot, record
+the reported reset reason, and wait for the diagnostic to finish again before
+the next reset. If no external reset method was established for that run, write
+`NOT EXECUTED — HARDWARE REQUIRED`; do not substitute an in-process panel reset.
+
+The sleep comparison needs **two photographs per arm**, not one final picture.
+The diagnostic holds `S100 SHORT` for five seconds immediately after the
+deliberately short sequence, then holds `S120 CONFORM` for five seconds after
+the datasheet-conforming sequence. Capture both labelled states; a conforming
+wake that recovers the panel does not turn an earlier short-interval failure
+into a pass.
+
 Touch, once a panel arm passes: all four corners, all four edges, centre;
 coordinate transform checked against what is drawn; INT behaviour including a
 deliberately missed edge. **No touch sleep** (§8, §10.5).

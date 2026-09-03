@@ -33,6 +33,8 @@
 
 #include "attadipa/platform/board_profile.h"
 #include "board_power.h"
+#include "twatch_boot_rollback.h"
+#include "twatch_panel_exercise.h"
 
 namespace {
 
@@ -76,32 +78,54 @@ constexpr bool kPanelInvert = true;
 constexpr bool kPanelInvert = false;
 #endif
 
-// The FT6336U's readiness after ALDO3 is UNKNOWN -- no datasheet figure has
-// been traced -- and the interval initialize_panel() takes before the probe
-// differs per arm by about 100 ms, which must not be the settle window by
-// accident. So the window is named: at least kTouchSettleMs after the rails
-// came up, then kTouchProbeAttempts probes kTouchRetryMs apart before touch is
-// declared absent. One NAK used to be final for the power cycle, and the only
-// way to tell "dead" from "not yet" was an unplug / hold BOOT / replug.
+// Readiness of both devices after ALDO3 is UNKNOWN: no datasheet figure has
+// been traced. These 100 ms floors are ESTIMATED experiment controls, not
+// component limits. Naming them keeps rail ramp time separate from the reset
+// delay that arms A/C vary, and keeps panel work from accidentally becoming the
+// touch settle delay.
+constexpr std::uint32_t kPanelSettleMs = 100;
 constexpr std::uint32_t kTouchSettleMs = 100;
 constexpr unsigned kTouchProbeAttempts = 3;
 constexpr std::uint32_t kTouchRetryMs = 50;
+constexpr std::uint32_t kDiagnosticHoldMs = 250;
+constexpr std::uint32_t kObservationHoldMs = 5000;
+// ESP-IDF's ST7789 sleep call waits 100 ms; the panel datasheet requires 120
+// ms from SLPOUT to the following SLPIN (TWATCH_S3_PLUS_BSP_REUSE.md §4).
+constexpr std::uint32_t kSleepIntervalMs = 120;
+constexpr std::uint32_t kDriverSleepDelayMs = 100;
+constexpr int kCheckerSize = 48;
+std::uint16_t checker_pixels[kCheckerSize * kCheckerSize];
 
 struct State {
   i2c_master_bus_handle_t main_i2c = nullptr;
   i2c_master_bus_handle_t touch_i2c = nullptr;
   i2c_master_dev_handle_t pmu = nullptr;
+  bool spi_bus_up = false;
   esp_lcd_panel_io_handle_t panel_io = nullptr;
   esp_lcd_panel_handle_t panel = nullptr;
+  bool lvgl_up = false;
   lv_display_t *display = nullptr;
+  esp_lcd_panel_io_handle_t touch_io = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_indev_t *indev = nullptr;
   lv_obj_t *marker = nullptr;
   lv_obj_t *readout = nullptr;
+  lv_obj_t *partial_patch = nullptr;
   TickType_t rails_up = 0;  // when initialize_pmu() returned with ALDO3 on
+  std::uint32_t panel_settle_ms = 0;
   unsigned touch_attempts = 0;
 };
 State state;
+
+std::uint32_t wait_from_rails(std::uint32_t floor_ms) {
+  const TickType_t floor = pdMS_TO_TICKS(floor_ms);
+  TickType_t elapsed = xTaskGetTickCount() - state.rails_up;
+  if (elapsed < floor) {
+    vTaskDelay(floor - elapsed);
+    elapsed = xTaskGetTickCount() - state.rails_up;
+  }
+  return static_cast<std::uint32_t>(pdTICKS_TO_MS(elapsed));
+}
 
 esp_err_t new_i2c_bus(i2c_port_num_t port, gpio_num_t sda, gpio_num_t scl,
                       i2c_master_bus_handle_t *out) {
@@ -209,6 +233,7 @@ esp_err_t initialize_panel(const attadipa::platform::BoardProfile &profile) {
   bus.max_transfer_sz = kWidth * kLinesPerBuffer * sizeof(std::uint16_t);
   ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO),
                       kTag, "initialize SPI2");
+  state.spi_bus_up = true;
 
   esp_lcd_panel_io_spi_config_t io{};
   io.cs_gpio_num = kLcdCs;
@@ -257,6 +282,7 @@ esp_err_t initialize_panel(const attadipa::platform::BoardProfile &profile) {
   port.task_priority = 1;
   port.task_affinity = 1;
   ESP_RETURN_ON_ERROR(lvgl_port_init(&port), kTag, "initialize LVGL");
+  state.lvgl_up = true;
 
   lvgl_port_display_cfg_t display{};
   display.io_handle = state.panel_io;
@@ -288,8 +314,8 @@ esp_err_t initialize_touch() {
   io.lcd_cmd_bits = 8;
   io.scl_speed_hz = 400000;
   io.flags.disable_control_phase = true;
-  esp_lcd_panel_io_handle_t touch_io = nullptr;
-  ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(state.touch_i2c, &io, &touch_io),
+  ESP_RETURN_ON_ERROR(
+      esp_lcd_new_panel_io_i2c(state.touch_i2c, &io, &state.touch_io),
                       kTag, "create touch IO");
 
   esp_lcd_touch_config_t config{};
@@ -301,14 +327,11 @@ esp_err_t initialize_touch() {
   // No sleep command is ever sent to this controller. The only recovery from a
   // wedged FT6336U is cycling ALDO3, which blanks the display
   // (TWATCH_S3_PLUS_BSP_REUSE.md §8, §10.5).
-  const TickType_t since_rails = xTaskGetTickCount() - state.rails_up;
-  if (since_rails < pdMS_TO_TICKS(kTouchSettleMs)) {
-    vTaskDelay(pdMS_TO_TICKS(kTouchSettleMs) - since_rails);
-  }
+  (void)wait_from_rails(kTouchSettleMs);
   esp_err_t err = ESP_FAIL;
   for (state.touch_attempts = 1; state.touch_attempts <= kTouchProbeAttempts;
        ++state.touch_attempts) {
-    err = esp_lcd_touch_new_i2c_ft5x06(touch_io, &config, &state.touch);
+    err = esp_lcd_touch_new_i2c_ft5x06(state.touch_io, &config, &state.touch);
     if (err == ESP_OK) {
       break;
     }
@@ -366,9 +389,9 @@ lv_obj_t *corner(lv_obj_t *parent, lv_align_t align, const char *text) {
   return label;
 }
 
-// §11's screen: four unequal blocks, so a byte swap, a mirror and a rotation
-// each produce a different picture instead of the same one; the corners named
-// so the photograph says which way is up; a marker that follows the finger.
+// §11's screen: unequal colour blocks distinguish byte swap, mirror and
+// rotation; named corners show orientation; the ramp exposes gamma/banding;
+// the canvas makes a literal one-pixel checkerboard.
 void build_bringup_screen() {
   lvgl_port_lock(0);
   lv_obj_t *screen = lv_screen_active();
@@ -377,10 +400,30 @@ void build_bringup_screen() {
   lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
-  swatch(screen, 0, 0, 160, 80, lv_palette_main(LV_PALETTE_RED));
-  swatch(screen, 160, 0, 80, 160, lv_palette_main(LV_PALETTE_GREEN));
-  swatch(screen, 0, 80, 80, 160, lv_palette_main(LV_PALETTE_BLUE));
-  swatch(screen, 80, 160, 160, 80, lv_color_white());
+  swatch(screen, 0, 0, 140, 60, lv_palette_main(LV_PALETTE_RED));
+  swatch(screen, 140, 0, 100, 90, lv_palette_main(LV_PALETTE_GREEN));
+  swatch(screen, 0, 60, 90, 60, lv_palette_main(LV_PALETTE_BLUE));
+  swatch(screen, 90, 90, 150, 30, lv_color_white());
+  for (int band = 0; band < 8; ++band) {
+    const std::uint8_t level = static_cast<std::uint8_t>((255 * band) / 7);
+    swatch(screen, band * 30, 120, 30, 36,
+           lv_color_make(level, level, level));
+  }
+
+  lv_obj_t *checker = lv_canvas_create(screen);
+  lv_canvas_set_buffer(checker, checker_pixels, kCheckerSize, kCheckerSize,
+                       LV_COLOR_FORMAT_RGB565);
+  for (int y = 0; y < kCheckerSize; ++y) {
+    for (int x = 0; x < kCheckerSize; ++x) {
+      lv_canvas_set_px(checker, x, y, ((x + y) & 1) ? lv_color_white()
+                                                    : lv_color_black(),
+                       LV_OPA_COVER);
+    }
+  }
+  lv_obj_set_pos(checker, 0, 168);
+
+  state.partial_patch =
+      swatch(screen, 64, 168, 48, 48, lv_palette_main(LV_PALETTE_YELLOW));
   corner(screen, LV_ALIGN_TOP_LEFT, "0,0");
   corner(screen, LV_ALIGN_TOP_RIGHT, "239,0");
   corner(screen, LV_ALIGN_BOTTOM_LEFT, "0,239");
@@ -408,6 +451,206 @@ void build_bringup_screen() {
   lvgl_port_unlock();
 }
 
+struct TwatchPanelExerciseOps {
+  esp_err_t error = ESP_OK;
+
+  bool call(esp_err_t result, const char *step) {
+    if (result == ESP_OK) {
+      return true;
+    }
+    error = result;
+    ESP_LOGE(kTag, "panel exercise: %s failed: %s", step,
+             esp_err_to_name(result));
+    return false;
+  }
+
+  void refresh_full() {
+    lv_obj_invalidate(lv_screen_active());
+    lv_refr_now(state.display);
+  }
+
+  bool show_patterns() {
+    ESP_LOGI(kTag, "panel exercise: full flush");
+    lvgl_port_lock(0);
+    refresh_full();
+    lvgl_port_unlock();
+    vTaskDelay(pdMS_TO_TICKS(kDiagnosticHoldMs));
+
+    ESP_LOGI(kTag, "panel exercise: partial 48x48 flush");
+    lvgl_port_lock(0);
+    lv_obj_set_style_bg_color(state.partial_patch,
+                              lv_palette_main(LV_PALETTE_PURPLE), 0);
+    lv_obj_invalidate(state.partial_patch);
+    lv_refr_now(state.display);
+    lvgl_port_unlock();
+    vTaskDelay(pdMS_TO_TICKS(kDiagnosticHoldMs));
+    return true;
+  }
+
+  bool rotation_and_gap() {
+    ESP_LOGI(kTag, "panel exercise: rotation 90 -> 0");
+    lvgl_port_lock(0);
+    lv_display_set_rotation(state.display, LV_DISPLAY_ROTATION_90);
+    refresh_full();
+    lvgl_port_unlock();
+    vTaskDelay(pdMS_TO_TICKS(kDiagnosticHoldMs));
+    lvgl_port_lock(0);
+    lv_display_set_rotation(state.display, LV_DISPLAY_ROTATION_0);
+    refresh_full();
+    lvgl_port_unlock();
+    vTaskDelay(pdMS_TO_TICKS(kDiagnosticHoldMs));
+
+    ESP_LOGI(kTag, "panel exercise: gap 1,1 -> 0,0");
+    lvgl_port_lock(0);
+    bool ok = call(esp_lcd_panel_set_gap(state.panel, 1, 1), "set gap 1,1");
+    if (ok) {
+      refresh_full();
+    }
+    lvgl_port_unlock();
+    if (!ok) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(kDiagnosticHoldMs));
+    lvgl_port_lock(0);
+    ok = call(esp_lcd_panel_set_gap(state.panel, 0, 0), "restore gap 0,0");
+    if (ok) {
+      refresh_full();
+    }
+    lvgl_port_unlock();
+    vTaskDelay(pdMS_TO_TICKS(kDiagnosticHoldMs));
+    return ok;
+  }
+
+  bool display_cycle() {
+    lvgl_port_lock(0);
+    bool ok = call(esp_lcd_panel_disp_on_off(state.panel, false), "DISPOFF");
+    if (ok) {
+      vTaskDelay(pdMS_TO_TICKS(kSleepIntervalMs));
+      ok = call(esp_lcd_panel_disp_on_off(state.panel, true), "DISPON");
+    }
+    lvgl_port_unlock();
+    vTaskDelay(pdMS_TO_TICKS(kSleepIntervalMs));
+    return ok;
+  }
+
+  bool sleep_cycle(bool respect_interval) {
+    ESP_LOGI(kTag, "panel exercise: sleep interval %" PRIu32 " ms (%s)",
+             kDriverSleepDelayMs + (respect_interval ? 20 : 0),
+             respect_interval ? "datasheet-conforming" : "deliberately short");
+    lvgl_port_lock(0);
+    bool ok = call(esp_lcd_panel_disp_sleep(state.panel, true), "SLPIN");
+    if (ok) {
+      ok = call(esp_lcd_panel_disp_sleep(state.panel, false), "SLPOUT");
+    }
+    if (ok && respect_interval) {
+      vTaskDelay(pdMS_TO_TICKS(kSleepIntervalMs - kDriverSleepDelayMs));
+    }
+    if (ok) {
+      ok = call(esp_lcd_panel_disp_sleep(state.panel, true), "SLPIN after wake");
+    }
+    if (ok) {
+      ok = call(esp_lcd_panel_disp_sleep(state.panel, false), "final SLPOUT");
+    }
+    if (ok) {
+      lv_label_set_text(state.readout,
+                        respect_interval ? "S120 CONFORM" : "S100 SHORT");
+      lv_obj_invalidate(state.readout);
+      lv_refr_now(state.display);
+    }
+    lvgl_port_unlock();
+    if (ok) {
+      // The panel has no read-back. Keep each labelled result on glass long
+      // enough for its own photograph; the next arm must not erase the only
+      // evidence before an operator can see it.
+      vTaskDelay(pdMS_TO_TICKS(kObservationHoldMs));
+    }
+    return ok;
+  }
+};
+
+template <typename Handle, typename Undo>
+void undo(Handle &handle, const char *what, Undo undo_step) {
+  if (handle == nullptr) {
+    return;
+  }
+  const esp_err_t err = undo_step(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "boot rollback: %s failed: %s", what, esp_err_to_name(err));
+  }
+  handle = nullptr;
+}
+
+struct TwatchRollbackOps {
+  bool display_registered() const { return state.display != nullptr; }
+
+  void retain_display_stack() {
+    ESP_LOGE(kTag, "boot rollback: a live LVGL display may have queued SPI DMA; "
+                   "the whole T-Watch stack stays alive rather than freeing "
+                   "its display or framebuffer before the callback (#367)");
+  }
+
+  void remove_touch() {
+    undo(state.touch, "delete touch", esp_lcd_touch_del);
+  }
+  void remove_touch_io() {
+    undo(state.touch_io, "delete touch IO", esp_lcd_panel_io_del);
+  }
+  void remove_touch_bus() {
+    undo(state.touch_i2c, "delete touch I2C bus", i2c_del_master_bus);
+  }
+  void stop_lvgl() {
+    if (!state.lvgl_up) {
+      return;
+    }
+    const esp_err_t err = lvgl_port_deinit();
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag, "boot rollback: stop LVGL failed: %s", esp_err_to_name(err));
+    }
+    state.lvgl_up = false;
+  }
+  void remove_panel() {
+    undo(state.panel, "delete panel", esp_lcd_panel_del);
+  }
+  void remove_panel_io() {
+    undo(state.panel_io, "delete panel IO", esp_lcd_panel_io_del);
+  }
+  void free_spi() {
+    if (!state.spi_bus_up) {
+      return;
+    }
+    const esp_err_t err = spi_bus_free(SPI2_HOST);
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag, "boot rollback: free SPI2 failed: %s", esp_err_to_name(err));
+    }
+    state.spi_bus_up = false;
+  }
+  void remove_pmu() {
+    if (state.pmu != nullptr) {
+      ESP_LOGW(kTag, "boot rollback: ALDO2/3 stay as written -- their loads "
+                     "have no measured safe power-down sequence");
+    }
+    undo(state.pmu, "remove AXP2101", i2c_master_bus_rm_device);
+  }
+  void remove_main_bus() {
+    undo(state.main_i2c, "delete main I2C bus", i2c_del_master_bus);
+  }
+};
+
+void abandon_touch() {
+  TwatchRollbackOps ops;
+  ops.remove_touch();
+  ops.remove_touch_io();
+  ops.remove_touch_bus();
+}
+
+esp_err_t abandon_twatch_after(esp_err_t err, const char *step) {
+  ESP_LOGE(kTag, "%s failed: %s; rolling the boot back", step,
+           esp_err_to_name(err));
+  TwatchRollbackOps ops;
+  attadipa::firmware::rollback_twatch_boot(ops);
+  return err;
+}
+
 } // namespace
 
 esp_err_t start_twatch_ui() {
@@ -420,10 +663,17 @@ esp_err_t start_twatch_ui() {
                       ESP_ERR_INVALID_STATE, kTag,
                       "profile geometry disagrees with this backend");
 
-  ESP_RETURN_ON_ERROR(backlight(false), kTag, "hold the backlight dark");
+  esp_err_t err = backlight(false);
+  if (err != ESP_OK) {
+    return abandon_twatch_after(err, "hold the backlight dark");
+  }
   // Without the PMU there is no ALDO3 and nothing below can answer.
-  ESP_RETURN_ON_ERROR(initialize_pmu(), kTag, "PMU and rails");
+  err = initialize_pmu();
+  if (err != ESP_OK) {
+    return abandon_twatch_after(err, "PMU and rails");
+  }
   state.rails_up = xTaskGetTickCount();
+  state.panel_settle_ms = wait_from_rails(kPanelSettleMs);
 
   // §10.1 and §10.3: a failed panel command loses the display and nothing
   // else; a dead touch bus leaves the display alone.
@@ -431,9 +681,10 @@ esp_err_t start_twatch_ui() {
   if (panel_err != ESP_OK) {
     ESP_LOGE(kTag, "display capability absent: %s", esp_err_to_name(panel_err));
   }
-  const esp_err_t touch_err = initialize_touch();
+  esp_err_t touch_err = initialize_touch();
   if (touch_err != ESP_OK) {
     ESP_LOGE(kTag, "touch capability absent: %s", esp_err_to_name(touch_err));
+    abandon_touch();
   }
 
   if (panel_err == ESP_OK) {
@@ -444,20 +695,31 @@ esp_err_t start_twatch_ui() {
       state.indev = lvgl_port_add_touch(&touch);
       if (state.indev == nullptr) {
         ESP_LOGE(kTag, "touch answered but LVGL could not add it");
+        touch_err = ESP_ERR_NO_MEM;
+        abandon_touch();
       }
     }
     build_bringup_screen();
     // Two LVGL refresh periods: the first frame is in GRAM before the LED is.
     vTaskDelay(pdMS_TO_TICKS(200));
-    ESP_RETURN_ON_ERROR(backlight(true), kTag, "backlight on");
+    err = backlight(true);
+    if (err != ESP_OK) {
+      return abandon_twatch_after(err, "backlight on");
+    }
+    TwatchPanelExerciseOps exercise;
+    if (!attadipa::firmware::run_twatch_panel_exercise(exercise)) {
+      return abandon_twatch_after(exercise.error, "panel exercise");
+    }
   }
 
   ESP_LOGI(kTag,
            "T-Watch S3 Plus bring-up: panel %s, touch %s (probe %u of %u); SPI "
-           "%d MHz, reset wait +%d ms, %s, vendor table %s",
+           "%d MHz, rail settle ESTIMATED >=%" PRIu32 " ms (observed %" PRIu32
+           "), reset wait +%d ms, %s, vendor table %s",
            panel_err == ESP_OK ? "up" : "ABSENT",
            touch_err == ESP_OK ? "ACK at 0x38" : "ABSENT", state.touch_attempts,
-           kTouchProbeAttempts, kPanelClockHz / 1000000,
+           kTouchProbeAttempts, kPanelClockHz / 1000000, kPanelSettleMs,
+           state.panel_settle_ms,
            CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS,
            kPanelInvert ? "INVON" : "INVOFF",
 #if CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
@@ -466,5 +728,8 @@ esp_err_t start_twatch_ui() {
            "not sent"
 #endif
   );
-  return panel_err;
+  if (panel_err != ESP_OK) {
+    return abandon_twatch_after(panel_err, "display capability");
+  }
+  return ESP_OK;
 }

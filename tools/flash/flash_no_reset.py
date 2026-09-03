@@ -49,6 +49,11 @@ FACTORY_FLASH_BYTES = 16 * 1024 * 1024
 # bootloader 0x0 + table 0x8000 + app0 0x10000 of 0x400000: identical in the
 # factory (Arduino default_16MB) table and in firmware/partitions.csv.
 RESTORE_SPAN = 0x410000
+EXPECTED_FLASH_FILES = (
+    (0x0, "bootloader/bootloader.bin"),
+    (0x8000, "partition_table/partition-table.bin"),
+    (0x10000, "attadipa.bin"),
+)
 BAUD = 115200  # the S3's USB-Serial/JTAG ignores baud; not changing it keeps
                # esptool from renegotiating on a port it did not open
 
@@ -56,12 +61,22 @@ BAUD = 115200  # the S3's USB-Serial/JTAG ignores baud; not changing it keeps
 def plan_from_build(build_dir: Path) -> tuple[dict[str, str], list[tuple[int, Path]]]:
     args = json.loads((build_dir / "flasher_args.json").read_text())
     settings = args["flash_settings"]
-    files = sorted(((int(offset, 16), build_dir / name)
-                    for offset, name in args["flash_files"].items()),
-                   key=lambda pair: pair[0])
-    for _offset, path in files:
+    entries = tuple(sorted(((int(offset, 16), name)
+                            for offset, name in args["flash_files"].items()),
+                           key=lambda pair: pair[0]))
+    if entries != EXPECTED_FLASH_FILES:
+        raise SystemExit(f"unexpected flash files {entries!r}; expected exactly "
+                         f"{EXPECTED_FLASH_FILES!r}")
+    files = [(offset, build_dir / name) for offset, name in entries]
+    limits = tuple(offset for offset, _name in EXPECTED_FLASH_FILES[1:]) + \
+        (RESTORE_SPAN,)
+    for (offset, path), limit in zip(files, limits):
         if not path.is_file():
             raise SystemExit(f"flasher_args.json names {path}, which does not exist")
+        if offset + path.stat().st_size > limit:
+            boundary = ("past RESTORE_SPAN" if limit == RESTORE_SPAN
+                        else "crosses the next image")
+            raise SystemExit(f"image at 0x{offset:x} {boundary} at 0x{limit:x}")
     end = max(offset + path.stat().st_size for offset, path in files)
     if end > RESTORE_SPAN:
         # --restore is the only way back to the factory image, and it writes
@@ -110,24 +125,34 @@ def selftest() -> int:
 
     with tempfile.TemporaryDirectory() as scratch:
         build = Path(scratch)
-        (build / "bootloader.bin").write_bytes(b"\xe9" * 0x100)
-        (build / "app.bin").write_bytes(b"\xe9" * 0x1000)
+        (build / "bootloader").mkdir()
+        (build / "partition_table").mkdir()
+        (build / "bootloader/bootloader.bin").write_bytes(b"\xe9" * 0x100)
+        (build / "partition_table/partition-table.bin").write_bytes(b"\x00" * 0x1000)
+        (build / "attadipa.bin").write_bytes(b"\xe9" * 0x1000)
         (build / "flasher_args.json").write_text(json.dumps({
             "flash_settings": {"flash_mode": "dio", "flash_freq": "80m",
                                "flash_size": "16MB"},
-            "flash_files": {"0x10000": "app.bin", "0x0": "bootloader.bin"},
+            "flash_files": {"0x10000": "attadipa.bin",
+                            "0x8000": "partition_table/partition-table.bin",
+                            "0x0": "bootloader/bootloader.bin"},
         }))
         settings, files = plan_from_build(build)
-        assert [offset for offset, _ in files] == [0x0, 0x10000], "sorted by offset"
+        assert [offset for offset, _ in files] == [0x0, 0x8000, 0x10000], \
+            "only the expected images, sorted by offset"
         argv = esptool_argv(settings, files, "watchdog_reset")
         assert argv[:6] == ["--chip", "esp32s3", "--baud", "115200",
                             "--after", "watchdog_reset"], argv
         assert argv[6] == "write_flash" and argv[7:9] == ["--flash_mode", "dio"], argv
-        assert argv[-2:] == ["0x10000", str(build / "app.bin")], argv
+        assert argv[-2:] == ["0x10000", str(build / "attadipa.bin")], argv
 
+        (build / "attadipa.bin").write_bytes(
+            b"\xe9" * (RESTORE_SPAN - 0x10000 + 1))
         (build / "flasher_args.json").write_text(json.dumps({
             "flash_settings": settings,
-            "flash_files": {"0x0": "bootloader.bin", "0x40f100": "app.bin"},
+            "flash_files": {"0x0": "bootloader/bootloader.bin",
+                            "0x8000": "partition_table/partition-table.bin",
+                            "0x10000": "attadipa.bin"},
         }))
         try:
             plan_from_build(build)
@@ -135,6 +160,44 @@ def selftest() -> int:
             assert "past RESTORE_SPAN" in str(refused), refused
         else:
             raise AssertionError("a plan ending at 0x410100 was not refused")
+
+        (build / "bootloader/bootloader.bin").write_bytes(b"\xe9" * 0x8001)
+        (build / "attadipa.bin").write_bytes(b"\xe9" * 0x1000)
+        try:
+            plan_from_build(build)
+        except SystemExit as refused:
+            assert "crosses the next image" in str(refused), refused
+        else:
+            raise AssertionError("a bootloader overlapping the partition table was accepted")
+
+        (build / "nvs.bin").write_bytes(b"\x00" * 0x1000)
+        (build / "flasher_args.json").write_text(json.dumps({
+            "flash_settings": settings,
+            "flash_files": {"0x0": "bootloader/bootloader.bin",
+                            "0x8000": "partition_table/partition-table.bin",
+                            "0x9000": "nvs.bin",
+                            "0x10000": "attadipa.bin"},
+        }))
+        try:
+            plan_from_build(build)
+        except SystemExit as refused:
+            assert "unexpected flash files" in str(refused), refused
+        else:
+            raise AssertionError("an extra NVS image inside RESTORE_SPAN was accepted")
+
+        (build / "bootloader/bootloader.bin").write_bytes(b"\xe9" * 0x100)
+        (build / "flasher_args.json").write_text(json.dumps({
+            "flash_settings": settings,
+            "flash_files": {"0x0": "bootloader/bootloader.bin",
+                            "0x8000": "partition_table/partition-table.bin",
+                            "0x10000": str((build / "attadipa.bin").resolve())},
+        }))
+        try:
+            plan_from_build(build)
+        except SystemExit as refused:
+            assert "unexpected flash file" in str(refused), refused
+        else:
+            raise AssertionError("an absolute app path was accepted")
 
         backup = build / "twatch_factory_16MB.bin"
         backup.write_bytes(b"\x00" * (FACTORY_FLASH_BYTES - 1))
@@ -151,7 +214,7 @@ def selftest() -> int:
         other = bytes.fromhex("f4a4a3ecee7d")
         refused = identity_mismatch(other, TWATCH_SERIAL)
         assert refused and "nothing written" in refused, refused
-    print("flash_no_reset selftest: 4 cases, all as expected.")
+    print("flash_no_reset selftest: plan, overlap, span, backup and identity cases pass.")
     return 0
 
 

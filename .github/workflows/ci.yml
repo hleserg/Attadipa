@@ -766,6 +766,7 @@ jobs:
           idf.py -B build-twatch -DSDKCONFIG=build-twatch/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch" build
           grep -q "^CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y$" build-twatch/sdkconfig
           grep -q "^CONFIG_ESPTOOLPY_FLASHMODE_DIO=y$" build-twatch/sdkconfig
+          grep -q "^# CONFIG_BT_ENABLED is not set$" build-twatch/sdkconfig
           python3 ../tools/flash/firmware_elf_check.py --variant flash build-twatch/attadipa.elf
           echo "CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE=y" > "$RUNNER_TEMP/sdkconfig.armb"
           idf.py -B build-twatch-b -DSDKCONFIG=build-twatch-b/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;$RUNNER_TEMP/sdkconfig.armb" build

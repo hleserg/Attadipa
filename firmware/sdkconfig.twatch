@@ -8,6 +8,11 @@
 
 CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y
 
+# Slice #417 owns only panel, touch and their rails. Inheriting Bluetooth from
+# sdkconfig.defaults would start MeshCore and default NVS after the screen,
+# changing preserved state that this bring-up image explicitly does not own.
+# CONFIG_BT_ENABLED is not set
+
 # Flash: Winbond W25Q128JW (JEDEC 0xEF 0x4018), 16 MB. The factory image's
 # header byte says DIO at 80 MHz — esptool image-info on the 2026-08-27 backup,
 # MEASURED (docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:91 — "flash DIO
