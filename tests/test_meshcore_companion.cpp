@@ -1142,6 +1142,88 @@ void test_an_old_node_refusing_opcode_40_does_not_fail_a_room_login()
     CHECK(client.malformed_frames() == 0);
 }
 
+// The other half of the same rule, and the half order cannot reach. `send_room`
+// waits only for the device and self info -- not for the contacts iteration --
+// so a login can be queued *during* the burst, ahead of the CMD_GET_CUSTOM_VARS
+// that RESP_CODE_END_OF_CONTACTS enqueues behind it. Now the outstanding
+// operation is the older command, and the sequence comparison points the wrong
+// way: on order alone the untagged error is the login's.
+//
+// What settles it is that the node has already answered the login. RESP_CODE_SENT
+// arrived, so nothing is owed on that command any more and the only claimant
+// left is opcode 40. Delete `&& !op_answered_` from `op_owed_an_answer()` and
+// this test is the one that fails: the room text is wiped before it is ever
+// transmitted, and the LOGIN_SUCCESS behind it is counted malformed.
+void test_an_answered_login_does_not_take_a_later_opcode_40s_error()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    CHECK(client.next_tx(frame));
+
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+    CHECK(client.next_tx(frame));
+
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(5)));
+
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(6)));
+
+    // Mid-burst, which is the whole premise: this is queued before opcode 40.
+    std::array<std::uint8_t, 32> room{};
+    for (std::size_t i = 0; i < room.size(); ++i) {
+        room[i] = static_cast<std::uint8_t>(0x40 + i);
+    }
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 41 && frame.bytes[0] == 26);
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(7)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+
+    // The node answers the login: an estimate for the round trip, and with it
+    // the fact that this command has been dealt with.
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 10, 0, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+
+    // Then it refuses opcode 40, naming nothing.
+    const std::uint8_t error[] = {1, 1};  // ERR_CODE_UNSUPPORTED_CMD
+    CHECK(client.receive(error, sizeof(error), at(9)));
+    CHECK(client.status().delivery != MeshDelivery::Failed);
+    CHECK(client.send_busy());
+
+    std::uint8_t login_ok[] = {0x85, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(&login_ok[2], room.data(), 6);
+    CHECK(client.receive(login_ok, sizeof(login_ok), at(10)));
+
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 18 && frame.bytes[0] == 2);
+    CHECK(std::memcmp(&frame.bytes[13], "Hello", 5) == 0);
+    CHECK(client.malformed_frames() == 0);
+}
+
 void test_an_old_node_refusing_opcode_40_does_not_fail_a_queued_send()
 {
     MeshCoreCompanion client;
@@ -1262,6 +1344,7 @@ int main()
     test_an_unanswered_custom_vars_request_stops_taking_the_blame();
     test_an_old_node_refusing_opcode_40_does_not_fail_a_room_login();
     test_an_old_node_refusing_opcode_40_does_not_fail_a_queued_send();
+    test_an_answered_login_does_not_take_a_later_opcode_40s_error();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
     test_self_info_carries_the_node_identity();
