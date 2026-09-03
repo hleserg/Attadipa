@@ -405,12 +405,14 @@ is not inferable from one successful `begin()`.
    watch with a working screen and dead touch is more useful than one that
    halted, and it is what a user with a damaged unit actually has.
 
-## 11. The experiment, which needs a board — NOT EXECUTED — HARDWARE REQUIRED
+## 11. The experiment — first-slice hardware run recorded; full matrix remains
 
-One physical T-Watch S3 Plus, USB serial `DC:B4:D9:18:49:40`, ESP32-S3 rev
-v0.2, 8 MB octal PSRAM, 16 MB flash. One firmware SHA across all arms. Entry via
-the verified manual download-mode route (hold BOOT while connecting USB) —
-[TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md).
+The issue-sized arm-C panel and touch run is recorded in
+[TWATCH_S3_PLUS_PANEL_TOUCH_2026-09-03](TWATCH_S3_PLUS_PANEL_TOUCH_2026-09-03.md).
+The full matrix below remains **NOT EXECUTED — HARDWARE REQUIRED**. Its unit is
+the T-Watch S3 Plus with USB serial `DC:B4:D9:18:49:40`, ESP32-S3 rev v0.2,
+8 MB octal PSRAM and 16 MB flash. Entry is via the verified download-mode route
+in [TWATCH_S3_PLUS_DOWNLOAD_MODE](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md).
 Nothing here burns an eFuse or touches a security setting.
 
 **Three arms, not two.** §4 is the reason.
