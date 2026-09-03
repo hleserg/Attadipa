@@ -464,7 +464,7 @@ about the USB control plane.
 
 The scan itself is the part nobody has priced. A restored or typed passkey
 starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:581` —
-"BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:159` —
+"BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:170` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
 (`firmware/main/board_power.cpp:381` — "esp_light_sleep_start();") without a PM
 lock, because `CONFIG_PM_ENABLE` is not set. Whether the scan survives that

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "attadipa/core/node_link_lease.h"
 #include "attadipa/core/power_owner.h"
 
 // Host tests for the power owner: the lease table, and the sleep transaction.
@@ -939,6 +940,142 @@ void test_every_new_name_is_readable()
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// #367 item 7: the node link's declaration.
+//
+// These drive `NodeLinkLease::reconcile()` against a real `PowerOwner` and a
+// real lease table, because that is the object the firmware calls. A test of a
+// phase-to-bool helper on its own would pass while the acquire it stands for
+// never happened, and AGENTS.md says so in as many words.
+
+void test_the_node_link_lease_follows_the_transport_phase()
+{
+    FakeHardware  hw;
+    PowerOwner    owner(hw);
+    NodeLinkLease link;
+    LeaseError    why = LeaseError::None;
+
+    // Nothing is there: nothing is declared, and no lease was spent finding out.
+    CHECK(link.reconcile(owner, TransportPhase::Absent, why));
+    CHECK(!link.held());
+    CHECK(owner.leases().outstanding() == 0);
+
+    // A peer arriving is a radio that is on, and it says so before it is Ready.
+    CHECK(link.reconcile(owner, TransportPhase::Connecting, why));
+    CHECK(link.held());
+    CHECK((owner.leases().held() & domain_bit(PowerDomain::NodeLink)) != 0);
+    CHECK(owner.leases().outstanding() == 1);
+
+    // Connecting to Ready is the same radio. One lease, not two -- a reconcile
+    // that re-acquired every frame would exhaust the table in eight frames.
+    CHECK(link.reconcile(owner, TransportPhase::Ready, why));
+    CHECK(owner.leases().outstanding() == 1);
+    CHECK(link.reconcile(owner, TransportPhase::Ready, why));
+    CHECK(owner.leases().outstanding() == 1);
+
+    // Attached is not idle: `provider.begin()` and `start_scan()` are the same
+    // `case` arm, so a configured watch with no node in range sits here with an
+    // unbounded active scan running. Still one lease, and still the same one.
+    CHECK(link.reconcile(owner, TransportPhase::Attached, why));
+    CHECK(link.held());
+    CHECK(owner.leases().outstanding() == 1);
+
+    // Suspended is the phase that means deliberately quiesced, and it is the
+    // one that gives the lease back.
+    CHECK(link.reconcile(owner, TransportPhase::Suspended, why));
+    CHECK(!link.held());
+    CHECK(owner.leases().held() == 0);
+    CHECK(owner.leases().outstanding() == 0);
+    CHECK(why == LeaseError::None);
+}
+
+void test_every_quiet_phase_gives_the_node_link_lease_back()
+{
+    // Attached is deliberately absent: it is a radio that is scanning. What is
+    // left is the three phases in which the link carries nothing.
+    const TransportPhase quiet[] = {TransportPhase::Absent, TransportPhase::Suspended,
+                                    TransportPhase::Faulted};
+    for (const TransportPhase phase : quiet) {
+        FakeHardware  hw;
+        PowerOwner    owner(hw);
+        NodeLinkLease link;
+        LeaseError    why = LeaseError::None;
+
+        CHECK(link.reconcile(owner, TransportPhase::Ready, why));
+        CHECK(link.held());
+        CHECK(link.reconcile(owner, phase, why));
+        CHECK(!link.held());
+        CHECK(owner.leases().outstanding() == 0);
+    }
+}
+
+void test_a_refused_node_link_lease_is_reported_and_then_retried()
+{
+    FakeHardware  hw;
+    PowerOwner    owner(hw);
+    NodeLinkLease link;
+    LeaseError    why = LeaseError::None;
+
+    // Fill the table. Eight is the capacity and no ninth grant exists.
+    LeaseId taken[8] = {};
+    for (LeaseId& id : taken) {
+        id = owner.acquire(domain_bit(PowerDomain::Display), {}, why);
+        CHECK(id != kNoLease);
+    }
+
+    CHECK(!link.reconcile(owner, TransportPhase::Ready, why));
+    CHECK(why == LeaseError::Exhausted);
+    CHECK(!link.held());
+
+    // And it is a refusal, not a corruption: the handle stayed empty, so the
+    // next pass asks again rather than releasing something it never held.
+    CHECK(owner.release(taken[0], why));
+    CHECK(link.reconcile(owner, TransportPhase::Ready, why));
+    CHECK(link.held());
+    CHECK((owner.leases().held() & domain_bit(PowerDomain::NodeLink)) != 0);
+}
+
+void test_the_node_link_declaration_reaches_the_sleep_decision()
+{
+    // The point of the whole item. A plan that would suspend the node link is
+    // refused while the link says it is in use, and goes through once it does
+    // not -- through `sleep()`'s own `held()` read, which is the only reader of
+    // the lease table in the tree.
+    FakeHardware  hw;
+    PowerOwner    owner(hw);
+    NodeLinkLease link;
+    LeaseError    why = LeaseError::None;
+
+    SleepPlan plan = light_sleep_plan();
+    plan.suspend   = static_cast<std::uint16_t>(domain_bit(PowerDomain::Display) |
+                                                domain_bit(PowerDomain::NodeLink));
+
+    CHECK(link.reconcile(owner, TransportPhase::Ready, why));
+    const SleepReport refused = owner.sleep(plan, kNow);
+    CHECK(refused.outcome == SleepOutcome::RefusedLeaseHeld);
+    CHECK(refused.blocked_by == domain_bit(PowerDomain::NodeLink));
+    CHECK(hw.sleeps == 0);
+
+    // And the regression the declaration exists for: `Attached` is the ordinary
+    // state of a configured watch with nothing in range, and the radio is
+    // scanning in it. A gated plan must be refused there too -- declaring that
+    // phase idle would suspend NodeLink under a live scan, which is the
+    // ADR-0016 failure arriving through the declaration meant to prevent it.
+    CHECK(link.reconcile(owner, TransportPhase::Attached, why));
+    const SleepReport refused_while_scanning = owner.sleep(plan, kNow);
+    CHECK(refused_while_scanning.outcome == SleepOutcome::RefusedLeaseHeld);
+    CHECK(refused_while_scanning.blocked_by == domain_bit(PowerDomain::NodeLink));
+
+    CHECK(link.reconcile(owner, TransportPhase::Suspended, why));
+    CHECK(owner.sleep(plan, kNow).outcome == SleepOutcome::Woken);
+
+    // And the plan the firmware actually runs is unaffected either way: it
+    // names `Display` alone, which is why item 7 changes no bench behaviour.
+    CHECK(link.reconcile(owner, TransportPhase::Ready, why));
+    CHECK(owner.sleep(light_sleep_plan(), kNow).outcome == SleepOutcome::Woken);
+}
+
 }  // namespace
 
 int main()
@@ -978,6 +1115,10 @@ int main()
     test_two_cycles_leave_no_residue();
     test_only_a_resting_state_is_a_sleep();
     test_every_new_name_is_readable();
+    test_the_node_link_lease_follows_the_transport_phase();
+    test_every_quiet_phase_gives_the_node_link_lease_back();
+    test_a_refused_node_link_lease_is_reported_and_then_retried();
+    test_the_node_link_declaration_reaches_the_sleep_decision();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

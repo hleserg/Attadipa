@@ -1,6 +1,16 @@
 #include "physical_input.h"
 
 #include "board_power.h"
+// Explicit, although `physical_input.h` already reaches it through
+// `driver/i2c_master.h` on the pinned IDF. A green build does not prove the
+// macro was visible: if it is not, both guards in this file are false together,
+// the `#else` arm compiles, nothing fails, and the declaration ships as a
+// permanent `Absent` on a radio that is running. That failure is silent, so it
+// does not rest on an include chain inside somebody else's header.
+#include "sdkconfig.h"
+#if CONFIG_BT_NIMBLE_ENABLED
+#include "meshcore_ble.h"
+#endif
 #include "power_button_edges.h"
 
 #include <algorithm>
@@ -17,6 +27,7 @@
 #include "lvgl.h"
 
 #include "attadipa/core/input.h"
+#include "attadipa/core/node_link_lease.h"
 #include "attadipa/core/power_owner.h"
 #include "attadipa/core/power_state.h"
 #include "attadipa/platform/board_profile.h"
@@ -165,6 +176,42 @@ private:
       return;
     }
     sleep_requested_ = false;
+
+    // #367 item 7. The BLE transport's power declaration is recorded here,
+    // immediately before the only thing that reads it: `sleep()` takes
+    // `held()` once, further down, and nothing else in the tree reads the
+    // lease table at all. `NodeLinkLease` carries the reasoning for doing it
+    // on this task rather than in `meshcore_ble.cpp`; the short version is
+    // that the transport lives in `mesh_task` and the owner is not
+    // thread-safe by design, so the transport declares through the phase
+    // snapshot this task already reads, and the sleeper records.
+    //
+    // Refusals are logged and the lease is retried on the next sleep, which is
+    // why this is a warning and not a refusal to sleep: the plan below names
+    // `Display` alone, so an absent NodeLink lease changes no outcome today.
+    // The day a plan names `NodeLink`, a lease that could not be taken must
+    // stop being invisible, and this log is where that starts.
+#if CONFIG_BT_NIMBLE_ENABLED
+    const attadipa::core::TransportPhase link_phase =
+        meshcore_ble_status().transport;
+#else
+    // No radio in this image, so the link is not there at all -- which is
+    // exactly what `Absent` states. Declaring it, rather than compiling the
+    // reconcile away with the transport, keeps one behaviour for both images:
+    // the lease is released if anything ever took it, and `sleep()` reads the
+    // same table either way. `meshcore_ble.cpp` is compiled only under this
+    // symbol (`firmware/main/CMakeLists.txt:9` -- "if(CONFIG_BT_NIMBLE_ENABLED)")
+    // while this file is compiled into every non-T-Watch image, so the guard is
+    // what every other caller of `meshcore_ble_status()` here already has.
+    const attadipa::core::TransportPhase link_phase =
+        attadipa::core::TransportPhase::Absent;
+#endif
+    attadipa::core::LeaseError lease_why = attadipa::core::LeaseError::None;
+    if (!node_link_lease_.reconcile(attadipa::firmware::board_power_owner(),
+                                    link_phase, lease_why)) {
+      ESP_LOGW(kTag, "node link lease: %s",
+               attadipa::core::to_string(lease_why));
+    }
 
     // The decision stays here -- whether the watch is quiet enough to sleep is
     // a question about input, and this is where input lives. The *episode* is
@@ -465,6 +512,7 @@ private:
   std::size_t input_read_burst_ = 0;
   std::uint32_t last_pmu_poll_ms_ = 0;
   bool sleep_requested_ = false;
+  attadipa::core::NodeLinkLease node_link_lease_;
   PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};
 };
 
