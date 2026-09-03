@@ -466,7 +466,7 @@ The scan itself is the part nobody has priced. A restored or typed passkey
 starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:566` —
 "BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:159` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
-(`firmware/main/board_power.cpp:372` — "esp_light_sleep_start();") without a PM
+(`firmware/main/board_power.cpp:381` — "esp_light_sleep_start();") without a PM
 lock, because `CONFIG_PM_ENABLE` is not set. Whether the scan survives that
 sleep, and what a node out of range costs a worn watch per day, is
 **NOT EXECUTED — HARDWARE REQUIRED** — the row

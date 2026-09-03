@@ -76,6 +76,9 @@ esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
                             gpio_num_t touch_interrupt,
                             std::uint8_t awake_brightness);
 
+// Make the owner inert before boot rollback releases the handles it was given.
+void board_power_detach();
+
 // The one owner. Valid after `board_power_attach()` has returned ESP_OK; before
 // that its `PowerHardware` refuses everything, which is the honest answer for a
 // board nobody has bound yet.
