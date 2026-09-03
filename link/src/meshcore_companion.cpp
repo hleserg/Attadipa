@@ -808,6 +808,17 @@ bool MeshCoreCompanion::unpin()
     pinned_set_ = false;
     pinned_ = core::MeshPeerId{};
     wrong_node_ = false;
+    // AND WHAT THE NODE SAID, BECAUSE UNPINNING IS THE REPUDIATION.
+    //
+    // `reset_session()` already drops this on a disconnect, which is the
+    // *other* statement: a node that went away did not take its coordinate
+    // back. Unpinning does take it back, and the position is the one retained
+    // thing that outlives the pin. While this stayed set, telling
+    // `LocationService` to forget achieved nothing -- `sample()` went on
+    // answering out of here, and the very next worker pass re-adopted the
+    // coordinate the owner had just dropped. Clearing it at the source is what
+    // makes the order of those two calls stop mattering.
+    has_node_position_ = false;
     status_.pinned_id = core::MeshPeerId{};
     status_.has_pinned = false;
     status_.refused_id = core::MeshPeerId{};

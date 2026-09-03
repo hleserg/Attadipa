@@ -368,31 +368,40 @@ void test_a_refused_node_does_not_inherit_the_accepted_coordinate()
 
 // FORGETTING A NODE WITHDRAWS WHAT IT SAID; A DISCONNECT DOES NOT.
 //
-// The two are one line apart in the owner and opposite in meaning, which is why
-// both are pinned here. `test_a_disconnect_retains_and_ages` fixes the first:
-// a node that went away did not take back its coordinate. `forget()` is the
-// second: after #411 the watch is unpaired, will not reconnect and has deleted
-// the bond, so continuing to report that node's position and key prefix states
-// a source the watch has repudiated -- for as long as no other node states one,
-// which may be forever.
+// The two are one line apart in the owner and opposite in meaning.
+// `test_a_disconnect_retains_and_ages` fixes the first: a node that went away
+// did not take its coordinate back. This is the second. After #411 the watch is
+// unpaired, will not reconnect and has deleted the bond, so going on reporting
+// that node's position and key prefix states a source the watch has repudiated
+// -- with an age that only grows and nothing that can ever end it, because the
+// one thing that clears a retained observation is another node stating one.
+//
+// **The forget runs on a live session on purpose.** In the shipping sequence
+// the disconnect is a separate, asynchronous step, so `unpin()` is reached
+// while the companion is still holding this session's coordinate -- and
+// clearing only the owner is a no-op one tick later, because the next worker
+// pass re-adopts it straight back out of the companion. Both halves are
+// asserted below and the second is what a disconnect-first test cannot see:
+// `reset_session()` would already have cleared the companion for it.
 void test_forgetting_a_node_withdraws_its_coordinate()
 {
     MeshCoreCompanion client;
     link::NodePositionProvider provider(client);
     core::LocationService location(provider);
 
+    // Pinned, because a forget is what ends a pin -- and `unpin()` reports
+    // whether there was one to end.
+    client.pin(key_of(0x01));
     session_with_position(client, key_of(0x01), 10000000, 20000000, 0, 5);
     location.poll();
     CHECK(location.state(at(5)).has_position);
-    CHECK(location.state(at(5)).has_origin);
+    CHECK(location.state(at(5)).origin == key_of(0x01));
 
-    // A disconnect alone retains -- the case the line above this one exists for.
-    client.disconnected(at(10));
-    location.poll();
-    CHECK(location.state(at(20)).has_position);
-    CHECK(location.state(at(20)).origin == key_of(0x01));
-
+    // Still connected. The two halves of a forget, in the order the worker
+    // performs them.
+    CHECK(client.unpin());
     location.forget();
+
     const core::LocationState state = location.state(at(30));
     CHECK(!state.has_position);
     CHECK(!state.has_origin);
@@ -400,8 +409,17 @@ void test_forgetting_a_node_withdraws_its_coordinate()
     CHECK(!location.age_at_us(at(30)).has_value());
     CHECK(state.receiver == core::ReceiverPresence::Unknown);
 
+    // AND IT SURVIVES THE NEXT PASS. The worker polls every time round; while
+    // the companion still answered `node_position()`, this poll re-adopted the
+    // very coordinate the forget had just dropped, and the whole sequence was a
+    // no-op one tick later.
+    location.poll();
+    CHECK(!location.state(at(31)).has_position);
+    CHECK(!location.state(at(31)).has_origin);
+
     // And it is a withdrawal, not a mute: a node that states one afterwards is
     // adopted normally.
+    client.disconnected(at(35));
     session_with_position(client, key_of(0x55), 50000000, 60000000, 40, 45);
     location.poll();
     CHECK(location.state(at(45)).has_position);

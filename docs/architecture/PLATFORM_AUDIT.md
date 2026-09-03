@@ -569,7 +569,7 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
   (`docs/research/NODE_POSITION_FROM_MESHCORE.md:204` — "keeps being transmitted").
   The age only
   the node could have stated has no answer at all —
-  `core/src/location_service.cpp:145` — "report; returning `Millis{0}` would be the false measurement" — rather than a
+  `core/src/location_service.cpp:156` — "report; returning `Millis{0}` would be the false measurement" — rather than a
   zero that would read as a measurement.
 - **What is still open, deliberately:** the LPP decoder, local GNSS, any
   estimator or fusion, GNSS power policy, provider selection between two live
