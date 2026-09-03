@@ -341,6 +341,23 @@ void ending_a_session_clears_everything_stamped_with_it()
     CHECK(owner.snapshot().transitions == session.transitions);
 }
 
+// A local destructive operation must invalidate the generation before asking
+// an asynchronous transport to disconnect. Otherwise a notification already
+// in the worker queue can still mutate the pin after the screen reports that
+// the node was forgotten.
+void taking_the_connection_for_termination_ends_the_session_first()
+{
+    SessionOwner owner;
+    const std::uint32_t generation = establish(owner, 7);
+
+    CHECK(owner.end_and_take_connection() == 7);
+    CHECK(!owner.live(generation));
+    CHECK(owner.snapshot().connection == kNoSessionHandle);
+
+    // The later transport callback is stale and cannot end anything twice.
+    CHECK(!owner.ended(generation));
+}
+
 // ---------------------------------------------------------------------------
 // The catch-up. This is the half that replaces a lifecycle queue.
 
@@ -1522,6 +1539,7 @@ int main()
     a_stale_completion_cannot_release_a_live_sessions_slot();
     a_previous_generation_cannot_write_the_current_ones_handles();
     ending_a_session_clears_everything_stamped_with_it();
+    taking_the_connection_for_termination_ends_the_session_first();
     a_worker_that_keeps_up_is_told_each_transition_once();
     a_starved_worker_is_told_where_the_session_actually_got_to();
     a_session_that_never_established_is_not_replayed_as_ready();

@@ -217,6 +217,11 @@ public:
     // connect attempt that failed before a connection existed, or a local stop.
     void ended();
 
+    // Atomically preserve the transport handle and make this generation stale.
+    // The caller invokes the asynchronous transport termination only after
+    // releasing its platform lock.
+    std::uint16_t end_and_take_connection();
+
     // ---- facts about one session, each naming the session it belongs to ----
 
     bool connected(std::uint32_t generation, std::uint16_t connection);

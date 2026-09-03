@@ -1319,10 +1319,10 @@ struct RealForgetOps {
     void disarm() { reconnect_allowed.store(false); }
     void terminate()
     {
-        // As Deconfigure does: a scan already under way could still connect,
-        // and with the pin half cleared that connection would adopt.
+        // Make queued frames stale before asynchronous termination clears trust.
         if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
-        const std::uint16_t connection = session_snapshot().connection;
+        std::uint16_t connection;
+        { SessionGuard guard; connection = owner.end_and_take_connection(); }
         if (connection == attadipa::link::kNoSessionHandle) {
             // No session to end, so the disconnect path will not run
             // provider.begin() for us; Deconfigure makes the same call here.
