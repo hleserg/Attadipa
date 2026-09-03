@@ -974,8 +974,16 @@ void test_the_node_link_lease_follows_the_transport_phase()
     CHECK(link.reconcile(owner, TransportPhase::Ready, why));
     CHECK(owner.leases().outstanding() == 1);
 
-    // Attached is the peripheral present and nobody talking on it.
+    // Attached is not idle: `provider.begin()` and `start_scan()` are the same
+    // `case` arm, so a configured watch with no node in range sits here with an
+    // unbounded active scan running. Still one lease, and still the same one.
     CHECK(link.reconcile(owner, TransportPhase::Attached, why));
+    CHECK(link.held());
+    CHECK(owner.leases().outstanding() == 1);
+
+    // Suspended is the phase that means deliberately quiesced, and it is the
+    // one that gives the lease back.
+    CHECK(link.reconcile(owner, TransportPhase::Suspended, why));
     CHECK(!link.held());
     CHECK(owner.leases().held() == 0);
     CHECK(owner.leases().outstanding() == 0);
@@ -984,8 +992,10 @@ void test_the_node_link_lease_follows_the_transport_phase()
 
 void test_every_quiet_phase_gives_the_node_link_lease_back()
 {
-    const TransportPhase quiet[] = {TransportPhase::Absent, TransportPhase::Attached,
-                                    TransportPhase::Suspended, TransportPhase::Faulted};
+    // Attached is deliberately absent: it is a radio that is scanning. What is
+    // left is the three phases in which the link carries nothing.
+    const TransportPhase quiet[] = {TransportPhase::Absent, TransportPhase::Suspended,
+                                    TransportPhase::Faulted};
     for (const TransportPhase phase : quiet) {
         FakeHardware  hw;
         PowerOwner    owner(hw);
@@ -1037,9 +1047,9 @@ void test_the_node_link_declaration_reaches_the_sleep_decision()
     NodeLinkLease link;
     LeaseError    why = LeaseError::None;
 
-    SleepPlan plan   = light_sleep_plan();
-    plan.suspend     = static_cast<std::uint16_t>(domain_bit(PowerDomain::Display) |
-                                              domain_bit(PowerDomain::NodeLink));
+    SleepPlan plan = light_sleep_plan();
+    plan.suspend   = static_cast<std::uint16_t>(domain_bit(PowerDomain::Display) |
+                                                domain_bit(PowerDomain::NodeLink));
 
     CHECK(link.reconcile(owner, TransportPhase::Ready, why));
     const SleepReport refused = owner.sleep(plan, kNow);
@@ -1047,7 +1057,17 @@ void test_the_node_link_declaration_reaches_the_sleep_decision()
     CHECK(refused.blocked_by == domain_bit(PowerDomain::NodeLink));
     CHECK(hw.sleeps == 0);
 
+    // And the regression the declaration exists for: `Attached` is the ordinary
+    // state of a configured watch with nothing in range, and the radio is
+    // scanning in it. A gated plan must be refused there too -- declaring that
+    // phase idle would suspend NodeLink under a live scan, which is the
+    // ADR-0016 failure arriving through the declaration meant to prevent it.
     CHECK(link.reconcile(owner, TransportPhase::Attached, why));
+    const SleepReport refused_while_scanning = owner.sleep(plan, kNow);
+    CHECK(refused_while_scanning.outcome == SleepOutcome::RefusedLeaseHeld);
+    CHECK(refused_while_scanning.blocked_by == domain_bit(PowerDomain::NodeLink));
+
+    CHECK(link.reconcile(owner, TransportPhase::Suspended, why));
     CHECK(owner.sleep(plan, kNow).outcome == SleepOutcome::Woken);
 
     // And the plan the firmware actually runs is unaffected either way: it

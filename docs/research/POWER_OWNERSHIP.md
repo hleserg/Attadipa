@@ -142,7 +142,7 @@ owner would be allowed to do.
 
 *It has one now. #367 item 7 gave the node link a lease, and the boundary this
 section said could be drawn once is drawn:*
-`core/include/attadipa/core/node_link_lease.h:54` — "class NodeLinkLease {".
+`core/include/attadipa/core/node_link_lease.h:95` — "class NodeLinkLease {".
 *The paragraph below is what it was, and the reasoning it records is why the
 declaration is recorded on the sleeper's task rather than in the transport's.*
 
@@ -295,7 +295,7 @@ display has to retain touch and its bus with it. On the Waveshare the input
 service owns its own `lv_indev_t` and deletes it on its own failure
 ([`firmware/main/physical_input.cpp:84`](../../firmware/main/physical_input.cpp) —
 "lv_indev_t *indev = lv_indev_create();" — created there and released at
-[`:96`](../../firmware/main/physical_input.cpp) — "lv_indev_delete(indev);"),
+[`firmware/main/physical_input.cpp:98`](../../firmware/main/physical_input.cpp) — "lv_indev_delete(indev);"),
 so nothing LVGL keeps points at the touch controller and only the display stack
 is retained.
 That path is reached both when boot's LVGL lock times out

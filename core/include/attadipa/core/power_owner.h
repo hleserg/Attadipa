@@ -310,15 +310,26 @@ struct SleepReport {
 // **Not thread-safe, and deliberately so.** Every `acquire()`, `release()` and
 // `sleep()` must happen on one task; on the Waveshare board that is the UI task
 // that already owned `maybe_sleep()`. No lock is taken and none is needed while
-// that holds. The first consumer that wants a lease from another task — the
-// BLE transport is the obvious one, and issue #367 item 7 asks for it — brings
-// the serialisation decision with it, and it is a larger decision than a mutex
+// that holds. A consumer that wants a lease from another task brings the
+// serialisation decision with it, and it is a larger decision than a mutex
 // around this table: `sleep()` reads `held()` and then talks to hardware for as
 // long as the sleep lasts, so a lease taken in between is a lease the sleeper
-// never saw. Answering that needs the lease to participate in the sleep
-// decision itself, which is a design this owner does not yet have and which
-// nothing in the current firmware needs, because the only sleep plan that runs
-// suspends the display alone and no cross-task lease intersects it.
+// never saw.
+//
+// That decision is made, in ADR-0016: such a consumer does not call `acquire()`
+// at all. It publishes a state the owner's task already reads, and the owner's
+// task records the declaration on its own side, immediately before `sleep()`.
+// #367 item 7 is the first one — `attadipa/core/node_link_lease.h:95` —
+// "class NodeLinkLease {" — for the BLE transport.
+//
+// It leaves one thing open, and it is written here because this is the file
+// that would have to change. A declaration published *after* the sleeper read
+// its snapshot is still one the sleeper never saw; the pattern moves that
+// window off this table rather than closing it. Answering that needs the lease
+// to participate in the sleep decision itself, which is a design this owner
+// does not yet have and which nothing in the current firmware needs, because
+// the only sleep plan that runs suspends the display alone and no cross-task
+// lease intersects it.
 class PowerOwner {
 public:
     explicit PowerOwner(PowerHardware& hardware) : hardware_(hardware) {}

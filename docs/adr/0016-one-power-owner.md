@@ -76,10 +76,22 @@ lease the sleeper never saw, and a mutex around the table closes the table
 rather than the window. **A consumer that does not run on the owner's task
 declares through a snapshot the owner's task already reads, and the owner's
 task records the declaration.** #367 item 7 is the first one:
-`core/include/attadipa/core/node_link_lease.h:54` — "class NodeLinkLease {" —
+`core/include/attadipa/core/node_link_lease.h:95` — "class NodeLinkLease {" —
 takes the BLE transport's phase, published behind the transport's own critical
-section, and reconciles the lease immediately before `sleep()` reads it. The
-window closes by construction, and no ESP-IDF primitive enters `core/`.
+section, and reconciles the lease immediately before `sleep()` reads it. No
+ESP-IDF primitive enters `core/`.
+
+Be precise about what that buys, because it is narrower than "the window is
+closed". The lease table is now written and read on one task, so `held()` cannot
+miss a lease that exists — that race is gone by construction. The declaration
+window is not: a phase published after the sleeper read the snapshot and during
+`esp_light_sleep_start()` is still a declaration the sleeper never saw, the same
+width as before with the snapshot carrying it instead of the table. Closing
+*that* needs the sleep itself to be refusable by the transport, which
+`core/include/attadipa/core/power_owner.h:330` — "// does not yet have and which nothing in the current firmware needs, because"
+— still records as absent. It is inert while no plan gates a domain a cross-task
+consumer declares; **the first plan that does must close this window before it
+ships**, not after.
 
 **3. A transition is an ordered transaction with a journal.** Prepare, validate,
 suspend consumers in dependency order *recording each success*, apply the rail
