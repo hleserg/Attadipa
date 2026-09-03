@@ -76,8 +76,41 @@ struct AcceptingProvisioner final : core::Provisioner {
     return core::ProvisionOutcome::Accepted;
   }
 
+  // Pinned to a made-up node until it is forgotten, so the entry screen's
+  // node field has something to show. The key is not a real node's.
+  bool mesh_node(core::MeshPeerId &out) override {
+    if (!pinned_) {
+      return false;
+    }
+    out = core::MeshPeerId{};
+    out.public_key[0] = 0xA1;
+    out.public_key[1] = 0xB2;
+    out.public_key[2] = 0xC3;
+    out.public_key[3] = 0xD4;
+    return true;
+  }
+  core::ProvisionOutcome forget_mesh_node() override {
+    if (!pinned_) {
+      return core::ProvisionOutcome::Rejected;
+    }
+    std::printf("provision: forget node queued\n");
+    forget_in_flight_ = true;
+    return core::ProvisionOutcome::Pending;
+  }
+  core::MeshForgetOutcome mesh_forget_outcome() override {
+    if (!forget_in_flight_) {
+      return core::MeshForgetOutcome::BondKept;
+    }
+    forget_in_flight_ = false;
+    pinned_ = false;
+    std::printf("provision: node forgotten\n");
+    return core::MeshForgetOutcome::Forgotten;
+  }
+
 private:
   bool in_flight_ = false;
+  bool forget_in_flight_ = false;
+  bool pinned_ = true;
 };
 
 void rebuild_clock_screen();

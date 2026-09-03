@@ -66,7 +66,14 @@ enum class PasskeyOutcome : std::uint8_t {
 // The request task reserves and the worker completes, so the two ends never
 // write the same field twice; a lock-free word is enough and a mutex here would
 // put one of them to sleep on the other.
-class PasskeyOperation {
+//
+// A template over the outcome, since #411: forgetting the node crosses the
+// same two tasks from the same screen and needs the same ticket, so it is a
+// second instance of this word and not a second word. `Outcome` must spell
+// `Idle` as zero and `InFlight` as one and fit in three bits; every other
+// value is a way the worker finished.
+template <typename Outcome>
+class TicketedOperation {
 public:
     // Takes the slot and hands back the ticket the answer will be quoted under.
     // False -- and only false -- when a request really is still in flight; the
@@ -82,10 +89,10 @@ public:
     {
         std::uint32_t seen = slot_.load(std::memory_order_acquire);
         for (;;) {
-            if (state_of(seen) == PasskeyOutcome::InFlight) return false;
+            if (state_of(seen) == Outcome::InFlight) return false;
             const std::uint32_t taken = next_ticket(ticket_of(seen));
             if (slot_.compare_exchange_weak(seen,
-                                            pack(taken, PasskeyOutcome::InFlight),
+                                            pack(taken, Outcome::InFlight),
                                             std::memory_order_acq_rel,
                                             std::memory_order_acquire)) {
                 ticket = taken;
@@ -99,9 +106,9 @@ public:
     // kept, so the next reservation still moves past it.
     void release(std::uint32_t ticket)
     {
-        std::uint32_t expected = pack(ticket, PasskeyOutcome::InFlight);
+        std::uint32_t expected = pack(ticket, Outcome::InFlight);
         (void)slot_.compare_exchange_strong(expected,
-                                            pack(ticket, PasskeyOutcome::Idle),
+                                            pack(ticket, Outcome::Idle),
                                             std::memory_order_acq_rel,
                                             std::memory_order_acquire);
     }
@@ -114,13 +121,13 @@ public:
     // same Configure event with nobody waiting on an answer, and a completion
     // from them must not land in a slot the screen reserved. A ticket that no
     // longer owns the slot is dropped for the same reason.
-    void complete(std::uint32_t ticket, PasskeyOutcome outcome)
+    void complete(std::uint32_t ticket, Outcome outcome)
     {
-        if (ticket == 0 || outcome == PasskeyOutcome::Idle ||
-            outcome == PasskeyOutcome::InFlight) {
+        if (ticket == 0 || outcome == Outcome::Idle ||
+            outcome == Outcome::InFlight) {
             return;
         }
-        std::uint32_t expected = pack(ticket, PasskeyOutcome::InFlight);
+        std::uint32_t expected = pack(ticket, Outcome::InFlight);
         (void)slot_.compare_exchange_strong(expected, pack(ticket, outcome),
                                             std::memory_order_acq_rel,
                                             std::memory_order_acquire);
@@ -132,23 +139,23 @@ public:
     // the slot's, and zero with it, is `Idle` -- there is no operation of yours
     // outstanding, and a screen told `InFlight` there would wait for an answer
     // that is never coming.
-    PasskeyOutcome take(std::uint32_t ticket)
+    Outcome take(std::uint32_t ticket)
     {
-        if (ticket == 0) return PasskeyOutcome::Idle;
+        if (ticket == 0) return Outcome::Idle;
         std::uint32_t seen = slot_.load(std::memory_order_acquire);
-        if (ticket_of(seen) != ticket) return PasskeyOutcome::Idle;
-        const PasskeyOutcome state = state_of(seen);
-        if (state == PasskeyOutcome::Idle || state == PasskeyOutcome::InFlight) {
+        if (ticket_of(seen) != ticket) return Outcome::Idle;
+        const Outcome state = state_of(seen);
+        if (state == Outcome::Idle || state == Outcome::InFlight) {
             return state;
         }
-        if (slot_.compare_exchange_strong(seen, pack(ticket, PasskeyOutcome::Idle),
+        if (slot_.compare_exchange_strong(seen, pack(ticket, Outcome::Idle),
                                           std::memory_order_acq_rel,
                                           std::memory_order_acquire)) {
             return state;
         }
         // A new request took the slot between the load and the exchange, so
         // that answer belonged to an operation nobody is waiting on any more.
-        return PasskeyOutcome::Idle;
+        return Outcome::Idle;
     }
 
 private:
@@ -158,7 +165,7 @@ private:
     static constexpr std::uint32_t kStateMask = (1U << kStateBits) - 1U;
     static constexpr std::uint32_t kTicketMax = (1U << (32 - kStateBits)) - 1U;
 
-    static constexpr std::uint32_t pack(std::uint32_t ticket, PasskeyOutcome state)
+    static constexpr std::uint32_t pack(std::uint32_t ticket, Outcome state)
     {
         return (ticket << kStateBits) | static_cast<std::uint32_t>(state);
     }
@@ -166,9 +173,9 @@ private:
     {
         return slot >> kStateBits;
     }
-    static constexpr PasskeyOutcome state_of(std::uint32_t slot)
+    static constexpr Outcome state_of(std::uint32_t slot)
     {
-        return static_cast<PasskeyOutcome>(slot & kStateMask);
+        return static_cast<Outcome>(slot & kStateMask);
     }
     // Zero is never handed out: it is what "no request of mine" is spelled as,
     // in the board's own field and in `complete()` above.
@@ -178,7 +185,9 @@ private:
         return next == 0U ? 1U : next;
     }
 
-    std::atomic<std::uint32_t> slot_{pack(0, PasskeyOutcome::Idle)};
+    std::atomic<std::uint32_t> slot_{pack(0, Outcome::Idle)};
 };
+
+using PasskeyOperation = TicketedOperation<PasskeyOutcome>;
 
 }  // namespace attadipa::firmware

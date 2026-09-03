@@ -6,6 +6,7 @@
 
 #include "attadipa/core/mesh_service.h"
 #include "meshcore_forget_outcome.h"
+#include "meshcore_node_forget.h"
 #include "meshcore_passkey_outcome.h"
 #include "esp_err.h"
 
@@ -69,5 +70,22 @@ esp_err_t meshcore_ble_forget_bond();
 // conflict record had already gone, which leaves no bond behind and is not a
 // failed deletion.
 attadipa::firmware::ForgetOutcome meshcore_ble_forget_bond_outcome();
+
+// The entry screen's forget: the recorded stale bond where there is one, and
+// the pin in both the places it is kept, in the order meshcore_node_forget.h
+// gives. Reserves the answer's slot first and hands back the ticket, as
+// meshcore_ble_configure_passkey() does; `ESP_OK` means the request was
+// taken, not that anything is gone yet. `ESP_ERR_INVALID_STATE` when there is
+// neither a recorded bond nor a pin, `ESP_ERR_NOT_FINISHED` when one is in
+// flight, `ESP_ERR_NO_MEM` when the queue would not hold it.
+//
+// It arms nothing: the watch stays silent until the passkey entry that
+// follows posts its Configure, which is the one arm (#411).
+esp_err_t meshcore_ble_forget_node(std::uint32_t& ticket);
+
+// That request's answer, consumed once; `Idle` for a ticket the slot no
+// longer holds. meshcore_node_forget.h names the ways it ends.
+attadipa::firmware::ForgetNodeOutcome
+meshcore_ble_forget_node_outcome(std::uint32_t ticket);
 
 attadipa::core::MeshStatus meshcore_ble_status();
