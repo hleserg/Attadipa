@@ -1093,15 +1093,14 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // blocks on the lock, and a display removed between those two reads is a
 // `lv_timer_handler()` over freed objects.
 //
-// `lvgl_reachable == false` is the one caller whose failure *was* that lock:
-// the LVGL task has held it past a second, which means it is inside
-// `lv_timer_handler()`, most plausibly a flush the panel never acknowledged.
-// `lvgl_port_remove_disp()` would wait on that lock forever (it locks with no
-// timeout), and freeing the panel, its IO or the QSPI host under a flush in
-// progress is a use-after-free on the next byte. So the whole display stack
-// -- LVGL, display, panel, panel IO, SPI2 -- is left where it is and said so;
-// only what nothing below LVGL is using is undone. A leak is recoverable and
-// a hang or a panic is not.
+// `lvgl_reachable == false` means the caller cannot prove the display stack is
+// idle. The LVGL mutex serialises API calls but is not a flush barrier: QSPI
+// DMA completion can arrive after it is released, and this port exposes no
+// bounded drain. A lock timeout or a later boot failure after create_ui() may
+// therefore still have a transfer in flight. The whole display stack -- LVGL,
+// display, panel, panel IO, SPI2 -- is left where it is and said so; only what
+// nothing below LVGL is using is undone. A leak is recoverable and a hang or a
+// panic is not.
 //
 // What "undone" means for LVGL itself is narrower than for the rest:
 // `lvgl_port_deinit()` only asks the LVGL task to stop, and `lv_deinit()` runs
@@ -1120,14 +1119,14 @@ void undo(Handle &handle, esp_err_t &first_failure, const char *what,
 // report to the caller is that error, not ESP_OK.
 esp_err_t abandon_board(bool lvgl_reachable) {
   esp_err_t first_failure = ESP_OK;
-  // One rule for both: a lock this rollback cannot get -- the caller's own
-  // timeout, or a second of ours here -- means the display stack stays.
+  // One rule for both: a caller that cannot prove the stack idle, or a lock
+  // this rollback cannot get, leaves the display stack in place.
   if (state.display != nullptr && lvgl_reachable && !lvgl_port_lock(1000)) {
     lvgl_reachable = false;
   }
   if (state.display != nullptr && !lvgl_reachable) {
-    ESP_LOGE(kTag, "boot rollback: LVGL holds its lock; LVGL, the panel and "
-                   "QSPI are left in place rather than freed under it");
+    ESP_LOGE(kTag, "boot rollback: display transfer is not proven idle; LVGL, "
+                   "the panel and QSPI are left in place rather than freed");
     state.display = nullptr;
     state.lvgl_up = false;
     state.panel = nullptr;
@@ -1268,11 +1267,10 @@ esp_err_t start_waveshare_ui() {
 #endif
   lvgl_port_unlock();
   if (physical_result != ESP_OK) {
-    // The service did not start, but board_power_attach() may have: the
-    // owner then keeps a pmu and a panel the rollback frees. Harmless while
-    // every route to board_power_owner() runs inside the service, which is
-    // assigned only on success -- a second caller would have to know this.
-    return abandon_board_after(physical_result, "start physical input");
+    // create_ui() may already have queued a DMA-backed flush, and the LVGL
+    // mutex above does not prove its callback completed. Keep the whole display
+    // stack because the public port has no bounded drain operation.
+    return abandon_board_after(physical_result, "start physical input", false);
   }
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   if (watch_control_result != ESP_OK) {
