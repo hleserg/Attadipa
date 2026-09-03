@@ -18,6 +18,12 @@ record for the issue-sized first slice, not a claim that every experiment in
 - The flash command addressed only that serial identity and wrote the
   bootloader, partition table and application. Esptool verified the hash of
   every write. No eFuse or security setting was changed.
+- From the running Attadipa image, esptool's `usb_reset` strategy entered the
+  loader without a hand action, read the exact MAC above, uploaded its stub and
+  stayed in the loader; `flash_no_reset.py` then attached and wrote the image.
+  This was **EXECUTED once**. It proves automatic re-entry from this Attadipa
+  image, not from the factory image; the verified manual BOOT route remains the
+  recovery path.
 - The Waveshare watch and the attached Flipper were not opened by the T-Watch
   flash or console commands.
 
@@ -70,4 +76,3 @@ transform **PASS**.
   **NOT EXECUTED — HARDWARE REQUIRED** and are not silently folded into this
   first slice.
 - Factory-image restore and current measurement remain **NOT EXECUTED**.
-
