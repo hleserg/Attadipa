@@ -5,8 +5,10 @@ namespace attadipa::firmware {
 // Boot rollback, once a display exists.
 //
 // Both boards answer the same question -- what may a failed boot free while an
-// LVGL display is registered? -- and they answer it differently, because the
-// hardware fact underneath differs. The question is one: the pinned
+// LVGL display is registered? -- and they answer it differently. Not because of
+// a hardware fact: what differs is `lv_indev_t` ownership in this repository's
+// own C++, which is a software fact and is cited as one below. The question is
+// one: the pinned
 // `esp_lvgl_port` display API has add and remove and no completion barrier, so
 // a queued SPI DMA callback cannot be proven finished, and freeing a display,
 // its framebuffer, panel, panel IO or host is a use-after-free (#367 item 6).

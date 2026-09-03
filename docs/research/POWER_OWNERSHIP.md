@@ -274,9 +274,9 @@ quiescence claim: a registered display is always retained.
 
 **Two boards, one question, two answers, and the difference is not style.**
 The decision is written once, board-agnostic and template-only, in
-[`firmware/main/boot_rollback.h:32`](../../firmware/main/boot_rollback.h) —
+[`firmware/main/boot_rollback.h:34`](../../firmware/main/boot_rollback.h) —
 "void rollback_boot_retaining_all(Ops &ops) {" for the T-Watch and
-[`firmware/main/boot_rollback.h:53`](../../firmware/main/boot_rollback.h) —
+[`firmware/main/boot_rollback.h:55`](../../firmware/main/boot_rollback.h) —
 "void rollback_boot_retaining_display(Ops &ops) {" for the Waveshare, and
 `tests/test_boot_rollback.cpp` pins every branch of both off a board. The DMA
 argument above reaches the display stack and nothing else: it authorises
@@ -287,27 +287,46 @@ touch handle. On the T-Watch the LVGL port does —
 so an LVGL still running still reads that `esp_lcd_touch_t`; retaining the
 display has to retain touch and its bus with it. On the Waveshare the input
 service owns its own `lv_indev_t` and deletes it on its own failure
-([`firmware/main/physical_input.cpp:181`](../../firmware/main/physical_input.cpp) —
-"A boot that got no touch controller"), so nothing LVGL keeps points at the
-touch controller and only the display stack is retained.
+([`firmware/main/physical_input.cpp:82`](../../firmware/main/physical_input.cpp) —
+"lv_indev_t *indev = lv_indev_create();" — created there and released at
+[`:96`](../../firmware/main/physical_input.cpp) — "lv_indev_delete(indev);"),
+so nothing LVGL keeps points at the touch controller and only the display stack
+is retained.
 That path is reached both when boot's LVGL lock times out
 ([`firmware/main/waveshare_board.cpp:1226`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(ESP_ERR_TIMEOUT,") and when
 physical-input startup fails after `create_ui()` may have queued the first frame
-([`firmware/main/waveshare_board.cpp:1271`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1286`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
-use-after-free. On the physical-input failure, both callbacks installed by
-`create_ui()` are disarmed while the caller still owns the LVGL lock:
-[`firmware/main/waveshare_board.cpp:1260`](../../firmware/main/waveshare_board.cpp) —
+use-after-free. On the physical-input failure, everything `create_ui()` armed
+is disarmed while the caller still owns the LVGL lock — four things, not two:
+[`firmware/main/waveshare_board.cpp:1274`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), long_press);" — removes the path
-into provisioning/RTC and the adjacent timer deletion removes `refresh_ui()`.
+into provisioning/RTC, the adjacent timer deletion removes `refresh_ui()`, and
+[`firmware/main/waveshare_board.cpp:1279`](../../firmware/main/waveshare_board.cpp) —
+"state.clock_face.clear();" — takes the two the clock face installs on the same
+screen. The second of those is the one that matters, and it is a power defect
+rather than a tidiness one: the retain branch skips `lvgl_port_deinit()`, so a
+surviving [`ui/lvgl/clock_face.cpp:177`](../../ui/lvgl/clock_face.cpp) —
+"motion_timer_ = lv_timer_create(motion_tick, kMotionPeriodMs, this);" would
+invalidate and flush QSPI every
+[`ui/lvgl/clock_face.cpp:11`](../../ui/lvgl/clock_face.cpp) —
+"constexpr std::uint32_t kMotionPeriodMs = 50;" for the life of a boot that has
+no path into Light-sleep, behind a panel this path leaves dark. Its own pause at
+[`ui/lvgl/clock_face.cpp:179`](../../ui/lvgl/clock_face.cpp) —
+"lv_timer_pause(motion_timer_);" does not save it: that is for a theme without
+fireflies, and this board asks for Night
+([`firmware/main/waveshare_board.cpp:893`](../../firmware/main/waveshare_board.cpp) —
+"{kWidth, kHeight, attadipa::ui::Theme::Night,"). The current cost is
+**ESTIMATED** from the period; nothing has been measured on a board.
 The board power adapter is detached before its PMU handle and I2C bus are
 released ([`firmware/main/waveshare_board.cpp:1140`](../../firmware/main/waveshare_board.cpp) —
 "attadipa::firmware::board_power_detach();"), so the retained panel cannot
 leave the owner paired with a dangling PMU handle. The retained UI stays
-allocated but inert, and `BoardState` keeps its live display handles rather
-than reporting them absent.
+allocated and is left with nothing armed on it — no callback, no timer, no
+animation — and `BoardState` keeps its live display handles rather than
+reporting them absent.
 
 That leak is unbounded — the LVGL task and its buffers stay allocated for the
 life of the boot — and it is the trade made: a leak is recoverable and a hang

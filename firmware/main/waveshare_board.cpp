@@ -1255,13 +1255,28 @@ esp_err_t start_waveshare_ui() {
                                   );
 #endif
   if (physical_result != ESP_OK) {
-    // Still under the LVGL lock: disarm both callbacks create_ui() installed
-    // before rollback removes the RTC and I2C handles they can reach.
+    // Still under the LVGL lock: disarm everything create_ui() armed, before
+    // rollback removes the RTC and I2C handles those callbacks can reach.
+    //
+    // FOUR THINGS, NOT TWO, AND THE TWO THAT ARE EASY TO MISS ARE THE CLOCK
+    // FACE'S. `build_clock_screen()` reaches `ClockFace::build()`, which adds a
+    // press handler and a 50 ms motion timer to the same screen. The handler is
+    // harmless once no indev survives, but the timer is not: the retain branch
+    // below deliberately skips `lvgl_port_deinit()`, so LVGL keeps running, and
+    // this board's theme is Night -- the one theme whose fireflies exist, so
+    // the self-pause in `animate()` never fires. A boot that failed here would
+    // then invalidate four dots and flush QSPI at roughly 20 Hz for the life of
+    // the boot, with the panel dark and no way out, because `maybe_sleep()`
+    // belongs to the input service that just failed.
+    //
+    // `clear()` deletes the timer and the transient animation and removes the
+    // handler. It deletes no LVGL object, so the face stays drawn.
     lv_obj_remove_event_cb(lv_screen_active(), long_press);
     if (state.ui_timer != nullptr) {
       lv_timer_delete(state.ui_timer);
       state.ui_timer = nullptr;
     }
+    state.clock_face.clear();
   }
   lvgl_port_unlock();
   if (physical_result != ESP_OK) {
