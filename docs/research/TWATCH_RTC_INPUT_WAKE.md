@@ -665,10 +665,7 @@ than opened as a separate issue.
    documented latch and a one-write clear. The arming must be paired with a
    clear-before-re-arm in the wake path, or the mechanism is a busy loop — and
    it is gated on **H8**, because that pull-up is only as always-on as `+3V3`.
-4. **`REUSE_LEDGER.md`** moves SensorLib's PCF8563 row from `EVALUATE` to
-   rejected, citing section 2 — seven defects and no error propagation — and
-   records that no licence obligation is incurred because nothing is taken.
-5. **`HARDWARE_MATRIX.md`** gains the two schematic facts it lacks: R288 10 kΩ
+4. **`HARDWARE_MATRIX.md`** gains the two schematic facts it lacks: R288 10 kΩ
    to `+3V3` on the RTC INT, carrying `+3V3`'s own **H8** status with it; and the
    AXP2101 IRQ's 47 kΩ pull-up to net `1.8V` with R53 2 kΩ in series and no
    3.3 V pull, the net's *voltage* being **H21**. It gains a third row for
@@ -686,9 +683,15 @@ outcome already recorded in §3.6. Also out of scope: any AXP2101 IRQ-enable
 register write outside the ADR-0016 power owner, and any change to the PCF85063
 path, because the two RTCs share a shape and not a register map.
 
-**Gating.** Items 1, 2, 4 and 5 are desk-verifiable and can land now — item 1's
+**Gating.** Items 1, 2 and 4 are desk-verifiable and can land now — item 1's
 decode logic is fully determined by section 1 and testable on the host, and item
-5 as reworded records only what the drawing shows. Item 3 needs **B1, B2, B4 and
+4 as reworded records only what the drawing shows. The ledger move this list
+used to carry as a fifth item is **done, under #422 and in this report's own
+pull request** —
+`docs/research/REUSE_LEDGER.md:2477` — "now `REJECT` for the" —
+so it is not scope for anybody lifting this section into an issue, and the
+licence obligation that item named is recorded in the same paragraph.
+Item 3 needs **B1, B2, B4 and
 B6** to pass on `DC:B4:D9:18:49:40`, **and H8 answered**, before it is more than
 an untested arming call, and the pull request must say so. H8 is listed
 separately because no bench step here takes `+3V3` down, so passing all four

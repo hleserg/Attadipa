@@ -2486,7 +2486,12 @@ one of them in the error path. The verdict and the evidence are the record
 detail is [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §2. The BMA423 and
 DRV2605 halves are **not** audited and stay open for the slice that needs them —
 which is the deferral this paragraph originally made, kept only for the parts it
-still applies to.
+still applies to. **No licence obligation is incurred by any of this**: a
+`REJECT` means no line is copied, and reading a header to learn what a register
+means is not use of the work. The MIT notice and the `src/bosch/`
+BSD-3-Clause attribution would attach to a distributed derivative, and there is
+none — which is also why the BMA423 and DRV2605 deferral costs nothing to keep
+open.
 
 **`espressif/esp_bsp_generic` 3.1.1 — `REJECT`; `esp-box-3` — `INSPIRE
 ARCHITECTURE`.** Apache-2.0. The generic BSP's scope is simple I2C, SPIFFS, SD,
