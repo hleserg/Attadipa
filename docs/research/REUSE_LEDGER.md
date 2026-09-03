@@ -2675,71 +2675,62 @@ Physical stale-bond recovery remains `NOT EXECUTED — HARDWARE REQUIRED`.
 
 ### A PCF8563 driver, and the AXP2101 interrupt registers behind it
 
-Problem:
-: Read and set the T-Watch S3 Plus wall clock over I²C, report an invalid
-  oscillator rather than a plausible wrong time, and arm the four interrupt
-  lines the board actually has so that a light sleep can be woken and re-entered
-  without spinning.
+**Problem:** Read and set the T-Watch S3 Plus wall clock over I²C, report an
+invalid oscillator rather than a plausible wrong time, and arm the four
+interrupt lines the board actually has so that a light sleep can be woken and
+re-entered without spinning.
 
-Projects investigated:
-: `lewisxhe/SensorLib` (PCF8563 and BMA423 wrappers), `lewisxhe/XPowersLib`
-  (AXP2101 interrupt controller), `Xinyuan-LilyGO/LilyGoLib` (the exact-board
-  vendor firmware), and this repository's own PCF85063 adapter for the
-  Waveshare board.
+**Projects investigated:** `lewisxhe/SensorLib` (PCF8563 and BMA423 wrappers),
+`lewisxhe/XPowersLib` (AXP2101 interrupt controller),
+`Xinyuan-LilyGO/LilyGoLib` (the exact-board vendor firmware), and this
+repository's own PCF85063 adapter for the Waveshare board.
 
-Useful implementation:
-: The register semantics, and nothing else. NXP's datasheet is the authority for
-  the PCF8563; XPowersLib supplies the AXP2101 INTEN/INTSTS addresses and the
-  write-1-to-clear convention; LilyGoLib supplies init order, pin usage and the
-  `rtc_gpio_pullup_en()` call before sleep that the 1.8 V pull-up on GPIO21
-  makes necessary.
+**Useful implementation:** The register semantics, and nothing else. NXP's
+datasheet is the authority for the PCF8563; XPowersLib supplies the AXP2101
+INTEN/INTSTS addresses and the write-1-to-clear convention; LilyGoLib supplies
+init order, pin usage and the `rtc_gpio_pullup_en()` call before sleep that the
+1.8 V pull-up on GPIO21 makes necessary.
 
-License:
-: SensorLib MIT at the root and **BSD-3-Clause under `src/bosch/`**, which the
-  manifest does not exclude. XPowersLib MIT. LilyGoLib MIT.
+**License:** SensorLib MIT at the root and **BSD-3-Clause under `src/bosch/`**,
+which the manifest does not exclude. XPowersLib MIT. LilyGoLib MIT.
 
-Strengths:
-: All three are pinnable, ESP-IDF-reachable and describe this exact board. They
-  are the fastest way to learn what the registers mean.
+**Strengths:** All three are pinnable, ESP-IDF-reachable and describe this
+exact board. They are the fastest way to learn what the registers mean.
 
-Weaknesses:
-: Seven defects in SensorLib's `SensorPCF8563.hpp`, two in XPowersLib's
-  `XPowersAXP2101.hpp`, and one class shared by both: a failed I²C read is not
-  distinguished from data. In XPowersLib it becomes `0xFF` — every interrupt
-  pending — which on this board would clear and re-arm sources that never fired.
-  LilyGoLib aborts on a missing PMU (`assert(0)`), routes every interrupt
-  through one file-scope FreeRTOS event group, deliberately never clears its
-  touch bit, and pins XPowersLib 0.2.9, which predates the byte-order fix above.
+**Weaknesses:** Seven defects in SensorLib's `SensorPCF8563.hpp`, two in
+XPowersLib's `XPowersAXP2101.hpp`, and one class shared by both: a failed I²C
+read is not distinguished from data. In XPowersLib it becomes `0xFF` — every
+interrupt pending — which on this board would clear and re-arm sources that
+never fired. LilyGoLib aborts on a missing PMU (`assert(0)`), routes every
+interrupt through one file-scope FreeRTOS event group, deliberately never
+clears its touch bit, and pins XPowersLib 0.2.9, which predates the byte-order
+fix above.
 
-Decision:
-: `REIMPLEMENT` the PCF8563 driver. `REJECT` all three as dependencies; read all
-  three as evidence.
+**Decision:** `REIMPLEMENT` the PCF8563 driver. `REJECT` all three as
+dependencies; read all three as evidence.
 
-Reason:
-: The PCF8563 surface this product needs is small — eight registers, a VL bit, a
-  BCD conversion and two flags that must be cleared without clobbering each
-  other — and every defect found is in the error path, which is the half a watch
-  depends on and the half the wrappers do not have. Adopting a library to obtain
-  a register map imports its failure model as well, into the one place
-  [ADR-0016](../adr/0016-one-power-owner.md) requires to be single-owner and to
-  propagate failure. This is [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md)
-  reaching its stated outcome rather than being strained: a vendor BSP is read,
-  not linked.
+**Reason:** The PCF8563 surface this product needs is small — eight registers,
+a VL bit, a BCD conversion and two flags that must be cleared without
+clobbering each other — and every defect found is in the error path, which is
+the half a watch depends on and the half the wrappers do not have. Adopting a
+library to obtain a register map imports its failure model as well, into the
+one place [ADR-0016](../adr/0016-one-power-owner.md) requires to be
+single-owner and to propagate failure. This is
+[ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md) reaching its
+stated outcome rather than being strained: a vendor BSP is read, not linked.
 
-Source revision:
-: SensorLib `2b9e591f245e447d3d00ec8798c3f49b897882d9` (0.4.1);
-  XPowersLib `d6997586e68f65afd51baa775903df930db39821` (0.3.4);
-  LilyGoLib `38e6f8dee3ba78b340512af9a013365ef248a7d0` (0.2.0). All three
-  re-checked 2026-09-03.
+**Source revision:** SensorLib `2b9e591f245e447d3d00ec8798c3f49b897882d9`
+(0.4.1); XPowersLib `d6997586e68f65afd51baa775903df930db39821` (0.3.4);
+LilyGoLib `38e6f8dee3ba78b340512af9a013365ef248a7d0` (0.2.0). All three
+re-checked 2026-09-03.
 
-Attadipa integration:
-: A board backend publishes what the four lines are and how each is cleared; the
-  [#367](https://github.com/hleserg/Attadipa/issues/367) power owner remains the
-  only caller of `esp_light_sleep_start()` and the only writer of a PMU
-  register. No `#ifdef BOARD_X` reaches `core/` or `apps/`, and no ADR changes —
-  [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §6.3 and §6.4.
+**Attadipa integration:** A board backend publishes what the four lines are and
+how each is cleared; the [#367](https://github.com/hleserg/Attadipa/issues/367)
+power owner remains the only caller of `esp_light_sleep_start()` and the only
+writer of a PMU register. No `#ifdef BOARD_X` reaches `core/` or `apps/`, and
+no ADR changes — [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §6.3 and
+§6.4.
 
-Tests required:
-: The bench procedure in that report, §4. Every hardware row of it is
-  `NOT EXECUTED — HARDWARE REQUIRED`, and the six questions it cannot answer
-  from a desk are H19–H24 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+**Tests required:** The bench procedure in that report, §4. Every hardware row
+of it is `NOT EXECUTED — HARDWARE REQUIRED`, and the six questions it cannot
+answer from a desk are H19–H24 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
