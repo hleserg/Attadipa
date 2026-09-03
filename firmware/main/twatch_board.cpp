@@ -26,6 +26,7 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "esp_lvgl_port_touch.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
@@ -113,6 +114,7 @@ struct State {
   lv_obj_t *partial_patch = nullptr;
   TickType_t rails_up = 0;  // when initialize_pmu() returned with ALDO3 on
   std::uint32_t panel_settle_ms = 0;
+  std::uint32_t reset_interval_ms = 0;
   unsigned touch_attempts = 0;
 };
 State state;
@@ -258,10 +260,16 @@ esp_err_t initialize_panel(const attadipa::platform::BoardProfile &profile) {
   // always is (TWATCH_S3_PLUS_BSP_REUSE.md §4). The driver has no knob for
   // that, so the wait is the board's. 100 here is arm C of §11; 0 reproduces
   // the driver as shipped, arm A.
+  const std::int64_t reset_started_us = esp_timer_get_time();
   ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(state.panel), kTag, "SWRESET");
   if (CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS > 0) {
-    vTaskDelay(pdMS_TO_TICKS(CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS));
+    // The driver's 20 ms wait and this wait share the tick timeline. The extra
+    // tick removes the one-tick early wake allowed by vTaskDelay(), so arm C
+    // cannot fall below the 120 ms floor it exists to test.
+    vTaskDelay(pdMS_TO_TICKS(CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS) + 1);
   }
+  state.reset_interval_ms = static_cast<std::uint32_t>(
+      (esp_timer_get_time() - reset_started_us) / 1000);
   ESP_RETURN_ON_ERROR(esp_lcd_panel_init(state.panel), kTag,
                       "SLPOUT, MADCTL, COLMOD");
 #if CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
@@ -521,7 +529,8 @@ struct TwatchPanelExerciseOps {
     return ok;
   }
 
-  bool display_cycle() {
+  bool display_cycle(unsigned cycle) {
+    ESP_LOGI(kTag, "panel exercise: display cycle %u of 10", cycle);
     lvgl_port_lock(0);
     bool ok = call(esp_lcd_panel_disp_on_off(state.panel, false), "DISPOFF");
     if (ok) {
@@ -534,16 +543,27 @@ struct TwatchPanelExerciseOps {
   }
 
   bool sleep_cycle(bool respect_interval) {
-    ESP_LOGI(kTag, "panel exercise: sleep interval %" PRIu32 " ms (%s)",
+    ESP_LOGI(kTag, "panel exercise: sleep target %" PRIu32 " ms (%s)",
              kDriverSleepDelayMs + (respect_interval ? 20 : 0),
              respect_interval ? "datasheet-conforming" : "deliberately short");
     lvgl_port_lock(0);
     bool ok = call(esp_lcd_panel_disp_sleep(state.panel, true), "SLPIN");
+    const std::int64_t wake_started_us = esp_timer_get_time();
     if (ok) {
       ok = call(esp_lcd_panel_disp_sleep(state.panel, false), "SLPOUT");
     }
     if (ok && respect_interval) {
-      vTaskDelay(pdMS_TO_TICKS(kSleepIntervalMs - kDriverSleepDelayMs));
+      // Together with the driver's 100 ms wait, the extra tick makes the
+      // command-to-command interval at least 120 ms at the default 100 Hz.
+      vTaskDelay(pdMS_TO_TICKS(kSleepIntervalMs - kDriverSleepDelayMs) + 1);
+    }
+    const std::uint32_t observed_ms = static_cast<std::uint32_t>(
+        (esp_timer_get_time() - wake_started_us) / 1000);
+    if (ok) {
+      ESP_LOGI(kTag, "panel exercise: sleep interval MEASURED %" PRIu32
+                     " ms (%s)",
+               observed_ms,
+               respect_interval ? "datasheet-conforming" : "deliberately short");
     }
     if (ok) {
       ok = call(esp_lcd_panel_disp_sleep(state.panel, true), "SLPIN after wake");
@@ -552,8 +572,8 @@ struct TwatchPanelExerciseOps {
       ok = call(esp_lcd_panel_disp_sleep(state.panel, false), "final SLPOUT");
     }
     if (ok) {
-      lv_label_set_text(state.readout,
-                        respect_interval ? "S120 CONFORM" : "S100 SHORT");
+      lv_label_set_text_fmt(state.readout, "M%" PRIu32 " %s", observed_ms,
+                            respect_interval ? "CONFORM" : "SHORT");
       lv_obj_invalidate(state.readout);
       lv_refr_now(state.display);
     }
@@ -708,26 +728,34 @@ esp_err_t start_twatch_ui() {
     }
     TwatchPanelExerciseOps exercise;
     if (!attadipa::firmware::run_twatch_panel_exercise(exercise)) {
-      return abandon_twatch_after(exercise.error, "panel exercise");
+      err = exercise.error == ESP_OK ? ESP_FAIL : exercise.error;
     }
   }
 
   ESP_LOGI(kTag,
            "T-Watch S3 Plus bring-up: panel %s, touch %s (probe %u of %u); SPI "
            "%d MHz, rail settle ESTIMATED >=%" PRIu32 " ms (observed %" PRIu32
-           "), reset wait +%d ms, %s, vendor table %s",
+           "), reset interval %s %" PRIu32 " ms (+%d configured), %s, "
+           "RGB565 byte swap %s, vendor table %s, panel exercise %s",
            panel_err == ESP_OK ? "up" : "ABSENT",
            touch_err == ESP_OK ? "ACK at 0x38" : "ABSENT", state.touch_attempts,
            kTouchProbeAttempts, kPanelClockHz / 1000000, kPanelSettleMs,
            state.panel_settle_ms,
+           state.reset_interval_ms == 0 ? "UNKNOWN" : "MEASURED",
+           state.reset_interval_ms,
            CONFIG_ATTADIPA_TWATCH_PANEL_RESET_EXTRA_MS,
            kPanelInvert ? "INVON" : "INVOFF",
+           profile->display.rgb565_swap_bytes ? "yes" : "no",
 #if CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE
-           "sent"
+           "sent",
 #else
-           "not sent"
+           "not sent",
 #endif
+           panel_err != ESP_OK ? "NOT RUN" : err == ESP_OK ? "passed" : "FAILED"
   );
+  if (err != ESP_OK) {
+    return abandon_twatch_after(err, "panel exercise");
+  }
   if (panel_err != ESP_OK) {
     return abandon_twatch_after(panel_err, "display capability");
   }

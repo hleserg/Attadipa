@@ -25,10 +25,12 @@ REQUIRED_SYMBOLS = {
 }
 
 # The pure-RAM probe and T-Watch image disable Bluetooth; the probe because
-# bonds live in NVS and it promises to touch no flash, and T-Watch because that
-# board has no supported MeshCore transport yet. They therefore have no
-# attadipa_link consumer. Requiring the library would only keep dead scaffolding
-# alive to pass its own check. The Waveshare flash image still requires all four.
+# bonds live in NVS and it promises to touch no flash, and T-Watch because
+# sdkconfig.twatch scopes slice #417 to panel, touch and their rails. CI checks
+# the generated CONFIG_BT_ENABLED state immediately before selecting this
+# variant. These images therefore have no attadipa_link consumer. Requiring the
+# library would only keep dead scaffolding alive to pass its own check. The
+# Waveshare flash image still requires all four.
 VARIANT_EXEMPTIONS = {
     "flash": frozenset(),
     "pure-ram": frozenset({"attadipa_link"}),

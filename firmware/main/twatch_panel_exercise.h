@@ -11,8 +11,8 @@ bool run_twatch_panel_exercise(Ops &ops) {
   if (!ops.show_patterns() || !ops.rotation_and_gap()) {
     return false;
   }
-  for (unsigned cycle = 0; cycle < 10; ++cycle) {
-    if (!ops.display_cycle()) {
+  for (unsigned cycle = 1; cycle <= 10; ++cycle) {
+    if (!ops.display_cycle(cycle)) {
       return false;
     }
   }

@@ -417,9 +417,9 @@ Nothing here burns an eFuse or touches a security setting.
 
 | Arm | Reset → SLPOUT | Vendor table |
 |---|---|---|
-| **A** | ESP-IDF as shipped: `SWRESET` + 20 ms | no |
-| **C** | `SWRESET` + **120 ms**, datasheet-conforming | no |
-| **B** | `SWRESET` + 120 ms | yes, §5, sent between `esp_lcd_panel_init()` and the orientation calls |
+| **A** | ESP-IDF as shipped: `SWRESET` + nominal 20 ms | no |
+| **C** | `SWRESET` + **at least 120 ms**, runtime-reported | no |
+| **B** | `SWRESET` + at least 120 ms | yes, §5, sent between `esp_lcd_panel_init()` and the orientation calls |
 
 Reading the result:
 
@@ -452,11 +452,12 @@ the next reset. If no external reset method was established for that run, write
 `NOT EXECUTED — HARDWARE REQUIRED`; do not substitute an in-process panel reset.
 
 The sleep comparison needs **two photographs per arm**, not one final picture.
-The diagnostic holds `S100 SHORT` for five seconds immediately after the
-deliberately short sequence, then holds `S120 CONFORM` for five seconds after
-the datasheet-conforming sequence. Capture both labelled states; a conforming
-wake that recovers the panel does not turn an earlier short-interval failure
-into a pass.
+The diagnostic holds `M<observed-ms> SHORT` for five seconds immediately after
+the deliberately short sequence, then holds `M<observed-ms> CONFORM` for five
+seconds after the datasheet-conforming sequence. The value comes from the
+runtime timer and is logged as `MEASURED`; capture both labelled states. A
+conforming wake that recovers the panel does not turn an earlier short-interval
+failure into a pass.
 
 Touch, once a panel arm passes: all four corners, all four edges, centre;
 coordinate transform checked against what is drawn; INT behaviour including a

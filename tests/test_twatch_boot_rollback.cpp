@@ -26,6 +26,7 @@ struct FakeOps {
 
 struct FakePanelExercise {
   std::vector<std::string_view> calls;
+  unsigned display_cycles = 0;
 
   bool show_patterns() {
     calls.push_back("patterns");
@@ -35,8 +36,9 @@ struct FakePanelExercise {
     calls.push_back("rotation and gap");
     return true;
   }
-  bool display_cycle() {
-    calls.push_back("display cycle");
+  bool display_cycle(unsigned cycle) {
+    ++display_cycles;
+    calls.push_back(cycle == display_cycles ? "display cycle" : "bad cycle");
     return true;
   }
   bool sleep_cycle(bool respect_interval) {
