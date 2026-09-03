@@ -149,6 +149,19 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
       out.provision_screen = true;
       continue;
     }
+    if (std::strcmp(arg, "--nav") == 0) {
+      out.nav_screen = true;
+      continue;
+    }
+    if (std::strcmp(arg, "--nav-state") == 0) {
+      const char *value = take_value(argc, argv, i, arg);
+      if (value == nullptr) {
+        return ParseResult::Error;
+      }
+      out.nav_screen = true;
+      out.nav_state = value;
+      continue;
+    }
     if (std::strcmp(arg, "--child") == 0) {
       out.clock_screen = true;
       out.child_mode = true;
@@ -309,6 +322,13 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     out.board.radio = platform::radio_info_for(radio);
   }
 
+  if (out.nav_screen && (out.clock_screen || out.provision_screen ||
+                         out.diagnostic_screen)) {
+    std::fprintf(stderr,
+                 "--nav replaces the whole panel; it cannot share it with "
+                 "--clock, --provision or --diagnostic\n");
+    return ParseResult::Error;
+  }
   if (out.diagnostic_screen && (out.clock_screen || out.provision_screen)) {
     std::fprintf(stderr, "--diagnostic and --clock select different screens\n");
     return ParseResult::Error;

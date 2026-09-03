@@ -140,6 +140,11 @@ attadipa::core::MeshService service(provider);
 attadipa::link::NodePositionProvider position_provider(provider);
 attadipa::core::LocationService location(position_provider);
 
+// The same value, published for whoever is drawing. `location` belongs to the
+// worker and is not thread-safe; this copy is what the UI task reads, under the
+// lock the mesh status already uses.
+attadipa::core::LocationState location_snapshot;
+
 // Two locks, and they are never nested. `snapshot_lock` guards the status any
 // task may read; `session_lock` guards the BLE session that the NimBLE host
 // task and the worker share. Nothing under `session_lock` calls into NimBLE and
@@ -1884,6 +1889,12 @@ void mesh_task(void*)
         // present a coordinate the node cannot vouch for as a fix.
         location.poll();
         {
+            const attadipa::core::LocationState published = location.state(now());
+            taskENTER_CRITICAL(&snapshot_lock);
+            location_snapshot = published;
+            taskEXIT_CRITICAL(&snapshot_lock);
+        }
+        {
             static char last_line[192];
             char line[sizeof(last_line)];
             // TWO LINES, AND THE DIFFERENCE BETWEEN THEM IS THE POINT.
@@ -2353,6 +2364,14 @@ attadipa::firmware::ForgetNodeOutcome
 meshcore_ble_forget_node_outcome(std::uint32_t ticket)
 {
     return forget_node_op.take(ticket);
+}
+
+attadipa::core::LocationState meshcore_ble_location()
+{
+    taskENTER_CRITICAL(&snapshot_lock);
+    const attadipa::core::LocationState result = location_snapshot;
+    taskEXIT_CRITICAL(&snapshot_lock);
+    return result;
 }
 
 attadipa::core::MeshStatus meshcore_ble_status()

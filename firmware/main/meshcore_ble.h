@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "attadipa/core/location_service.h"
 #include "attadipa/core/mesh_service.h"
 #include "meshcore_forget_outcome.h"
 #include "meshcore_node_forget.h"
@@ -89,3 +90,13 @@ attadipa::firmware::ForgetNodeOutcome
 meshcore_ble_forget_node_outcome(std::uint32_t ticket);
 
 attadipa::core::MeshStatus meshcore_ble_status();
+
+// What the node has said about where it is, as `core::LocationService` judges
+// it — availability, validity, the coordinate and both ages.
+//
+// Published by the worker on the pass that polls it, so its `age_at_us_ms` is
+// at most one poll period behind: `kPollTicks` is 500 ms, which is finer than
+// anything this value is compared against and far finer than the granularity
+// any screen prints it at. Rendering the age in the reader instead would need
+// the reader to hold the service's clock, and the service is not thread-safe.
+attadipa::core::LocationState meshcore_ble_location();

@@ -66,6 +66,12 @@ struct Options {
   // stdout. What a screenshot of it proves is the layout, not a clock.
   bool provision_screen = false;
 
+  // The navigation readout, and which of its states to stage. A screenshot of
+  // "Ready" proves nothing about the six ways it says it does not know, and
+  // those six are the ones worth looking at.
+  bool nav_screen = false;
+  const char *nav_state = "ready";
+
   bool help = false;
   bool list_boards = false;
 };

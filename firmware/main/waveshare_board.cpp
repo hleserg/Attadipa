@@ -34,10 +34,12 @@
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/navigation.h"
 #include "attadipa/apps/provisioning.h"
 #include "attadipa/core/time_service.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
 #include "attadipa_fonts.h"
 
@@ -141,6 +143,11 @@ struct BoardState {
   lv_obj_t *mesh_message = nullptr;
   lv_obj_t *mesh_signal = nullptr;
   bool mesh_screen = false;
+  // The navigation readout, which shares the mesh screen's slot: a tap swaps
+  // between them. It is not a third place to get lost in -- both are about the
+  // same node, and the tap is a page turn rather than navigation.
+  attadipa::ui::NavFace nav_face;
+  bool nav_screen = false;
 };
 
 BoardState state;
@@ -886,6 +893,45 @@ void refresh_mesh() {
 }
 #endif
 
+#if CONFIG_BT_NIMBLE_ENABLED
+attadipa::ui::NavFaceConfig nav_config() {
+  const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+          attadipa::ui::PixelCost::PerPixel,
+          attadipa::ui::Metrics::for_dpi(profile != nullptr ? profile->display.dpi()
+                                                            : 0)};
+}
+
+void refresh_nav() {
+  // `own` is left at its default, and that default is the honest one: this
+  // board has no receiver (docs/research/HARDWARE_MATRIX.md:407 "| GNSS | — |
+  // **not present** | — | — | VERIFIED |") and no local provider exists yet.
+  // So the readout says "Waiting for GPS" and draws no needle, which is what
+  // it should say until #429 gives it something.
+  attadipa::apps::NavState nav;
+  nav.target = meshcore_ble_location();
+  const attadipa::apps::NavText text = attadipa::apps::format_navigation(nav);
+  if (state.nav_face.built()) {
+    state.nav_face.update(text);
+  } else {
+    state.nav_face.build(lv_screen_active(), nav_config(), text);
+  }
+}
+
+// A tap on the node pages between the two things there are to say about it:
+// what the link is doing, and where it is. It does nothing anywhere else --
+// the clock's gesture is a long press and this must not steal it.
+void node_page_turn(lv_event_t *) {
+  if (!mesh_screen_requested.load()) {
+    return;
+  }
+  state.nav_screen = !state.nav_screen;
+  state.mesh_screen = false;
+  state.nav_face.clear();
+}
+#endif
+
 void build_clock_screen() {
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
@@ -930,7 +976,11 @@ void refresh_ui(lv_timer_t *timer) {
     // long press behind a face that no longer exists.
     state.provision_face.clear();
     state.entry.reset();
-    refresh_mesh();
+    if (state.nav_screen) {
+      refresh_nav();
+    } else {
+      refresh_mesh();
+    }
     if (timer != nullptr) {
       lv_timer_set_period(timer, 500);
     }
@@ -1064,6 +1114,10 @@ void create_ui() {
   build_clock_screen();
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
+#if CONFIG_BT_NIMBLE_ENABLED
+  lv_obj_add_event_cb(lv_screen_active(), node_page_turn, LV_EVENT_CLICKED,
+                      nullptr);
+#endif
   state.ui_timer = lv_timer_create(
       refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
 }
