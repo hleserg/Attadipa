@@ -739,8 +739,10 @@ attributed to the timer; every failure path disarms what it armed.
 And, since #367's P3 finding: a cause the *board* derives survives a
 simultaneous SoC cause too. The row above was written about the bitmap and so
 only covered the SoC's half, which is exactly the half that was never in doubt;
-the board's half is worse, because the AXP2101's latch is write-one-to-clear
-and the read that proves a press is the read that spends it. So the matrix asks
+the board's half is worse, because the AXP2101's latch is write-one-to-clear —
+[`docs/research/TWATCH_RTC_INPUT_WAKE.md:508`](TWATCH_RTC_INPUT_WAKE.md) —
+"| Latched? | **Yes, and it is RW1C**", traced there to AXP2101 §6.12.1,
+REG 48-4A — and the read that proves a press is the read that spends it. So the matrix asks
 what the classification reports **and** whether it touched the register at all:
 a route that reads `0x49` and then reports no `Button` has not lost a cause, it
 has deleted one, and the next descent cannot find it either. One classification
