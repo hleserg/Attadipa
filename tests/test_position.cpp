@@ -983,7 +983,7 @@ void test_the_ordinary_baselines_did_not_move()
 
     // And where they begin to part, so the band above is bounded from the other
     // side rather than trailing off into the closed forms. 70°N across 20° of
-    // longitude is 758 056 100 mm on the great circle and 760 976 562 mm
+    // longitude is 758 056 193 mm on the great circle and 760 976 562 mm
     // equirectangular: a gap of **0.385%**, asserted from both ends so that
     // neither a shrinking nor a growing one passes. The method's own gap is
     // 0.451% and the header rounds it to half a percent; the measured figure
@@ -1011,7 +1011,7 @@ void test_the_ordinary_baselines_did_not_move()
 void test_the_screen_distance_shares_the_clamp_but_not_the_pairs_that_reach_it()
 {
     // 1108.9 km on this function's sphere — cos d = sin²80° + cos²80°/2, so
-    // d = 0.17386707 rad and the arc is 1 108 948 141 mm — and 1000 km exactly
+    // d = 0.173867093 rad and the arc is 1 108 948 141 mm — and 1000 km exactly
     // from `distance_mm()`, which saturated there by accident. Now it is on
     // purpose. (The issue's table says 1107.7 km for the same pair: that is the
     // same angle on the *mean* radius, and geo.cpp's kSphereRadiusMm comment is
