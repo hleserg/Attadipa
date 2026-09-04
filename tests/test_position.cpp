@@ -963,11 +963,15 @@ void test_the_ordinary_baselines_did_not_move()
         Position a;
         Position b;
     };
+    // Each label is the distance, computed and then checked, not eyeballed from
+    // the coordinates. An earlier draft of this list said 150 m, 15 km and
+    // 130 km for baselines that were 15.7 m, 1.6 km and 13.2 km, which pinned
+    // "the half that must not move" a decade short of where it claimed to.
     const Case cases[] = {
-        {{5000000, 10000000}, {5001000, 10001000}},      // ~150 m
-        {{5000000, 10000000}, {5100000, 10100000}},      // ~15 km
-        {{500000000, 100000000}, {501000000, 101000000}},// ~130 km at 50 deg N
-        {{-350000000, 1500000000}, {-350500000, 1500500000}},
+        {{5000000, 10000000}, {5010000, 10010000}},        // 157 m
+        {{5000000, 10000000}, {5100000, 10100000}},        // 1.57 km
+        {{-350000000, 1500000000}, {-350500000, 1500500000}},  // 7.19 km
+        {{500000000, 100000000}, {510000000, 110000000}},  // 132 km at 50°N
     };
     for (const Case& c : cases) {
         CHECK_RELATIVE(great_circle_mm(c.a, c.b), reference_distance_mm(c.a, c.b), 0.01);
@@ -976,6 +980,19 @@ void test_the_ordinary_baselines_did_not_move()
         CHECK_RELATIVE(distance_mm(c.a, c.b), static_cast<double>(great_circle_mm(c.a, c.b)), 0.5);
         CHECK(great_circle_mm(c.a, c.b) == great_circle_mm(c.b, c.a));
     }
+
+    // And where they begin to part, so the band above is bounded from the other
+    // side rather than trailing off into the closed forms. 70°N across 20° of
+    // longitude is 758 km on the great circle and about 761 km equirectangular:
+    // the header's own "half a percent at 70°N across 20°", asserted from both
+    // ends so that neither a shrinking nor a growing gap passes.
+    const Position a{700000000, 0};
+    const Position b{700000000, 200000000};
+    CHECK_RELATIVE(great_circle_mm(a, b), reference_distance_mm(a, b), 0.01);
+    const double gap = (static_cast<double>(distance_mm(a, b)) -
+                        static_cast<double>(great_circle_mm(a, b))) /
+                       static_cast<double>(great_circle_mm(a, b)) * 100.0;
+    CHECK(gap > 0.35 && gap < 0.65);
 }
 
 // Saturation is a readout choice, not a limit of the method, and the boundary

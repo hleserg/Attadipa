@@ -127,7 +127,19 @@ std::uint32_t distance_mm(Position a, Position b);
 bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg);
 
 // Great-circle distance between two positions, in millimetres — the one the
-// screen asks for, and correct at every latitude and over any baseline.
+// screen asks for. No latitude and no baseline is outside it, unlike its
+// neighbour above.
+//
+// On a sphere, and the number is owed here for the same reason it is owed
+// there. A degree of meridian arc on the WGS-84 semi-major axis is 111.3195 km
+// at every latitude; on the ellipsoid it is 110.574 km at the equator and
+// 111.694 km at the pole, so this reads about **+0.67% near the equator and
+// −0.34% near the pole**, and about −0.34% along an east–west arc at high
+// latitude. That is the same order as the band the tests use to say this
+// function and `distance_mm()` agree over a city, and it is the whole of what
+// GeographicLib would buy — which is why the ledger declines it for a screen
+// and why the next consumer should read this paragraph before deciding the
+// entry is about them.
 //
 // Saturating exactly as `distance_mm()` does: kDistanceSaturated for a
 // coordinate off the globe, and for anything at or past 1000 km. That clamp is

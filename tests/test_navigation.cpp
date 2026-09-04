@@ -228,6 +228,36 @@ void test_standing_on_it_is_a_measured_zero_and_not_a_direction() {
   CHECK(is(text.bearing, "—"));
 }
 
+// The one line #433 changed, pinned by the one baseline that can tell the two
+// functions apart on the screen.
+//
+// Every other pair in this file differs in latitude alone, and over a meridian
+// `distance_mm()` and `great_circle_mm()` are 4.6 ppm apart — the gap between
+// 11.132 mm and 11.131949 mm per 1e-7 degree — which no rendered string can
+// show. So reverting `apps/src/navigation.cpp` to `distance_mm()` used to leave
+// the whole suite green, and the readout's choice of function was pinned by
+// nothing.
+//
+// 89°N 0°E to 89°N 180°E is the issue's own pair: two degrees of arc over the
+// pole, 222 638 982 mm, against 352 222 875 mm the long way round the 89th
+// parallel. Both are under the clamp and both go through the same `%u km`
+// branch, so the difference reaches the glyphs.
+void test_the_readout_measures_over_the_pole_and_not_around_it() {
+  apps::NavState state;
+  state.own = own_fix({890000000, 0});
+  state.target = node_coordinate({890000000, 1800000000}, 1000);
+
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.has_distance);
+  if (!is(text.distance, "222 km")) {
+    std::fprintf(stderr,
+                 "%s:%d: distance is \"%s\", expected \"222 km\" — "
+                 "\"352 km\" means the readout is back on distance_mm()\n",
+                 __FILE__, __LINE__, text.distance);
+    ++failures;
+  }
+}
+
 void test_the_distance_changes_unit_where_a_person_would() {
   apps::NavState state;
   state.own = own_fix({0, 0});
@@ -397,6 +427,7 @@ int main() {
   test_a_coordinate_off_the_globe_is_refused_rather_than_saturated();
   test_a_stale_own_fix_is_neither_a_missing_one_nor_a_current_one();
   test_standing_on_it_is_a_measured_zero_and_not_a_direction();
+  test_the_readout_measures_over_the_pole_and_not_around_it();
   test_the_distance_changes_unit_where_a_person_would();
   test_the_compass_points_are_centred_on_their_own_directions();
   test_every_status_has_words();
