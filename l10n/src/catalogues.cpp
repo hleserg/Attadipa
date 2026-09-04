@@ -253,7 +253,7 @@ const char* const kRuSingular[kStringIdCount] = {
     /* NavCaveatNoReceiver */ "на этом устройстве нет приёмника",
     /* NavCaveatNodeUnverified */ "фиксация узла не подтверждена, принято %s назад",
     /* NavDistanceKm */ "%u км",
-    /* NavDistanceKmTenths */ "%u.%u км",
+    /* NavDistanceKmTenths */ "%u,%u км",
     /* NavDistanceM */ "%u м",
     /* NavDistanceSaturated */ "> 1000 км",
     /* NavNoFix */ "Нет фиксации",

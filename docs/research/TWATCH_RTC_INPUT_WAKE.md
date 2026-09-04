@@ -315,7 +315,7 @@ outcomes section 1 demands — a good read, a VL-rejected read and a malformed-B
 read — it is exercised on the host at
 `tests/test_time_service.cpp:260` — "CHECK(attadipa::firmware::decode_pcf85063(raw_rtc, rtc) ==",
 and it is consumed by the board layer at
-`firmware/main/waveshare_board.cpp:201` — "*status = attadipa::firmware::decode_pcf85063(raw, *time);"
+`firmware/main/waveshare_board.cpp:215` — "*status = attadipa::firmware::decode_pcf85063(raw, *time);"
 and by `firmware/main/provision_time.h:23` — "pcf85063_time.h". A
 `decode_pcf8563` twin is a few dozen lines of pure function plus a burst read in
 the board file.

@@ -591,7 +591,7 @@ ru = "%u м"
 
 [nav_distance_km_tenths]
 en = "%u.%u km"
-ru = "%u.%u км"
+ru = "%u,%u км"
 
 [nav_distance_km]
 en = "%u km"

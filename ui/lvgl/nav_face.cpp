@@ -208,6 +208,15 @@ void NavFace::point_needle(const apps::NavText &text) {
   }
   lv_obj_remove_flag(needle_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_remove_flag(hub_, LV_OBJ_FLAG_HIDDEN);
+  // The needle *is* the ring's box, so it follows the ring whether or not the
+  // bearing moved. Above the cache check, not below it, so the two can never
+  // drift apart; LVGL no-ops an unchanged size or position, so it costs
+  // nothing on the ticks that change neither.
+  lv_obj_set_size(needle_, lv_obj_get_width(ring_), lv_obj_get_height(ring_));
+  lv_obj_set_pos(needle_, lv_obj_get_x(ring_), lv_obj_get_y(ring_));
+
+  // Re-pointing the line invalidates the whole object, and the readout
+  // re-formats every tick whether or not the bearing moved.
   if (needle_drawn_ && needle_centideg_ == text.bearing_centideg) {
     return;
   }
@@ -236,8 +245,6 @@ void NavFace::point_needle(const apps::NavText &text) {
   needle_points_[2] = {
       static_cast<lv_value_precise_t>(local_x + std::sin(radians) * tip),
       static_cast<lv_value_precise_t>(local_y - std::cos(radians) * tip)};
-  lv_obj_set_size(needle_, lv_obj_get_width(ring_), lv_obj_get_height(ring_));
-  lv_obj_set_pos(needle_, lv_obj_get_x(ring_), lv_obj_get_y(ring_));
   lv_line_set_points(needle_, needle_points_, 3);
   needle_drawn_ = true;
   needle_centideg_ = text.bearing_centideg;

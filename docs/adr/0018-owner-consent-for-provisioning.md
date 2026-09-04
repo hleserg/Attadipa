@@ -36,12 +36,12 @@ recorded here so that no option is credited with paying them.
    #356's first change removed the second: the sequence is
    `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image. Its second gave the sequence an ungated caller,
-   `firmware/main/waveshare_board.cpp:451` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
-   next to the HIL-only one that `firmware/main/waveshare_board.cpp:607` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   `firmware/main/waveshare_board.cpp:465` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
+   next to the HIL-only one that `firmware/main/waveshare_board.cpp:621` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates,
-   `firmware/main/waveshare_board.cpp:608` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
+   `firmware/main/waveshare_board.cpp:622` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side was always unconditional:
-   `firmware/main/waveshare_board.cpp:277` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
+   `firmware/main/waveshare_board.cpp:291` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
 2. **The passkey was RAM-only when this was decided, and the storage it
@@ -286,7 +286,7 @@ The Waveshare RTC's own rail is not resolved either —
 and the documented backup cell belongs to the other board.
 
 The persisted UTC offset does survive, because it is in NVS rather than in the
-chip: `firmware/main/waveshare_board.cpp:277` — "esp_err_t restore_time_metadata() {".
+chip: `firmware/main/waveshare_board.cpp:291` — "esp_err_t restore_time_metadata() {".
 
 If the RTC does not retain, hand entry is recurring rather than one-time, on the
 path the owner meets first, because GNSS has not landed. That makes GNSS more
@@ -365,7 +365,7 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:608` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  by `firmware/main/waveshare_board.cpp:622` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
   `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
@@ -408,6 +408,6 @@ Beyond B and C:
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
   `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:776` — "void build_mesh_screen() {" — is
+  `firmware/main/waveshare_board.cpp:808` — "void build_mesh_screen() {" — is
   full of literal colours. Building the entry screen where the mesh screen was
   built would silently opt it out of the check.

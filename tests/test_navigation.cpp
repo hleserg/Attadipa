@@ -359,7 +359,7 @@ void test_the_readout_speaks_the_locale_it_was_given() {
   CHECK(std::strlen(ru.cardinal) < sizeof(ru.cardinal) - 1);
   // The longest one there is: the age at its widest, in the longer language.
   apps::NavState longest = state;
-  longest.target = node_coordinate({5100000, 10000000}, 4444U * 3600U * 1000U);
+  longest.target = node_coordinate({5100000, 10000000}, 0xFFFFFFFFU);
   const apps::NavText wide = apps::format_navigation(longest);
   CHECK(std::strlen(wide.caveat) < sizeof(wide.caveat) - 1);
 }
