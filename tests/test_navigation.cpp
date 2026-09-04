@@ -239,9 +239,11 @@ void test_standing_on_it_is_a_measured_zero_and_not_a_direction() {
 // nothing.
 //
 // 89°N 0°E to 89°N 180°E is the issue's own pair: two degrees of arc over the
-// pole, 222 638 982 mm, against 352 222 875 mm the long way round the 89th
-// parallel. Both are under the clamp and both go through the same `%u km`
-// branch, so the difference reaches the glyphs.
+// pole, 222 638 982 mm, against 352 223 437 mm the long way round the 89th
+// parallel — the mean latitude is 89° exactly, so `cos_scaled()` returns the
+// table entry unmixed and 20 037 600 000 × 18/1024 is the whole answer. Both
+// are under the clamp and both go through the same `%u km` branch, so the
+// difference reaches the glyphs.
 void test_the_readout_measures_over_the_pole_and_not_around_it() {
   apps::NavState state;
   state.own = own_fix({890000000, 0});

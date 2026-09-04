@@ -996,13 +996,33 @@ void test_the_ordinary_baselines_did_not_move()
 }
 
 // Saturation is a readout choice, not a limit of the method, and the boundary
-// is where `distance_mm()` puts it so the two never disagree about whether a
-// number exists.
-void test_the_screen_distance_saturates_where_the_other_one_does()
+// is the same *value* `distance_mm()` uses. The same value is not the same
+// behaviour, and the difference has a misuse path, so it is asserted rather
+// than described: `distance_mm()` clamps each component before the hypotenuse
+// (`clamp_component()` in geo.cpp), so it can run out of number on a baseline
+// this function still measures. Anyone tempted by an integer
+// `distance_mm(a, b) == kDistanceSaturated` pre-filter in front of the screen
+// call would restore exactly the high-latitude over-reading #433 removed, on
+// exactly the targets it is about.
+void test_the_screen_distance_shares_the_clamp_but_not_the_pairs_that_reach_it()
 {
     // 1107.7 km on the great circle, and 1000 km exactly from `distance_mm()`,
     // which saturated there by accident. Now it is on purpose.
     CHECK(great_circle_mm({800000000, 0}, {800000000, 600000000}) == kDistanceSaturated);
+
+    // And the window where they disagree about whether a number exists at all.
+    // At 80°N the longitude component alone is 526 000 000 × 11132/1000 ×
+    // 18/1024 = 1 017 838 765 mm, clamped to the limit before the hypotenuse is
+    // taken, so `distance_mm()` has nothing to say; the great circle is
+    // 982 419 524 mm and the screen prints `982 km`, which is the right answer
+    // and the whole point. The window runs from about 51.7° to 53.7° of
+    // longitude; 52.6° is the middle of it.
+    const Position polar_a{800000000, 0};
+    const Position polar_b{800000000, 526000000};
+    CHECK(distance_mm(polar_a, polar_b) == kDistanceSaturated);
+    CHECK(great_circle_mm(polar_a, polar_b) < kDistanceSaturated);
+    CHECK_RELATIVE(great_circle_mm(polar_a, polar_b),
+                   reference_distance_mm(polar_a, polar_b), 0.01);
 
     // Pole to pole is half a great circle, twenty thousand kilometres.
     CHECK(great_circle_mm({kLatitudeMaxE7, 0}, {-kLatitudeMaxE7, 0}) == kDistanceSaturated);
@@ -1078,7 +1098,7 @@ int main()
     test_the_short_way_between_two_polar_points_goes_over_the_pole();
     test_a_pole_has_a_distance_even_though_it_has_no_bearing();
     test_the_ordinary_baselines_did_not_move();
-    test_the_screen_distance_saturates_where_the_other_one_does();
+    test_the_screen_distance_shares_the_clamp_but_not_the_pairs_that_reach_it();
     test_the_screen_distance_is_zero_at_home_and_short_across_the_seam();
 
     if (failures != 0) {

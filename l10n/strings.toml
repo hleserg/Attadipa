@@ -579,8 +579,10 @@ ru = "Позиция узла устарела"
 en = "Ready"
 ru = "Готово"
 
-# `distance_mm()` stops measuring at 1000 km, and this says so rather than
-# printing the clamp as if it were a measurement.
+# `great_circle_mm()` stops measuring at 1000 km, and this says so rather than
+# printing the clamp as if it were a measurement. Its neighbour `distance_mm()`
+# stops there too, but for a different reason — an overflow guard on the jump
+# detector's squares — and it is not on this path (#433).
 [nav_distance_saturated]
 en = "> 1000 km"
 ru = "> 1000 км"
