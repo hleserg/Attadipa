@@ -51,9 +51,24 @@ enum class WakeVerdict : std::uint8_t {
 //
 // The order below is the contract, and each step is a claim about the hardware:
 //
-//   * A wake this transaction did not arm is reported without touching the PMU.
-//     Nothing armed it, so nothing here can explain it, and clearing a latch
-//     would destroy evidence to answer a question that was not asked.
+//   * A wake this transaction did not arm, *and nothing else*, is reported
+//     without touching the PMU. Nothing armed it, so nothing here can explain
+//     it, and clearing a latch would destroy evidence to answer a question that
+//     was not asked.
+//   * An unarmed cause that arrives *alongside* an armed one does not get that
+//     treatment, and the limit is worth stating rather than discovering. This
+//     function is handed `WakeCauses`, not the wake plan, so it cannot tell
+//     `Timer` armed from `Timer` unarmed; all it can see is that something
+//     armable is set. So the armed route runs, the latch is spent, and if the
+//     latch was empty on a pure poll the verdict is `PollAgain` -- and the
+//     unarmed bits do not survive the descent, because the caller *assigns*
+//     `from_soc` and `unmapped_from_soc` on each wake instead of accumulating
+//     them (`soc_causes_to_wake_sources` in `board_power.cpp`, whose own
+//     comment gives the reason: three thousand poll wakes must not accumulate
+//     into a report claiming every source at once). Reporting on any unarmed
+//     bit instead would wake the device fully for a cause nobody asked about,
+//     which is a power decision, not a classification one, and there is no host
+//     seam for the re-arm loop to prove it against.
 //   * A debug descent that ended on the timer alone is over on arrival. It did
 //     not sleep to poll the PMU, and consuming a press it never went looking
 //     for would swallow one the *next* real descent would have reported.

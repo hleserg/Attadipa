@@ -143,6 +143,29 @@ void test_an_unarmed_cause_is_reported_without_spending_the_latch()
     CHECK(latch.edge);
 }
 
+// But only *alone*. An unarmed cause riding in with an armed one is not
+// reported here and does not survive the descent: `classify_wake` is handed
+// causes rather than the wake plan, so `Timer` armed and `Timer` unarmed look
+// identical to it, and the caller assigns `from_soc` on the next wake rather
+// than accumulating it. This row exists so the limit is pinned rather than
+// rediscovered -- the header says the same thing in prose.
+void test_an_unarmed_cause_beside_an_armed_one_goes_back_down()
+{
+    WakeCauses causes;
+    causes.from_soc = kTimer | kUsb;
+    causes.unmapped_from_soc = 0x8000'0000u;
+    Latch latch{false, 0};
+
+    CHECK(run(causes, latch) == WakeVerdict::PollAgain);
+    CHECK(causes.derived == 0);
+    // Spent, unlike the unarmed-alone row above: the poll route reads it.
+    CHECK(latch.reads == 1);
+    // Untouched *by this function*. The loss happens one level up, on the
+    // re-arm, and that is the point of the row.
+    CHECK(causes.from_soc == (kTimer | kUsb));
+    CHECK(causes.unmapped_from_soc == 0x8000'0000u);
+}
+
 // The same for a wake with no named cause at all: the SoC said something this
 // project cannot map, and the raw word is all the evidence there is.
 void test_an_unmapped_cause_survives_classification()
@@ -229,6 +252,7 @@ int main()
     test_the_poll_finds_the_press();
     test_an_empty_poll_goes_back_down();
     test_an_unarmed_cause_is_reported_without_spending_the_latch();
+    test_an_unarmed_cause_beside_an_armed_one_goes_back_down();
     test_an_unmapped_cause_survives_classification();
     test_a_debug_timer_wake_leaves_the_latch_alone();
     test_a_debug_descent_that_ends_on_a_touch_still_reports_the_press();

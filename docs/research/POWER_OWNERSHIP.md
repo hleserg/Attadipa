@@ -747,7 +747,7 @@ what the classification reports **and** whether it touched the register at all:
 a route that reads `0x49` and then reports no `Button` has not lost a cause, it
 has deleted one, and the next descent cannot find it either. One classification
 operation answers every route —
-[`firmware/main/wake_classification.h:64-65`](../../firmware/main/wake_classification.h) —
+[`firmware/main/wake_classification.h:79-80`](../../firmware/main/wake_classification.h) —
 "template <typename ConsumePowerEdge>" — because two branches reading one
 destructive register for different purposes is what the finding was.
 

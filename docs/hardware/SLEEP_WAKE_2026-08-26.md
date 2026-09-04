@@ -123,7 +123,7 @@ Fourth, the wake line no longer says `by Button` on this route. The PWR key is
 still classified from register `0x49`, but it is classified *during* a timer
 wake, so the board's derived `Button` is now reported alongside the SoC's own
 `Timer`
-([`firmware/main/wake_classification.h:83-84`](../../firmware/main/wake_classification.h) —
+([`firmware/main/wake_classification.h:98-99`](../../firmware/main/wake_classification.h) —
 "attadipa::core::wake_bit(attadipa::core::WakeSource::Button);")
 rather than replacing it — the owner publishes the union of the two halves
 ([`core/src/power_owner.cpp:474`](../../core/src/power_owner.cpp) —

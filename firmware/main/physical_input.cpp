@@ -222,8 +222,8 @@ private:
     plan.state = attadipa::core::PowerState::LightSleep;
     // Two sources, because two is what this board can arm. The power button is
     // not a third: the AXP2101 has no wake line to this SoC, so a press is
-    // found by reading its latched edge during a timer wake and comes back as
-    // a derived cause. Naming it here would be a wake plan the hardware never
+    // found by reading its latched edge once one of these two has woken the
+    // CPU, and comes back as a derived cause. Naming it here would be a wake plan the hardware never
     // agreed to.
     // A boot that got no touch controller (#367 item 6) does not name its
     // line either: nothing drives that pin then, and a wake on an undriven

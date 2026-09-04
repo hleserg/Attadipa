@@ -302,8 +302,8 @@ public:
       break;
     }
     // Everything else, and Button above all. The AXP2101 has no wake line to
-    // this SoC: a press is found by reading register 0x49 during a timer wake,
-    // which is a poll and not an armed source. Returning true here would put
+    // this SoC: a press is found by reading register 0x49 after some *other*
+    // source brought the CPU back, which is a poll and not an armed source. Returning true here would put
     // the software's wake plan and the hardware's out of agreement in the one
     // place nothing downstream can detect.
     ESP_LOGE(kTag, "this board cannot arm %s as a wake source",
