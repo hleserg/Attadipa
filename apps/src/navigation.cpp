@@ -44,9 +44,9 @@ bool usable(const core::LocationState &state) {
 void format_distance(std::uint32_t millimetres, l10n::Locale locale, char *out,
                      std::size_t size) {
   if (millimetres >= core::kDistanceSaturated) {
-    // `distance_mm()` stops measuring here rather than overflowing, and this is
-    // the readout saying the same thing instead of printing the clamp as though
-    // it were a measurement.
+    // `great_circle_mm()` stops measuring here rather than overflowing, and
+    // this is the readout saying the same thing instead of printing the clamp
+    // as though it were a measurement.
     put(out, size, l10n::tr(l10n::StringId::NavDistanceSaturated, locale));
     return;
   }
@@ -183,8 +183,14 @@ NavText format_navigation(const NavState &state) {
     const core::Position from = state.own.position.value;
     const core::Position to   = state.target.position.value;
 
-    format_distance(core::distance_mm(from, to), state.locale, text.distance,
-                    sizeof(text.distance));
+    // `great_circle_mm()`, not `distance_mm()`: the latter is the jump
+    // detector's, right over the seconds-apart baseline it was written for and
+    // 58% over the truth at 89°N across a half-turn of longitude (#433). A
+    // screen that refuses `0 m` for an unknown must not print that as a
+    // measurement, and the trade the equirectangular form buys — no libm on
+    // every fix — is not one a once-per-refresh readout is paying for.
+    format_distance(core::great_circle_mm(from, to), state.locale,
+                    text.distance, sizeof(text.distance));
     text.has_distance = true;
 
     std::uint16_t centideg = 0;
@@ -196,9 +202,17 @@ NavText format_navigation(const NavState &state) {
       put(text.cardinal, sizeof(text.cardinal),
           cardinal_of(centideg, state.locale));
     }
-    // No bearing and a distance is the arrival case: standing on it, or on the
-    // same coordinate it reported. The distance still reads, and it reads 0 m
-    // because that is measured rather than defaulted.
+    // No bearing and a distance is usually the arrival case: standing on it, or
+    // on the same coordinate it reported. The distance still reads, and it
+    // reads 0 m because that is measured rather than defaulted.
+    //
+    // Usually, not always, and #433 is what made the difference statable. There
+    // is a second way in: `initial_bearing()` also refuses a *pole* as the
+    // origin, because standing on one there is no north to measure from. A
+    // wearer at exactly ±90° therefore reads a real distance beside an em dash,
+    // and that is right — the distance is known and the direction is not, which
+    // is the same separation the rest of this file keeps. It reads as arrival
+    // only to somebody who assumed the em dash meant zero.
   }
 
   // ---- the caveat --------------------------------------------------------

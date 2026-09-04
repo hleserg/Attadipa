@@ -606,10 +606,26 @@ jump detector's path — does not reach it, and neither does the argument for a
 geodesic: an initial great-circle bearing is a different quantity from a
 geodesic and taking one does not require the other. The reasoning is beside the
 code, and the header says the same thing so that reading either is enough:
-`core/include/attadipa/core/geo.h:25` — "// "Or a bearing" used to be on that list and is not any more — an initial".
+`core/include/attadipa/core/geo.h:33` — "// "Or a bearing" used to be on that list and is not any more — an initial".
 
 A geodesic *azimuth* — the bearing that changes along a long route — is still
 GeographicLib's, and still nobody's need here.
+
+**The screen's distance followed the bearing — `REIMPLEMENT`, decided
+2026-09-04 (#433).** Measuring against the haversine reference showed
+`distance_mm()` is 58% over the great circle at 89°N across a half-turn of
+longitude, and the node readout was rendering that as a plain number. The
+entry above is the whole argument: the constraint that kept `distance_mm()`
+integer-only is "do not link libm into the jump detector's path", the screen is
+not that path, and `<cmath>` is already there for `initial_bearing()`. So
+`great_circle_mm()` is one haversine beside it, on the same sphere, and
+GeographicLib was declined a third time for the same reason as the second — a
+geodesic on the ellipsoid is a different quantity from a great circle, and a
+screen needs the great circle.
+
+Which consumer gets which is now the load-bearing fact rather than a
+preference, and it is in the header for the same reason as the boundary above:
+`core/include/attadipa/core/geo.h:22` — "// The split is by *consumer*, and that is the whole design. The constraint".
 
 **Open:** whether the node carries a magnetometer decides whether this is the
 fallback plan or the only plan ([NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
