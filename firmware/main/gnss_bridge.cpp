@@ -166,6 +166,31 @@ constexpr std::uint8_t kUbxMonVer[] = {0xB5, 0x62, 0x0A, 0x04,
 constexpr std::uint8_t kAllystarMonVer[] = {0xF1, 0xD9, 0x0A, 0x04,
                                             0x00, 0x00, 0x0E, 0x34};
 
+// Every distinct `$P` sentence in the window, once each. `sink` is NUL-
+// terminated by `listen`, and scanning stops at `stored` so a truncated window
+// cannot walk past what was actually copied.
+void log_proprietary(const char *sink, int stored) {
+  const char *p = sink;
+  const char *end = sink + stored;
+  while (p < end) {
+    const char *dollar = static_cast<const char *>(
+        std::memchr(p, '$', static_cast<std::size_t>(end - p)));
+    if (dollar == nullptr) return;
+    if (dollar + 2 < end && dollar[1] == 'P') {
+      char line[96];
+      std::size_t n = 0;
+      while (dollar + n < end && n + 1 < sizeof(line) && dollar[n] != '\r' &&
+             dollar[n] != '\n') {
+        line[n] = dollar[n];
+        ++n;
+      }
+      line[n] = '\0';
+      ESP_LOGI(kTag, "  reply: %s", line);
+    }
+    p = dollar + 1;
+  }
+}
+
 void interrogate() {
   static char sink[1536];
 
@@ -210,6 +235,16 @@ void interrogate() {
     if (h.ubx > 0 || h.allystar > 0) {
       log_hex_and_text(q.name, sink, h.stored, h.bytes);
     }
+    // Four of the six questions are ASCII, and an ASCII answer carries neither
+    // sync word -- so gating the dump on those two threw every one of them
+    // away and left only a counter that a periodic stream makes non-zero
+    // regardless. On a Quectel this instrument would have asked the one
+    // question that identifies it and discarded the reply.
+    //
+    // A proprietary sentence is the signature: the standard stream is `$G..`,
+    // and `$P..` is what a receiver answers a vendor query with. Printed
+    // whole, because the answer is the whole line.
+    log_proprietary(sink, h.stored);
   }
 }
 
