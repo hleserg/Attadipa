@@ -1,3 +1,4 @@
+#include <cstring>
 #include <cstdio>
 #include <ctime>
 #include <optional>
@@ -14,6 +15,7 @@
 #include "attadipa/core/input.h"
 #include "attadipa/debug/bridge.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
 #include "attadipa/ui/tokens.h"
 
@@ -38,6 +40,9 @@ namespace {
 using namespace attadipa;
 
 ui::ClockFace g_clock_face;
+ui::NavFace g_nav_face;
+apps::NavState g_nav_state;
+ui::NavFaceConfig g_nav_config;
 ui::ClockFaceConfig g_clock_config;
 apps::ClockState g_clock_state;
 bool g_clock_active = false;
@@ -169,6 +174,99 @@ void on_long_press(lv_event_t *) {
   rebuild_provision_screen();
   lv_timer_create(leave_provisioning,
                   ui::milliseconds_of(ui::Motion::Slow) * 8U, nullptr);
+}
+
+// The navigation readout's staged scenarios.
+//
+// Coordinates are the same deliberately-nowhere place the position tests use —
+// half a degree north, one degree east, in the Gulf of Guinea. No real location
+// belonging to anybody appears in this repository.
+//
+// This exists because a screenshot of `Ready` proves nothing about the seven
+// other things the readout can say, and those seven are where a number appears
+// that should not have.
+bool stage_nav_scenario(const char *name) {
+  constexpr core::Position kHere{5000000, 10000000};
+  constexpr core::Position kTarget{5100000, 10160000};  // 2.1 km, bearing 058
+
+  core::LocationState own;
+  own.availability = core::Availability::Ready;
+  own.has_position = true;
+  own.position.value = kHere;
+  own.validity = core::PositionValidity::Valid;
+  own.fix_type = core::FixType::ThreeD;
+  own.source = core::PositionSource::LocalGnss;
+  own.receiver = core::ReceiverPresence::Running;
+
+  // What the MeshCore node link produces: a coordinate, an arrival age, and no
+  // fix type at all — so `classify()` answers NoFix and goes on answering it.
+  core::LocationState node;
+  node.availability = core::Availability::Ready;
+  node.has_position = true;
+  node.position.value = kTarget;
+  node.position.age_at_us_ms = 3000;
+  node.validity = core::PositionValidity::NoFix;
+  node.fix_type = core::FixType::Unknown;
+  node.source = core::PositionSource::NodeGnss;
+
+  g_nav_state = apps::NavState{};
+  if (std::strcmp(name, "ready") == 0) {
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "waiting") == 0) {
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "no-fix") == 0) {
+    g_nav_state.own.availability = core::Availability::Ready;
+    g_nav_state.own.receiver = core::ReceiverPresence::Running;
+    g_nav_state.own.fix_type = core::FixType::NoFix;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "own-stale") == 0) {
+    own.validity = core::PositionValidity::Stale;
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "own-degraded") == 0) {
+    // Current, and solved badly. The numbers still render; the status is what
+    // carries the caveat.
+    own.validity = core::PositionValidity::Degraded;
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "node-unavailable") == 0) {
+    node.availability = core::Availability::Unreachable;
+    node.position.age_at_us_ms = 45000;
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "node-unknown") == 0) {
+    g_nav_state.own = own;
+    g_nav_state.target.availability = core::Availability::Ready;
+  } else if (std::strcmp(name, "node-stale") == 0) {
+    node.position.age_at_us_ms = 300000;
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "arrived") == 0) {
+    node.position.value = kHere;
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else if (std::strcmp(name, "far") == 0) {
+    node.position.value = core::Position{900000000, 10000000};
+    g_nav_state.own = own;
+    g_nav_state.target = node;
+  } else {
+    std::fprintf(stderr,
+                 "unknown --nav-state \"%s\"; one of: ready waiting no-fix "
+                 "own-stale own-degraded node-unavailable node-unknown "
+                 "node-stale arrived far\n",
+                 name);
+    return false;
+  }
+  return true;
+}
+
+void rebuild_nav_screen() {
+  // The locale is read at the rebuild, the way the clock reads it, so `L` at
+  // runtime switches this screen too.
+  g_nav_state.locale = l10n::locale();
+  g_nav_face.build(lv_screen_active(), g_nav_config,
+                   apps::format_navigation(g_nav_state));
 }
 
 void rebuild_clock_screen() {
@@ -361,6 +459,21 @@ int main(int argc, char **argv) {
     // pattern in half of it cannot reveal a crop.
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_diagnostic_screen);
     attadipa::sim::build_diagnostic_screen(options.board);
+  } else if (options.nav_screen) {
+    if (!stage_nav_scenario(options.nav_state)) {
+      return 2;
+    }
+    g_nav_config = {
+        options.board.display.width_px,
+        options.board.display.height_px,
+        options.theme,
+        options.board.display.technology == platform::PanelTechnology::Amoled
+            ? ui::PixelCost::PerPixel
+            : ui::PixelCost::Fixed,
+        ui::Metrics::for_dpi(options.board.display.dpi()),
+    };
+    l10n::set_locale_changed_handler(rebuild_nav_screen);
+    rebuild_nav_screen();
   } else if (options.clock_screen || options.provision_screen) {
     g_clock_active = true;
     g_clock_live = !options.clock_time_set;

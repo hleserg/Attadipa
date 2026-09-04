@@ -71,6 +71,11 @@ add_executable(test_clock test_clock.cpp)
 target_link_libraries(test_clock PRIVATE attadipa_apps)
 add_test(NAME clock COMMAND test_clock)
 
+add_executable(test_navigation test_navigation.cpp)
+target_link_libraries(test_navigation PRIVATE attadipa_apps)
+add_test(NAME navigation COMMAND test_navigation)
+set_tests_properties(navigation PROPERTIES LABELS gnss)
+
 add_executable(test_time_service test_time_service.cpp)
 target_include_directories(test_time_service PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 target_link_libraries(test_time_service PRIVATE attadipa_core attadipa_apps)

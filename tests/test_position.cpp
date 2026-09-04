@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -734,6 +735,152 @@ void test_short_distances_keep_their_resolution()
 
 }  // namespace
 
+// ---------------------------------------------------------------------------
+// The initial great-circle bearing.
+//
+// Every expected value below is the spherical formula evaluated in double
+// precision, and two of them are checked against geometry instead, because a
+// test that re-derives the implementation's own arithmetic proves only that it
+// was typed twice. Units are centidegrees clockwise from true north, the same
+// unit `GnssObservation::course_centideg` uses.
+
+constexpr std::int32_t kDeg = 10000000;
+
+std::uint16_t bearing_of(Position a, Position b, int line)
+{
+    std::uint16_t centideg = 0xFFFFU;
+    if (!initial_bearing(a, b, centideg)) {
+        std::fprintf(stderr, "FAIL line %d: bearing refused, expected an answer\n", line);
+        ++failures;
+        return 0xFFFFU;
+    }
+    return centideg;
+}
+
+#define BEARING(a, b) bearing_of((a), (b), __LINE__)
+
+void test_the_cardinal_directions_are_exact()
+{
+    // On a sphere these four are not approximations, so the test does not carry
+    // a tolerance: a meridian *is* a great circle, and so is the equator.
+    const Position origin{0, 0};
+    const Position north{kDeg, 0};
+    const Position east{0, kDeg};
+    const Position west{0, -kDeg};
+    CHECK(BEARING(origin, north) == 0);
+    CHECK(BEARING(north, origin) == 18000);
+    CHECK(BEARING(origin, east) == 9000);
+    CHECK(BEARING(origin, west) == 27000);
+}
+
+void test_a_great_circle_bulges_towards_the_pole()
+{
+    // The independent check. Set out due east from 60°N and the shortest path
+    // does not stay on the parallel — it climbs, so the initial bearing is
+    // *north* of east, and by symmetry it is south of east from 60°S. No
+    // arithmetic from the implementation is reused to say so; it is the same
+    // fact as a long flight between two same-latitude places crossing higher
+    // ground than either of them.
+    const Position from_north{60 * kDeg, 0};
+    const Position to_north{60 * kDeg, kDeg};
+    const Position from_south{-60 * kDeg, 0};
+    const Position to_south{-60 * kDeg, kDeg};
+    const int north = BEARING(from_north, to_north);
+    const int south = BEARING(from_south, to_south);
+    CHECK(north < 9000);
+    CHECK(south > 9000);
+    // Symmetric about due east, to the centidegree.
+    CHECK(9000 - north == south - 9000);
+    // The value itself, from the spherical formula: 89.56698°.
+    CHECK(north == 8957);
+}
+
+void test_the_antimeridian_is_not_a_wall_for_a_bearing_either()
+{
+    // 179.9°E to 179.9°W is a fifth of a degree eastward, not 359.8° westward.
+    // Nothing in the implementation unwraps the longitude difference; sine and
+    // cosine do it, and this is the test that says so.
+    const Position east_side{0, 1799000000};
+    const Position west_side{0, -1799000000};
+    CHECK(BEARING(east_side, west_side) == 9000);
+    CHECK(BEARING(west_side, east_side) == 27000);
+}
+
+void test_there_is_no_bearing_to_where_you_already_are()
+{
+    std::uint16_t centideg = 4242;
+    const Position here{45 * kDeg, 9 * kDeg};
+    CHECK(!initial_bearing(here, here, centideg));
+    // Untouched, so a caller that ignored the return value cannot read a
+    // direction that was never written.
+    CHECK(centideg == 4242);
+
+    // Standing on a pole there is no north to measure from. Two longitudes at
+    // the same pole are also two coordinates and one physical point, which the
+    // comparison above cannot see.
+    const Position pole{90 * kDeg, 0};
+    const Position pole_again{90 * kDeg, 10 * kDeg};
+    const Position south_pole{-90 * kDeg, 0};
+    CHECK(!initial_bearing(pole, pole_again, centideg));
+    CHECK(!initial_bearing(pole, here, centideg));
+    CHECK(!initial_bearing(south_pole, here, centideg));
+    CHECK(centideg == 4242);
+
+    // The bearing *to* a pole is ordinary, and is due north or due south.
+    CHECK(BEARING(here, pole) == 0);
+    CHECK(BEARING(here, south_pole) == 18000);
+}
+
+void test_a_coordinate_off_the_globe_has_no_bearing()
+{
+    std::uint16_t centideg = 4242;
+    const Position sane{45 * kDeg, 9 * kDeg};
+    const Position off_latitude{kLatitudeMaxE7 + 1, 0};
+    const Position off_longitude{0, -kLongitudeMaxE7 - 1};
+    CHECK(!initial_bearing(off_latitude, sane, centideg));
+    CHECK(!initial_bearing(sane, off_latitude, centideg));
+    CHECK(!initial_bearing(off_longitude, sane, centideg));
+    CHECK(!initial_bearing(sane, off_longitude, centideg));
+    CHECK(centideg == 4242);
+}
+
+void test_the_seam_at_north_folds_rather_than_overflowing()
+{
+    // One unit of the 1e-7 grid west of due north. The true bearing is
+    // 359.999996°, which multiplied by 100 and rounded is 36000 — outside the
+    // range this function promises, and a value that would print as "360°".
+    // It has to come back as north.
+    const Position from{45 * kDeg, 0};
+    const Position just_west_of_north{46 * kDeg, -1};
+    CHECK(BEARING(from, just_west_of_north) == 0);
+
+    // And nothing on a full fan of directions leaves the range. The fan
+    // crosses the seam once by construction.
+    for (int degree = 0; degree < 360; ++degree) {
+        const double radians = degree * 3.14159265358979323846 / 180.0;
+        const Position target{
+            static_cast<std::int32_t>(45.0 * kDeg + std::cos(radians) * kDeg),
+            static_cast<std::int32_t>(std::sin(radians) * kDeg)};
+        std::uint16_t value = 0xFFFFU;
+        CHECK(initial_bearing(from, target, value));
+        CHECK(value < 36000);
+    }
+}
+
+void test_the_return_bearing_reverses_over_a_short_hop()
+{
+    // Over a hop this short the convergence of the meridians is well under a
+    // centidegree, so the two bearings differ by exactly 180°. Over a long one
+    // they would not, and that is a property of the sphere rather than a
+    // defect — which is why this test stays short and says so.
+    const Position from{30 * kDeg, 0};
+    const Position to{30 * kDeg + 1000, 1000};  // about 11 m north-east
+    const int out = BEARING(from, to);
+    const int back = BEARING(to, from);
+    const int difference = back > out ? back - out : out - back;
+    CHECK(difference == 18000);
+}
+
 int main()
 {
     test_all_four_validities_are_reachable();
@@ -758,6 +905,14 @@ int main()
     test_distance_is_zero_symmetric_and_bounded();
     test_the_cosine_table_is_monotonic_and_ends_where_it_should();
     test_short_distances_keep_their_resolution();
+
+    test_the_cardinal_directions_are_exact();
+    test_a_great_circle_bulges_towards_the_pole();
+    test_the_antimeridian_is_not_a_wall_for_a_bearing_either();
+    test_there_is_no_bearing_to_where_you_already_are();
+    test_a_coordinate_off_the_globe_has_no_bearing();
+    test_the_seam_at_north_folds_rather_than_overflowing();
+    test_the_return_bearing_reverses_over_a_short_hop();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

@@ -367,9 +367,9 @@ is the record of what was true at `144459f` and what changed it:
   `provision_time()`, whose one instantiation was inside the
   `#if CONFIG_ATTADIPA_WATCH_CONTROL` block. #356's first change made the
   sequence compile in every image; its second gave a product image the caller:
-  `firmware/main/waveshare_board.cpp:444` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
+  `firmware/main/waveshare_board.cpp:465` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
   is ungated and is reached from the entry screen a long press on the clock
-  opens (`firmware/main/waveshare_board.cpp:906` — "void long_press(lv_event_t *) {").
+  opens (`firmware/main/waveshare_board.cpp:1020` — "void long_press(lv_event_t *) {").
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same
@@ -379,9 +379,9 @@ is the record of what was true at `144459f` and what changed it:
   the passkey key. #356's first change made boot replay a stored passkey
   through the same `Configure` event, and its second lets the fourth field of
   the entry screen store one:
-  `firmware/main/waveshare_board.cpp:475` — "set_mesh_passkey(std::uint32_t passkey) override {".
+  `firmware/main/waveshare_board.cpp:496` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
-  `firmware/main/meshcore_ble.cpp:1271` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
 - **A changed node cannot be recovered from, and this bullet understated it.**
@@ -393,7 +393,7 @@ is the record of what was true at `144459f` and what changed it:
   reads the reset node's new public key, and
   `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;" turns
   it away for good. The single writer of that key is
-  `firmware/main/meshcore_ble.cpp:452` — "nvs_set_blob(handle, kNodeKeyNvsKey"
+  `firmware/main/meshcore_ble.cpp:457` — "nvs_set_blob(handle, kNodeKeyNvsKey"
   and there is no eraser; the file's one `nvs_erase_key` names the passkey
   instead. So this is not "the product image lacks a surface the HIL image has";
   no image has the operation. Traced in

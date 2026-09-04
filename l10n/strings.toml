@@ -530,3 +530,130 @@ ru = "Стереть"
 [provision_key_cancel]
 en = "Cancel"
 ru = "Отмена"
+
+# --- Navigation: where the other node is, from here ----------------------
+#
+# Added 2026-09-04 with the node navigation readout (#428). Eight statuses,
+# and each is a different thing being wrong, so each gets its own entry
+# rather than a shared "unavailable": the reader acts differently on "go
+# outside" than on "the node has not said".
+#
+# The units carry the number's placeholder because Russian abbreviates them
+# differently and a unit glued on in C++ is a string the catalogue cannot see.
+
+# The screen's own title. The face draws it; it does not choose it, which is
+# what keeps `ui/lvgl/` free of user-facing text.
+[nav_title]
+en = "NODE"
+ru = "УЗЕЛ"
+
+[nav_waiting_for_gps]
+en = "Waiting for GPS"
+ru = "Ожидание GPS"
+
+[nav_no_fix]
+en = "No fix"
+ru = "Нет фиксации"
+
+[nav_own_position_stale]
+en = "Own position stale"
+ru = "Своя позиция устарела"
+
+[nav_own_position_degraded]
+en = "Own position degraded"
+ru = "Своя позиция неточна"
+
+[nav_node_unavailable]
+en = "Node unavailable"
+ru = "Узел недоступен"
+
+[nav_node_position_unknown]
+en = "Node position unknown"
+ru = "Позиция узла неизвестна"
+
+[nav_node_position_stale]
+en = "Node position stale"
+ru = "Позиция узла устарела"
+
+[nav_ready]
+en = "Ready"
+ru = "Готово"
+
+# `distance_mm()` stops measuring at 1000 km, and this says so rather than
+# printing the clamp as if it were a measurement.
+[nav_distance_saturated]
+en = "> 1000 km"
+ru = "> 1000 км"
+
+[nav_distance_m]
+en = "%u m"
+ru = "%u м"
+
+[nav_distance_km_tenths]
+en = "%u.%u km"
+ru = "%u,%u км"
+
+[nav_distance_km]
+en = "%u km"
+ru = "%u км"
+
+[nav_age_seconds]
+en = "%u s"
+ru = "%u с"
+
+[nav_age_minutes]
+en = "%u min"
+ru = "%u мин"
+
+[nav_age_hours]
+en = "%u h"
+ru = "%u ч"
+
+# The one caveat that is true on a good day: a MeshCore node states no fix
+# type, no observation time and no satellite count, so the age below is the
+# age of the coordinate's *arrival*.
+[nav_caveat_node_unverified]
+en = "node fix unverified, heard %s ago"
+ru = "фиксация узла не подтверждена, принято %s назад"
+
+# Terminal: no configuration of this device can give a position.
+[nav_caveat_no_receiver]
+en = "no receiver on this device"
+ru = "на этом устройстве нет приёмника"
+
+# Not terminal: a supported receiver would answer, and none is bound.
+[nav_caveat_no_provider]
+en = "no position source is set up"
+ru = "источник местоположения не настроен"
+
+[nav_cardinal_n]
+en = "N"
+ru = "С"
+
+[nav_cardinal_ne]
+en = "NE"
+ru = "СВ"
+
+[nav_cardinal_e]
+en = "E"
+ru = "В"
+
+[nav_cardinal_se]
+en = "SE"
+ru = "ЮВ"
+
+[nav_cardinal_s]
+en = "S"
+ru = "Ю"
+
+[nav_cardinal_sw]
+en = "SW"
+ru = "ЮЗ"
+
+[nav_cardinal_w]
+en = "W"
+ru = "З"
+
+[nav_cardinal_nw]
+en = "NW"
+ru = "СЗ"

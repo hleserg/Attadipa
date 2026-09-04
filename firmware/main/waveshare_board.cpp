@@ -34,10 +34,12 @@
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/navigation.h"
 #include "attadipa/apps/provisioning.h"
 #include "attadipa/core/time_service.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
 #include "attadipa_fonts.h"
 
@@ -109,6 +111,11 @@ constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
     {0x2B, kRows, sizeof(kRows), 0},
 };
 
+// Which of the four faces is on the screen. `Entry` is a page like the rest:
+// it cleans the screen too, and forgetting that is how a long press used to
+// strand the clock's timer.
+enum class Page { Clock, Entry, Mesh, Nav };
+
 struct BoardState {
   // Every handle boot creates, kept so that boot can un-create it. A null is
   // a step that did not run, and `abandon_board()` reads the journal from
@@ -140,7 +147,21 @@ struct BoardState {
   lv_obj_t *mesh_node = nullptr;
   lv_obj_t *mesh_message = nullptr;
   lv_obj_t *mesh_signal = nullptr;
-  bool mesh_screen = false;
+  // The navigation readout, which shares the mesh screen's slot: a tap swaps
+  // between them. It is not a third place to get lost in -- both are about the
+  // same node, and the tap is a page turn rather than navigation.
+  attadipa::ui::NavFace nav_face;
+  // Which face owns the shared LVGL screen. Every `build()` here cleans that
+  // screen under whatever is already on it, and none of the faces notices its
+  // objects being freed -- `ClockFace` keeps a 50 ms timer writing into them.
+  // So the page is a single value changed at a single site, `show_page()`,
+  // which tears the outgoing face down first. Two independent bools could
+  // both be false for a tick, and then nothing owned the screen.
+  //
+  // It is touched only from the LVGL task -- the page turn, the long press and
+  // the refresh tick all run under the port lock -- so it needs no atomic. The
+  // BLE worker reaches `mesh_screen_requested` and nothing else here.
+  Page page = Page::Clock;
 };
 
 BoardState state;
@@ -753,6 +774,28 @@ void refresh_clock(lv_timer_t *timer) {
   }
 }
 
+// The one place a page changes, and the only one that tears the outgoing face
+// down. All three `clear()` calls are idempotent, so calling them all is
+// cheaper than asking which face was up -- but they are not all harmless.
+// `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
+// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:281` — "    lv_obj_clean(screen_);"
+// and empties the shared screen. So this leaves the panel with nothing on it,
+// and **every caller must draw the incoming page before it returns**.
+void show_page(Page next) {
+  if (state.page == next) {
+    return;
+  }
+  state.clock_face.clear();
+  state.nav_face.clear();
+  state.provision_face.clear();
+  state.entry.reset();
+  state.mesh_state = nullptr;
+  state.mesh_node = nullptr;
+  state.mesh_message = nullptr;
+  state.mesh_signal = nullptr;
+  state.page = next;
+}
+
 #if CONFIG_BT_NIMBLE_ENABLED
 // Four bytes of a node's public key as hex. The bench reports identify nodes by
 // exactly this much (`5c62d9bc…`, `044e2de8…`), and eight characters is what
@@ -768,8 +811,13 @@ void key_prefix(const attadipa::core::MeshPeerId &id, char (&out)[9]) {
 
 void build_mesh_screen() {
   lv_obj_t *screen = lv_screen_active();
-  state.clock_face.clear();
+  show_page(Page::Mesh);
   lv_obj_clean(screen);
+  // The screen object outlives every face, so it carries the last one's styles
+  // into the next. NavFace makes it a flex column; this screen aligns its five
+  // labels absolutely, and a flex parent ignores every one of them. Strip it
+  // first, the way ClockFace and ProvisionFace already do.
+  lv_obj_remove_style_all(screen);
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x05080B), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_font(screen, &attadipa_nunito_sans_20, 0);
@@ -801,11 +849,12 @@ void build_mesh_screen() {
   state.mesh_signal = lv_label_create(screen);
   lv_obj_set_style_text_color(state.mesh_signal, lv_color_hex(0x8CE8C2), 0);
   lv_obj_align(state.mesh_signal, LV_ALIGN_BOTTOM_LEFT, 28, -28);
-  state.mesh_screen = true;
 }
 
 void refresh_mesh() {
-  if (!state.mesh_screen) {
+  // `show_page()` nulls these on the way out, so a live label is the honest
+  // answer to "is this page built" -- there is no second flag to disagree.
+  if (state.mesh_state == nullptr) {
     build_mesh_screen();
   }
   const attadipa::core::MeshStatus status = meshcore_ble_status();
@@ -886,6 +935,71 @@ void refresh_mesh() {
 }
 #endif
 
+#if CONFIG_BT_NIMBLE_ENABLED
+attadipa::ui::NavFaceConfig nav_config() {
+  const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+          attadipa::ui::PixelCost::PerPixel,
+          attadipa::ui::Metrics::for_dpi(profile != nullptr ? profile->display.dpi()
+                                                            : 0)};
+}
+
+void refresh_nav() {
+  // `own` is left at its default, and that default is the honest one:
+  // `Unprovisioned`, "a supported provider would give it; none is bound"
+  // (`core/include/attadipa/core/availability.h:18`). Not `Unsupported`, which
+  // is terminal: no receiver is fitted today
+  // (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |"),
+  // and #429 exists to wire one to this board's own pads, so this device's
+  // configuration is exactly what would change the answer.
+  //
+  // So the readout says "Waiting for GPS", names the missing provider, and
+  // draws no needle, which is what it should say until #429 gives it a fix.
+  // Before anything is drawn: `NavFace::build()` cleans the screen under the
+  // outgoing face, and a clock face left thinking it is built keeps a 50 ms
+  // timer writing into the objects that clean just freed.
+  show_page(Page::Nav);
+  attadipa::apps::NavState nav;
+  // The same locale the clock takes, and from the same place, so the two pages
+  // of one watch never disagree about their language.
+  nav.locale = attadipa::l10n::Locale::En;
+  nav.target = meshcore_ble_location();
+  const attadipa::apps::NavText text = attadipa::apps::format_navigation(nav);
+  if (state.nav_face.built()) {
+    state.nav_face.update(text);
+  } else {
+    state.nav_face.build(lv_screen_active(), nav_config(), text);
+  }
+}
+
+// A short tap on the node pages between the two things there are to say about
+// it: what the link is doing, and where it is. It does nothing anywhere else --
+// the clock's gesture is a long press and this must not steal it, and a long
+// press on the node itself must do nothing rather than page away.
+void node_page_turn(lv_event_t *) {
+  // The page, not the request flag. The flag is true from the moment the
+  // worker sets it, which is up to a tick before the mesh page is actually
+  // drawn, and a tap in that window used to turn the clock into the node
+  // readout -- freeing the clock's objects with its timer still running.
+  // Reading the page instead makes NODE reachable only from MESH.
+  if (state.page != Page::Mesh && state.page != Page::Nav) {
+    return;
+  }
+  show_page(state.page == Page::Nav ? Page::Mesh : Page::Nav);
+  // Draw here, not on the next tick. `show_page()` has just emptied the screen
+  // and the node pages tick at 500 ms, so returning without drawing shows a
+  // bare background for up to half a second -- which on a watch that used to
+  // reboot reads as a crash. Both are idempotent: `refresh_mesh()` builds only
+  // when its labels are gone, `refresh_nav()` only when the face is not built.
+  if (state.page == Page::Nav) {
+    refresh_nav();
+  } else {
+    refresh_mesh();
+  }
+}
+#endif
+
 void build_clock_screen() {
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
@@ -904,12 +1018,14 @@ constexpr unsigned kDoneTicks = 3;
 // leaves its children unclickable and the press lands here, while the
 // keypad's buttons take theirs and never let one through.
 void long_press(lv_event_t *) {
-  if (state.entry.has_value() || state.mesh_screen) {
+  if (state.page != Page::Clock) {
     return;
   }
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
-  state.clock_face.clear();
+  // The page first: it clears the clock face, and `state.entry` with it, so
+  // the emplace below has to follow rather than precede it.
+  show_page(Page::Entry);
   state.entry.emplace(provisioner);
   state.done_ticks = 0;
   state.provision_face.build(
@@ -925,12 +1041,18 @@ void long_press(lv_event_t *) {
 void refresh_ui(lv_timer_t *timer) {
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
-    // The mesh screen cleans the LVGL screen under whatever is on it. An
-    // entry in progress goes with its objects, or it would pin every later
-    // long press behind a face that no longer exists.
-    state.provision_face.clear();
-    state.entry.reset();
-    refresh_mesh();
+    // The node pages clean the LVGL screen under whatever is on it. An entry
+    // in progress goes with its objects, or it would pin every later long
+    // press behind a face that no longer exists -- `show_page()` is what does
+    // that, here on the first tick after the worker asked.
+    if (state.page != Page::Mesh && state.page != Page::Nav) {
+      show_page(Page::Mesh);
+    }
+    if (state.page == Page::Nav) {
+      refresh_nav();
+    } else {
+      refresh_mesh();
+    }
     if (timer != nullptr) {
       lv_timer_set_period(timer, 500);
     }
@@ -949,8 +1071,7 @@ void refresh_ui(lv_timer_t *timer) {
     if (!state.entry->finished() || ++state.done_ticks < kDoneTicks) {
       return;
     }
-    state.provision_face.clear();
-    state.entry.reset();
+    show_page(Page::Clock);
     build_clock_screen();
   }
   refresh_clock(timer);
@@ -1064,6 +1185,13 @@ void create_ui() {
   build_clock_screen();
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
+#if CONFIG_BT_NIMBLE_ENABLED
+  // SHORT_CLICKED, not CLICKED: LVGL sends CLICKED on release whatever the
+  // duration, so a long press on the node would turn the page on its way out
+  // of the handler that is meant to ignore it.
+  lv_obj_add_event_cb(lv_screen_active(), node_page_turn,
+                      LV_EVENT_SHORT_CLICKED, nullptr);
+#endif
   state.ui_timer = lv_timer_create(
       refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
 }
@@ -1258,7 +1386,7 @@ esp_err_t start_waveshare_ui() {
     // Still under the LVGL lock: disarm everything create_ui() armed, before
     // rollback removes the RTC and I2C handles those callbacks can reach.
     //
-    // FOUR THINGS, NOT TWO, AND THE TWO THAT ARE EASY TO MISS ARE THE CLOCK
+    // FIVE THINGS, NOT TWO, AND THE TWO THAT ARE EASY TO MISS ARE THE CLOCK
     // FACE'S. `build_clock_screen()` reaches `ClockFace::build()`, which adds a
     // press handler and a 50 ms motion timer to the same screen. The handler is
     // harmless once no indev survives, but the timer is not: the retain branch
@@ -1272,6 +1400,9 @@ esp_err_t start_waveshare_ui() {
     // `clear()` deletes the timer and the transient animation and removes the
     // handler. It deletes no LVGL object, so the face stays drawn.
     lv_obj_remove_event_cb(lv_screen_active(), long_press);
+#if CONFIG_BT_NIMBLE_ENABLED
+    lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);
+#endif
     if (state.ui_timer != nullptr) {
       lv_timer_delete(state.ui_timer);
       state.ui_timer = nullptr;

@@ -247,7 +247,7 @@ nothing torn down — a partially initialised board reported as a failure.
 
 The owner contract's `prepare → commit → rollback` shape is the same shape
 boot needs, and boot has it now. Each required-step failure calls
-[`firmware/main/waveshare_board.cpp:1162`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1290`](../../firmware/main/waveshare_board.cpp) —
 "esp_err_t abandon_board() {", which reads the journal from `BoardState`'s
 handles. Before an LVGL display exists, it releases every completed step in
 reverse. After a display exists, the display stack is deliberately retained;
@@ -261,7 +261,7 @@ Two things the rollback leaves behind, on purpose. The rails, always: the
 bring-up wrote them, and switching any of them off is authorised by a
 measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
 a supply), so they stay as written and the log says so:
-[`firmware/main/waveshare_board.cpp:1152`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1280`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". And the whole display stack — LVGL, the display, the
 panel, its IO and the QSPI host — whenever rollback cannot prove that a queued
 transfer has completed. The LVGL mutex serialises API calls; it is not a QSPI
@@ -299,18 +299,21 @@ service owns its own `lv_indev_t` and deletes it on its own failure
 so nothing LVGL keeps points at the touch controller and only the display stack
 is retained.
 That path is reached both when boot's LVGL lock times out
-([`firmware/main/waveshare_board.cpp:1226`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1354`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(ESP_ERR_TIMEOUT,") and when
 physical-input startup fails after `create_ui()` may have queued the first frame
-([`firmware/main/waveshare_board.cpp:1286`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1417`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
 use-after-free. On the physical-input failure, everything `create_ui()` armed
-is disarmed while the caller still owns the LVGL lock — four things, not two:
-[`firmware/main/waveshare_board.cpp:1274`](../../firmware/main/waveshare_board.cpp) —
+is disarmed while the caller still owns the LVGL lock — five things, not two:
+[`firmware/main/waveshare_board.cpp:1402`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), long_press);" — removes the path
-into provisioning/RTC, the adjacent timer deletion removes `refresh_ui()`, and
-[`firmware/main/waveshare_board.cpp:1279`](../../firmware/main/waveshare_board.cpp) —
+into provisioning/RTC,
+[`firmware/main/waveshare_board.cpp:1404`](../../firmware/main/waveshare_board.cpp) —
+"lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);" — removes the
+node page turn, the adjacent timer deletion removes `refresh_ui()`, and
+[`firmware/main/waveshare_board.cpp:1410`](../../firmware/main/waveshare_board.cpp) —
 "state.clock_face.clear();" — takes the two the clock face installs on the same
 screen. The second of those is the one that matters, and it is a power defect
 rather than a tidiness one: the retain branch skips `lvgl_port_deinit()`, so a
@@ -323,11 +326,11 @@ no path into Light-sleep, behind a panel this path leaves dark. Its own pause at
 [`ui/lvgl/clock_face.cpp:179`](../../ui/lvgl/clock_face.cpp) —
 "lv_timer_pause(motion_timer_);" does not save it: that is for a theme without
 fireflies, and this board asks for Night
-([`firmware/main/waveshare_board.cpp:893`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1007`](../../firmware/main/waveshare_board.cpp) —
 "{kWidth, kHeight, attadipa::ui::Theme::Night,"). The current cost is
 **ESTIMATED** from the period; nothing has been measured on a board.
 The board power adapter is detached before its PMU handle and I2C bus are
-released ([`firmware/main/waveshare_board.cpp:1140`](../../firmware/main/waveshare_board.cpp) —
+released ([`firmware/main/waveshare_board.cpp:1268`](../../firmware/main/waveshare_board.cpp) —
 "attadipa::firmware::board_power_detach();"), so the retained panel cannot
 leave the owner paired with a dangling PMU handle. The retained UI stays
 allocated and is left with nothing armed on it — no callback, no timer, no

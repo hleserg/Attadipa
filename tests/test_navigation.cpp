@@ -1,0 +1,408 @@
+#include <cstdio>
+#include <cstring>
+
+#include "attadipa/apps/navigation.h"
+
+// Host tests for the navigation readout.
+//
+// The subject is not the arithmetic — `tests/test_position.cpp` owns distance
+// and bearing. It is the rule the owner's brief states as
+// `NoFix != stale != current != unknown`: which of eight sentences the screen
+// says, and, in every one of them, whether a number appears at all. A readout
+// that prints `0 m` or `000°` where it means "nobody knows" is the defect this
+// file exists to catch, and it is a defect that no build and no crash reveals.
+
+namespace {
+
+int failures = 0;
+
+#define CHECK(expr)                                                            \
+  do {                                                                         \
+    if (!(expr)) {                                                             \
+      std::fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #expr);          \
+      ++failures;                                                              \
+    }                                                                          \
+  } while (false)
+
+using namespace attadipa;
+
+constexpr std::int32_t kDeg = 10000000;
+
+// Half a degree north, one degree east — the Gulf of Guinea, the same
+// deliberately-nowhere place `tests/test_position.cpp` and the replay traces
+// use. No real location belonging to anybody appears in this repository.
+constexpr core::Position kHere{5000000, 10000000};
+
+core::LocationState own_fix(core::Position position,
+                            core::PositionValidity validity = core::PositionValidity::Valid) {
+  core::LocationState state;
+  state.availability = core::Availability::Ready;
+  state.has_position = true;
+  state.position.value = position;
+  state.validity = validity;
+  state.fix_type = core::FixType::ThreeD;
+  state.source = core::PositionSource::LocalGnss;
+  state.receiver = core::ReceiverPresence::Running;
+  return state;
+}
+
+// What the MeshCore node link actually produces: a coordinate, an arrival age,
+// no fix type and therefore `NoFix` forever.
+core::LocationState node_coordinate(core::Position position, std::uint32_t age_ms) {
+  core::LocationState state;
+  state.availability = core::Availability::Ready;
+  state.has_position = true;
+  state.position.value = position;
+  state.position.age_at_us_ms = age_ms;
+  state.validity = core::PositionValidity::NoFix;
+  state.fix_type = core::FixType::Unknown;
+  state.source = core::PositionSource::NodeGnss;
+  return state;
+}
+
+bool is(const char *actual, const char *expected) {
+  return std::strcmp(actual, expected) == 0;
+}
+
+// Every status that is not a rendered pair of numbers must show the em dash in
+// both fields. Called from each of those tests rather than once at the end, so
+// a failure names the state that produced it.
+void check_no_numbers(const apps::NavText &text) {
+  CHECK(!text.has_distance);
+  CHECK(!text.has_bearing);
+  CHECK(is(text.distance, "—"));
+  CHECK(is(text.bearing, "—"));
+  CHECK(is(text.cardinal, ""));
+}
+
+void test_a_watch_that_knows_nothing_says_so() {
+  apps::NavState state;
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::WaitingForGps);
+  CHECK(is(text.status, "Waiting for GPS"));
+  check_no_numbers(text);
+}
+
+void test_a_receiver_that_answered_no_is_not_a_receiver_still_starting() {
+  // The difference between these two is the whole reason both exist: one is
+  // "wait", the other is "go outside".
+  apps::NavState waiting;
+  waiting.own.availability = core::Availability::Ready;
+  waiting.own.receiver = core::ReceiverPresence::Running;
+  CHECK(apps::format_navigation(waiting).status_code == apps::NavStatus::WaitingForGps);
+
+  apps::NavState refused = waiting;
+  refused.own.fix_type = core::FixType::NoFix;
+  const apps::NavText text = apps::format_navigation(refused);
+  CHECK(text.status_code == apps::NavStatus::NoFix);
+  CHECK(is(text.status, "No fix"));
+  check_no_numbers(text);
+}
+
+void test_a_local_coordinate_with_no_fix_behind_it_is_not_a_position() {
+  // A receiver on this body reports its own fix state. `NoFix` there is the
+  // receiver saying so, and the coordinate beside it is stale memory, not an
+  // answer — so no number is drawn from it.
+  apps::NavState state;
+  state.own = own_fix(kHere, core::PositionValidity::NoFix);
+  state.own.fix_type = core::FixType::NoFix;
+  state.target = node_coordinate({5100000, 10000000}, 1000);
+  check_no_numbers(apps::format_navigation(state));
+}
+
+void test_the_node_is_the_one_source_allowed_to_state_no_fix_and_still_count() {
+  // The asymmetry with the test above, and the product depends on it: a
+  // MeshCore node states no fix type at all, so `classify()` answers `NoFix`
+  // for every coordinate it will ever send. Refusing on that would refuse
+  // every node coordinate, which is the entire feature.
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 3000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::Ready);
+  CHECK(text.has_distance);
+  CHECK(text.has_bearing);
+  // Due north, about 1.1 km.
+  CHECK(is(text.bearing, "000°"));
+  CHECK(is(text.cardinal, "N"));
+  CHECK(is(text.distance, "1.1 km"));
+}
+
+void test_ready_still_says_what_is_not_known() {
+  // The caveat does not go away on a good day. A node coordinate arrives with
+  // no fix type, no observation time and no satellite count, and `Ready`
+  // describes the readout, never the node's fix.
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 3000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::Ready);
+  CHECK(std::strstr(text.caveat, "unverified") != nullptr);
+  CHECK(std::strstr(text.caveat, "3 s ago") != nullptr);
+}
+
+void test_an_old_node_coordinate_leads_with_its_age() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 300000);  // five minutes
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::NodePositionStale);
+  CHECK(is(text.status, "Node position stale"));
+  // And the numbers stay: the last thing it said is still the best answer
+  // anyone has, and the line above says how old it is.
+  CHECK(text.has_distance);
+  CHECK(std::strstr(text.caveat, "5 min ago") != nullptr);
+}
+
+void test_the_threshold_belongs_to_the_caller() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 30000);
+  CHECK(apps::format_navigation(state).status_code == apps::NavStatus::Ready);
+  state.target_stale_after = core::Millis{10000};
+  CHECK(apps::format_navigation(state).status_code == apps::NavStatus::NodePositionStale);
+}
+
+void test_a_dropped_link_is_reported_as_a_link_and_not_as_a_coordinate() {
+  // `LocationService` retains what a node said across a disconnect on purpose.
+  // The status names the link; the numbers go on rendering from the retained
+  // coordinate, which is exactly what "last known" means.
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 3000);
+  state.target.availability = core::Availability::Unreachable;
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::NodeUnavailable);
+  CHECK(is(text.status, "Node unavailable"));
+  CHECK(text.has_distance);
+}
+
+void test_a_node_that_never_said_where_it_is() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target.availability = core::Availability::Ready;
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::NodePositionUnknown);
+  check_no_numbers(text);
+}
+
+void test_a_coordinate_off_the_globe_is_refused_rather_than_saturated() {
+  // Untrusted input arrives here: a node coordinate is bytes off a radio.
+  // `distance_mm()` answers `kDistanceSaturated` for out-of-range as well as
+  // for far away, so without this guard a hostile coordinate renders as a
+  // confident "> 1000 km".
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({core::kLatitudeMaxE7 + 1, 0}, 1000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::NodePositionUnknown);
+  check_no_numbers(text);
+
+  // And the same in the other direction.
+  apps::NavState mirrored;
+  mirrored.own = own_fix({0, -core::kLongitudeMaxE7 - 1});
+  mirrored.target = node_coordinate(kHere, 1000);
+  check_no_numbers(apps::format_navigation(mirrored));
+}
+
+void test_a_stale_own_fix_is_neither_a_missing_one_nor_a_current_one() {
+  apps::NavState state;
+  state.own = own_fix(kHere, core::PositionValidity::Stale);
+  state.target = node_coordinate({5100000, 10000000}, 3000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::OwnPositionStale);
+  CHECK(is(text.status, "Own position stale"));
+  CHECK(text.has_distance);
+}
+
+void test_standing_on_it_is_a_measured_zero_and_not_a_direction() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate(kHere, 1000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.has_distance);
+  CHECK(is(text.distance, "0 m"));
+  // There is no direction to where you already are, and the needle must not be
+  // drawn. This is the one place `0 m` is honest and `000°` still is not.
+  CHECK(!text.has_bearing);
+  CHECK(is(text.bearing, "—"));
+}
+
+void test_the_distance_changes_unit_where_a_person_would() {
+  apps::NavState state;
+  state.own = own_fix({0, 0});
+
+  struct Case {
+    std::int32_t latitude_e7;
+    const char *expected;
+  };
+  // Latitudes from 11.132 mm per 1e-7 degree, the constant `geo.h` derives
+  // from 111 320 m per degree. These assert the *formatting* boundaries; the
+  // geometry that produced the millimetres is `tests/test_position.cpp`'s.
+  const Case cases[] = {
+      {79950, "890 m"},          // metres, while metres are what somebody walks
+      {89832, "1.0 km"},         // the first kilometre, to one decimal
+      {900000000, "> 1000 km"},  // the pole, past where distance_mm measures
+  };
+  for (const Case &c : cases) {
+    state.target = node_coordinate({c.latitude_e7, 0}, 1000);
+    const apps::NavText text = apps::format_navigation(state);
+    CHECK(text.has_distance);
+    if (!is(text.distance, c.expected)) {
+      std::fprintf(stderr, "%s:%d: distance is \"%s\", expected \"%s\"\n",
+                   __FILE__, __LINE__, text.distance, c.expected);
+      ++failures;
+    }
+  }
+}
+
+void test_the_compass_points_are_centred_on_their_own_directions() {
+  // 337.5°..22.5° is north. Off-by-a-half-sector here would put the needle's
+  // label 22.5° away from the needle.
+  CHECK(is(apps::cardinal_of(0), "N"));
+  CHECK(is(apps::cardinal_of(2249), "N"));
+  CHECK(is(apps::cardinal_of(2250), "NE"));
+  CHECK(is(apps::cardinal_of(33750), "N"));
+  CHECK(is(apps::cardinal_of(33749), "NW"));
+  CHECK(is(apps::cardinal_of(35999), "N"));
+  CHECK(is(apps::cardinal_of(9000), "E"));
+  CHECK(is(apps::cardinal_of(18000), "S"));
+  CHECK(is(apps::cardinal_of(27000), "W"));
+}
+
+void test_every_status_has_words() {
+  const apps::NavStatus all[] = {
+      apps::NavStatus::WaitingForGps,       apps::NavStatus::NoFix,
+      apps::NavStatus::OwnPositionStale,    apps::NavStatus::OwnPositionDegraded,
+      apps::NavStatus::NodeUnavailable,     apps::NavStatus::NodePositionUnknown,
+      apps::NavStatus::NodePositionStale,   apps::NavStatus::Ready};
+  // In both locales, because `l10n/strings.toml` is where the sentences live
+  // now and a missing entry is a silent empty label rather than a link error.
+  for (const apps::NavStatus status : all) {
+    for (const l10n::Locale locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+      CHECK(apps::to_string(status, locale) != nullptr);
+      CHECK(apps::to_string(status, locale)[0] != '\0');
+    }
+    CHECK(!is(apps::to_string(status, l10n::Locale::En),
+              apps::to_string(status, l10n::Locale::Ru)));
+  }
+}
+
+// A degraded own fix is usable and is not `Ready`.
+//
+// `core/include/attadipa/core/position.h:188` — "    Degraded,  // usable, with
+// a caveat the interface must show". Both halves are load-bearing: folding it
+// into `Ready` hides the caveat, and refusing on it hides a position the person
+// can act on.
+void test_a_degraded_own_fix_still_measures_and_still_says_so() {
+  apps::NavState state;
+  state.own = own_fix(kHere, core::PositionValidity::Degraded);
+  state.target = node_coordinate({5100000, 10000000}, 1000);
+
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::OwnPositionDegraded);
+  CHECK(text.status_code != apps::NavStatus::Ready);
+  CHECK(text.has_distance);
+  CHECK(text.has_bearing);
+  CHECK(!is(text.distance, "—"));
+
+  // The same state with a clean fix is the control: only the validity moved.
+  state.own = own_fix(kHere, core::PositionValidity::Valid);
+  CHECK(apps::format_navigation(state).status_code == apps::NavStatus::Ready);
+}
+
+// The two answers `availability.h` separates are two different sentences.
+//
+// `core/include/attadipa/core/availability.h:17` — "    Unsupported,    // no
+// configuration of this device can provide it. Terminal." against
+// `core/include/attadipa/core/availability.h:18` — "    Unprovisioned,  // a
+// supported provider would give it; none is bound". Telling the second reader
+// there is no receiver sends them to buy hardware they already own.
+void test_an_unbound_provider_is_not_a_missing_receiver() {
+  apps::NavState state;
+  // With a node coordinate in hand, which is the case that used to lose this
+  // sentence: a node states no fix type, so its own caveat is owed on every
+  // coordinate that ever arrives, and testing it first left the wearer with
+  // the quality of a number the screen is not drawing.
+  state.target = node_coordinate({5100000, 10000000}, 3000);
+  state.own.availability = core::Availability::Unsupported;
+  const apps::NavText none = apps::format_navigation(state);
+
+  state.own.availability = core::Availability::Unprovisioned;
+  const apps::NavText unbound = apps::format_navigation(state);
+
+  CHECK(none.caveat[0] != '\0');
+  CHECK(unbound.caveat[0] != '\0');
+  CHECK(!is(none.caveat, unbound.caveat));
+
+  // And the node's caveat is still what a working watch says.
+  apps::NavState fine = state;
+  fine.own = own_fix({5100000, 10000000}, core::PositionValidity::Valid);
+  CHECK(is(apps::format_navigation(fine).status,
+           apps::to_string(apps::NavStatus::Ready)));
+  CHECK(apps::format_navigation(fine).caveat[0] != '\0');
+  CHECK(!is(apps::format_navigation(fine).caveat, none.caveat));
+}
+
+// Every string on the screen comes out of the catalogue, so switching the
+// locale has to change every one of them that carries a word.
+void test_the_readout_speaks_the_locale_it_was_given() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate({5100000, 10000000}, 4000);
+
+  const apps::NavText en = apps::format_navigation(state);
+  state.locale = l10n::Locale::Ru;
+  const apps::NavText ru = apps::format_navigation(state);
+
+  CHECK(!is(en.status, ru.status));
+  CHECK(!is(en.title, ru.title));
+  CHECK(!is(en.north, ru.north));
+  CHECK(!is(en.caveat, ru.caveat));
+  // The unit travels with the number: "4 m" is not "4 м".
+  CHECK(!is(en.distance, ru.distance));
+  // The bearing is digits and a degree sign, and those do not translate.
+  CHECK(is(en.bearing, ru.bearing));
+  // Nothing was cut on the longer language. `snprintf` always terminates, so
+  // a NUL at the end proves nothing; the field has to still end in the same
+  // characters the catalogue does. The first Russian render of this face lost
+  // the last two words of the caveat and looked fine.
+  CHECK(std::strlen(ru.caveat) < sizeof(ru.caveat) - 1);
+  CHECK(std::strlen(ru.status) < sizeof(ru.status) - 1);
+  CHECK(std::strlen(ru.cardinal) < sizeof(ru.cardinal) - 1);
+  // The longest one there is: the age at its widest, in the longer language.
+  apps::NavState longest = state;
+  longest.target = node_coordinate({5100000, 10000000}, 0xFFFFFFFFU);
+  const apps::NavText wide = apps::format_navigation(longest);
+  CHECK(std::strlen(wide.caveat) < sizeof(wide.caveat) - 1);
+}
+
+}  // namespace
+
+int main() {
+  test_a_watch_that_knows_nothing_says_so();
+  test_a_receiver_that_answered_no_is_not_a_receiver_still_starting();
+  test_a_local_coordinate_with_no_fix_behind_it_is_not_a_position();
+  test_the_node_is_the_one_source_allowed_to_state_no_fix_and_still_count();
+  test_ready_still_says_what_is_not_known();
+  test_an_old_node_coordinate_leads_with_its_age();
+  test_the_threshold_belongs_to_the_caller();
+  test_a_dropped_link_is_reported_as_a_link_and_not_as_a_coordinate();
+  test_a_node_that_never_said_where_it_is();
+  test_a_coordinate_off_the_globe_is_refused_rather_than_saturated();
+  test_a_stale_own_fix_is_neither_a_missing_one_nor_a_current_one();
+  test_standing_on_it_is_a_measured_zero_and_not_a_direction();
+  test_the_distance_changes_unit_where_a_person_would();
+  test_the_compass_points_are_centred_on_their_own_directions();
+  test_every_status_has_words();
+  test_a_degraded_own_fix_still_measures_and_still_says_so();
+  test_an_unbound_provider_is_not_a_missing_receiver();
+  test_the_readout_speaks_the_locale_it_was_given();
+
+  if (failures != 0) {
+    std::fprintf(stderr, "%d check(s) failed\n", failures);
+    return 1;
+  }
+  std::printf("navigation: all checks passed (host only — no receiver, no node)\n");
+  return 0;
+}
