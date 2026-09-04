@@ -775,8 +775,12 @@ void refresh_clock(lv_timer_t *timer) {
 }
 
 // The one place a page changes, and the only one that tears the outgoing face
-// down. Every `clear()` below is idempotent and deletes no LVGL object bar the
-// clock's timer, so calling all of them is cheaper than asking which was up.
+// down. All three `clear()` calls are idempotent, so calling them all is
+// cheaper than asking which face was up -- but they are not all harmless.
+// `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
+// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:281` — "    lv_obj_clean(screen_);"
+// and empties the shared screen. So this leaves the panel with nothing on it,
+// and **every caller must draw the incoming page before it returns**.
 void show_page(Page next) {
   if (state.page == next) {
     return;
@@ -983,6 +987,16 @@ void node_page_turn(lv_event_t *) {
     return;
   }
   show_page(state.page == Page::Nav ? Page::Mesh : Page::Nav);
+  // Draw here, not on the next tick. `show_page()` has just emptied the screen
+  // and the node pages tick at 500 ms, so returning without drawing shows a
+  // bare background for up to half a second -- which on a watch that used to
+  // reboot reads as a crash. Both are idempotent: `refresh_mesh()` builds only
+  // when its labels are gone, `refresh_nav()` only when the face is not built.
+  if (state.page == Page::Nav) {
+    refresh_nav();
+  } else {
+    refresh_mesh();
+  }
 }
 #endif
 
