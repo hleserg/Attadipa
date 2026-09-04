@@ -592,10 +592,24 @@ What the decision costs, so the next person can weigh it rather than inherit it:
 the residual error is **0.9% to 89.999°**, measured on every test run against an
 independent haversine reference, and it is dominated by the rounding of
 `kCosTable1024`'s own entries. Anything that needs better than a percent — a
-route distance, a bearing, a track length — must not reach for `distance_mm()`,
-and this is the entry that says GeographicLib is where to go instead. That
-boundary is written into `core/include/attadipa/core/geo.h` as well, because a
-ledger nobody opens does not stop anybody.
+route distance, a track length — must not reach for `distance_mm()`, and this
+is the entry that says GeographicLib is where to go instead. That boundary is
+written into `core/include/attadipa/core/geo.h` as well, because a ledger
+nobody opens does not stop anybody.
+
+**The bearing stayed ours too — `REIMPLEMENT`, decided 2026-09-04 (#428).**
+"A bearing" was on the list above until this entry; it is not any more.
+`initial_bearing()` (`core/src/geo.cpp`) is six lines of trigonometry with a
+known closed-form answer, computed once per screen refresh rather than on every
+fix, so the argument that kept `distance_mm()` local — do not link libm into the
+jump detector's path — does not reach it, and neither does the argument for a
+geodesic: an initial great-circle bearing is a different quantity from a
+geodesic and taking one does not require the other. The reasoning is beside the
+code, and the header says the same thing so that reading either is enough:
+`core/include/attadipa/core/geo.h:25` — "// "Or a bearing" used to be on that list and is not any more — an initial".
+
+A geodesic *azimuth* — the bearing that changes along a long route — is still
+GeographicLib's, and still nobody's need here.
 
 **Open:** whether the node carries a magnetometer decides whether this is the
 fallback plan or the only plan ([NODE_PROFILE](../node/NODE_PROFILE.md) N3). The
