@@ -774,6 +774,14 @@ jobs:
           echo "CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE=y" > "$RUNNER_TEMP/sdkconfig.armb"
           idf.py -B build-twatch-b -DSDKCONFIG=build-twatch-b/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;$RUNNER_TEMP/sdkconfig.armb" build
           grep -q "^CONFIG_ATTADIPA_TWATCH_PANEL_VENDOR_TABLE=y$" build-twatch-b/sdkconfig
+          # The GNSS bring-up bridge is stacked here for the reason the RAM job
+          # gives for sdkconfig.i2cprobe: it is the same board's image plus an
+          # instrument, so building it here is what stops gnss_bridge.cpp and
+          # the BLDO1 branch of board_power.cpp from being code no compiler
+          # reads until somebody is at the bench with the watch already open.
+          idf.py -B build-twatch-gnss -DSDKCONFIG=build-twatch-gnss/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;sdkconfig.gnssbridge" build
+          grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE=y$" build-twatch-gnss/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE_PASSTHROUGH=y$" build-twatch-gnss/sdkconfig
 
       # The RAM route is the one proved to work on the received unit and the one
       # with nothing to undo, so it is the one a bench session reaches for first.

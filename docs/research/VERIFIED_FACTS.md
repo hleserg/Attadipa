@@ -630,6 +630,12 @@ to every unit of the same model.
   either branch. For the bench unit the LS550G path is dead, DC4 at 850 mV is
   not a GNSS requirement, and assisted GNSS, when designed, is u-blox
   AssistNow. What DC4 does feed on this board is **UNKNOWN**.
+- **What the rail attribution does *not* license.** BLDO1 was found already
+  enabled, the bit was never cleared to watch the module go silent, and the
+  `GPS_LDO` enable net on FPC pin 3 sits in the same path and was never
+  exercised. So **nothing here shows that toggling BLDO1 controls the module** —
+  which is exactly what a power gate or a sleep path would assume. Anything that
+  proposes to switch this rail at runtime owes that experiment first.
 
 ### The T-Watch touch panel has no reset line
 
@@ -822,7 +828,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1933`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1939`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1908,7 +1914,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:805`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:811`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.

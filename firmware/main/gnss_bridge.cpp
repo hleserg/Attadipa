@@ -46,6 +46,7 @@ struct Wiring {
 // whether anything is there, not what it means.
 struct Heard {
   int bytes;
+  int stored;    // how much of `bytes` reached the sink -- the rest is gone
   int nmea;      // "$G" — a talker sentence starting
   int ubx;       // B5 62 — u-blox
   int allystar;  // F1 D9 — ALLYSTAR, the same frame with a different sync word
@@ -85,10 +86,21 @@ Heard listen(int ms, char *sink, std::size_t sink_len) {
     }
   }
   if (sink != nullptr && sink_len > 0) sink[filled] = '\0';
+  heard.stored = static_cast<int>(filled);
   return heard;
 }
 
-esp_err_t open_port(const Wiring &w, int baud) {
+// `attach_tx` false leaves this end's transmitter unrouted. The sweep needs
+// that: orientation A names GPIO 41 as *our* TX, and GPIO 41 is the module's TX
+// -- the very thing the sweep is there to discover -- so attaching it would
+// drive push-pull against the module's own driver, on a net HARDWARE_MATRIX
+// records no series resistor on, for seven 1.2 s windows in which we do nothing
+// but listen. Attaching it late is also the only order that works: `uart.c:854`
+// -- "uart_release_pin(uart_num, (tx_io_num >= 0), (rx_io_num >= 0)," -- frees
+// the old TX only when a new one is given, so a pin attached once here would
+// stay driven through every later call that passes UART_PIN_NO_CHANGE, and
+// through the pass-through after them.
+esp_err_t open_port(const Wiring &w, int baud, bool attach_tx) {
   if (uart_is_driver_installed(kPort)) uart_driver_delete(kPort);
 
   uart_config_t cfg{};
@@ -103,7 +115,8 @@ esp_err_t open_port(const Wiring &w, int baud) {
   if (err != ESP_OK) return err;
   err = uart_param_config(kPort, &cfg);
   if (err != ESP_OK) return err;
-  return uart_set_pin(kPort, w.tx, w.rx, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+  return uart_set_pin(kPort, attach_tx ? w.tx : UART_PIN_NO_CHANGE, w.rx,
+                      UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 }
 
 // $BODY*CS\r\n. The checksum is computed rather than transcribed so a typo in a
@@ -120,8 +133,13 @@ void send_nmea_query(const char *body) {
 // software and hardware version followed by 30-byte extension fields, and it is
 // the extensions that carry `MOD=`, the model string. Truncating at 48 bytes
 // showed the ROM and stopped one field short of the part number.
-void log_hex_and_text(const char *what, const char *data, int len) {
-  ESP_LOGI(kTag, "  %s: %d bytes", what, len);
+void log_hex_and_text(const char *what, const char *data, int len, int received) {
+  if (received > len) {
+    ESP_LOGW(kTag, "  %s: %d bytes, TRUNCATED -- %d arrived, %d kept", what, len,
+             received, len);
+  } else {
+    ESP_LOGI(kTag, "  %s: %d bytes", what, len);
+  }
   for (int off = 0; off < len; off += 32) {
     char hex[3 * 32 + 1];
     char txt[32 + 1];
@@ -160,6 +178,9 @@ void interrogate() {
   const Query queries[] = {
       {"u-blox UBX-MON-VER", kUbxMonVer, sizeof(kUbxMonVer), nullptr},
       {"ALLYSTAR MON-VER", kAllystarMonVer, sizeof(kAllystarMonVer), nullptr},
+      // $PUBX,00 is u-blox's *position* poll, not a version one. It earns its
+      // place anyway: what identifies a receiver here is that it answers this
+      // proprietary sentence at all, and it is read-only like the rest.
       {"u-blox $PUBX,00", nullptr, 0, "PUBX,00"},
       {"Quectel $PQTMVERNO", nullptr, 0, "PQTMVERNO"},
       {"MTK $PMTK605", nullptr, 0, "PMTK605"},
@@ -179,7 +200,16 @@ void interrogate() {
     // going to be there anyway.
     ESP_LOGI(kTag, "%-22s -> %d bytes, %d NMEA, %d UBX, %d ALLYSTAR", q.name,
              h.bytes, h.nmea, h.ubx, h.allystar);
-    if (h.ubx > 0 || h.allystar > 0) log_hex_and_text(q.name, sink, h.bytes);
+    // `stored`, never `bytes`: the sink is fixed and the window is not. A
+    // 1.2 s window at 230400 -- which is where a sweep lands if the module
+    // answers in neither NMEA nor a sync word this knows -- delivers tens of
+    // kilobytes, and dumping `bytes` of a 1536-byte buffer would print
+    // adjacent .bss under the heading "the module's reply". Fabricated
+    // evidence is worse than no evidence, and this transcript is what the
+    // read-off report quotes.
+    if (h.ubx > 0 || h.allystar > 0) {
+      log_hex_and_text(q.name, sink, h.stored, h.bytes);
+    }
   }
 }
 
@@ -250,8 +280,13 @@ void pass_through(int baud) {
     const int from_module =
         uart_read_bytes(kPort, buf, sizeof(buf), pdMS_TO_TICKS(5));
     if (from_module > 0) {
+      // portMAX_DELAY, not a timeout: with logging off there is nowhere to
+      // report a short write, and a frame truncated in the middle is exactly
+      // the corruption a host cannot tell from a broken module -- the same
+      // thing this mode turns logging off to avoid. Blocking pushes back on
+      // the module's UART instead, which loses nothing.
       usb_serial_jtag_write_bytes(buf, static_cast<std::size_t>(from_module),
-                                  pdMS_TO_TICKS(100));
+                                  portMAX_DELAY);
     }
     // Neither read blocks when its side is empty, so with nothing moving this
     // is a spin at app_main's priority, which is above the idle task's. The
@@ -269,7 +304,7 @@ void pass_through(int baud) {
 void run_gnss_bridge() {
   ESP_LOGI(kTag, "--- GNSS bring-up bridge (#436) ---------------------------");
   ESP_LOGI(kTag, "This asks the part what it is. It configures nothing and");
-  ESP_LOGI(kTag, "saves nothing: every command below is a version query.");
+  ESP_LOGI(kTag, "saves nothing: every command below is a read-only poll.");
 
   const Wiring wirings[] = {
       {CONFIG_ATTADIPA_GNSS_BRIDGE_PIN_A, CONFIG_ATTADIPA_GNSS_BRIDGE_PIN_B,
@@ -284,7 +319,7 @@ void run_gnss_bridge() {
 
   for (const auto &w : wirings) {
     for (const int baud : kBauds) {
-      const esp_err_t err = open_port(w, baud);
+      const esp_err_t err = open_port(w, baud, false);
       if (err != ESP_OK) {
         ESP_LOGE(kTag, "rx %d tx %d @ %d: %s", w.rx, w.tx, baud,
                  esp_err_to_name(err));
@@ -316,7 +351,8 @@ void run_gnss_bridge() {
     ESP_LOGW(kTag, "earlier revisions used -- is deliberately not written, and");
     ESP_LOGW(kTag, "an LS550G additionally needs DC4 at 850 mV to run at all.");
     ESP_LOGW(kTag, "Next step is one of those rails, with its encoding traced");
-    ESP_LOGW(kTag, "first. See issue #436 and VERIFIED_FACTS.md:613.");
+    ESP_LOGW(kTag, "first. See issue #436, and VERIFIED_FACTS.md under");
+    ESP_LOGW(kTag, "\"The T-Watch GNSS module is a variant\".");
     return;
   }
 
@@ -325,7 +361,9 @@ void run_gnss_bridge() {
            best_baud, best.note);
   ESP_LOGI(kTag, "So GPIO %d is the module's TX and GPIO %d its RX.", best.rx,
            best.tx);
-  ESP_ERROR_CHECK_WITHOUT_ABORT(open_port(best, best_baud));
+  // Now, and only now, this end starts transmitting: the pin that carries it
+  // is settled, and everything before this point was listening.
+  ESP_ERROR_CHECK_WITHOUT_ABORT(open_port(best, best_baud, true));
 
   report_sentences();
   ESP_LOGI(kTag, "--- who is there ------------------------------------------");

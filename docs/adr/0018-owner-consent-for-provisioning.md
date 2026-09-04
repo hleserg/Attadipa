@@ -144,7 +144,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:1032` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:1038` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -152,7 +152,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:1031` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:1037` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"

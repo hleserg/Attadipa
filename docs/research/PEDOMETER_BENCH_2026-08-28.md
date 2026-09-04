@@ -342,16 +342,16 @@ list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "QMI8658A Datasheet, `
 [`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md) "chapter 11 documents a complete hardware pedometer",
 [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
 [`HARDWARE_MATRIX.md:392`](HARDWARE_MATRIX.md) "13-52-27 ∙ QMI8658C Datasheet ∙ Rev A" and
-[`VERIFIED_FACTS.md:1905`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
+[`VERIFIED_FACTS.md:1911`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
 as well. Enumerating and reconciling them is #341's job, not this report's:
 
 | Site | What it said on 2026-08-28 |
 | --- | --- |
 | [`WAVESHARE_RUNNING_OUR_CODE.md:329-331`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
-| [`VERIFIED_FACTS.md:796-798`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
-| [`VERIFIED_FACTS.md:800-802`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:1901`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:802-804`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
+| [`VERIFIED_FACTS.md:806-808`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
+| [`VERIFIED_FACTS.md:1907`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 | [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
@@ -366,7 +366,7 @@ is `UNKNOWN` is which number names the Rev A part**, not what either paper
 holds — the two records put the same chapter 11 in both, so no register below
 turns on the number. This report therefore cites only the paper it read, and
 the tree-wide reconciliation — including which document
-the `0x7C` attribution at [`VERIFIED_FACTS.md:1897`](VERIFIED_FACTS.md)
+the `0x7C` attribution at [`VERIFIED_FACTS.md:1903`](VERIFIED_FACTS.md)
 *"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
 
@@ -388,7 +388,7 @@ label they print is wrong only about which document, not about the byte.
 Two consequences for this report. The attribution question above — *"which
 number names the Rev A part"* — has no answer to find, because no register
 distinguishes them; the schematic's `QMI8658C` is what picks `13-52-27`, and
-[`VERIFIED_FACTS.md:805`](VERIFIED_FACTS.md) "no register tells them apart"
+[`VERIFIED_FACTS.md:811`](VERIFIED_FACTS.md) "no register tells them apart"
 now carries that. And the passage where this report treated
 `PEDOMETER_PARTS.md:448` "pp. 64–66" as proof that `13-52-25` had been read for chapter 11
 was right about the gap and wrong about the remedy: pp. 64–66 are indeed also
