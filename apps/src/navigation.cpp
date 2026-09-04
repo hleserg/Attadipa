@@ -203,21 +203,15 @@ NavText format_navigation(const NavState &state) {
 
   // ---- the caveat --------------------------------------------------------
   //
-  // What is not known, said even when everything is working, because the thing
-  // that is not known here does not go away on a good day: a node coordinate
-  // arrives with no fix type, no observation time and no satellite count, so
-  // its age is the age of its *arrival* and its quality is not stated at all.
-  if (usable(state.target) && !target_states_a_fix(state.target)) {
-    char age[16] = {};
-    format_age(state.target.position.age_at_us_ms, state.locale, age,
-               sizeof(age));
-    if (std::snprintf(text.caveat, sizeof(text.caveat),
-                      l10n::tr(l10n::StringId::NavCaveatNodeUnverified,
-                               state.locale),
-                      age) >= static_cast<int>(sizeof(text.caveat))) {
-      trim_partial_utf8(text.caveat);
-    }
-  } else if (!own_ok) {
+  // Own trouble first, the same order the status line takes and for the same
+  // reason. A node coordinate states no fix type, so the node's caveat is owed
+  // on *every* coordinate that will ever arrive; testing it first made the
+  // wearer's sentence unreachable the moment a paired node said anything, and
+  // `Unsupported` then read exactly like a receiver that has simply not fixed
+  // yet. The node's caveat is also about numbers that are not on the screen
+  // when own position is unusable -- no distance and no bearing are drawn --
+  // while the wearer's sentence is the one they can act on.
+  if (!own_ok) {
     // Two different answers, and `availability.h` draws the line.
     // `core/include/attadipa/core/availability.h:17` — "    Unsupported,    //
     // no configuration of this device can provide it. Terminal." against
@@ -230,6 +224,21 @@ NavText format_navigation(const NavState &state) {
     } else if (state.own.availability == core::Availability::Unprovisioned) {
       put(text.caveat, sizeof(text.caveat),
           l10n::tr(l10n::StringId::NavCaveatNoProvider, state.locale));
+    }
+  } else if (usable(state.target) && !target_states_a_fix(state.target)) {
+    // What is not known, said even when everything is working, because the
+    // thing that is not known here does not go away on a good day: a node
+    // coordinate arrives with no fix type, no observation time and no
+    // satellite count, so its age is the age of its *arrival* and its quality
+    // is not stated at all.
+    char age[16] = {};
+    format_age(state.target.position.age_at_us_ms, state.locale, age,
+               sizeof(age));
+    if (std::snprintf(text.caveat, sizeof(text.caveat),
+                      l10n::tr(l10n::StringId::NavCaveatNodeUnverified,
+                               state.locale),
+                      age) >= static_cast<int>(sizeof(text.caveat))) {
+      trim_partial_utf8(text.caveat);
     }
   }
 

@@ -320,6 +320,11 @@ void test_a_degraded_own_fix_still_measures_and_still_says_so() {
 // there is no receiver sends them to buy hardware they already own.
 void test_an_unbound_provider_is_not_a_missing_receiver() {
   apps::NavState state;
+  // With a node coordinate in hand, which is the case that used to lose this
+  // sentence: a node states no fix type, so its own caveat is owed on every
+  // coordinate that ever arrives, and testing it first left the wearer with
+  // the quality of a number the screen is not drawing.
+  state.target = node_coordinate({5100000, 10000000}, 3000);
   state.own.availability = core::Availability::Unsupported;
   const apps::NavText none = apps::format_navigation(state);
 
@@ -329,6 +334,14 @@ void test_an_unbound_provider_is_not_a_missing_receiver() {
   CHECK(none.caveat[0] != '\0');
   CHECK(unbound.caveat[0] != '\0');
   CHECK(!is(none.caveat, unbound.caveat));
+
+  // And the node's caveat is still what a working watch says.
+  apps::NavState fine = state;
+  fine.own = own_fix({5100000, 10000000}, core::PositionValidity::Valid);
+  CHECK(is(apps::format_navigation(fine).status,
+           apps::to_string(apps::NavStatus::Ready)));
+  CHECK(apps::format_navigation(fine).caveat[0] != '\0');
+  CHECK(!is(apps::format_navigation(fine).caveat, none.caveat));
 }
 
 // Every string on the screen comes out of the catalogue, so switching the

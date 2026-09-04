@@ -306,10 +306,13 @@ physical-input startup fails after `create_ui()` may have queued the first frame
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
 use-after-free. On the physical-input failure, everything `create_ui()` armed
-is disarmed while the caller still owns the LVGL lock — four things, not two:
+is disarmed while the caller still owns the LVGL lock — five things, not two:
 [`firmware/main/waveshare_board.cpp:1402`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), long_press);" — removes the path
-into provisioning/RTC, the adjacent timer deletion removes `refresh_ui()`, and
+into provisioning/RTC,
+[`firmware/main/waveshare_board.cpp:1404`](../../firmware/main/waveshare_board.cpp) —
+"lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);" — removes the
+node page turn, the adjacent timer deletion removes `refresh_ui()`, and
 [`firmware/main/waveshare_board.cpp:1410`](../../firmware/main/waveshare_board.cpp) —
 "state.clock_face.clear();" — takes the two the clock face installs on the same
 screen. The second of those is the one that matters, and it is a power defect
