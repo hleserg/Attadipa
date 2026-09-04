@@ -141,12 +141,21 @@ bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg);
 // and why the next consumer should read this paragraph before deciding the
 // entry is about them.
 //
-// Saturating exactly as `distance_mm()` does: kDistanceSaturated for a
-// coordinate off the globe, and for anything at or past 1000 km. That clamp is
-// a *readout* choice, not a limit of the method — the haversine below is
-// perfectly happy out to the antipode — but the navigation screen already
-// prints `> 1000 km` past it, and one saturation point shared by both
-// functions is worth more here than the extra range.
+// Saturating at the same *value* `distance_mm()` uses — kDistanceSaturated for
+// a coordinate off the globe, and for anything at or past 1000 km. That clamp
+// is a *readout* choice, not a limit of the method: the haversine below is
+// perfectly happy out to the antipode, and the navigation screen already prints
+// `> 1000 km` past this point.
+//
+// The same value is not the same triggers, and the difference is a trap worth
+// spelling out: `distance_mm()` also saturates when a single clamped component
+// reaches the limit, before its hypotenuse is taken, so it can run out of
+// number on baselines this function still measures — from 80°N, everything
+// between about 51.7° and 53.7° of longitude away. A caller who reads
+// "the same" and puts an integer `distance_mm(a, b) == kDistanceSaturated`
+// pre-filter in front of this call gets `> 1000 km` back where the great circle
+// says `982 km`, at high latitude over a long baseline, which is the case #433
+// exists for. There is no cheap pre-filter; ask this function.
 //
 // It does not repeat `initial_bearing()`'s other two refusals, and that is a
 // decision rather than an omission: those two are refusals about *direction*.

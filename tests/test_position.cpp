@@ -983,9 +983,13 @@ void test_the_ordinary_baselines_did_not_move()
 
     // And where they begin to part, so the band above is bounded from the other
     // side rather than trailing off into the closed forms. 70°N across 20° of
-    // longitude is 758 km on the great circle and about 761 km equirectangular:
-    // the header's own "half a percent at 70°N across 20°", asserted from both
-    // ends so that neither a shrinking nor a growing gap passes.
+    // longitude is 758 056 100 mm on the great circle and 760 976 562 mm
+    // equirectangular: a gap of **0.385%**, asserted from both ends so that
+    // neither a shrinking nor a growing one passes. The method's own gap is
+    // 0.451% and the header rounds it to half a percent; the measured figure
+    // sits below both because kCosTable1024[70] is 0.065% low. A finer table
+    // would move this *up*, away from the floor asserted here, which is the
+    // direction that keeps the bound safe.
     const Position a{700000000, 0};
     const Position b{700000000, 200000000};
     CHECK_RELATIVE(great_circle_mm(a, b), reference_distance_mm(a, b), 0.01);
@@ -1006,17 +1010,22 @@ void test_the_ordinary_baselines_did_not_move()
 // exactly the targets it is about.
 void test_the_screen_distance_shares_the_clamp_but_not_the_pairs_that_reach_it()
 {
-    // 1107.7 km on the great circle, and 1000 km exactly from `distance_mm()`,
-    // which saturated there by accident. Now it is on purpose.
+    // 1108.9 km on this function's sphere — cos d = sin²80° + cos²80°/2, so
+    // d = 0.17386707 rad and the arc is 1 108 948 141 mm — and 1000 km exactly
+    // from `distance_mm()`, which saturated there by accident. Now it is on
+    // purpose. (The issue's table says 1107.7 km for the same pair: that is the
+    // same angle on the *mean* radius, and geo.cpp's kSphereRadiusMm comment is
+    // the paragraph that keeps the two spheres from being mixed here.)
     CHECK(great_circle_mm({800000000, 0}, {800000000, 600000000}) == kDistanceSaturated);
 
     // And the window where they disagree about whether a number exists at all.
     // At 80°N the longitude component alone is 526 000 000 × 11132/1000 ×
-    // 18/1024 = 1 017 838 765 mm, clamped to the limit before the hypotenuse is
-    // taken, so `distance_mm()` has nothing to say; the great circle is
-    // 982 419 524 mm and the screen prints `982 km`, which is the right answer
-    // and the whole point. The window runs from about 51.7° to 53.7° of
-    // longitude; 52.6° is the middle of it.
+    // 178/1024 = 1 017 838 765 mm — kCosTable1024[80] is 178 and the latitude is
+    // a whole degree, so the entry is read unmixed — clamped to the limit before
+    // the hypotenuse is taken, so `distance_mm()` has nothing to say. The great
+    // circle is 982 419 524 mm and the screen prints `982 km`, which is the
+    // right answer and the whole point. The window runs from about 51.7° to
+    // 53.7° of longitude; 52.6° is the middle of it.
     const Position polar_a{800000000, 0};
     const Position polar_b{800000000, 526000000};
     CHECK(distance_mm(polar_a, polar_b) == kDistanceSaturated);

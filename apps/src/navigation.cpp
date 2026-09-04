@@ -202,9 +202,17 @@ NavText format_navigation(const NavState &state) {
       put(text.cardinal, sizeof(text.cardinal),
           cardinal_of(centideg, state.locale));
     }
-    // No bearing and a distance is the arrival case: standing on it, or on the
-    // same coordinate it reported. The distance still reads, and it reads 0 m
-    // because that is measured rather than defaulted.
+    // No bearing and a distance is usually the arrival case: standing on it, or
+    // on the same coordinate it reported. The distance still reads, and it
+    // reads 0 m because that is measured rather than defaulted.
+    //
+    // Usually, not always, and #433 is what made the difference statable. There
+    // is a second way in: `initial_bearing()` also refuses a *pole* as the
+    // origin, because standing on one there is no north to measure from. A
+    // wearer at exactly ±90° therefore reads a real distance beside an em dash,
+    // and that is right — the distance is known and the direction is not, which
+    // is the same separation the rest of this file keeps. It reads as arrival
+    // only to somebody who assumed the em dash meant zero.
   }
 
   // ---- the caveat --------------------------------------------------------
