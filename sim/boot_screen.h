@@ -27,13 +27,17 @@ void build_boot_screen(const platform::HardwareInventory& inventory,
 // reboot" gets demonstrated rather than asserted.
 void rebuild_boot_screen();
 
-// Switch between the day and night palettes and redraw.
+// Switch between the day and night palettes and redraw, and say which palette
+// the screen is now drawn in.
 //
 // Bound to a key rather than to a light sensor because the point of it here is
 // review: "day and night themes checked" is in the Definition of Done, and a
 // reviewer who has to rebuild with a different constant to see the other one
-// will check it once.
-void toggle_theme();
+// will check it once. `build_boot_screen` registers it as this screen's answer
+// to `T` (`sim/review_keys.h`); nothing else may call it, because a theme
+// toggled for a screen that is not on the panel is a console line and nothing
+// else.
+ui::Theme toggle_theme();
 
 // The palette this run starts in. Called by the composition root before the
 // first build; after that, T.

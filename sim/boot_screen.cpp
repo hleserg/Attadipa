@@ -15,6 +15,7 @@
 #include "attadipa/ui/tokens.h"
 #include "attadipa_fonts.h"
 #include "labels.h"
+#include "review_keys.h"
 
 namespace attadipa::sim {
 namespace {
@@ -245,6 +246,12 @@ void build_boot_screen(const platform::HardwareInventory &inventory,
   g_inventory = &inventory;
   g_caps = &caps;
 
+  // This screen is on the panel, so `T` means this screen's palette. Said at
+  // the build rather than assumed by the key handler: until #432 this was the
+  // *fallback* for every screen that had not been thought about, which is how
+  // the navigation readout ended up toggling a theme nobody was drawing in.
+  set_theme_toggle(toggle_theme);
+
   // Clean rather than create: the screen object outlives the language, and a
   // new screen on every switch would leak one per keypress.
   lv_obj_clean(lv_screen_active());
@@ -329,17 +336,17 @@ void build_boot_screen(const platform::HardwareInventory &inventory,
 
 void set_theme(Theme theme) { g_theme = theme; }
 
-void toggle_theme() {
+Theme toggle_theme() {
+  // Only reachable while this screen is the one on the panel: `T` asks whoever
+  // built the screen, and this function is registered by `build_boot_screen`
+  // and by nothing else. It used to be the answer for every mode the key
+  // handler had not been taught about — under `--diagnostic` and `--nav` it
+  // flipped a private theme, printed `theme: night`, and rebuilt nothing,
+  // because `rebuild_boot_screen` is a no-op with no inventory installed. That
+  // line reads as confirmation, which is the worst thing a diagnostic can do.
   g_theme = g_theme == Theme::Day ? Theme::Night : Theme::Day;
-  // Says whether anything followed it. Under `--diagnostic` the boot screen
-  // was never built, so `rebuild_boot_screen` is a no-op and the diagnostic
-  // pattern deliberately does not follow a palette -- its colours are test
-  // vectors. Printing `theme: night` there announced a change nothing on
-  // screen made, which is the sort of line an agent reads as confirmation.
-  const bool follows = g_inventory != nullptr && g_caps != nullptr;
-  std::printf("theme: %s%s\n", ui::name_of(g_theme),
-              follows ? "" : " (nothing on screen follows it in this mode)");
   rebuild_boot_screen();
+  return g_theme;
 }
 
 void rebuild_boot_screen() {

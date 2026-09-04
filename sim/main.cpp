@@ -1,4 +1,3 @@
-#include <cstring>
 #include <cstdio>
 #include <ctime>
 #include <optional>
@@ -15,16 +14,17 @@
 #include "attadipa/core/input.h"
 #include "attadipa/debug/bridge.h"
 #include "attadipa/ui/clock_face.h"
-#include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
 #include "attadipa/ui/tokens.h"
 
 #include "boot_screen.h"
 #include "debug_server.h"
 #include "diagnostic_screen.h"
+#include "nav_screen.h"
 #include "options.h"
 #include "png_writer.h"
 #include "remote_input.h"
+#include "review_keys.h"
 #include "screen_source.h"
 
 // The Attadipa desktop simulator.
@@ -40,9 +40,6 @@ namespace {
 using namespace attadipa;
 
 ui::ClockFace g_clock_face;
-ui::NavFace g_nav_face;
-apps::NavState g_nav_state;
-ui::NavFaceConfig g_nav_config;
 ui::ClockFaceConfig g_clock_config;
 apps::ClockState g_clock_state;
 bool g_clock_active = false;
@@ -131,6 +128,27 @@ void rebuild_provision_screen() {
   g_provision_face.build(lv_screen_active(), g_provision_config, *g_entry);
 }
 
+// What `T` does to each of the two faces this file owns the config of.
+//
+// Registered where the face is put on the panel, beside the line that says
+// what `L` does to it — see `sim/review_keys.h` for why the key needs an owner
+// at all rather than an `if` ladder over whichever screens this file remembers.
+ui::Theme toggle_clock_theme() {
+  g_clock_config.theme = g_clock_config.theme == ui::Theme::Day
+                             ? ui::Theme::Night
+                             : ui::Theme::Day;
+  rebuild_clock_screen();
+  return g_clock_config.theme;
+}
+
+ui::Theme toggle_provision_theme() {
+  g_provision_config.theme = g_provision_config.theme == ui::Theme::Day
+                                 ? ui::Theme::Night
+                                 : ui::Theme::Day;
+  rebuild_provision_screen();
+  return g_provision_config.theme;
+}
+
 ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
   return {clock.width_px, clock.height_px, clock.theme,
           clock.pixel_cost, clock.metrics,  l10n::locale()};
@@ -157,6 +175,7 @@ void leave_provisioning(lv_timer_t *timer) {
   g_provision_active = false;
   g_clock_active = true;
   l10n::set_locale_changed_handler(rebuild_clock_screen);
+  attadipa::sim::set_theme_toggle(toggle_clock_theme);
   rebuild_clock_screen();
 }
 
@@ -171,102 +190,10 @@ void on_long_press(lv_event_t *) {
   g_provision_config = provision_config_for(g_clock_config);
   g_entry.emplace(g_provisioner);
   l10n::set_locale_changed_handler(rebuild_provision_screen);
+  attadipa::sim::set_theme_toggle(toggle_provision_theme);
   rebuild_provision_screen();
   lv_timer_create(leave_provisioning,
                   ui::milliseconds_of(ui::Motion::Slow) * 8U, nullptr);
-}
-
-// The navigation readout's staged scenarios.
-//
-// Coordinates are the same deliberately-nowhere place the position tests use —
-// half a degree north, one degree east, in the Gulf of Guinea. No real location
-// belonging to anybody appears in this repository.
-//
-// This exists because a screenshot of `Ready` proves nothing about the seven
-// other things the readout can say, and those seven are where a number appears
-// that should not have.
-bool stage_nav_scenario(const char *name) {
-  constexpr core::Position kHere{5000000, 10000000};
-  constexpr core::Position kTarget{5100000, 10160000};  // 2.1 km, bearing 058
-
-  core::LocationState own;
-  own.availability = core::Availability::Ready;
-  own.has_position = true;
-  own.position.value = kHere;
-  own.validity = core::PositionValidity::Valid;
-  own.fix_type = core::FixType::ThreeD;
-  own.source = core::PositionSource::LocalGnss;
-  own.receiver = core::ReceiverPresence::Running;
-
-  // What the MeshCore node link produces: a coordinate, an arrival age, and no
-  // fix type at all — so `classify()` answers NoFix and goes on answering it.
-  core::LocationState node;
-  node.availability = core::Availability::Ready;
-  node.has_position = true;
-  node.position.value = kTarget;
-  node.position.age_at_us_ms = 3000;
-  node.validity = core::PositionValidity::NoFix;
-  node.fix_type = core::FixType::Unknown;
-  node.source = core::PositionSource::NodeGnss;
-
-  g_nav_state = apps::NavState{};
-  if (std::strcmp(name, "ready") == 0) {
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "waiting") == 0) {
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "no-fix") == 0) {
-    g_nav_state.own.availability = core::Availability::Ready;
-    g_nav_state.own.receiver = core::ReceiverPresence::Running;
-    g_nav_state.own.fix_type = core::FixType::NoFix;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "own-stale") == 0) {
-    own.validity = core::PositionValidity::Stale;
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "own-degraded") == 0) {
-    // Current, and solved badly. The numbers still render; the status is what
-    // carries the caveat.
-    own.validity = core::PositionValidity::Degraded;
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "node-unavailable") == 0) {
-    node.availability = core::Availability::Unreachable;
-    node.position.age_at_us_ms = 45000;
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "node-unknown") == 0) {
-    g_nav_state.own = own;
-    g_nav_state.target.availability = core::Availability::Ready;
-  } else if (std::strcmp(name, "node-stale") == 0) {
-    node.position.age_at_us_ms = 300000;
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "arrived") == 0) {
-    node.position.value = kHere;
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else if (std::strcmp(name, "far") == 0) {
-    node.position.value = core::Position{900000000, 10000000};
-    g_nav_state.own = own;
-    g_nav_state.target = node;
-  } else {
-    std::fprintf(stderr,
-                 "unknown --nav-state \"%s\"; one of: ready waiting no-fix "
-                 "own-stale own-degraded node-unavailable node-unknown "
-                 "node-stale arrived far\n",
-                 name);
-    return false;
-  }
-  return true;
-}
-
-void rebuild_nav_screen() {
-  // The locale is read at the rebuild, the way the clock reads it, so `L` at
-  // runtime switches this screen too.
-  g_nav_state.locale = l10n::locale();
-  g_nav_face.build(lv_screen_active(), g_nav_config,
-                   apps::format_navigation(g_nav_state));
 }
 
 void rebuild_clock_screen() {
@@ -359,37 +286,6 @@ void report_missing_string(l10n::Locale requested, const char *identifier) {
                identifier, l10n::to_string(requested));
 }
 
-// L toggles the language, T the theme. Keypresses rather than a menu because
-// the Settings screen does not exist yet (T-038) and the acceptance criterion —
-// "switches at runtime without a reboot" — is about the mechanism, not about
-// where the switch lives.
-void on_screen_key(lv_event_t *event) {
-  (void)event;
-  const std::uint32_t key = lv_indev_get_key(lv_indev_active());
-  if (key == 'l' || key == 'L') {
-    const l10n::Locale next = l10n::locale() == l10n::Locale::En
-                                  ? l10n::Locale::Ru
-                                  : l10n::Locale::En;
-    std::printf("locale: %s\n", l10n::to_string(next));
-    l10n::set_locale(next);
-  }
-  if (key == 't' || key == 'T') {
-    if (g_clock_active) {
-      g_clock_config.theme = g_clock_config.theme == ui::Theme::Day
-                                 ? ui::Theme::Night
-                                 : ui::Theme::Day;
-      rebuild_clock_screen();
-    } else if (g_provision_active) {
-      g_provision_config.theme = g_provision_config.theme == ui::Theme::Day
-                                     ? ui::Theme::Night
-                                     : ui::Theme::Day;
-      rebuild_provision_screen();
-    } else {
-      attadipa::sim::toggle_theme();
-    }
-  }
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -446,7 +342,8 @@ int main(int argc, char **argv) {
   lv_group_t *group = lv_group_create();
   lv_indev_set_group(keyboard, group);
   lv_group_add_obj(group, lv_screen_active());
-  lv_obj_add_event_cb(lv_screen_active(), on_screen_key, LV_EVENT_KEY, nullptr);
+  lv_obj_add_event_cb(lv_screen_active(), attadipa::sim::on_screen_key,
+                      LV_EVENT_KEY, nullptr);
 
   l10n::set_missing_string_handler(report_missing_string);
   l10n::set_locale_changed_handler(attadipa::sim::rebuild_boot_screen);
@@ -460,20 +357,11 @@ int main(int argc, char **argv) {
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_diagnostic_screen);
     attadipa::sim::build_diagnostic_screen(options.board);
   } else if (options.nav_screen) {
-    if (!stage_nav_scenario(options.nav_state)) {
+    if (!attadipa::sim::stage_nav_scenario(options.nav_state)) {
       return 2;
     }
-    g_nav_config = {
-        options.board.display.width_px,
-        options.board.display.height_px,
-        options.theme,
-        options.board.display.technology == platform::PanelTechnology::Amoled
-            ? ui::PixelCost::PerPixel
-            : ui::PixelCost::Fixed,
-        ui::Metrics::for_dpi(options.board.display.dpi()),
-    };
-    l10n::set_locale_changed_handler(rebuild_nav_screen);
-    rebuild_nav_screen();
+    l10n::set_locale_changed_handler(attadipa::sim::rebuild_nav_screen);
+    attadipa::sim::build_nav_screen(options.board, options.theme);
   } else if (options.clock_screen || options.provision_screen) {
     g_clock_active = true;
     g_clock_live = !options.clock_time_set;
@@ -500,6 +388,7 @@ int main(int argc, char **argv) {
     g_clock_state.mode =
         options.child_mode ? apps::ClockMode::Child : apps::ClockMode::Adult;
     l10n::set_locale_changed_handler(rebuild_clock_screen);
+    attadipa::sim::set_theme_toggle(toggle_clock_theme);
     rebuild_clock_screen();
     if (g_clock_live) {
       lv_timer_create(refresh_clock, apps::clock_manifest().tick_period.value,
