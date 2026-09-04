@@ -188,8 +188,8 @@ void test_a_node_that_never_said_where_it_is() {
 
 void test_a_coordinate_off_the_globe_is_refused_rather_than_saturated() {
   // Untrusted input arrives here: a node coordinate is bytes off a radio.
-  // `distance_mm()` answers `kDistanceSaturated` for out-of-range as well as
-  // for far away, so without this guard a hostile coordinate renders as a
+  // `great_circle_mm()` answers `kDistanceSaturated` for out-of-range as well
+  // as for far away, so without this guard a hostile coordinate renders as a
   // confident "> 1000 km".
   apps::NavState state;
   state.own = own_fix(kHere);
@@ -236,13 +236,18 @@ void test_the_distance_changes_unit_where_a_person_would() {
     std::int32_t latitude_e7;
     const char *expected;
   };
-  // Latitudes from 11.132 mm per 1e-7 degree, the constant `geo.h` derives
-  // from 111 320 m per degree. These assert the *formatting* boundaries; the
-  // geometry that produced the millimetres is `tests/test_position.cpp`'s.
+  // Latitudes read as an arc on the readout's own sphere: `great_circle_mm()`
+  // over a meridian is 111 319.5 m per degree. These assert the *formatting*
+  // boundaries; the geometry that produced the millimetres is
+  // `tests/test_position.cpp`'s. Each is set a metre or so clear of the
+  // rounding edge it is about, on purpose — the first pair used to sit within
+  // five millimetres of one, and swapping the distance function underneath
+  // them (#433) moved one across it. A boundary test should fail when the
+  // *formatting* changes, not when the last millimetre does.
   const Case cases[] = {
-      {79950, "890 m"},          // metres, while metres are what somebody walks
-      {89832, "1.0 km"},         // the first kilometre, to one decimal
-      {900000000, "> 1000 km"},  // the pole, past where distance_mm measures
+      {80000, "890 m"},          // metres, while metres are what somebody walks
+      {90000, "1.0 km"},         // the first kilometre, to one decimal
+      {900000000, "> 1000 km"},  // the pole, past where the readout measures
   };
   for (const Case &c : cases) {
     state.target = node_coordinate({c.latitude_e7, 0}, 1000);

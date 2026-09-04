@@ -881,6 +881,150 @@ void test_the_return_bearing_reverses_over_a_short_hop()
     CHECK(difference == 18000);
 }
 
+// ---------------------------------------------------------------------------
+// `great_circle_mm()` — the screen's distance.
+//
+// What these check that the `distance_mm()` tests above cannot: those bound the
+// *arithmetic* of an approximation whose method error is left to the header.
+// This function has no method error worth stating, so the tests are closed
+// forms instead — arcs whose length is known without a haversine — and the
+// haversine reference is used only where a closed form is not available.
+//
+// `reference_distance_mm()` is an *independent* reference for `distance_mm()`
+// and is deliberately not one for this function: both are haversines on the
+// same sphere, so agreement between them checks the arguments, the radius and
+// the saturation, and says nothing about the geometry. The geometry is what the
+// closed forms below are for, and they are stated first for that reason.
+
+// One degree of great-circle arc on the reference sphere, in millimetres. Not
+// read from `kMillimetresPerLatE7Num`: that constant is 111 320 000 mm rounded
+// to five figures, and the whole point of these two ways of arriving at the
+// same number is that neither is derived from the other.
+constexpr double kDegreeOfArcMm = kReferenceRadiusMm * kPi / 180.0;
+
+// The bug #433 was raised for, as a length anybody can compute on paper.
+//
+// 89°N 0°E and 89°N 180°E are one degree from the pole on opposite meridians,
+// so the short way between them goes straight over the pole and is exactly two
+// degrees of arc. `distance_mm()` cannot see that: it takes one cosine at the
+// mean latitude and walks 180° of longitude around a circle of radius 111 km,
+// which is a longer path *and* the wrong one.
+void test_the_short_way_between_two_polar_points_goes_over_the_pole()
+{
+    const Position a{890000000, 0};          // 89°N, 0°E
+    const Position b{890000000, 1800000000}; // 89°N, 180°E
+
+    CHECK_RELATIVE(great_circle_mm(a, b), 2.0 * kDegreeOfArcMm, 0.01);
+    CHECK(great_circle_mm(a, b) == great_circle_mm(b, a));
+
+    // And the old answer, asserted rather than described, so this test records
+    // the defect it fixed instead of only the fix. Half a great circle around
+    // the 89th parallel is pi * 111 km against 222 km over the pole: about
+    // 58% over, which is the number in the issue.
+    CHECK_RELATIVE(distance_mm(a, b), kPi * kDegreeOfArcMm, 1.0);
+    CHECK(distance_mm(a, b) > great_circle_mm(a, b) + 100000000U);  // 100 km apart, blunt
+
+    // A quarter turn instead of a half. cos(d) = sin^2(89 deg) there, because
+    // cos(dlon) is zero -- another closed form, and a different one.
+    const Position q{890000000, 900000000};  // 89 deg N, 90 deg E
+    const double   sin89    = __builtin_sin(radians(89.0));
+    const double   expected = __builtin_acos(sin89 * sin89) * kReferenceRadiusMm;
+    CHECK_RELATIVE(great_circle_mm(a, q), expected, 0.01);
+}
+
+// A pole is an ordinary destination for a distance, unlike for a bearing. One
+// degree of arc, straight up the meridian, from either side.
+void test_a_pole_has_a_distance_even_though_it_has_no_bearing()
+{
+    const Position near_pole{890000000, 1234567};
+    const Position pole{kLatitudeMaxE7, 0};
+
+    CHECK_RELATIVE(great_circle_mm(near_pole, pole), kDegreeOfArcMm, 0.01);
+    CHECK_RELATIVE(great_circle_mm(pole, near_pole), kDegreeOfArcMm, 0.01);
+
+    // The refusal `initial_bearing()` makes at the same coordinates, side by
+    // side with the answer this function gives, because the difference between
+    // them is a decision and not an accident.
+    std::uint16_t centideg = 0;
+    CHECK(!initial_bearing(pole, near_pole, centideg));
+    CHECK(initial_bearing(near_pole, pole, centideg));
+
+    // Two longitudes at the same pole are one physical point.
+    CHECK(great_circle_mm(pole, Position{kLatitudeMaxE7, kLongitudeMaxE7}) == 0U);
+}
+
+// Where the screen already had the right number, it still has it. This is the
+// half of the change that must not move: every baseline a person actually
+// walks or rides is a place the two functions agree, and a rewrite that shifted
+// those would be a regression dressed as a fix.
+void test_the_ordinary_baselines_did_not_move()
+{
+    struct Case {
+        Position a;
+        Position b;
+    };
+    const Case cases[] = {
+        {{5000000, 10000000}, {5001000, 10001000}},      // ~150 m
+        {{5000000, 10000000}, {5100000, 10100000}},      // ~15 km
+        {{500000000, 100000000}, {501000000, 101000000}},// ~130 km at 50 deg N
+        {{-350000000, 1500000000}, {-350500000, 1500500000}},
+    };
+    for (const Case& c : cases) {
+        CHECK_RELATIVE(great_circle_mm(c.a, c.b), reference_distance_mm(c.a, c.b), 0.01);
+        // Half a percent of each other: the header promises the equirectangular
+        // form is right at this scale, and this is that promise as a test.
+        CHECK_RELATIVE(distance_mm(c.a, c.b), static_cast<double>(great_circle_mm(c.a, c.b)), 0.5);
+        CHECK(great_circle_mm(c.a, c.b) == great_circle_mm(c.b, c.a));
+    }
+}
+
+// Saturation is a readout choice, not a limit of the method, and the boundary
+// is where `distance_mm()` puts it so the two never disagree about whether a
+// number exists.
+void test_the_screen_distance_saturates_where_the_other_one_does()
+{
+    // 1107.7 km on the great circle, and 1000 km exactly from `distance_mm()`,
+    // which saturated there by accident. Now it is on purpose.
+    CHECK(great_circle_mm({800000000, 0}, {800000000, 600000000}) == kDistanceSaturated);
+
+    // Pole to pole is half a great circle, twenty thousand kilometres.
+    CHECK(great_circle_mm({kLatitudeMaxE7, 0}, {-kLatitudeMaxE7, 0}) == kDistanceSaturated);
+
+    // Just inside: nine degrees of arc up a meridian, about 1002 km, is past
+    // the clamp; eight and a half, about 946 km, is a number.
+    CHECK(great_circle_mm({0, 0}, {90000000, 0}) == kDistanceSaturated);
+    CHECK(great_circle_mm({0, 0}, {85000000, 0}) < kDistanceSaturated);
+    CHECK_RELATIVE(great_circle_mm({0, 0}, {85000000, 0}), 8.5 * kDegreeOfArcMm, 0.01);
+
+    // A coordinate that is not on the globe: the same answer, for the same
+    // reason -- saturated fails every "is it near" test, and this one is
+    // reached with bytes off a radio.
+    const Position origin{0, 0};
+    CHECK(great_circle_mm(origin, Position{kLatitudeMaxE7 + 1, 0}) == kDistanceSaturated);
+    CHECK(great_circle_mm(origin, Position{0, kLongitudeMaxE7 + 1}) == kDistanceSaturated);
+    const Position absurd{2147483647, -2147483647 - 1};
+    CHECK(great_circle_mm(origin, absurd) == kDistanceSaturated);
+    CHECK(great_circle_mm(absurd, absurd) == kDistanceSaturated);
+}
+
+// Zero is an answer here, not a refusal -- the one place the readout prints
+// `0 m` honestly -- and the antimeridian needs no wrap because the haversine is
+// periodic in the longitude difference.
+void test_the_screen_distance_is_zero_at_home_and_short_across_the_seam()
+{
+    const Position p{5000000, 10000000};
+    CHECK(great_circle_mm(p, p) == 0U);
+
+    const Position west{0, 1799995000};
+    const Position east{0, -1799995000};
+    CHECK_NEAR(great_circle_mm(west, east), 111000ULL, 1);
+    CHECK(great_circle_mm(west, east) == great_circle_mm(east, west));
+
+    // The same span away from the seam, to show the seam changed nothing.
+    CHECK(great_circle_mm(Position{0, 5000}, Position{0, -5000}) ==
+          great_circle_mm(west, east));
+}
+
 int main()
 {
     test_all_four_validities_are_reachable();
@@ -913,6 +1057,12 @@ int main()
     test_a_coordinate_off_the_globe_has_no_bearing();
     test_the_seam_at_north_folds_rather_than_overflowing();
     test_the_return_bearing_reverses_over_a_short_hop();
+
+    test_the_short_way_between_two_polar_points_goes_over_the_pole();
+    test_a_pole_has_a_distance_even_though_it_has_no_bearing();
+    test_the_ordinary_baselines_did_not_move();
+    test_the_screen_distance_saturates_where_the_other_one_does();
+    test_the_screen_distance_is_zero_at_home_and_short_across_the_seam();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

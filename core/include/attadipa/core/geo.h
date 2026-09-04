@@ -15,16 +15,26 @@
 //     possible. At that scale an equirectangular approximation is correct to
 //     well within the error of the fixes being compared, and it costs no
 //     floating point, no trigonometry at runtime and no library.
-//   * `initial_bearing()` serves a screen, at the rate a screen refreshes. It
-//     does use `<cmath>`, for the reason written above it.
+//   * `initial_bearing()` and `great_circle_mm()` serve a screen, at the rate a
+//     screen refreshes. They do use `<cmath>`, for the reason written above
+//     them.
+//
+// The split is by *consumer*, and that is the whole design. The constraint
+// that keeps `distance_mm()` integer-only is "do not link libm into the path
+// that runs on every fix"; a screen is not that path, and a screen asks over
+// baselines the equirectangular approximation was never right for. So the
+// screen's distance is a great circle and the jump detector's is not, and
+// neither is a drop-in for the other.
 //
 // What this file is still NOT good for, written here because the temptation is
-// real: route distances, anything crossing a pole, and anything spanning more
-// than a few kilometres. A real geodesic belongs to whoever needs one, and the
-// reuse ledger already names GeographicLib (MIT) with a reference data set.
+// real: route distances, and anything that needs the ellipsoid rather than a
+// sphere. A real geodesic belongs to whoever needs one, and the reuse ledger
+// already names GeographicLib (MIT) with a reference data set.
 // "Or a bearing" used to be on that list and is not any more — an initial
 // great-circle bearing is six lines of trigonometry with a known answer, which
-// is a different thing from a geodesic and does not open the door to one.
+// is a different thing from a geodesic and does not open the door to one. The
+// same argument admitted the great-circle *distance* beside it (#433): one
+// haversine is not a geodesic either.
 //
 // Integers throughout, and saturating rather than wrapping — a distance that
 // overflows must come back as "very far", never as "very near", because the
@@ -82,6 +92,13 @@ inline constexpr std::uint32_t kDistanceSaturated = 1000000000U;  // 1000 km in 
 // *method* is: the equirectangular approximation and the single 111 320 m/deg
 // constant are worth a few tenths of a percent of their own, and neither is
 // improved by anything in here.
+//
+// The method's error is a number too, measured in #433 rather than left as a
+// warning: 89°N 0°E to 89°N 180°E comes back **58% over** the great circle,
+// 12% over at 90° of longitude, half a percent at 70°N across 20°, a tenth of
+// a percent across a city. That is why the jump detector is the right consumer
+// — it compares two fixes taken seconds apart — and why anything asking over a
+// longer baseline wants `great_circle_mm()` instead.
 std::uint32_t distance_mm(Position a, Position b);
 
 // The initial great-circle bearing from `a` to `b`, in centidegrees clockwise
@@ -108,5 +125,30 @@ std::uint32_t distance_mm(Position a, Position b);
 // because none is needed: sine and cosine are periodic, so a pair straddling
 // the antimeridian comes out right without help.
 bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg);
+
+// Great-circle distance between two positions, in millimetres — the one the
+// screen asks for, and correct at every latitude and over any baseline.
+//
+// Saturating exactly as `distance_mm()` does: kDistanceSaturated for a
+// coordinate off the globe, and for anything at or past 1000 km. That clamp is
+// a *readout* choice, not a limit of the method — the haversine below is
+// perfectly happy out to the antipode — but the navigation screen already
+// prints `> 1000 km` past it, and one saturation point shared by both
+// functions is worth more here than the extra range.
+//
+// It does not repeat `initial_bearing()`'s other two refusals, and that is a
+// decision rather than an omission: those two are refusals about *direction*.
+// There is no bearing from a point to itself and none from a pole, because
+// every direction there is the same one — but the distance is zero in the
+// first case and perfectly ordinary in the second, and refusing either would
+// throw away an answer this function can state.
+//
+// `<cmath>` and doubles, once per screen refresh; see the split at the top of
+// this file for why that is allowed here and not in `distance_mm()`. The
+// precision is spent the same way as in `initial_bearing()`: the latitude and
+// longitude differences are formed in integers and only then scaled, and no
+// wrap is applied to the longitude difference because the haversine is
+// periodic in it.
+std::uint32_t great_circle_mm(Position a, Position b);
 
 }  // namespace attadipa::core

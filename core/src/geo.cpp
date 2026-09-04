@@ -235,4 +235,68 @@ bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg)
     return true;
 }
 
+std::uint32_t great_circle_mm(Position a, Position b)
+{
+    // The same answer `distance_mm()` gives a coordinate that is not on the
+    // globe, and for the same reason: saturated fails every "is it near" test,
+    // and this function's caller is holding bytes off a radio.
+    if (!in_range(a) || !in_range(b)) {
+        return kDistanceSaturated;
+    }
+
+    constexpr double kPi       = 3.14159265358979323846;
+    constexpr double kRadPerE7 = kPi / 180.0 / 10000000.0;
+
+    // WGS-84's semi-major axis, which is the sphere the rest of this file
+    // already implies: kMillimetresPerLatE7Num of 11 132 is 111 320 m per
+    // degree, and that is a radius of 6 378 137 m to six figures. Taking the
+    // mean radius 6 371 009 m instead would put a fixed 0.11% disagreement
+    // about *which* sphere between this function and its neighbour, on top of
+    // the method difference the two are here to have.
+    constexpr double kSphereRadiusMm = 6378137000.0;
+
+    // Formed in int64 where they are exact, then scaled — the same trade as in
+    // `initial_bearing()` above, and for the same reason: two points a metre
+    // apart differ by about 9 in this unit, and taking that difference between
+    // two doubles already near 1.0 radian would spend most of the mantissa
+    // agreeing about the part that cancels.
+    const double dlat =
+        static_cast<double>(static_cast<std::int64_t>(b.latitude_e7) -
+                            static_cast<std::int64_t>(a.latitude_e7)) * kRadPerE7;
+    const double dlon =
+        static_cast<double>(static_cast<std::int64_t>(b.longitude_e7) -
+                            static_cast<std::int64_t>(a.longitude_e7)) * kRadPerE7;
+
+    const double lat_a = static_cast<double>(a.latitude_e7) * kRadPerE7;
+    const double lat_b = static_cast<double>(b.latitude_e7) * kRadPerE7;
+
+    // Haversine. No antimeridian branch, unlike `distance_mm()`: the half-angle
+    // sines are squared, so a longitude difference of d and one of d - 360°
+    // give the same term, and a pair straddling 180° comes out right with no
+    // help. It is the one place this method is simpler than the integer one.
+    const double sin_half_lat = std::sin(dlat / 2.0);
+    const double sin_half_lon = std::sin(dlon / 2.0);
+    double       h            = sin_half_lat * sin_half_lat +
+               std::cos(lat_a) * std::cos(lat_b) * sin_half_lon * sin_half_lon;
+
+    // Algebraically h is in [0, 1]; in doubles a near-antipodal pair can round
+    // a hair past 1, and `asin` of that is NaN. A NaN cast to an unsigned
+    // integer is undefined behaviour, not "very far", so it is clamped here
+    // rather than caught below.
+    if (h < 0.0) {
+        h = 0.0;
+    } else if (h > 1.0) {
+        h = 1.0;
+    }
+
+    const double millimetres = 2.0 * kSphereRadiusMm * std::asin(std::sqrt(h));
+
+    // Written as a refuted `<` so that a NaN which somehow survived the clamp
+    // saturates rather than falling through to the cast.
+    if (!(millimetres < static_cast<double>(kDistanceSaturated))) {
+        return kDistanceSaturated;
+    }
+    return static_cast<std::uint32_t>(millimetres + 0.5);
+}
+
 }  // namespace attadipa::core
