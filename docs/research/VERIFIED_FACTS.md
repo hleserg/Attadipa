@@ -610,17 +610,26 @@ to every unit of the same model.
   ([ADR-0003](../adr/0003-radio-not-lora.md),
   [ADR-0007](../adr/0007-two-capability-layers.md)).
 
-### The T-Watch GNSS module is also a variant, with different power needs
+### The T-Watch GNSS module is a variant — and the bench unit's branch is now read
 
-- **Claim:** either a u-blox MIA-M10Q or a Quectel LS550G. The LS550G variant
-  requires the PMU to enable **DC4 at 850 mV *and* BLDO1 at 3300 mV**.
-  Additionally, GNSS sits on BLDO1 only on units with rear BOOT/RST buttons;
-  earlier units powered it from DC3.
-- **Source:** S1.
+- **Claim, as a product:** either a u-blox MIA-M10Q or a Quectel LS550G. The
+  LS550G variant requires the PMU to enable **DC4 at 850 mV *and* BLDO1 at
+  3300 mV**. Additionally, GNSS sits on BLDO1 only on units with rear BOOT/RST
+  buttons; earlier units powered it from DC3.
+- **Claim, on the bench unit, MEASURED 2026-09-05:** **MIA-M10Q**, on **BLDO1**,
+  at **38400 baud**, its TX on **GPIO 41**. `UBX-MON-VER` returned
+  `MOD=MIA-M10Q`, `FWVER=SPG 5.10`, `PROTVER=34.10`; `REG 0x80` read `0x19`,
+  with DCDC3 clear, while it was answering.
+- **Source:** S1 for the product claim;
+  [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md) for the
+  bench unit — the module's own reply, over the watch's own UART.
 - **Impact:** the power-up sequence for GNSS is board-revision dependent and
-  cannot be inferred from the product name. Getting it wrong means GNSS
-  silently never starts. Assisted-GNSS mechanisms also differ between u-blox
-  and Quectel, so no assistance work can be designed until the module is known.
+  cannot be inferred from the product name — which is why it was read rather
+  than assumed. **The product claim stands for other units and is not retired
+  by one read-off**; firmware that must run on both still cannot hard-code
+  either branch. For the bench unit the LS550G path is dead, DC4 at 850 mV is
+  not a GNSS requirement, and assisted GNSS, when designed, is u-blox
+  AssistNow. What DC4 does feed on this board is **UNKNOWN**.
 
 ### The T-Watch touch panel has no reset line
 
@@ -813,7 +822,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1924`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1933`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1899,7 +1908,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:805`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.

@@ -144,7 +144,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:1023` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:1032` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -152,7 +152,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:1022` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:1031` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
@@ -372,7 +372,7 @@ Beyond B and C:
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes
   and the firmware answers, which is the shape this needs. Neither is missing
-  and neither is merely uncalled. `firmware/main/CMakeLists.txt:37` —
+  and neither is merely uncalled. `firmware/main/CMakeLists.txt:40` —
   "if(CONFIG_ATTADIPA_WATCH_CONTROL)" — is what adds the `debug` layer, and
   `debug/CMakeLists.txt:14` — "target_include_directories(attadipa_debug PUBLIC include)"
   — is the only route its headers take into `firmware/main/`. So under the
@@ -398,7 +398,7 @@ Beyond B and C:
 - Does not decide the timezone-offset UI, only that the offset is entered on the
   device like everything else.
 - Does **not** change what a product image pays for the BLE stack:
-  `firmware/main/attadipa_main.cpp:322` — "const esp_err_t mesh_err = start_meshcore_ble();"
+  `firmware/main/attadipa_main.cpp:326` — "const esp_err_t mesh_err = start_meshcore_ble();"
   is unconditional, so a product image still brings the controller up. #356
   records that; it stays open here.
 - ADR-0014's "first real input is the existing physical USB debug connection"

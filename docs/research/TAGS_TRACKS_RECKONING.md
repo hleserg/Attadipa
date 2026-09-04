@@ -324,7 +324,7 @@ documented"*; and that *"the only obtainable C datasheet is Rev 0.6 of January
 as if it were the only C document. It is not.
 `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` documents chapter 11, `CTRL8.Pedo_EN`
 and the same `STEP_CNT_*` registers, on the same pages as the A's Rev A does —
-[`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
+[`VERIFIED_FACTS.md:805`](VERIFIED_FACTS.md) "no register tells them apart".
 The pedometer is documented for this part. Whether the silicon honours it is a
 separate and still-open question, and the bench says it did not:
 [`PEDOMETER_BENCH_2026-08-28.md:3-4`](PEDOMETER_BENCH_2026-08-28.md) "the step register never moved".
@@ -334,7 +334,7 @@ gyroscope full scale **±1024 °/s** (not the A's ±2048), TCO **±0.05 dps/°C 
 all axes** (not per-axis), ARW ≈ 0.90°/√h (`ESTIMATED` from the noise density).
 They are why the variant still matters even though the pedometer no longer
 distinguishes them; the full list of six documented differences is
-[`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
+[`VERIFIED_FACTS.md:805`](VERIFIED_FACTS.md) "no register tells them apart".
 
 **The power asymmetry is the design constraint.** Accelerometer-only low power:
 30 µA at 3 Hz to 55 µA at 128 Hz. Gyroscope: **651 µA at 28 Hz rising to
