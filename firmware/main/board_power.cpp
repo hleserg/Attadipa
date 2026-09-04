@@ -3,6 +3,7 @@
 #include "sdkconfig.h"
 
 #include "power_button_edges.h"
+#include "wake_classification.h"
 
 #include <new>
 
@@ -301,8 +302,8 @@ public:
       break;
     }
     // Everything else, and Button above all. The AXP2101 has no wake line to
-    // this SoC: a press is found by reading register 0x49 during a timer wake,
-    // which is a poll and not an armed source. Returning true here would put
+    // this SoC: a press is found by reading register 0x49 after some *other*
+    // source brought the CPU back, which is a poll and not an armed source. Returning true here would put
     // the software's wake plan and the hardware's out of agreement in the one
     // place nothing downstream can detect.
     ESP_LOGE(kTag, "this board cannot arm %s as a wake source",
@@ -393,31 +394,26 @@ public:
       // both survive.
       const std::uint32_t soc = esp_sleep_get_wakeup_causes();
       soc_causes_to_wake_sources(soc, causes);
-      const bool by_gpio = (soc & (1U << ESP_SLEEP_WAKEUP_GPIO)) != 0;
-      const bool by_timer = (soc & (1U << ESP_SLEEP_WAKEUP_TIMER)) != 0;
 
-      if (by_gpio) {
-        // ADR-0016 §6: the pin is a corroborating signal, never the classifier.
-        // It used to *be* the classifier, and a GPIO wake with the line already
-        // released then fell through to "cause unknown".
-        if (touch_interrupt_ != GPIO_NUM_NC &&
-            gpio_get_level(touch_interrupt_) != 0) {
-          ESP_LOGW(kTag, "GPIO wake with the touch line already high");
-        }
-        (void)consume_power_edge();
-        return true;
+      // ADR-0016 §6: the pin is a corroborating signal, never the classifier.
+      // It used to *be* the classifier, and a GPIO wake with the line already
+      // released then fell through to "cause unknown". It stays here rather
+      // than inside the classification because it is the one part of it that
+      // needs a GPIO, and it says nothing about the verdict either way.
+      if ((causes.from_soc &
+           attadipa::core::wake_bit(attadipa::core::WakeSource::Touch)) != 0 &&
+          touch_interrupt_ != GPIO_NUM_NC &&
+          gpio_get_level(touch_interrupt_) != 0) {
+        ESP_LOGW(kTag, "GPIO wake with the touch line already high");
       }
-      if (!by_timer) {
-        // Something woke this that we did not arm. The owner reports it as an
-        // unexpected cause rather than swallowing it, which is the point.
-        return true;
-      }
-      if (debug_wake) {
-        return true;
-      }
-      if (consume_power_edge()) {
-        causes.derived |=
-            attadipa::core::wake_bit(attadipa::core::WakeSource::Button);
+
+      // One decision for every route out of sleep, in wake_classification.h.
+      // Two branches reading register 0x49 for different purposes is what
+      // #367's P3 finding was: the GPIO route spent the latch and dropped the
+      // Button it proved.
+      if (classify_wake(causes, debug_wake,
+                        [this] { return consume_power_edge(); }) ==
+          WakeVerdict::Report) {
         return true;
       }
 

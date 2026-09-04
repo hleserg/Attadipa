@@ -516,6 +516,18 @@ target_link_libraries(test_power_owner PRIVATE attadipa_core)
 add_test(NAME power_owner COMMAND test_power_owner)
 set_tests_properties(power_owner PROPERTIES LABELS power)
 
+# What ended a sleep, which is the board's half of the same transaction and so
+# is a header in firmware/main with no ESP-IDF dependency -- the pattern
+# power_button_edges.h already uses, and for the same reason: the AXP2101 latch
+# is write-one-to-clear, so the rule about who may spend it has to be exercised
+# somewhere other than on a bench.
+add_executable(test_wake_classification test_wake_classification.cpp)
+target_include_directories(test_wake_classification PRIVATE
+    ${PROJECT_SOURCE_DIR}/firmware/main)
+target_link_libraries(test_wake_classification PRIVATE attadipa_core)
+add_test(NAME wake_classification COMMAND test_wake_classification)
+set_tests_properties(wake_classification PROPERTIES LABELS power)
+
 # The third compile boundary, and the same argument as the two above.
 #
 # `GnssCapabilities` was four `bool`s, so `{false, false, false, false}` said

@@ -46,8 +46,9 @@
 // mechanism could not be written to assume them:
 //
 //   * **The power button is not an SoC wake source.** The AXP2101 latches an
-//     edge in register 0x49 and the firmware reads it during a timer wake, so
-//     a button press arrives as `WakeCauses::derived` and never as something
+//     edge in register 0x49 and the firmware reads it on any wake this
+//     transaction armed -- the poll timer, the touch line, or both together --
+//     so a button press arrives as `WakeCauses::derived` and never as something
 //     that was armed. `arm_wake(Button)` therefore refuses: a board that said
 //     yes here would have invented the exact state the ADR exists to prevent.
 //   * **No rail may be switched.** `set_rail()` refuses every request. ALDO2
