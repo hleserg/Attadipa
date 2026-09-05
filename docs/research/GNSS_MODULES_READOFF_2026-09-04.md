@@ -411,45 +411,46 @@ different binary protocols anyway.
 
 A driver that reads the UART from an existing tick has to size two things
 against each other: the ring the ESP-IDF driver fills, and how long the tick may
-be away before what is in that ring stops being current. Both need a number, and
-the sixteen captures have it. One epoch a second in every one, and the epochs
-sort by **how much sky the antenna had**, not by which module was on the bench:
+be away before what is in that ring stops being current. The second is a
+3-second flush in `firmware/main/local_gnss.cpp`, so the number the first needs
+is **the most bytes any three consecutive seconds of these captures contain** —
+measured directly, not a peak second multiplied by three.
 
-| Captures | Module | Satellites in view | Bytes per epoch |
-| --- | --- | --- | --- |
-| `boot-…090718Z`, `cap-38400-…`, `live-…`, both `waitfix-…` | AN3126 | 0–3 | 436–487 |
-| `fix-…1353Z`, four `boot…-1400…` | AN3126 | 8–38 | 786–**1727** |
-| six `gtu12-…` | GT-U12 | 38–40 | 939–1186 |
+| Captures | Module | Satellites in view | Worst 1 s | Worst 3 s |
+| --- | --- | --- | --- | --- |
+| `boot-…090718Z`, `cap-38400-…`, `live-…`, both `waitfix-…` | AN3126 | 0–3 | 452–460 | 1356–1380 |
+| `fix-…1353Z`, four `boot…-1400…` | AN3126 | 8–38 | 1064–1685 | 3188–**4157** |
+| six `gtu12-…` | GT-U12 | 38–40 | 1055–1111 | 3133–3332 |
 
-The two AN3126 rows are the same module, the same protocol version and the same
-sentence set — `GNRMC GNVTG GNGGA GNGLL`, five `GSA`, and one `GSV` block per
-constellation, every second in both. What changes is that with no satellites in
-view every position field is empty and every `GSV` is a 20-byte stub, and with a
-sky they are full: `$GNRMC` goes from 27 bytes to 70, `$GNGGA` from 33 to 75,
-and the `GSV` blocks from five stubs to eighteen populated sentences. **The
-whole spread, a factor of four, is satellites in view.**
+One epoch a second in all sixteen. **The worst three-second window in any of
+them is 4157 bytes**, in `boot4-…140439Z` — the capture taken across a power
+cycle, and 442 bytes of that window are the twelve-line u-blox `$GNTXT` startup
+banner. That burst belongs in the number rather than beside it: a module coming
+back up while the host has been asleep is exactly the case where a long gap and
+a large burst arrive together.
 
-That also settles the module comparison the size question actually needs: at a
-comparable sky the two parts cost about the same. The GT-U12 at 40 in view peaks
-at 1186 bytes; the AN3126 at 38 in view peaks at 1727, the extra being QZSS and
-the `GLL`/`VTG` pair the GT-U12 does not send.
-
-The rate per satellite is worth writing down because it is what extrapolates:
-across `boot4-…140439Z`, which sweeps 13 to 38 in view inside one capture, the
-epoch grows from 973 to 1727 bytes — about **30 bytes per satellite in view**.
+**What drives the spread is satellites in view, not the module and not the
+protocol version.** The two AN3126 rows are the same part at the same
+`PROTVER`, sending the same sentence set every second — `GNRMC GNVTG GNGGA
+GNGLL`, five `GSA`, and one `GSV` block per constellation. Only the lengths
+change: with no satellites in view `$GNRMC` is 27 bytes and `$GNGGA` is 33, each
+`GSV` is a 20-byte stub, and the epoch is 436; with a sky those become 70 and
+75, the `GSV` stubs become populated blocks, and the epoch passes 1200. Set the
+banner aside and the two parts cost about the same at a comparable sky — 3722
+against 3332 bytes per three seconds.
 
 What this decides in `firmware/main/local_gnss.cpp` — "constexpr int kRxRing = 8192;":
-the driver discards the ring after a 3-second gap, so any gap *shorter* than
-that keeps its bytes, and the ring must therefore have been able to hold them.
-Three seconds at the measured peak is 5181 bytes. A 4096-byte ring would not
-have held it — under 2.4 seconds of peak traffic, inside the window where no
-flush fires — so the ring is 8192, which is 4.7 seconds at 1727 B/s and still
-4.2 seconds at the 1930 B/s a 45-satellite sky would imply.
+a gap *shorter* than the 3-second flush keeps its bytes, so the ring has to have
+been able to hold them. **4096 would not have: it is 61 bytes under the worst
+window measured here**, and a ring that overflows inside that window hands the
+next tick a backlog whose newest sentence is already seconds behind — an old
+epoch stamped with the time it was noticed, which is the one thing this driver
+exists to refuse. 8192 clears the measured worst case by 97%.
 
 **Counted from the captures in `~/attadipa-bench/i427/`, which are not
-committed** — they carry the owner's real position. The counts are reproducible
-from any capture of the same modules: sentence bytes including CRLF between
-consecutive `RMC` sentences, and `GSV` field 3 for satellites in view.
+committed** — they carry the owner's real position. Reproducible from any
+capture of the same modules: sentence bytes including CRLF, split into epochs at
+each `RMC`, summed over every window of three consecutive epochs.
 
 ## 4. The Waveshare expansion pads: `RXD` = GPIO 44, `TXD` = GPIO 43 — VERIFIED
 

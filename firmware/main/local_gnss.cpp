@@ -48,15 +48,15 @@ constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 // ones, and this tick reads a backlog whose newest sentence is already seconds
 // behind, which is precisely the stamp `drain()` exists to refuse.
 //
-// MEASURED, over the sixteen #427 bench captures — one epoch a second, and the
-// heaviest single epoch in any of them is **1727 bytes**, counted in
+// MEASURED, over the sixteen #427 bench captures: the most bytes any three
+// consecutive seconds of them contain is **4157**, counted in
 // `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:410` — "### 3.1 How much a receiver says in a second — MEASURED, and a buffer depends on it".
-// Three seconds of that is 5181 bytes, so 4096 would not have been enough:
-// 8192 is 4.7 seconds at the measured peak.
+// So 4096 would have been 61 bytes short of the worst case actually observed,
+// and 8192 clears it by 97%.
 //
-// The peak scales with satellites in view, not with the module, and no bench
-// sky exceeded 38. At the measured ~30 bytes per satellite in view, an open sky
-// showing 45 would be about 1930 B/s — still 4.2 seconds in this ring.
+// That worst window is a power cycle — a burst of `$GNTXT` banner on top of a
+// full sky — which is the same event that produces a long gap, so it is the
+// right case to size against rather than an outlier to set aside.
 constexpr int kRxRing = 8192;
 
 // The UI timer runs at 500–1000 ms, so three seconds is past the slowest of
