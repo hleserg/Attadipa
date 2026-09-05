@@ -331,8 +331,8 @@ Recorded precisely, because the distinction matters:
   *"the document number of the Rev A datasheet is 13-52-25, not 13-52-27"*.
   There is no *the* Rev A datasheet: QST published **two**, both Rev A, both
   dated 20 June 2022, and this repository already listed them side by side at
-  [`VERIFIED_FACTS.md:787`](VERIFIED_FACTS.md) "documents it fully" and
-  [`VERIFIED_FACTS.md:791`](VERIFIED_FACTS.md) "documents the identical feature".
+  [`VERIFIED_FACTS.md:820`](VERIFIED_FACTS.md) "documents it fully" and
+  [`VERIFIED_FACTS.md:824`](VERIFIED_FACTS.md) "documents the identical feature".
   Writing *"the Rev A datasheet"* unqualified is what made the two
   collapse into one, so this tree does not write it any more.
   **The `0x7C` above is read from `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A`**, a
@@ -346,7 +346,7 @@ Recorded precisely, because the distinction matters:
   So the `0x7C` above is correctly attributed to `13-52-27`, and it would have
   been just as correct against `13-52-25`; neither document's `REVISION_ID` can
   identify which one you are holding —
-  [`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:829`](VERIFIED_FACTS.md) "no register tells them apart".
   See [#341](https://github.com/hleserg/Attadipa/issues/341).
 
 ### 3.3 The touch controller is held in reset until GPIO 9 is pulsed

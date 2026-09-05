@@ -88,7 +88,7 @@ window is not: a phase published after the sleeper read the snapshot and during
 `esp_light_sleep_start()` is still a declaration the sleeper never saw, the same
 width as before with the snapshot carrying it instead of the table. Closing
 *that* needs the sleep itself to be refusable by the transport, which
-`core/include/attadipa/core/power_owner.h:330` — "// does not yet have and which nothing in the current firmware needs, because"
+`core/include/attadipa/core/power_owner.h:331` — "// does not yet have and which nothing in the current firmware needs, because"
 — still records as absent. It is inert while no plan gates a domain a cross-task
 consumer declares; **the first plan that does must close this window before it
 ships**, not after.

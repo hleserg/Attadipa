@@ -96,4 +96,45 @@ config ATTADIPA_I2C_PROBE_SCL
     depends on ATTADIPA_I2C_PROBE
     default 11
 
+config ATTADIPA_GNSS_BRIDGE
+    bool "GNSS bring-up bridge"
+    depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default n
+    help
+        Ask the T-Watch GNSS module what it is. Which part is fitted is
+        UNKNOWN (docs/research/OPEN_QUESTIONS.md, question A2), and so is
+        which PMU rail powers it (question D6). This sweeps baud rate and
+        UART orientation until something answers, logs what the port
+        carries, then sends version queries in u-blox, ALLYSTAR and three
+        ASCII dialects. It writes no GNSS configuration and saves nothing;
+        a silent port is logged as a silent port. Enabling this also brings
+        BLDO1 up at 3.3 V, which no other build needs yet.
+
+config ATTADIPA_GNSS_BRIDGE_PASSTHROUGH
+    bool "GNSS bridge: hand the port to the host when the sweep is done"
+    depends on ATTADIPA_GNSS_BRIDGE
+    default y
+    help
+        After identification, carry bytes both ways between USB and the
+        module so a host probe written for a bench module runs against the
+        watch unchanged. The console is the same USB peripheral, so this
+        turns logging off: a stray log line inside a binary frame is a
+        corrupt reply the host cannot tell from a corrupt module. Power-
+        cycle to get the log stream back.
+
+config ATTADIPA_GNSS_BRIDGE_PIN_A
+    int "GNSS bridge GPIO A"
+    depends on ATTADIPA_GNSS_BRIDGE
+    default 42
+
+config ATTADIPA_GNSS_BRIDGE_PIN_B
+    int "GNSS bridge GPIO B"
+    depends on ATTADIPA_GNSS_BRIDGE
+    default 41
+    help
+        The schematic pair, from HARDWARE_MATRIX.md's GNSS row: "UART: TX
+        42, RX 41". That row does not say whose TX it is, so the bridge
+        tries both orientations and reports which one answered rather than
+        assuming; these two are a pair, not a fixed rx/tx assignment.
+
 endmenu

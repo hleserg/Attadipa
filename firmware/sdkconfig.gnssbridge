@@ -1,0 +1,17 @@
+# Overlay: turn the GNSS bring-up bridge on. Stack it after the T-Watch overlay,
+# because the module and the rail that feeds it are both that board's:
+#
+#   idf.py -B build-i436 -DSDKCONFIG=build-i436/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;sdkconfig.gnssbridge" build
+#
+# Not stacked on sdkconfig.ramprobe, unlike the I2C scan: this image has to run
+# the UI, because starting the UI is what brings the PMU rails up, and BLDO1 is
+# the GNSS supply.
+#
+# The two pins are a pair, not an assignment — HARDWARE_MATRIX.md's GNSS row
+# gives "UART: TX 42, RX 41" without saying whose TX, so the bridge tries both
+# orientations and reports the one that answered.
+CONFIG_ATTADIPA_GNSS_BRIDGE=y
+CONFIG_ATTADIPA_GNSS_BRIDGE_PIN_A=42
+CONFIG_ATTADIPA_GNSS_BRIDGE_PIN_B=41
+CONFIG_ATTADIPA_GNSS_BRIDGE_PASSTHROUGH=y

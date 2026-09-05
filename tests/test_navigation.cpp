@@ -188,8 +188,8 @@ void test_a_node_that_never_said_where_it_is() {
 
 void test_a_coordinate_off_the_globe_is_refused_rather_than_saturated() {
   // Untrusted input arrives here: a node coordinate is bytes off a radio.
-  // `distance_mm()` answers `kDistanceSaturated` for out-of-range as well as
-  // for far away, so without this guard a hostile coordinate renders as a
+  // `great_circle_mm()` answers `kDistanceSaturated` for out-of-range as well
+  // as for far away, so without this guard a hostile coordinate renders as a
   // confident "> 1000 km".
   apps::NavState state;
   state.own = own_fix(kHere);
@@ -228,6 +228,38 @@ void test_standing_on_it_is_a_measured_zero_and_not_a_direction() {
   CHECK(is(text.bearing, "—"));
 }
 
+// The one line #433 changed, pinned by the one baseline that can tell the two
+// functions apart on the screen.
+//
+// Every other pair in this file differs in latitude alone, and over a meridian
+// `distance_mm()` and `great_circle_mm()` are 4.6 ppm apart — the gap between
+// 11.132 mm and 11.131949 mm per 1e-7 degree — which no rendered string can
+// show. So reverting `apps/src/navigation.cpp` to `distance_mm()` used to leave
+// the whole suite green, and the readout's choice of function was pinned by
+// nothing.
+//
+// 89°N 0°E to 89°N 180°E is the issue's own pair: two degrees of arc over the
+// pole, 222 638 982 mm, against 352 223 437 mm the long way round the 89th
+// parallel — the mean latitude is 89° exactly, so `cos_scaled()` returns the
+// table entry unmixed and 20 037 600 000 × 18/1024 is the whole answer. Both
+// are under the clamp and both go through the same `%u km` branch, so the
+// difference reaches the glyphs.
+void test_the_readout_measures_over_the_pole_and_not_around_it() {
+  apps::NavState state;
+  state.own = own_fix({890000000, 0});
+  state.target = node_coordinate({890000000, 1800000000}, 1000);
+
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.has_distance);
+  if (!is(text.distance, "222 km")) {
+    std::fprintf(stderr,
+                 "%s:%d: distance is \"%s\", expected \"222 km\" — "
+                 "\"352 km\" means the readout is back on distance_mm()\n",
+                 __FILE__, __LINE__, text.distance);
+    ++failures;
+  }
+}
+
 void test_the_distance_changes_unit_where_a_person_would() {
   apps::NavState state;
   state.own = own_fix({0, 0});
@@ -236,13 +268,18 @@ void test_the_distance_changes_unit_where_a_person_would() {
     std::int32_t latitude_e7;
     const char *expected;
   };
-  // Latitudes from 11.132 mm per 1e-7 degree, the constant `geo.h` derives
-  // from 111 320 m per degree. These assert the *formatting* boundaries; the
-  // geometry that produced the millimetres is `tests/test_position.cpp`'s.
+  // Latitudes read as an arc on the readout's own sphere: `great_circle_mm()`
+  // over a meridian is 111 319.5 m per degree. These assert the *formatting*
+  // boundaries; the geometry that produced the millimetres is
+  // `tests/test_position.cpp`'s. Each is set a metre or so clear of the
+  // rounding edge it is about, on purpose — the first pair used to sit within
+  // five millimetres of one, and swapping the distance function underneath
+  // them (#433) moved one across it. A boundary test should fail when the
+  // *formatting* changes, not when the last millimetre does.
   const Case cases[] = {
-      {79950, "890 m"},          // metres, while metres are what somebody walks
-      {89832, "1.0 km"},         // the first kilometre, to one decimal
-      {900000000, "> 1000 km"},  // the pole, past where distance_mm measures
+      {80000, "890 m"},          // metres, while metres are what somebody walks
+      {90000, "1.0 km"},         // the first kilometre, to one decimal
+      {900000000, "> 1000 km"},  // the pole, past where the readout measures
   };
   for (const Case &c : cases) {
     state.target = node_coordinate({c.latitude_e7, 0}, 1000);
@@ -392,6 +429,7 @@ int main() {
   test_a_coordinate_off_the_globe_is_refused_rather_than_saturated();
   test_a_stale_own_fix_is_neither_a_missing_one_nor_a_current_one();
   test_standing_on_it_is_a_measured_zero_and_not_a_direction();
+  test_the_readout_measures_over_the_pole_and_not_around_it();
   test_the_distance_changes_unit_where_a_person_would();
   test_the_compass_points_are_centred_on_their_own_directions();
   test_every_status_has_words();

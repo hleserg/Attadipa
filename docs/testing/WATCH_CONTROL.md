@@ -451,7 +451,7 @@ event. What stays HIL-only is watching it happen: the mesh screen's
 scans without showing that it does.
 
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
-(`attadipa_main.cpp:322` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
+(`attadipa_main.cpp:326` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
 `nimble_port_init()` (`meshcore_ble.cpp:1993` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
@@ -466,7 +466,7 @@ The scan itself is the part nobody has priced. A restored or typed passkey
 starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:586` —
 "BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:170` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
-(`firmware/main/board_power.cpp:381` — "esp_light_sleep_start();") without a PM
+(`firmware/main/board_power.cpp:382` — "esp_light_sleep_start();") without a PM
 lock, because `CONFIG_PM_ENABLE` is not set. Whether the scan survives that
 sleep, and what a node out of range costs a worn watch per day, is
 **NOT EXECUTED — HARDWARE REQUIRED** — the row

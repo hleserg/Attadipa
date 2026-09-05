@@ -610,17 +610,50 @@ to every unit of the same model.
   ([ADR-0003](../adr/0003-radio-not-lora.md),
   [ADR-0007](../adr/0007-two-capability-layers.md)).
 
-### The T-Watch GNSS module is also a variant, with different power needs
+### The T-Watch GNSS module is a variant — and the bench unit's branch is now read
 
-- **Claim:** either a u-blox MIA-M10Q or a Quectel LS550G. The LS550G variant
-  requires the PMU to enable **DC4 at 850 mV *and* BLDO1 at 3300 mV**.
-  Additionally, GNSS sits on BLDO1 only on units with rear BOOT/RST buttons;
-  earlier units powered it from DC3.
-- **Source:** S1.
+- **Claim, as a product:** either a u-blox MIA-M10Q or a Quectel LS550G. The
+  LS550G variant requires the PMU to enable **DC4 at 850 mV *and* BLDO1 at
+  3300 mV**. Additionally, GNSS sits on BLDO1 only on units with rear BOOT/RST
+  buttons; earlier units powered it from DC3.
+- **Claim, on the bench unit, MEASURED 2026-09-05:** **MIA-M10Q**, on **BLDO1**,
+  at **38400 baud**, its TX on **GPIO 41**. `UBX-MON-VER` returned
+  `MOD=MIA-M10Q`, `FWVER=SPG 5.10`, `PROTVER=34.10`; `REG 0x80` read `0x19`,
+  with DCDC3 clear, while it was answering.
+- **Source:** S1 for the product claim;
+  [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md) for the
+  bench unit — the module's own reply, over the watch's own UART.
 - **Impact:** the power-up sequence for GNSS is board-revision dependent and
-  cannot be inferred from the product name. Getting it wrong means GNSS
-  silently never starts. Assisted-GNSS mechanisms also differ between u-blox
-  and Quectel, so no assistance work can be designed until the module is known.
+  cannot be inferred from the product name — which is why it was read rather
+  than assumed. **The product claim stands for other units and is not retired
+  by one read-off**; firmware that must run on both still cannot hard-code
+  either branch. For the bench unit the LS550G path is dead, DC4 at 850 mV is
+  not a GNSS requirement, and assisted GNSS, when designed, is u-blox
+  AssistNow. What DC4 does feed on this board is **UNKNOWN**.
+- **What the rail attribution does *not* license.** BLDO1 was found already
+  enabled, the bit was never cleared to watch the module go silent, and the
+  `GPS_LDO` enable net on FPC pin 3 sits in the same path and was never
+  exercised. So **nothing here shows that toggling BLDO1 controls the module** —
+  which is exactly what a power gate or a sleep path would assume. Anything that
+  proposes to switch this rail at runtime owes that experiment first.
+- **What it detects, MEASURED 2026-09-05:** spoofing detection is running
+  (`UBX-NAV-STATUS` `spoofDetState = 1`); **jamming detection is disabled**
+  (`CFG-ITFM-ENABLE = 0` in the RAM layer, the documented default, and
+  `MON-RF` `jammingState = 0` agrees); and there is **no signal
+  authentication** — `UBX-SEC` in this firmware holds only `SEC-UNIQID`, and
+  0 of 26 signals reported `authStatus = Authenticated`. None of it can change
+  on this unit: generation-10 firmware runs from internal ROM, and this module
+  reports `ROM SPG 5.10 (7b202e)` with no `EXT` marker.
+  See [§4b](TWATCH_GNSS_READOFF_2026-09-05.md).
+- **Impact:** none of this reaches NMEA. The watch emits `GGA`, `GLL`, `GSA`,
+  `RMC`, `VTG` and `GSV` — the nine sentence ids
+  [§4](TWATCH_GNSS_READOFF_2026-09-05.md) transcribes from four runs — so a
+  parser that reads only NMEA, which is what #429 proposes, cannot see
+  interference or a spoofing flag at all. Whether it also sends `TXT` is
+  `UNKNOWN`: no window began at the module's power-up, so an absence over these
+  windows is the window's property rather than the module's. That is a
+  constraint on what `PositionValidity` can honestly mean, not a reason to
+  build a UBX layer now.
 
 ### The T-Watch touch panel has no reset line
 
@@ -813,7 +846,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1924`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1957`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1899,7 +1932,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:796`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:829`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
@@ -2330,3 +2363,40 @@ ones that heading states.
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.
+
+### The Waveshare expansion pads `RXD`/`TXD` are UART0 — GPIO 44 and GPIO 43
+
+- **Claim:** on the `ESP32-S3-Touch-AMOLED-2.06`, the two uncommitted pads on
+  the bottom-edge pad row are **`RXD` = GPIO 44** and **`TXD` = GPIO 43**, the
+  IO-MUX pins of UART0.
+- **Source, in three links, none of them inferred from the others.** The
+  schematic's test-point block names `TP13 U0TXD` and `TP6 U0RXD`, in a
+  ten-entry list that is the exact mirror of the ten silkscreened pads
+  `WAVESHARE_BOARD_RECEIVED.md` §1.5 records — 10 of 10, which is also why this
+  sheet is known to describe this board. Those nets land on `U2` — a bare
+  `ESP32-S3R8` in QFN56 — at **pin 49 `U0TXD`** and **pin 50 `U0RXD`**, read
+  off a symbol whose numbering was cross-checked on `MTMS`/`MTDI`/`MTDO`/`MTCK`
+  at pins 48/47/45/44 against the published GPIO 42/41/40/39. ESP-IDF vendor
+  source `components/soc/esp32s3/include/soc/uart_pins.h` then gives
+  `U0RXD_GPIO_NUM 44` and `U0TXD_GPIO_NUM 43`. Written up with the rendering
+  method in
+  [GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) §4.
+- **Checked:** 2026-09-04, against schematic V1.0 and ESP-IDF v5.5.5. A change
+  of console backend, or an ESP-IDF whose `uart_pins.h` moves, re-reads both.
+- **Why they are free.** This firmware's console is the SoC's native USB, not a
+  UART bridge — `firmware/sdkconfig.defaults:65` —
+  "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y" — so UART0 carries no console, and
+  nothing under `platform/` or `firmware/` claims 43 or 44. (`boards/` is
+  the directory `AGENTS.md` names for future board code; this tree has none.)
+- **What this does *not* license.** The **first-stage ROM bootloader still
+  prints on UART0**, independently of the application console: ESP-IDF's
+  `components/efuse/esp32s3/esp_efuse_table.csv` describes `UART_PRINT_CONTROL`
+  (BLK0 bit 134) as "Set the default UART boot message output mode" with `0:
+  "Enable"` as the unburned default, and USB printing is a separate bit
+  (`DIS_USB_SERIAL_JTAG_ROM_PRINT`, BLK0 bit 130). Disabling it means burning an
+  eFuse, which `AGENTS.md` forbids. So anything wired to pad `TXD` sees boot
+  chatter on its `RX` at every reset and must tolerate it. The baud of that
+  message is **UNKNOWN** — not read off — and **this unit's eFuse was not
+  read**: the Waveshare was not on the bench for this session, so the default
+  above is the vendor's documented default and not a measurement of this board.
+  `espefuse.py summary` is read-only and would settle it.

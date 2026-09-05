@@ -427,8 +427,8 @@ spins. What would settle it: the Bosch BMA423 datasheet sections for
 ### 3.4 Per-line translation
 
 Read this alongside the existing seam. Today the firmware arms exactly one GPIO
-source: `firmware/main/board_power.cpp:286` — "gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL)",
-and the comment below it, `firmware/main/board_power.cpp:303` — "The AXP2101 has no wake line to",
+source: `firmware/main/board_power.cpp:287` — "gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL)",
+and the comment below it, `firmware/main/board_power.cpp:304` — "The AXP2101 has no wake line to",
 states a premise that is
 **true of the Waveshare board and false of the T-Watch**, where the AXP2101 IRQ
 does reach GPIO21. Whichever board that comment governs, the translation below is
@@ -456,7 +456,7 @@ wake source on this board, this is it.
 **With one open dependency, and it is not small.** The pull-up is only as
 always-on as `+3V3`, and `+3V3` is **H8**. `docs/research/HARDWARE_MATRIX.md:205` — "Do not pick" the convenient reading —
 says so about this exact rail, and the fact index carries the same warning:
-`docs/research/VERIFIED_FACTS.md:1066` — "if the schematic is right". If
+`docs/research/VERIFIED_FACTS.md:1099` — "if the schematic is right". If
 ALDO1 is the rail and #367's power owner ever gates it, R288 dies with it, IO17
 floats or is dragged low, and an armed `GPIO_INTR_LOW_LEVEL` fires immediately
 and forever — the failure this section prices for ALDO3 and touch at §3.4 ("and
@@ -469,7 +469,7 @@ well, and §5 says so.
 
 | Row | Value | Evidence |
 | --- | --- | --- |
-| Polarity | Active LOW — the vendor drives it `INPUT_PULLUP`, and the repository already arms `GPIO_INTR_LOW_LEVEL` on the equivalent line | Vendor firmware and `firmware/main/board_power.cpp:286` — "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);" |
+| Polarity | Active LOW — the vendor drives it `INPUT_PULLUP`, and the repository already arms `GPIO_INTR_LOW_LEVEL` on the equivalent line | Vendor firmware and `firmware/main/board_power.cpp:287` — "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);" |
 | External pull | **R551 10 kΩ to `AVDD`**, fed from `LDO3` | Schematic sheet 4 |
 | Rail | ALDO3, shared with the display — `docs/research/HARDWARE_MATRIX.md:97` — "**separate I2C**: SDA 39, SCL 40, INT 16" | — |
 | **The cost this imposes** | ALDO3 off means the FT6336U is unpowered **and its pull-up dies**, so IO16 floats or is dragged low and a LOW-level wake armed across that sleep fires immediately and forever. **Touch-as-wake requires ALDO3 to stay on through sleep** | Derived from schematic and rail map |
@@ -688,7 +688,7 @@ decode logic is fully determined by section 1 and testable on the host, and item
 4 as reworded records only what the drawing shows. The ledger move this list
 used to carry as a fifth item is **done, under #422 and in this report's own
 pull request** —
-`docs/research/REUSE_LEDGER.md:2491` — "now `REJECT` for the" —
+`docs/research/REUSE_LEDGER.md:2507` — "now `REJECT` for the" —
 so it is not scope for anybody lifting this section into an issue, and the
 licence obligation that item named is recorded in the same paragraph.
 Item 3 needs **B1, B2, B4 and

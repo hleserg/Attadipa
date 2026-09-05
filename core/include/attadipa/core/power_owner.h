@@ -194,8 +194,9 @@ private:
 //
 // On the Waveshare board the power button is the case in point. It is not an
 // SoC wake source at all: the AXP2101 latches an edge, and the firmware reads
-// that register during a timer wake. Reporting it in `from_soc` would make
-// every button press look like an unreconciled wake source.
+// that register after some other source has woken the CPU. Reporting it in
+// `from_soc` would make every button press look like an unreconciled wake
+// source.
 struct WakeCauses {
     std::uint16_t from_soc = 0;  // what the silicon said woke it
     std::uint16_t derived  = 0;  // what the board concluded, from a register or a pin
