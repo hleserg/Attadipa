@@ -126,8 +126,8 @@ ProvisionTimeResult provision_time(Ops &ops, const TimeProvisionRequest &request
         return ProvisionTimeResult::Rejected;
     }
 
-    apps::CivilTime civil;
-    if (!apps::civil_from_wall_time(core::WallTime{request.utc_seconds}, civil) ||
+    core::CivilTime civil;
+    if (!core::civil_from_wall_time(core::WallTime{request.utc_seconds}, civil) ||
         civil.year < 2000 || civil.year > 2099) {
         return ProvisionTimeResult::Rejected;
     }

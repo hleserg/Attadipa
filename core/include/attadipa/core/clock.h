@@ -120,4 +120,105 @@ constexpr std::uint64_t seconds_between(WallTime a, WallTime b)
     return a < b ? second - first : first - second;
 }
 
+// The calendar, in integers.
+//
+// This lived in `apps/clock.cpp` while the clock face was the only thing that
+// had a date to render. It is here now because a second layer needs it and that
+// layer is *below* applications: an NMEA receiver states its own idea of the
+// date in RMC, and `GnssObservation::receiver_time` is a `WallTime`, so the
+// driver has to do this conversion before it can report what the receiver said.
+// A driver library reaching up into `apps/` to borrow calendar arithmetic would
+// invert the layer order for a function that was never about applications.
+//
+// Howard Hinnant's civil-from-days algorithm, unchanged in the move. No
+// `mktime`, no `timegm`, no `struct tm`, no locale and no timezone: this is UTC
+// arithmetic over int64 seconds, which is what both callers actually want and
+// is the only version that is the same on the host and on the device.
+struct CivilTime {
+    std::int64_t year    = 1970;
+    unsigned     month   = 1;
+    unsigned     day     = 1;
+    unsigned     weekday = 4;  // 0 = Sunday
+    unsigned     hour    = 0;
+    unsigned     minute  = 0;
+    unsigned     second  = 0;
+};
+
+constexpr bool is_leap_year(std::int64_t year)
+{
+    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+}
+
+constexpr unsigned days_in_month(std::int64_t year, unsigned month)
+{
+    constexpr unsigned days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    return month == 0 || month > 12
+               ? 0
+               : (month == 2 && is_leap_year(year) ? 29 : days[month - 1]);
+}
+
+constexpr std::int64_t days_from_civil(std::int64_t year, unsigned month, unsigned day)
+{
+    year -= month <= 2;
+    const std::int64_t era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned     yoe = static_cast<unsigned>(year - era * 400);
+    const unsigned     doy = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1;
+    const unsigned     doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + static_cast<std::int64_t>(doe) - 719468;
+}
+
+// False when the result is outside year 1..9999 — `out` is still written, so a
+// caller that only wants to render something has a value, and a caller that
+// needs a date it can trust has an answer about it.
+constexpr bool civil_from_wall_time(WallTime time, CivilTime& out)
+{
+    std::int64_t days    = time.unix_seconds / 86400;
+    std::int64_t seconds = time.unix_seconds % 86400;
+    if (seconds < 0) {
+        seconds += 86400;
+        --days;
+    }
+
+    const std::int64_t shifted = days + 719468;
+    const std::int64_t era     = (shifted >= 0 ? shifted : shifted - 146096) / 146097;
+    const unsigned     doe     = static_cast<unsigned>(shifted - era * 146097);
+    const unsigned     yoe     = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    std::int64_t       year    = static_cast<std::int64_t>(yoe) + era * 400;
+    const unsigned     doy     = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned     mp      = (5 * doy + 2) / 153;
+    const unsigned     day     = doy - (153 * mp + 2) / 5 + 1;
+    const unsigned     month   = mp < 10 ? mp + 3 : mp - 9;
+    year += month <= 2;
+
+    std::int64_t weekday = (days + 4) % 7;
+    if (weekday < 0) {
+        weekday += 7;
+    }
+    out = {year,
+           month,
+           day,
+           static_cast<unsigned>(weekday),
+           static_cast<unsigned>(seconds / 3600),
+           static_cast<unsigned>((seconds / 60) % 60),
+           static_cast<unsigned>(seconds % 60)};
+    return year >= 1 && year <= 9999;
+}
+
+// False leaves `out` untouched. Every field is range-checked first, February 29
+// in a common year included, because the callers are a typed date and a
+// receiver's own claim about what day it is — the second of which is untrusted
+// input arriving over a wire.
+constexpr bool wall_time_from_civil(const CivilTime& civil, WallTime& out)
+{
+    if (civil.year < 1 || civil.year > 9999 || civil.day == 0 ||
+        civil.day > days_in_month(civil.year, civil.month) || civil.hour > 23 ||
+        civil.minute > 59 || civil.second > 59) {
+        return false;
+    }
+    out.unix_seconds = days_from_civil(civil.year, civil.month, civil.day) * 86400 +
+                       static_cast<std::int64_t>(civil.hour * 3600 + civil.minute * 60 +
+                                                 civil.second);
+    return true;
+}
+
 }  // namespace attadipa::core

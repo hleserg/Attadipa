@@ -235,7 +235,7 @@ esp_err_t write_rtc(const attadipa::firmware::RtcDateTime &time) {
 
 bool wall_time_from_rtc(const attadipa::firmware::RtcDateTime &rtc,
                         attadipa::core::WallTime &out) {
-  return attadipa::apps::wall_time_from_civil(
+  return attadipa::core::wall_time_from_civil(
       {static_cast<std::int64_t>(rtc.year), rtc.month, rtc.day, rtc.weekday,
        rtc.hour, rtc.minute, rtc.second},
       out);
