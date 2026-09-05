@@ -412,8 +412,8 @@ housing. Expect 1.25 mm. One reading closes the `LIKELY` row in
 ### On the powered board, whenever convenient
 
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
-  `0x69` — the five eFuse-defaulted registers of §1.3. `0x62` and `0x12` were
-  read 2026-08-23 (§6); a *default* needs a cold read, so those stay `UNKNOWN`.
+  `0x69` — the five eFuse-defaulted registers of §1.3. `0x62` (§6) and `0x12`
+  were read 2026-08-23; a *default* needs a cold read, so those stay `UNKNOWN`.
   **Watch for one pathological combination**: `0x50` bit 4 = 0 *and* bits 3:2 =
   00 (current source off) makes `TS` read 0 V through `RP2`, which the part sees
   as "battery far too hot" and refuses to charge. With the source at its 50 µA

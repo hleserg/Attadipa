@@ -308,10 +308,17 @@ Two consequences follow, both from facts this repository already holds at
   unit in — plugged and full, precharge does not run — which is why it is
   written down here rather than raised as an alarm.
 
-**And that is where it stops.** Nothing here says the cell is being harmed:
-three of those four registers were read on 2026-08-23 and none has been
-decoded here; `0x61` was not read at all. **The owner was asked whether he
-wanted them read and said yes**
+**And that is where it stops.** Nothing here says the cell is being harmed —
+and of the two registers named above as the dangerous ones, **`REG 0x64` is
+already answered, and answered well**: `0x03` = `011b` = **4.2 V**, the value
+`BATTERY_UPGRADE` §6 prescribes rather than the `100b`/`101b` that would take a
+4.2 V cell to 4.35. It read `0x03` in the 2026-08-23 dump and `0x03` again on
+this board on 2026-08-28 —
+`docs/research/BENCH_DEVICES.md:185` — "`REG 0x64` on `0x34` read back `0x03`."
+— across the 2026-08-25 factory restore above, which is a *measured* instance
+of the persistence this section relies on. What is left is narrower: `0x63` was
+read but is not decoded here, and `0x61` was not read at all.
+**The owner was asked whether he wanted them read and said yes**
 (2026-08-24, under OD-18 in
 [`../research/OWNER_DECISIONS.md`](../research/OWNER_DECISIONS.md)), so the read
 is owed on the next bench trip rather than merely available — which changes when
@@ -319,8 +326,9 @@ these `UNKNOWN`s get an answer and changes none of them today. The measurement
 plan in [`BATTERY_UPGRADE.md`](../research/BATTERY_UPGRADE.md) carries `0x63`,
 `0x64` and `0x61`: three cell-safety registers, and one burst reads all three.
 The bench session must have a GitHub issue before it starts; a bare task number
-in prose is not ownership. Until then, the work is unclaimed and every value
-remains `UNKNOWN`.
+in prose is not ownership. Until then the work is unclaimed — but what stays
+`UNKNOWN` is now only `0x61`'s value, `0x63[4]`'s decode, and which of the two
+states is kinder to the cell. `0x64` is not among them.
 
 ## Identify a board by its USB serial, never by its port
 
