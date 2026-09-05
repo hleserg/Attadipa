@@ -50,7 +50,7 @@ AN3126, and the two parts turned out to be nothing like each other.
 | Identity | `UBX-MON-VER`, and the power-up `$GNTXT` banner, agreeing | MEASURED |
 | Sentence set | GGA, GSA, GSV, RMC, VTG, GLL at 1 Hz; talkers GP, GL, GA, GB, GQ. **No `$GIGSV`** — no NavIC | MEASURED |
 | Non-NMEA framing | UBX, both directions. `CFG-UART1` reports `UBX 1, NMEA 1` in and out | MEASURED |
-| Fix acquired, and cold TTFF | yes. **Hot sub-second** — 820 ms on the receiver's own counter — and **cold 40.0 s**, guarded. **Warm — ephemeris dropped, almanac kept — was never run** | MEASURED for hot and cold; **NOT MEASURED** for warm |
+| Fix acquired, and cold TTFF | yes. **Cold 40.0 s**, guarded — the one TTFF figure this bench earned. **Hot is `UNKNOWN`**: both numbers it produced are unusable, one from a field caught lying here and one by an unrecorded method (§1.3). **Warm — ephemeris dropped, almanac kept — was never run** | **MEASURED** for cold; **`UNKNOWN`** for hot; **NOT MEASURED** for warm |
 | Position, satellites, HDOP | logged on the bench; the position itself is not committed | MEASURED, off-repo |
 | Raw log attached | **no** — see the note on coordinates above | not met, deliberately |
 
@@ -118,10 +118,11 @@ result — it means `hAcc` can be carried into `PositionValidity` as the receive
 reports it, rather than being scaled by a fudge factor invented here — but the
 claim is "not optimistic about its own noise", not "accurate to 4 m".
 
-**And the two TTFF numbers are the two ends, not the middle.** Sub-second is a
-hot start and 40.0 s is a cold one; the **warm** case — almanac and position kept,
-ephemeris stale — was never run, and that is the case a duty-cycled watch
-actually wakes into. Nothing here prices it.
+**And there is one TTFF figure here, not three.** 40.0 s is a guarded cold
+start. The hot figure is `UNKNOWN` for the reasons the row above gives, and the
+**warm** case — almanac and position kept, ephemeris stale — was never run.
+Warm is the case a duty-cycled watch actually wakes into, so the number that
+matters most to a power budget is the one entirely absent.
 
 ### 1.4 Interference and spoofing — one detector, one monitor, and it ships off
 
