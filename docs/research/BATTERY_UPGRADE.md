@@ -580,6 +580,18 @@ codes 5 through 9 decode identically in both parts:
    **1.5 A into a ~300 mAh cell, i.e. 5C**, in a state the draft documented as
    impossible. XPowersLib's own `setChargerConstantCurr()` does clamp; the raw
    path does not.
+
+   **And that is where the board was found.** The read-only PMU dump taken
+   on the physical unit 2026-08-23 returned
+   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:412` —
+   "  0x62 ICC_CFG        = 0x11", i.e. `10001b`, the bottom of that
+   range. Nothing in this firmware writes `REG 0x62`, so it is not a value
+   anybody here chose: on the SWcharge part the charger is already set to
+   **1100 mA**, and on the linear part it is running on a reserved code.
+   The hazard above is therefore not only what a mistake *could* reach —
+   the register was found there with no mistake required. Whether it still
+   reads `0x11` is one register read away and was not repeated for this
+   note.
 2. **The linear thermal model may be the wrong model.** `(VBUS − VBAT) × I_CC`
    dissipated in the package is a linear-charger calculation; through an 85 %
    buck it is roughly an order of magnitude lower. The conclusions stay
