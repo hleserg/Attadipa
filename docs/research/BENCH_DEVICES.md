@@ -195,13 +195,17 @@ this board's schematic and from register reads made elsewhere — `0x18` ES8311,
 `0x40` ES7210, `0x6b` QMI8658 — so `UNKNOWN` here means "not established *by
 this instrument*", and the matrix is the canonical source.
 
-## Two GNSS modules, delivered 2026-09-02 — NOT YET READ
+## Two GNSS modules, delivered 2026-09-02 — READ OFF 2026-09-04
 
 The owner ordered two GNSS receiver boards for the wearable-node experiments
 that [OD-1](OWNER_DECISIONS.md#od-1--there-is-a-separate-attadipa-node-and-the-watch-uses-it)
 opens — a node carrying LoRa, GNSS and an ESP32, which the watch connects to.
-They arrived on 2026-09-02. **Nothing below has been read off the hardware.**
-Every value comes from the owner's four screenshots of the two marketplace
+They arrived on 2026-09-02 and were **read off the parts on 2026-09-04** —
+[GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) is the
+report and is the canonical source for what each one is. The table below is
+kept as what the *listings* claimed, so a claim can be compared against what
+the part turned out to be; it is not evidence and never was.
+Every value in it comes from the owner's four screenshots of the two marketplace
 listings — title, product photo and description text — sent in the working
 session of 2026-09-02 and recorded through
 [#415](https://github.com/hleserg/Attadipa/pull/415); the marketplace itself
@@ -221,6 +225,7 @@ chip designation and not something read off this board either.
 
 | | "GT-U12" | QUESCAN "AN3126" |
 |---|---|---|
+| **Read off the part, 2026-09-04** | ALLYSTAR **`HD8041D`** die, `HYT-1010` module, fw `3.018.a3f23db`; **dual band L1+L5**; 115200 baud; ALLYSTAR binary, sync `F1 D9` | **u-blox M10**, ROM SPG 5.10, `PROTVER=34.10`; **single band L1/E1**; 38400 baud; UBX, sync `B5 62` |
 | Listing claims | dual-band GNSS; "new BDS SoC"; BDS, GPS, GLONASS, Galileo, IRNSS, QZSS, SBAS | u-blox **M10** platform; L1 only; GPS, GLONASS, Galileo, BeiDou; QZSS/SBAS; up to 25 Hz "in high-performance mode" |
 | Chip | **UNKNOWN** — the listing names no part; "dual-band" and "BDS SoC" suggest an Allystar or Unicore die, and that is a guess | claimed u-blox M10; which module is a guess nobody has grounds for yet; **UNKNOWN** until `$GNTXT` / `UBX-MON-VER` is read |
 | Header, as printed | `VCC GND TX RX PPS` (5 pins, photographed) | 5 pins; silkscreen not legible in the listing — **UNKNOWN** |

@@ -1,0 +1,435 @@
+# The two bench GNSS modules, read off the parts — 2026-09-04
+
+Both receivers the owner bought on 2026-09-02 have now been powered, read and
+identified from what they say about themselves. This report replaces the
+listing-derived `UNKNOWN`s in
+[BENCH_DEVICES](BENCH_DEVICES.md#two-gnss-modules-delivered-2026-09-02--read-off-2026-09-04)
+and closes [H18](OPEN_QUESTIONS.md#hardware--measurement-required). It also
+carries the one desk-resolvable item [#427](https://github.com/hleserg/Attadipa/issues/427)
+attached to the same bench trip: the GPIO numbers behind the Waveshare
+expansion pads, in §4.
+
+Bench logs stay under `~/attadipa-bench/i427/` and are never committed: they
+carry the owner's real position, and `hleserg/Attadipa` is public. So does the
+per-unit identity each part prints — chip ids, unique ids and the trailing
+serial fields of the module and product strings are read on the bench and left
+there.
+
+## 0. Which board is which — read this first
+
+**The receiver measured through most of 2026-09-04, and called "the M10"
+throughout the bench notes, is the QUESCAN AN3126.** The GT-U12 came onto the
+wire at about 18:00 UTC. Anything written before that hour describes the
+AN3126, and the two parts turned out to be nothing like each other.
+
+| | GT-U12 | QUESCAN AN3126 |
+| --- | --- | --- |
+| Die, from the part | **ALLYSTAR `HD8041D`** | **u-blox M10**, `hwVersion 000A0000` |
+| Module, from the part | `HYT-1010` family | not separately reported |
+| Firmware, from the part | `3.018.a3f23db` | ROM SPG 5.10, `PROTVER=34.10` |
+| Bands | **L1 + L5/E5a/B2a — dual** | **L1/E1 only — single** |
+| Default baud | 115200 | 38400 |
+| Binary protocol | ALLYSTAR, sync `F1 D9` | UBX, sync `B5 62` |
+| NMEA as shipped | 4.00 (`CFG-NMEAVER=02`) | 4.11 |
+| Config storage | not probed | **none usable** — BBR and Flash NAK |
+| Price paid | 1 596 ₽ | 791 ₽ |
+
+## 1. AN3126 — a u-blox M10, and it is single band
+
+### 1.1 The #427 checklist
+
+| Item | Result | Label |
+| --- | --- | --- |
+| Carrier regulator present/absent, and what `VCC` wants | **UNKNOWN** — never inspected. The bridge's `3V3` pin held 3.3 V under the module's load, which says the *dongle* regulates, not the carrier | UNKNOWN |
+| TX idle voltage | **never reported**. Bounded only by the module's own `VCC`-`GND` = 3.26 V measured at its header | NOT MEASURED |
+| Baud rate | 38400. 4800, 9600, 19200, 57600, 115200 and 230400 all returned framing garbage; 38400 returned 26 600 bytes with no corrupt character | MEASURED |
+| Identity | `UBX-MON-VER`, and the power-up `$GNTXT` banner, agreeing | MEASURED |
+| Sentence set | GGA, GSA, GSV, RMC, VTG, GLL at 1 Hz; talkers GP, GL, GA, GB, GQ. **No `$GIGSV`** — no NavIC | MEASURED |
+| Non-NMEA framing | UBX, both directions. `CFG-UART1` reports `UBX 1, NMEA 1` in and out | MEASURED |
+| Fix acquired, and cold TTFF | yes. Warm 0.1 s, **cold 40.0 s** | MEASURED |
+| Position, satellites, HDOP | logged on the bench; the position itself is not committed | MEASURED, off-repo |
+| Raw log attached | **no** — see the note on coordinates above | not met, deliberately |
+
+### 1.2 Identity, said twice
+
+Power-cycling the module produced the full startup banner after 3.4 s of
+silence:
+
+```
+$GNTXT,01,01,02,u-blox AG - www.u-blox.com
+$GNTXT,01,01,02,HW UBX 10 000A0000
+$GNTXT,01,01,02,ROM SPG 5.10 (7b202e)
+$GNTXT,01,01,02,FWVER=SPG 5.10
+$GNTXT,01,01,02,PROTVER=34.10
+$GNTXT,01,01,02,GPS;GLO;GAL;BDS
+$GNTXT,01,01,02,SBAS;QZSS
+$GNTXT,01,01,02,ANTSUPERV=
+$GNTXT,01,01,02,ANTSTATUS=DONTKNOW
+```
+
+`UBX-MON-VER` returned the same strings over the binary channel, and
+`UBX-SEC-UNIQID` returned an id whose bytes sit inside the `CHIPID` the banner
+printed. Two independent reads, one part.
+
+`ANTSTATUS=DONTKNOW` with an empty `ANTSUPERV=` means no antenna supervisor is
+wired on this carrier, so `antStatus` and `antPower` in `UBX-MON-RF` carry no
+information here. They are *unknown*, not *ok*.
+
+This is the same generation as the T-Watch's own receiver — same ROM SPG 5.10,
+same `PROTVER=34.10`
+(`docs/research/TWATCH_GNSS_READOFF_2026-09-05.md:1` — "The T-Watch GNSS module, read off the part — 2026-09-05")
+— but a different module, and this one is the bench reference rather than the
+part under test.
+
+### 1.3 What it receives
+
+All measured at one window position with the antenna on a lead, RAM-layer polls
+only, nothing written that survives a power cycle.
+
+| Measurement | Value | Conditions |
+| --- | --- | --- |
+| Bands | L1/E1 only. `UBX-NAV-SIG` reports GPS L1C/A ×9, GAL E1 ×9, BDS B1C ×8, GLO L1 ×7, SBAS L1 ×4 — **no L5, E5a, B2a or L2 anywhere** | 37 signals, 17 used |
+| Constellations | GPS, GLONASS, BeiDou, Galileo enabled; **3 simultaneous** whatever is enabled | `UBX-MON-GNSS` |
+| Horizontal precision | **rms 4.07 m**, median 3.96, 68 % 5.16, 95 % 6.66, max 7.02 | 60 s static, 12 sats, quality 2 |
+| `hAcc` honesty | receiver claimed **4.28 m** against 4.07 m measured — within 5 % | same window |
+| Best C/N0 | 42–44 dBHz | balcony |
+| Warm TTFF | **0.1 s** | ephemeris retained, fix then held 60 s |
+| Cold TTFF | **40.0 s** | `UBX-CFG-RST`, BBR wiped, antenna secured and guarded |
+| Solution rate | 1 Hz — `CFG-RATE-MEAS 1000 ms`, `CFG-RATE-NAV 1` | `CFG-VALGET`, RAM |
+
+Two things this does **not** establish. The scatter is repeatability, not
+absolute accuracy: a constant offset of the whole cluster is invisible to the
+method, and the bench has no surveyed point. And the north–south spread is
+2.5× the east–west one because a window frame cuts part of the sky — the DOP
+components show the same skew.
+
+The `hAcc` result is the one that matters for
+[#429](https://github.com/hleserg/Attadipa/issues/429): the receiver's own
+estimate can be carried into `PositionValidity` as reported, without a
+correction factor invented here.
+
+### 1.4 Interference and spoofing — one detector, one monitor, and it ships off
+
+Traced to **u-blox M10 SPG 5.10 interface description, UBX-21035062 R03** —
+the exact firmware and protocol version the banner reports — and then polled.
+
+- `UBX-NAV-STATUS.spoofDetState` read **1, "No spoofing indicated"**, not 0.
+  The detector is running. The document's own caveat is the reason this is not
+  protection: "a value of 1 - No spoofing indicated does not mean that the
+  receiver is not spoofed, it simply states that the detector was not triggered
+  in this epoch."
+- `UBX-MON-RF.jammingState` read **0** — which the document defines as "unknown
+  or feature disabled or flag unavailable". `CFG-ITFM-ENABLE` read `0x00`, and
+  the **Default layer** returns `0x00` too, so **the interference monitor is off
+  as u-blox ships it**, not off because of anything on this board.
+- Enabling it (`CFG-VALSET`, layers = `0x01`, RAM only, `ACK`ed, read back)
+  moved `jammingState` to **1, "ok"** immediately and it stayed there.
+  `cwSuppression` 9–11 of 255, `agcCnt` 558 of 8191 (6.8 %) and constant,
+  `noisePerMS` 61–85. `UBX-MON-SPAN` showed the front-end filter shape across
+  1586 MHz ± 32 MHz with no CW spike. **No interference at this bench.**
+- **Absent in this firmware:** `UBX-SEC-SIG` and `UBX-SEC-SIGLOG`. Class `0x27`
+  contains only `UBX-SEC-UNIQID` here; the richer reporting arrived in SPG 5.20
+  and 5.30. No Galileo OSNMA — that is F9/F10 territory and this part is single
+  band anyway.
+
+So "built-in spoofing protection" on this part is **one per-epoch detector bit
+and an interference monitor that ships disabled**. Both are UBX-only: nothing
+about either can be read over NMEA. Recorded against ADR-0011's spoofing axis
+as a fact, not as work.
+
+The monitor was left **on in RAM only**; unplugging the module reverts it. No
+save command was sent at any point.
+
+### 1.5 It has nowhere to put a firmware image
+
+`UBX-CFG-VALGET` names the layer it reads, so the same key was asked of all
+four:
+
+```
+layer 0 RAM     -> ANSWERED 0x01      (our RAM enable)
+layer 1 BBR     -> NAK
+layer 2 Flash   -> NAK
+layer 7 Default -> ANSWERED 0x00      (the control)
+```
+
+The layer-7 control is what makes the two NAKs evidence: Default lives in ROM
+and answered, so the failures are the receiver saying that storage is not
+there rather than the script building a bad frame. `UBX-MON-PATCH` reports two
+patch entries, both activated, both `location = eFuse` — the corrections on top
+of the ROM were burned at the factory.
+
+A firmware update in the ordinary sense therefore has nowhere to go. The route
+that remains is u-blox's for ROM parts — the host pushes an image into RAM at
+every startup — and that is not ruled out by anything here, but it needs an
+image u-blox distributes privately and a new upload path on the watch's battery
+budget, to gain `UBX-SEC-SIG` on a receiver that already fixes. Recorded, not
+proposed.
+
+## 2. GT-U12 — an ALLYSTAR HD8041D, and it is dual band
+
+### 2.1 The #427 checklist
+
+| Item | Result | Label |
+| --- | --- | --- |
+| Carrier regulator present/absent | **UNKNOWN** — the carrier back carries a u.FL connector, a round can (backup cell or supercapacitor) and passives marked 101/511/511; no regulator identified | UNKNOWN |
+| TX idle voltage | never reported | NOT MEASURED |
+| Baud rate | 115200 | MEASURED |
+| Identity | `HD8041D` die, `HYT-1010` module, firmware `3.018.a3f23db`, from the part's own polls | MEASURED |
+| Sentence set | GGA, GSA, GSV, RMC, VTG at **1.000 Hz** (30 GGA epochs over 29.0 s of receiver UTC); talkers GP, GL, GA, BD; plus `$GNTXT,01,01,01,ANT_OK` once a second | MEASURED |
+| Non-NMEA framing | ALLYSTAR binary, sync **`F1 D9`** | MEASURED |
+| Fix acquired | yes, autonomous quality 1 indoors near a window | MEASURED |
+| Cold TTFF | never run on this part | **NOT EXECUTED — HARDWARE REQUIRED** |
+| Static scatter / accuracy | never run on this part | **NOT EXECUTED — HARDWARE REQUIRED** |
+| Raw log attached | **no** — coordinates | not met, deliberately |
+
+Off the part itself, from the owner's photographs: carrier silkscreen
+`GOOUUU-GPS+BD`, shield can `GOOUUU TECH / GT-U12`, header `VCC GND TX RX PPS`,
+and a separate ~25 mm ceramic patch on u.FL. **`GT-U12` is GOOUUU's carrier-board
+name, not a chipset**, which is why it appears nowhere in the part's answers.
+
+### 2.2 The sync word is `F1 D9`, and that is why twenty-four probes were silent
+
+Twenty-four vendor protocols were sent at this module and every one was silent
+— CASIC, MTK, Quectel, Airoha, Unicore in both its NMEA and OEM-ASCII forms,
+u-blox, ST, Goke, plain NMEA queries, and a deliberately malformed sentence to
+draw a NACK out of anything that parses at all. Each sweep carried a control
+whose effect needs no reply (a rate command, checked against the observed GGA
+rate), so the silences were recorded as the probe's rather than the module's,
+and the harness was proven separately: with both signal leads pulled off the
+module's own header and joined — connector shells inside the loop — the bridge
+echoed its own test strings at 9600, 38400 and 115200. The wire was never the
+fault.
+
+What identified the part was its own output. It had been naming itself once a
+second the whole time:
+
+```
+$GNTXT,01,01,01,ANT_OK*50
+```
+
+That sentence, checksum included, is the antenna-status output documented for
+the **ALLYSTAR TAU series** — Table 25 of the TAU1113 datasheet gives
+`ANT_OK*50`, `ANT_SHORT*06` and `ANT_OPEN*40`. Byte for byte. The same
+datasheet gives the reason the probes failed: **ALLYSTAR's binary sync word is
+`F1 D9`, where u-blox uses `B5 62`.** Everything after it is the UBX frame
+shape — class, id, little-endian length, payload, Fletcher-8 checksum — which
+was verified by rebuilding the datasheet's own example byte for byte before
+anything was sent.
+
+With the right sync word the part answers 31 message types, and named itself:
+
+```
+F1 D9 0A 04 -> firmware 3.018.a3f23db, hardware HD8041D.<per-unit suffix>
+F1 D9 0A 05 -> module   HYT-1010-<per-unit suffix>
+F1 D9 0A 07 -> product  <per-unit string>
+```
+
+Polls only — zero-length payloads. `06 09` (save/clear), `06 40` (reset) and
+`06 04` were excluded by name from every sweep and never sent.
+
+### 2.3 Dual band, measured three ways
+
+An earlier reading here concluded "single band" and was **wrong**; it is
+retracted. It rested on counting records in `01 30`, which ALLYSTAR's own
+protocol specification defines as `NAV-SVINFO`, **one record per satellite** —
+a dual-band receiver produces exactly the same count there, so the count was
+evidence of nothing.
+
+What settles it, three independent ways:
+
+1. **The configuration mask it ships with.** `CFG-NAVSAT` (`06 0C`) returned
+   `37 82 10 04` = `0x04108237`, which decodes against ALLYSTAR's binary
+   protocol specification V2.3 as `ON: GPS L1, GLONASS G1, BEIDOU B1, GALILEO
+   E1, QZSS L1, GPS L5, BEIDOU B2A, GALILEO E5A`. The second band was enabled
+   out of the box.
+2. **The air.** `CFG-NMEAVER` (`06 43`) read `02` = NMEA V4.00, which is why
+   GSV carried no `signalId`. Set to `03` = V4.10 — RAM only, output-format
+   only, **restored to `02` and the restore verified by re-poll** — the
+   receiver names the signal of every satellite itself. In a 20 s window
+   indoors, 6 of 41 satellites appeared on two signalIds each: GPS 25 on 1 and
+   8, which the NMEA 4.11 table gives unambiguously as **L1 C/A and L5-Q**;
+   Galileo on 2 and 6, BeiDou on 1 and 4. GLONASS showed one signal only —
+   exactly as the mask says, G1 on and G2 off. Every constellation whose second
+   band is enabled shows two; the one whose second band is disabled shows one.
+3. **The antenna.** Photographed: two stacked ceramic resonators, larger below
+   and smaller above, one feed pin through both — the standard L1+L5 stacked
+   patch. Die, configuration and antenna are all dual band.
+
+The Galileo and BeiDou signalId pairings are left as ALLYSTAR's own numbering
+rather than mapped onto the u-blox 4.11 table, which they do not fit cleanly.
+It changes nothing: the mask names which two signals are enabled per
+constellation, and only those appear.
+
+**The marketplace listing was accurate.** It claimed "dual-band GPS L1 L5" and
+the part delivers it. That makes the GT-U12 the only receiver on this bench
+that can reject multipath by frequency — the failure mode that dominates in
+cities and under canopy, which is the case the owner bought it to characterise.
+
+Still open on this part and nothing else: **it has no accuracy figure and no
+cold-start TTFF.** The AN3126 has 4.07 m rms and 40.0 s; the GT-U12 has neither,
+so the two are not yet comparable where it counts.
+
+### 2.4 Unexplained: it does not stop when its `VCC` is unplugged
+
+Three guarded windows — 200 s, 300 s, and 300 s with the host's TX held low to
+remove any phantom feed through the module's `RX` pin — recorded **zero
+interruption** in the NMEA stream while the owner reports pulling the `VCC`
+lead. GGA timestamps run one per second with no gap and no backward jump across
+all three. Holding TX low changed nothing, so a phantom path through `RX` is
+disproved too. `UNKNOWN`, no longer blocking anything, and left recorded because
+an unexplained power path is exactly what matters if this part is ever
+considered for the product.
+
+## 3. What #429 must not do — the parser hazard, measured
+
+The two receivers disagree about NMEA field layout in a way that breaks the
+obvious parser:
+
+```
+                 GSA                        GSV
+GT-U12      19 fields, systemId PRESENT   20 fields, signalId ABSENT
+AN3126      19 fields, systemId PRESENT   21 fields, signalId PRESENT
+```
+
+NMEA 4.10 introduced GSA `systemId` and GSV `signalId` together, so the natural
+rule — "this talker is 4.10, therefore GSV carries `signalId`" — is true of the
+AN3126 and **false of the GT-U12 sitting on the same bench**. Applied to the
+GT-U12 it would read the SNR column as a signal id and shift every satellite
+record by one.
+
+The cause is documented rather than broken: the GT-U12 was in `CFG-NMEAVER=02`
+= V4.00, and ALLYSTAR puts `systemId` in GSA at **both** V4.00 and V4.10. An
+earlier note here called it a partial implementation; that was wrong and is
+retracted. The rule it produced survives the correction intact:
+
+> **A parser decides the field layout per sentence type, from that sentence's
+> own field count. It never infers one sentence type's layout from another's,
+> and never from a version inferred from a talker.**
+
+This is the first hardware evidence in the project that the receiver spread is
+wide enough to break a version-inferring parser, and it is worth more to #429
+than the band question. `TWATCH_GNSS_READOFF_2026-09-05.md` already carries the
+same rule for the watch's own module.
+
+A second note for #429, from §1.3: on a u-blox part `UBX-NAV-PVT` carries time
+and its validity, `fixType`, `numSV`, position, `hAcc`, `vAcc` and `pDOP` in one
+checksummed 92-byte frame — strictly more than the NMEA sentences, and it maps
+onto `GnssObservation` and `PositionValidity` without sentence assembly. That is
+an argument for a driver, not a decision, and the two bench parts speak
+different binary protocols anyway.
+
+## 4. The Waveshare expansion pads: `RXD` = GPIO 44, `TXD` = GPIO 43 — VERIFIED
+
+§1.5 of [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) records the pad
+row from the silkscreen and identifies `RXD`/`TXD` as the only uncommitted
+channel on it, but the GPIO numbers behind those two pads were recorded nowhere.
+#429 needs them. They resolve from the schematic in three links:
+
+1. **Pad → net.** The "Parameter Set" test-point block of
+   `ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0` sheet 1 lists ten test points —
+   `TP3 VCC3V3`, `TP4 GND`, `TP13 U0TXD`, `TP6 U0RXD`, `TP5 ESP32_SCL`,
+   `TP7 ESP32_SDA`, `TP12 USB'_N`, `TP18 USB'_P`, `GND`, `VBUS`. That is the
+   exact mirror of the ten silkscreened pads §1.5 records, 10 of 10, which is
+   also the evidence that this sheet is this board — corroborating §1.1, where
+   the silkscreen revision was read off the unit directly. So **`TP13` is the
+   `TXD` pad and `TP6` is the `RXD` pad.**
+2. **Net → chip pin.** `U2` is a bare `ESP32-S3R8` in QFN56, not a module. The
+   nets land on **pin 49, symbol name `U0TXD`**, and **pin 50, symbol name
+   `U0RXD`**. The symbol's numbering was cross-checked on four unrelated pins
+   before this was read off it — `MTMS` on 48, `MTDI` on 47, `MTDO` on 45,
+   `MTCK` on 44 — which match GPIO 42, 41, 40 and 39 on the S3's published
+   pinout.
+3. **Chip pin → GPIO.** ESP-IDF vendor source,
+   `components/soc/esp32s3/include/soc/uart_pins.h`: `#define U0RXD_GPIO_NUM 44`
+   and `#define U0TXD_GPIO_NUM 43`.
+
+**So pad `TXD` is GPIO 43 and pad `RXD` is GPIO 44.**
+
+They are genuinely free on this firmware. The Waveshare console is the SoC's
+native USB, not a UART bridge
+(`firmware/sdkconfig.waveshare:65` — "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"),
+so UART0 is not carrying the console, and nothing under `boards/`, `platform/`
+or `firmware/main/` claims 43 or 44.
+
+**One caveat #429 has to design around.** The first-stage ROM bootloader prints
+its own boot message on UART0 independently of what the application console is
+set to. The eFuse that controls it defaults to on: ESP-IDF's
+`components/efuse/esp32s3/esp_efuse_table.csv` describes `UART_PRINT_CONTROL`
+(BLK0 bit 134, 2 bits) as `Set the default UART boot message output mode
+{0: "Enable"; 1: "Enable when GPIO46 is low at reset"; 2: "Enable when GPIO46
+is high at reset"; 3: "Disable"}`, and USB printing is a **separate** bit
+(`DIS_USB_SERIAL_JTAG_ROM_PRINT`, BLK0 bit 130), so selecting the USB console
+does not silence the UART one. A GNSS module wired to these pads will therefore
+see boot chatter on its `RX` at every reset, and the only way to stop it is to
+burn an eFuse, which `AGENTS.md` forbids. The receiver must tolerate it, or the
+pad must not be wired to the module's `RX` at all.
+
+Two things this section does **not** establish. The baud of that ROM message is
+`UNKNOWN` here — not read off, and not asserted. And the eFuse state of *our*
+unit was not read: the Waveshare was not on the bench during this session, so
+the default above is the vendor's documented default, not a measurement of this
+board. `espefuse.py summary` is a read-only command and would settle it.
+
+## 5. Method — a bench measurement needs a guard on its physical variable
+
+Three cold-start readings were lost before one survived, and all three failed
+the same way: the antenna moved. A patch antenna on a long lead was knocked
+over twice, and the receiver's data stayed perfectly plausible while meaning
+nothing — "no fix in 208 s with 43 dBHz available" and "191 s" were both an
+antenna lying on its side, and both are **void**.
+
+The tell is worth keeping: **strong SBAS with zero GPS is a patch antenna on its
+side.** The geostationary SBAS satellites sit ~25–30° over the southern horizon
+at this latitude and fall into the side lobe, while the overhead GPS
+constellation lands in the null. SBAS and GPS share 1575.42 MHz, so a receiver
+hearing one at 41 dBHz and the other not at all is being pointed, not broken.
+
+The fourth run carried its own guard — it counted unique GPS satellites per 10 s
+window through the warm stage and would have **aborted rather than reported** if
+that count halved — and produced the 40.0 s figure §1.3 records. The guard never
+tripped.
+
+The rule this leaves: any bench measurement longer than a few seconds needs a
+guard on the physical variable it depends on, reporting an abort rather than a
+number. A contaminated reading that looks plausible is worse than no reading.
+
+A separate scare on the same day is recorded so it is not misread later: a
+static discharge during rewiring killed the USB host controller (recovered by
+unbinding and rebinding `xhci-hcd`), and the AN3126 went silent at the same
+moment. **The module was not damaged.** The fault was one loose Dupont socket,
+found by elimination after a harness loopback that had bypassed the connector
+shells; replacing it restored the link, the UBX reverse channel and the fix at
+once. No later behaviour of that part should be attributed to the discharge.
+
+## 6. What is still UNKNOWN
+
+- **Both carriers' regulators**, and what each `VCC` actually wants. Neither
+  board was inspected for one; both were run from the bridge's regulated 3.3 V,
+  which works but proves nothing about the carrier.
+- **Both modules' TX idle voltage.** Never measured. This is the half of H18
+  that guards an ESP32-S3 pin, and §4 is where those pins now are — so it has
+  to be answered before either module is wired to the Waveshare pad row, not
+  before the next bench capture.
+- **The GT-U12's accuracy and cold-start TTFF.** `NOT EXECUTED — HARDWARE
+  REQUIRED`, and the reason the two parts cannot yet be compared where it
+  matters.
+- **Whether an `HD8041D` can be driven into other band combinations.** The
+  shipped mask is decoded; ALLYSTAR publishes no part brief naming `HD8041` at
+  all, and the dual-band TAU1202 brief's `HD804XD` is a family resemblance, not
+  an identification.
+- **Why the GT-U12 keeps running with `VCC` unplugged.** §2.4.
+- **The ROM boot-message baud on UART0, and this Waveshare unit's eFuse state.**
+  §4.
+
+## 7. What this changes elsewhere
+
+- `BENCH_DEVICES.md`'s module section is no longer the listing; it points here.
+- `OPEN_QUESTIONS.md` **H18 closes** on identity, baud, protocol and bands, and
+  the supply/level half moves to the two `NOT MEASURED` rows above.
+- `HARDWARE_MATRIX.md`'s expansion pad row and
+  `WAVESHARE_BOARD_RECEIVED.md` §1.5 both gain the GPIO numbers from §4.
+- [#429](https://github.com/hleserg/Attadipa/issues/429) is unblocked on the
+  pin question and inherits the parser rule in §3, the `hAcc` result in §1.3 and
+  the ROM-chatter caveat in §4.
+- ADR-0011's spoofing axis gains a concrete source on one part (§1.4) and none
+  on the other: nothing equivalent was read from the ALLYSTAR.
