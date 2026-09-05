@@ -95,9 +95,22 @@ constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 // right case to size against rather than an outlier to set aside.
 //
 // The T-Watch's own module is inside that measurement rather than beside it:
-// it is a u-blox M10 at 38400, and one of the two parts those captures were
-// taken from — the AN3126 — is a u-blox M10 at 38400. Same family, same
-// protocol version, half the wire rate of the GT-U12 that set the worst case.
+// it is a u-blox M10 at 38400, and so is the part that set the worst case —
+// the AN3126, in the capture the 4127 was counted from
+// (`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:426` — "them is 4127
+// bytes**, in `boot4-…140439Z` — the capture taken across a power"). Same
+// family, same protocol version, same wire rate.
+//
+// The GT-U12 is the odd part here rather than the reference. It runs at
+// 115200, three times this module's rate, and its heaviest window was the
+// *smaller* of the two —
+// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:447` — "heaviest the
+// GT-U12 produced is 3332. Neither part is the reason for the" — because
+// what drives the spread is satellites in view, not the wire rate and not the
+// protocol version. So the headroom this constant has is 8192 over 4127, near
+// 2x, on this module's family at this module's baud. Reading it as more than
+// that would be borrowing margin from a part the watch does not have.
+//
 // Not the same part number, so this is an argument and not a reading; the thing
 // that would turn it into one is a capture from the watch.
 constexpr int kRxRing = 8192;

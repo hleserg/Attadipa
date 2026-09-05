@@ -66,15 +66,23 @@ constexpr Rail kRails[] = {
      "wedged FT6336U (TWATCH_S3_PLUS_BSP_REUSE.md §8)"},
     {0x95, "ALDO4", RailPolicy::NotAuthorised,
      "radio; gateable when the radio holds no lease"},
-    // The row the comment below used to predict. This image now raises this
+    // The row the comment below used to predict. The GNSS images raise this
     // rail on purpose -- `board_power_enable_gnss_rail()` writes 0x96 = 0x1C
     // and sets REG 90 bit 4 -- so a domain owner asking which regulator the
     // receiver is on has an answer that is not "look in another function".
+    // *The GNSS images*, not every image: that function is a no-op unless
+    // `CONFIG_ATTADIPA_GNSS_BRIDGE` or `CONFIG_ATTADIPA_GNSS_LOCAL` is set,
+    // and this table is built either way. Which rail feeds the receiver is a
+    // fact about the board and holds in every image; whether anything raised
+    // it is a fact about the build. A row that conflated the two would tell a
+    // reader on a plain T-Watch that BLDO1 is up when it is wherever the PMU
+    // left it.
     // `NotAuthorised`, unchanged and deliberately: naming a rail is not
     // licensing a gate, and nothing has measured what this one costs.
     {0x96, "BLDO1", RailPolicy::NotAuthorised,
-     "GNSS at 3300 mV (HARDWARE_MATRIX.md \"AXP2101 rail map\"); raised by "
-     "board_power_enable_gnss_rail(), and nothing has measured it. An LS550G "
+     "GNSS at 3300 mV (HARDWARE_MATRIX.md \"AXP2101 rail map\"); raised in "
+     "the GNSS images by board_power_enable_gnss_rail(), and nothing has "
+     "measured it. An LS550G "
      "would need DC4 at 850 mV as well, and which module is fitted is per unit"},
     {0, "BLDO2/DLDO1", RailPolicy::NotAuthorised,
      "haptic enable, amplifier; nothing has measured them"},
@@ -131,13 +139,21 @@ static_assert(kRails[2].voltage_register == 0x93 &&
 //
 // Only Display maps, and it maps to the trap rather than to a supply: a reader
 // who asks this owner to cut display power is asking for ALDO2, and the answer
-// they need is why that is the wrong rail. The other domains have no rail on
-// this board — Radio and NodeLink live on the SoC; no GNSS and no IMU are
-// fitted, and this board's rail map names no rail for either
-// (HARDWARE_MATRIX.md, the Waveshare "AXP2101 rail map"). A receiver on the
-// expansion pads is a receiver wired to a board that has no rail for it, which
-// is the same nullptr for a different reason — and an invented mapping would
-// be a hardware claim with no source.
+// they need is why that is the wrong rail. The other domains reach that same
+// nullptr by three different routes, and they are worth keeping apart because
+// only one of them means nothing is there.
+//
+// Radio and NodeLink live on the SoC. No GNSS is fitted —
+// `docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** |"
+// — so a receiver on the expansion pads is one wired to a board whose rail
+// map names no rail for it. The IMU is the case that is *not* absence: a
+// QMI8658 sits on the main bus and has answered a scan —
+// `docs/research/HARDWARE_MATRIX.md:392` — "**`0x6B`, MEASURED**" — and its
+// `Power rail` column reads `D13`, which that table defines as a load known to
+// be on a PMU rail whose rail is unresolved. So for `Imu` this nullptr says
+// "which rail is UNKNOWN", not "nothing is there", and the two are not the
+// same answer to give whoever comes to gate the accelerometer. An invented
+// mapping would be a hardware claim with no source either way.
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   return domain == attadipa::core::PowerDomain::Display ? &kRails[2] : nullptr;
 }

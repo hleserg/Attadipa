@@ -159,7 +159,7 @@ public:
     // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
     // control a module on that pad, and `Off` becomes reachable — but only for
     // a caller that owns the rail and passes the state in. Nothing gates ALDO1
-    // on this board today: `firmware/main/board_power.cpp:110` — "    {0x92, \"ALDO1\", RailPolicy::NotAuthorised," —
+    // on this board today: `firmware/main/board_power.cpp:118` — "    {0x92, \"ALDO1\", RailPolicy::NotAuthorised," —
     // leaves it as the PMU brings it up.
     core::Availability availability() const override;
 
