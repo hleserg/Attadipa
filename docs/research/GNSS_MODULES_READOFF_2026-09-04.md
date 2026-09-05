@@ -419,15 +419,22 @@ measured directly, not a peak second multiplied by three.
 | Captures | Module | Satellites in view | Worst 1 s | Worst 3 s |
 | --- | --- | --- | --- | --- |
 | `boot-…090718Z`, `cap-38400-…`, `live-…`, both `waitfix-…` | AN3126 | 0–3 | 452–460 | 1356–1380 |
-| `fix-…1353Z`, four `boot…-1400…` | AN3126 | 8–38 | 1064–1685 | 3188–**4157** |
+| `fix-…1353Z`, four `boot…-1400…` | AN3126 | 8–38 | 1064–1655 | 3188–**4127** |
 | six `gtu12-…` | GT-U12 | 38–40 | 1055–1111 | 3133–3332 |
 
 One epoch a second in all sixteen. **The worst three-second window in any of
-them is 4157 bytes**, in `boot4-…140439Z` — the capture taken across a power
-cycle, and 442 bytes of that window are the twelve-line u-blox `$GNTXT` startup
-banner. That burst belongs in the number rather than beside it: a module coming
-back up while the host has been asleep is exactly the case where a long gap and
-a large burst arrive together.
+them is 4127 bytes**, in `boot4-…140439Z` — the capture taken across a power
+cycle. Its three epochs are 1218, 1254 and 1655 bytes, and **442 bytes of the
+last one are the twelve-line u-blox `$GNTXT` startup banner**. That burst
+belongs in the number rather than beside it: a module coming back up while the
+host has been asleep is exactly the case where a long gap and a large burst
+arrive together.
+
+4127 is a floor, not a ceiling. One line of that capture is torn — the capture
+tool spliced an annotation into a `$GNGLL` — so about twenty bytes the receiver
+did send are not in the file to be counted. The margin below absorbs it; a
+count that included the tool's own annotation text as receiver bytes would not
+be a measurement of the receiver.
 
 **What drives the spread is satellites in view, not the module and not the
 protocol version.** The two AN3126 rows are the same part at the same
@@ -435,21 +442,26 @@ protocol version.** The two AN3126 rows are the same part at the same
 GNGLL`, five `GSA`, and one `GSV` block per constellation. Only the lengths
 change: with no satellites in view `$GNRMC` is 27 bytes and `$GNGGA` is 33, each
 `GSV` is a 20-byte stub, and the epoch is 436; with a sky those become 70 and
-75, the `GSV` stubs become populated blocks, and the epoch passes 1200. Set the
-banner aside and the two parts cost about the same at a comparable sky — 3722
-against 3332 bytes per three seconds.
+75, the `GSV` stubs become populated blocks, and the epoch passes 1200. The
+heaviest window with no banner in it is 3722 bytes, from the AN3126; the
+heaviest the GT-U12 produced is 3332. Neither part is the reason for the
+spread, and the two figures are not a like-for-like comparison of the parts:
+the GT-U12 reports 39–40 in view in every epoch of every capture, including one
+taken across a power cycle where it was using none of them, so that column is a
+tracking-channel or almanac count for that receiver and not a sky.
 
 What this decides in `firmware/main/local_gnss.cpp` — "constexpr int kRxRing = 8192;":
 a gap *shorter* than the 3-second flush keeps its bytes, so the ring has to have
-been able to hold them. **4096 would not have: it is 61 bytes under the worst
+been able to hold them. **4096 would not have: it is 31 bytes under the worst
 window measured here**, and a ring that overflows inside that window hands the
 next tick a backlog whose newest sentence is already seconds behind — an old
 epoch stamped with the time it was noticed, which is the one thing this driver
-exists to refuse. 8192 clears the measured worst case by 97%.
+exists to refuse. 8192 clears the measured worst case by 98%.
 
 **Counted from the captures in `~/attadipa-bench/i427/`, which are not
 committed** — they carry the owner's real position. Reproducible from any
-capture of the same modules: sentence bytes including CRLF, split into epochs at
+capture of the same modules: the capture tool's own `###` annotations removed
+wherever they appear, then sentence bytes including CRLF, split into epochs at
 each `RMC`, summed over every window of three consecutive epochs.
 
 ## 4. The Waveshare expansion pads: `RXD` = GPIO 44, `TXD` = GPIO 43 — VERIFIED
