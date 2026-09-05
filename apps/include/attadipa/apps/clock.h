@@ -11,16 +11,6 @@ namespace attadipa::apps {
 
 enum class ClockMode : std::uint8_t { Adult, Child };
 
-struct CivilTime {
-  std::int64_t year = 1970;
-  unsigned month = 1;
-  unsigned day = 1;
-  unsigned weekday = 4; // 0 = Sunday
-  unsigned hour = 0;
-  unsigned minute = 0;
-  unsigned second = 0;
-};
-
 struct ClockState {
   core::Timed<core::WallTime> time{};
   core::Availability availability = core::Availability::Unprovisioned;
@@ -44,8 +34,6 @@ struct ClockText {
   bool ready = false;
 };
 
-bool civil_from_wall_time(core::WallTime time, CivilTime &out);
-bool wall_time_from_civil(const CivilTime &civil, core::WallTime &out);
 ClockText format_clock(const ClockState &state, bool compact_date);
 // Cut a trailing incomplete UTF-8 sequence off a NUL-terminated string in
 // place, so a status truncated by bytes never ends on half a character.

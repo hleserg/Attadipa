@@ -129,7 +129,7 @@ void ProvisioningEntry::accept() {
     const unsigned day = number(digits_, 6, 2);
     core::WallTime probe;
     if (year < 2000 || year > 2099 ||
-        !wall_time_from_civil({year, month, day, 0, 0, 0, 0}, probe)) {
+        !core::wall_time_from_civil({year, month, day, 0, 0, 0, 0}, probe)) {
       verdict_ = EntryVerdict::Rejected;
       return;
     }
@@ -159,9 +159,9 @@ void ProvisioningEntry::accept() {
       return;
     }
     core::WallTime utc;
-    if (!wall_time_from_civil({static_cast<std::int64_t>(year_), month_, day_,
-                               0, hour_, minute_, 0},
-                              utc)) {
+    if (!core::wall_time_from_civil(
+            {static_cast<std::int64_t>(year_), month_, day_, 0, hour_, minute_, 0},
+            utc)) {
       verdict_ = EntryVerdict::Rejected;
       return;
     }

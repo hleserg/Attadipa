@@ -19,7 +19,7 @@ attadipa::core::WallTime wall(int year, unsigned month, unsigned day,
                               unsigned hour, unsigned minute,
                               unsigned second = 0) {
   attadipa::core::WallTime out;
-  CHECK(attadipa::apps::wall_time_from_civil(
+  CHECK(attadipa::core::wall_time_from_civil(
       {year, month, day, 0, hour, minute, second}, out));
   return out;
 }
@@ -57,15 +57,15 @@ int main() {
   CHECK(std::strcmp(detail.year, "2026") == 0);
   CHECK(detail.day_progress_minutes == 754 && detail.weekday == 2);
 
-  apps::CivilTime civil;
-  CHECK(apps::civil_from_wall_time(wall(2024, 2, 29, 23, 59, 59), civil));
+  core::CivilTime civil;
+  CHECK(core::civil_from_wall_time(wall(2024, 2, 29, 23, 59, 59), civil));
   CHECK(civil.year == 2024 && civil.month == 2 && civil.day == 29 &&
         civil.weekday == 4);
-  CHECK(apps::civil_from_wall_time(wall(2025, 1, 1, 0, 0), civil));
+  CHECK(core::civil_from_wall_time(wall(2025, 1, 1, 0, 0), civil));
   CHECK(civil.year == 2025 && civil.month == 1 && civil.day == 1 &&
         civil.weekday == 3);
   core::WallTime rejected;
-  CHECK(!apps::wall_time_from_civil({2023, 2, 29, 0, 0, 0, 0}, rejected));
+  CHECK(!core::wall_time_from_civil({2023, 2, 29, 0, 0, 0, 0}, rejected));
 
   CHECK(apps::milliseconds_to_next_minute(wall(2026, 8, 25, 12, 34, 0)) ==
         60000);
