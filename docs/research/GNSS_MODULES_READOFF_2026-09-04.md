@@ -6,8 +6,8 @@ listing-derived `UNKNOWN`s in
 [BENCH_DEVICES](BENCH_DEVICES.md#two-gnss-modules-delivered-2026-09-02--read-off-2026-09-04)
 and answers [H18](OPEN_QUESTIONS.md#hardware--measurement-required) on identity,
 baud, protocol and bands. **It does not close H18**, which stays `PARTIAL`: its
-supply half — a regulator on each carrier, and each module's TX idle voltage —
-is untouched, and §4 is exactly where that matters, because those pins are now
+supply half — a regulator on each carrier, each module's TX idle voltage, and
+the GT-U12's back-drive path in §2.4 — is untouched, and §4 is exactly where that matters, because those pins are now
 named. It also
 carries the one desk-resolvable item [#427](https://github.com/hleserg/Attadipa/issues/427)
 attached to the same bench trip: the GPIO numbers behind the Waveshare
@@ -50,7 +50,7 @@ AN3126, and the two parts turned out to be nothing like each other.
 | Identity | `UBX-MON-VER`, and the power-up `$GNTXT` banner, agreeing | MEASURED |
 | Sentence set | GGA, GSA, GSV, RMC, VTG, GLL at 1 Hz; talkers GP, GL, GA, GB, GQ. **No `$GIGSV`** — no NavIC | MEASURED |
 | Non-NMEA framing | UBX, both directions. `CFG-UART1` reports `UBX 1, NMEA 1` in and out | MEASURED |
-| Fix acquired, and cold TTFF | yes. **Hot** 0.1 s (ephemeris retained), **cold 40.0 s**, both guarded. **Warm — ephemeris dropped, almanac kept — was never run** | MEASURED for hot and cold; **NOT MEASURED** for warm |
+| Fix acquired, and cold TTFF | yes. **Hot** 0.1 s (ephemeris retained), **cold 40.0 s** (the cold run guarded, the hot one too short to need it). **Warm — ephemeris dropped, almanac kept — was never run** | MEASURED for hot and cold; **NOT MEASURED** for warm |
 | Position, satellites, HDOP | logged on the bench; the position itself is not committed | MEASURED, off-repo |
 | Raw log attached | **no** — see the note on coordinates above | not met, deliberately |
 
@@ -257,12 +257,26 @@ What settles it, three independent ways:
    protocol specification V2.3 as `ON: GPS L1, GLONASS G1, BEIDOU B1, GALILEO
    E1, QZSS L1, GPS L5, BEIDOU B2A, GALILEO E5A`. The second band was enabled
    out of the box.
+
+   **One bit of that mask is unidentified here, and it is recorded rather than
+   glossed.** `0x04108237` has **nine** bits set — 0, 1, 2, 4, 5, 9, 15, 20 and
+   26 — and the list above names eight signals. Benign readings exist (SBAS, or
+   one name covering both B1I and B1C) and so do readings that matter: a ninth
+   enabled signal, or **IRNSS**, which this part's listing claimed and which is
+   the ALLYSTAR tell this trip went looking for — and which §2.1 records as
+   absent from the talker list. ALLYSTAR's specification is not in this
+   repository, so neither a reader nor a later session can re-derive the mapping
+   from what is here. **Do not size what this receiver emits from the
+   eight-name list.** Nothing in the dual-band conclusion rests on it: items 2
+   and 3 are independent of the mask, and item 2 bounds each constellation to
+   two signals on the air.
 2. **The air.** `CFG-NMEAVER` (`06 43`) read `02` = NMEA V4.00, which is why
    GSV carried no `signalId`. Set to `03` = V4.10 — RAM only, output-format
    only, **restored to `02` and the restore verified by re-poll** — the
    receiver names the signal of every satellite itself. In a 20 s window
    indoors, 6 of 41 satellites appeared on two signalIds each: GPS 25 on 1 and
-   8, which the NMEA 4.11 table gives unambiguously as **L1 C/A and L5-Q**;
+   8, which the NMEA 4.11 table names **L1 C/A and L5-Q** — a naming this part does
+   not follow throughout, see below;
    Galileo on 2 and 6, BeiDou on 1 and 4. GLONASS showed one signal only —
    exactly as the mask says, G1 on and G2 off. Every constellation whose second
    band is enabled shows two; the one whose second band is disabled shows one.
@@ -307,10 +321,22 @@ either module's `TX` reaches GPIO 44.
 The two receivers disagree about NMEA field layout in a way that breaks the
 obvious parser:
 
+GSA is fixed-length and both parts agree on it:
+
 ```
-                 GSA                        GSV
-GT-U12      19 fields, systemId PRESENT   20 fields, signalId ABSENT
-AN3126      19 fields, systemId PRESENT   21 fields, signalId PRESENT
+GT-U12      GSA  19 fields in all 120 sentences,  systemId PRESENT
+AN3126      GSA  19 fields in all 351 sentences,  systemId PRESENT
+```
+
+**GSV is not fixed-length, and that is the trap.** A GSV sentence carries four
+header fields and then a four-field block per satellite, so its length is
+`4 + 4n` without `signalId` and `5 + 4n` with it — and `n` is 1 to 4, because
+the last sentence of a group carries only the satellites left over. Counted
+across the two captures:
+
+```
+GT-U12      GSV field counts  {8, 16, 20}          signalId ABSENT
+AN3126      GSV field counts  {5, 9, 13, 17, 21}   signalId PRESENT
 ```
 
 NMEA 4.10 introduced GSA `systemId` and GSV `signalId` together, so the natural
@@ -319,14 +345,31 @@ AN3126 and **false of the GT-U12 sitting on the same bench**. Applied to the
 GT-U12 it would read the SNR column as a signal id and shift every satellite
 record by one.
 
+The rule that replaces it must be **`4 + 4n` versus `5 + 4n`, not a pair of
+example lengths.** `4 + 4n = 5 + 4m` has no integer solution, so the two forms
+never collide and the residue decides:
+
+```
+(fields - 4) % 4 == 0  ->  no signalId   (GT-U12: 8, 16, 20)
+(fields - 4) % 4 == 1  ->  signalId last (AN3126: 5, 9, 13, 17, 21)
+```
+
+An earlier version of this section gave the counts as "20" and "21" and is
+**retracted**: those are the two *full* sentences, and a parser matching on them
+has no answer for the tail sentence of every group — which is one sentence in
+three here. That mistake is the same record-shifting bug this section exists to
+prevent, one level further in.
+
 The cause is documented rather than broken: the GT-U12 was in `CFG-NMEAVER=02`
 = V4.00, and ALLYSTAR puts `systemId` in GSA at **both** V4.00 and V4.10. An
 earlier note here called it a partial implementation; that was wrong and is
 retracted. The rule it produced survives the correction intact:
 
 > **A parser decides the field layout per sentence type, from that sentence's
-> own field count. It never infers one sentence type's layout from another's,
-> and never from a version inferred from a talker.**
+> own field count — and where a sentence is variable-length, from the residue
+> its grammar defines, never from an example length. It never infers one
+> sentence type's layout from another's, and never from a version inferred from
+> a talker.**
 
 This is the first hardware evidence in the project that the receiver spread is
 wide enough to break a version-inferring parser, and it is worth more to #429
@@ -370,8 +413,9 @@ channel on it, but the GPIO numbers behind those two pads were recorded nowhere.
 They are genuinely free on this firmware. The Waveshare console is the SoC's
 native USB, not a UART bridge
 (`firmware/sdkconfig.defaults:65` — "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"),
-so UART0 is not carrying the console, and nothing under `boards/`, `platform/`
-or `firmware/main/` claims 43 or 44.
+so UART0 is not carrying the console, and nothing under `platform/` or
+`firmware/` claims 43 or 44 — `boards/`, which `AGENTS.md` names for board
+code, does not exist in this tree yet.
 
 **One caveat #429 has to design around.** The first-stage ROM bootloader prints
 its own boot message on UART0 independently of what the application console is
@@ -459,3 +503,8 @@ once. No later behaviour of that part should be attributed to the discharge.
   the ROM-chatter caveat in §4.
 - ADR-0011's spoofing axis gains a concrete source on one part (§1.4) and none
   on the other: nothing equivalent was read from the ALLYSTAR.
+- **A driver that wants a jamming indication from an M10 inherits a constraint
+  §1.4 and §1.5 only imply separately.** `CFG-ITFM-ENABLE` is `0x00` on the
+  Default layer and there is nowhere to persist an override — BBR and Flash both
+  NAK — so the monitor must be re-enabled **in RAM at every boot**, and until it
+  is, `jammingState = 0` means *not looking*. It must never be read as *ok*.

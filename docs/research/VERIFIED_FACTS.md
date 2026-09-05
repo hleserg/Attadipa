@@ -2386,7 +2386,8 @@ ones that heading states.
 - **Why they are free.** This firmware's console is the SoC's native USB, not a
   UART bridge — `firmware/sdkconfig.defaults:65` —
   "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y" — so UART0 carries no console, and
-  nothing under `boards/`, `platform/` or `firmware/main/` claims 43 or 44.
+  nothing under `platform/` or `firmware/` claims 43 or 44. (`boards/` is
+  the directory `AGENTS.md` names for future board code; this tree has none.)
 - **What this does *not* license.** The **first-stage ROM bootloader still
   prints on UART0**, independently of the application console: ESP-IDF's
   `components/efuse/esp32s3/esp_efuse_table.csv` describes `UART_PRINT_CONTROL`

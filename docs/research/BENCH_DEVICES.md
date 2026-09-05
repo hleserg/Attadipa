@@ -253,8 +253,9 @@ Neither carrier was inspected for a regulator; both were run from a CH340G
 bridge's regulated 3.3 V, which worked and survived, and which proves nothing
 about what either `VCC` wants. Recorded here rather than left as silence,
 because a rule this section states and the record quietly bypasses is worse
-than no rule. It stays owed, together with each module's TX idle voltage, and
-those two are what keep H18 `PARTIAL` rather than closed — see
+than no rule. It stays owed, together with each module's TX idle voltage and the
+GT-U12's back-drive path, and those three are what keep H18 `PARTIAL` rather
+than closed — see
 [GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) §6.
 
 **No code depends on either part yet, and the pin question is no longer what
