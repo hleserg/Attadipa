@@ -8,6 +8,8 @@
 
 #include "attadipa/ui/color.h"
 
+#include "review_keys.h"
+
 // The diagnostic test pattern.
 //
 // Raw colours and raw pixel geometry on purpose, and this file is named in
@@ -242,6 +244,13 @@ void refresh_labels() {
 
 void build_diagnostic_screen(const platform::BoardProfile &board) {
   g.board = board;
+
+  // This screen does not follow `T`, and says so out loud rather than by
+  // omission — the colours below are test vectors, and a pattern that followed
+  // a palette could not detect the swapped channel it exists to detect. `T`
+  // now reports that nothing changed instead of flipping a theme belonging to
+  // a screen that is not on the panel (#432).
+  set_theme_toggle(nullptr);
 
   const int width = board.display.width_px;
   const int height = board.display.height_px;

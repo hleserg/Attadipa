@@ -328,6 +328,25 @@ if(ATTADIPA_BUILD_SIMULATOR)
     add_test(NAME ui_icons COMMAND test_ui_icons)
     set_tests_properties(ui_icons PROPERTIES LABELS design)
 
+    # -----------------------------------------------------------------------
+    # The two review keys, through LVGL's own event path (#432).
+    #
+    # `L` and `T` are the simulator's public contract -- `sim/options.cpp`
+    # prints "T toggles it while running" -- and until this test nothing could
+    # press either of them. The navigation readout shipped ignoring `T` for
+    # exactly that reason: the routing lived in `main.cpp`, which no test can
+    # link, so the defect was invisible to every check in this build and
+    # visible to anyone who ran the simulator for four seconds.
+    #
+    # It creates a real keypad input device and a display that flushes into
+    # memory, so it needs no window and no SDL video driver -- but it is a
+    # simulator test all the same, and only exists in a simulator build,
+    # because LVGL is what it drives.
+    add_executable(test_sim_review_keys test_sim_review_keys.cpp)
+    target_link_libraries(test_sim_review_keys PRIVATE attadipa_sim_screens)
+    add_test(NAME sim_review_keys COMMAND test_sim_review_keys)
+    set_tests_properties(sim_review_keys PROPERTIES LABELS "simulator;design")
+
     # The raw-value checker is only complete if its written LVGL inventory is
     # held against the headers used by this simulator build.
     if(Python3_Interpreter_FOUND)
