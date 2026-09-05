@@ -95,15 +95,26 @@ std::uint64_t last_tick_ms = 0;
 //   0 unframed, 0 discarded — nothing is on the wire. A pad not connected, a
 //     module with no supply, or the wrong GPIO.
 //   anything else — bytes are arriving and are not framing as NMEA. Check the
-//     baud rate, the line level, and whether the module emits NMEA at all; the
-//     GT-U12 on this bench does not: `docs/research/OPEN_QUESTIONS.md:93` — "speaking ALLYSTAR binary behind the sync word **`F1 D9`**"
+//     baud rate, the line level, and whether the module emits NMEA at all.
 //
-// WHICH OF THOSE THREE IT IS CANNOT BE READ OFF THE RATIO, and an earlier
-// version of this comment claimed it could. A binary stream contains `0x24`
-// like any other byte — about every 256 — and a CR or LF about every 128, so
-// it frames runs and fails them exactly as a stream at the wrong baud does.
-// Both numbers move in both cases. The pair separates "something" from
-// "nothing" and hands the rest to a person with an oscilloscope.
+// WHICH OF THOSE TWO IT IS, THE PAIR ANSWERS; WHICH FAULT PRODUCED IT, IT DOES
+// NOT, and an earlier version of this comment claimed the ratio could say. A
+// binary stream contains `0x24` like any other byte — about every 256 — and a
+// CR or LF about every 128, so it frames runs and fails them exactly as a
+// stream at the wrong baud does. Both numbers move in both cases. The pair
+// separates "something" from "nothing" and hands the rest to a person with an
+// oscilloscope.
+//
+// THE MODULE THIS OVERLAY IS CONFIGURED FOR IS NOT AN EXAMPLE OF THE SECOND
+// ROW, and naming it as one is the error this paragraph replaces. The GT-U12
+// emits GGA, GSA, GSV, RMC and VTG at 1 Hz, three of which this parser reads
+// (`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:210` — "| Sentence set | GGA, GSA, GSV, RMC, VTG at **1.000 Hz**"),
+// and its ALLYSTAR binary comes only in answer to a poll
+// (`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:259` — "Polls only — zero-length payloads."),
+// which this driver never sends because it never transmits at all —
+// `uart_set_pin()` below leaves TX unrouted. So with that part on this pad the
+// second row is about the baud, the wiring or the line level, not about the
+// protocol the module speaks.
 //
 // Neither number is reset by the flush at a gap, so a bench session reads a
 // total since boot rather than since the last wake.

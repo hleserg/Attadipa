@@ -24,7 +24,7 @@
 //
 // **So `age_at_source_ms` stays empty for this provider too**, and
 // `core::LocationService`'s rule that no producer states an observation age
-// (`core/include/attadipa/core/location_service.h:181` — "    // How old the coordinate was when its source sampled it. **Always empty in")
+// (`core/include/attadipa/core/location_service.h:192` — "    // How old the coordinate was when its source sampled it. **Always empty in")
 // still holds. Writing that field from RMC's own UTC would need a wall clock
 // trusted before the fix that is supposed to establish it.
 //

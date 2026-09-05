@@ -4,8 +4,14 @@
 // The board's own GNSS receiver, on the one uncommitted channel it has.
 //
 // `docs/research/WAVESHARE_BOARD_RECEIVED.md:159` — "`RXD`/`TXD` pair: **UART0, `RXD` = GPIO 44, `TXD` = GPIO 43**, traced in §4 of"
-// — is the whole hardware story: pad 7 is this CPU's receive line, and a module
-// wired to it talks. Nothing on this board is a GNSS receiver
+// — is the *pin* half of the hardware story. Pad 7 is this CPU's receive line
+// and a module wired to it talks; the other half — what that module puts on
+// the pad when it is idle — is open as H18, and it is a gate rather than a
+// detail:
+// `docs/research/OPEN_QUESTIONS.md:93` — "the S3 is not 5 V tolerant, so the module's TX idle voltage has to be on a meter"
+// — PARTIAL. No voltage is claimed here in either direction; the fact is that
+// the number is NOT MEASURED, so wiring a module to pad 7 waits on that
+// reading. Nothing on this board is a GNSS receiver
 // (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |"),
 // which is why the feature is off by default: turning it on is the
 // configuration change that makes the navigation readout's `Unprovisioned`
@@ -21,7 +27,7 @@
 //
 // `local_gnss_tick()` is called from `refresh_ui()`, `local_gnss_location()`
 // from `refresh_nav()`, and both of those are LVGL timer callbacks —
-// `physical_input.cpp:105` — "    lv_timer_t *timer = lv_timer_create(sleep_timer, kPollMs, this);"
+// `firmware/main/physical_input.cpp:105` — "    lv_timer_t *timer = lv_timer_create(sleep_timer, kPollMs, this);"
 // shows the sleep path is one too, so even the wake redraw is that same task.
 // One task, no snapshot, no critical section. `meshcore_ble.cpp` copies its
 // `LocationState` under a lock because its worker is a *different* task; this

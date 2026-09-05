@@ -15,6 +15,12 @@
 # line, so a module's TX goes there and nothing here transmits. The baud is what the
 # GT-U12 was MEASURED talking at on the bench (#427); a different module needs
 # a different number here, not a sweep.
+#
+# The pin is settled and the level on it is not. H18 in
+# docs/research/OPEN_QUESTIONS.md stays PARTIAL because neither bench module's
+# TX idle voltage has been measured and the S3 is not 5 V tolerant. NOT
+# MEASURED is the whole claim -- put a meter on the module's TX before this
+# overlay's pad sees it.
 CONFIG_ATTADIPA_GNSS_LOCAL=y
 CONFIG_ATTADIPA_GNSS_LOCAL_RX=44
 CONFIG_ATTADIPA_GNSS_LOCAL_BAUD=115200
