@@ -516,10 +516,14 @@ esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
   // `board_power_bring_up_rails()`, early, because it runs after the UI has
   // returned and needs the rail up however that call ended. The local receiver
   // asks from `twatch_board.cpp`, immediately before `local_gnss_start()` and
-  // past every `abandon_twatch_after`, because `rollback_boot_retaining_all()`
-  // does not reboot: it drops the PMU handle and returns. A rail raised before
-  // that point and rolled back over is a powered module with nothing reading it
+  // past every `abandon_twatch_after`, because one branch of
+  // `rollback_boot_retaining_all()` drops the PMU handle and returns without
+  // rebooting -- the branch taken when no display is registered, which is the
+  // one the "display capability" rollback takes. A rail raised before that
+  // point and rolled back over it is a powered module with nothing reading it
   // and no handle left to switch it off. Raised after it, that cannot happen.
+  // The rollbacks that keep a registered display keep the handle with it, so
+  // those were never the hazard; the branch-by-branch argument is at the caller.
   //
   // DC3 is deliberately *not* written. The vendor drives it to 3300 mV for
   // "earlier versions" of this watch, but our datasheet copy documents DCDC3

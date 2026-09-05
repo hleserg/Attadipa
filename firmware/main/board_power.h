@@ -66,9 +66,11 @@ namespace attadipa::firmware {
 //
 // Separate from `board_power_bring_up_rails()` below because the right moment
 // differs by consumer, not by board: a consumer that runs past a boot rollback
-// must raise it past the rollback too, since the rollback drops the PMU handle
-// and a rail with no handle can no longer be switched off. The full argument is
-// at the definition.
+// must raise it past the rollback too, since one branch of that rollback drops
+// the PMU handle and a rail with no handle can no longer be switched off. Not
+// every branch does -- one that retains a registered display retains the handle
+// with it -- but the branch that does is reachable, and one reachable branch is
+// enough to have to order against. The full argument is at the definition.
 esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu);
 
 // Bring the rails this board needs up, and own only those.

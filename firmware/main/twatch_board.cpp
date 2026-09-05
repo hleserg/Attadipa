@@ -810,11 +810,23 @@ esp_err_t start_twatch_ui() {
   // UART driver's RX ring is allocated once and never freed because the call
   // happens after the last step boot can roll back -- and on this board that is
   // a condition to satisfy rather than a fact to inherit.
-  // `rollback_boot_retaining_all()` does not reboot: it tears the stack down
-  // and returns an error, so a port opened earlier would outlive the rollback
-  // with nothing left to read it, and `ops.remove_pmu()` would drop the handle
-  // that could have turned BLDO1 back off -- a module drawing current with no
-  // driver and no way to stop it. Here, every rollback has already returned.
+  // `rollback_boot_retaining_all()` does not reboot; it returns an error, and
+  // what it leaves behind is whichever of its two branches ran.
+  // `firmware/main/boot_rollback.h:35` -- "  if (ops.display_registered()) {"
+  // -- retains the whole stack and returns, so LVGL, the tick registered above
+  // and `state.pmu` all outlive it. Only the other branch reaches
+  // `remove_pmu()`.
+  //
+  // That second branch is what this ordering is for, and it is reachable.
+  // `display_registered()` is `state.display != nullptr`, and
+  // `initialize_panel()` returns `ESP_OK` only once that pointer is set, so the
+  // two rollbacks above that can run with a panel up -- "backlight on" and
+  // "panel exercise" -- keep the stack and the handle, while "display
+  // capability" runs by construction with no display registered and tears both
+  // down. A port opened before that one would outlive it with nothing left to
+  // read it, and `ops.remove_pmu()` would drop the handle that could have
+  // turned BLDO1 back off -- a module drawing current with no driver and no way
+  // to stop it. Here, every rollback has already returned.
   //
   // The tick registered above has been running throughout, finding the port
   // shut and returning at once. That is what `local_gnss.cpp`'s `port_open`

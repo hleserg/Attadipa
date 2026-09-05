@@ -58,8 +58,12 @@ USB watch-control, any future GNSS or IMU provider — declares what it needs an
 never acts.
 
 This is enforced mechanically, not by review: sleep entry, `esp_sleep_enable_*`
-and writes to AXP2101 registers `0x80`, `0x90`, `0x82` and `0x92`–`0x95` must
-appear in exactly one translation unit, checked in CI.
+and writes to AXP2101 registers `0x80`, `0x90`, `0x82`, `0x92`–`0x95` and
+`0x96` must appear in exactly one translation unit, checked in CI. `0x96` is
+BLDO1's voltage. It joined the set when GNSS arrived, as the Context above said
+this rule would have to: it is the rail `PowerDomain::Gnss` resolves to on the
+T-Watch S3 Plus, and a register this firmware writes for a consumer that is not
+the display.
 
 **2. Consumers hold leases, not calls.** A lease is a reference-counted entry in
 a fixed-capacity array — no heap, no new task — naming a resource bitmask and a
