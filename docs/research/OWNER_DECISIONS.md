@@ -1478,8 +1478,8 @@ opaque — so *"stays powered and attached", indefinitely* has a second consumab
 in it that nobody costed, and the option that was ranked last, unplugging, does
 not even stop the first one. The facts are in
 [`../hardware/BENCH_HANDLING.md`](../hardware/BENCH_HANDLING.md) under *"What is
-not established"*, and they stay `UNKNOWN` there: no register on that charger has
-been read, and neither state is established as the kinder one. This is **not** a
+not established"*: three of those registers were read 2026-08-23 and `0x61` was
+not, and neither state is established as the kinder one. This is **not** a
 reason to reopen the decision — the owner chose availability knowingly and that
 choice stands. It is here so that the decision is not read as having weighed a
 question it was never asked.
