@@ -660,7 +660,7 @@ void the_readout_stops_saying_waiting_for_gps()
 
 // The driver flushes its UART ring after a gap because ESP-IDF's ring drops the
 // *new* bytes when it fills, so what survives a long silence is the oldest data
-// (`firmware/main/local_gnss.cpp:89` — "// WHAT IS IN THE RING AFTER A GAP IS
+// (`firmware/main/local_gnss.cpp:155` — "// WHAT IS IN THE RING AFTER A GAP IS
 // NOT A FIX, IT IS A MEMORY."). Flushing the ring is only half of it: the epoch
 // this class had half-assembled is made of those same bytes, and a GGA arriving
 // after the gap would have completed it and published a post-gap coordinate

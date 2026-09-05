@@ -11,7 +11,7 @@ namespace {
 
 // A cut that lands inside a UTF-8 sequence draws a replacement glyph, so the
 // trailing continuation bytes come off. The clock does the same thing for the
-// same reason (`apps/src/clock.cpp:150` — "void prepend_touch_absent(const
+// same reason (`apps/src/clock.cpp:82` — "void prepend_touch_absent(const
 // ClockState &state, ClockText &text) {").
 void trim_partial_utf8(char *s) {
   std::size_t lead = std::strlen(s);

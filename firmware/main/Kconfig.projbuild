@@ -170,6 +170,12 @@ config ATTADIPA_GNSS_LOCAL_RX
         Unlike the T-Watch pair, the orientation is not ambiguous, and
         nothing here sweeps for it.
 
+        The pin is settled; the level on it is not. H18 in
+        docs/research/OPEN_QUESTIONS.md stays PARTIAL because neither bench
+        module's TX idle voltage has been measured and the S3 is not 5 V
+        tolerant. NOT MEASURED is the whole claim -- put a meter on the
+        module's TX before it reaches this pin.
+
 config ATTADIPA_GNSS_LOCAL_BAUD
     int "GNSS UART baud"
     depends on ATTADIPA_GNSS_LOCAL
