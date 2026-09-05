@@ -5,6 +5,24 @@
                         // symbol undefined, so an unreachable sdkconfig.h makes
                         // every branch here agree on false and compile clean.
 
+// Raise this file above the image's log ceiling, and do it before the first
+// `esp_log.h`. `CONFIG_LOG_MAXIMUM_LEVEL` is 3 (INFO) in every image this
+// repository builds, and it is a *compile-time* gate: without this line the
+// `ESP_LOGD` in `log_if_answer_changed()` expands to nothing at all, the
+// runtime guard above it can never pass, and the engineering line is a line
+// the firmware cannot emit however the console is asked. That is not a log
+// level, it is a missing feature that looks like one -- and it looks like one
+// from the bench, at the moment somebody is trying to read a coordinate off a
+// receiver. The idiom is the vendor's:
+// `esp/esp-idf/components/log/include/esp_log_level.h` -- "To raise log level
+// above the default one for a given file, define LOG_LOCAL_LEVEL to one of the
+// ESP_LOG_* values, before including esp_log.h in this file."
+//
+// It costs one format string in the image. Nothing else in this file logs
+// below INFO, so nothing else changes size, and the DEBUG line still does not
+// *print* until a tag level asks for it -- see `log_if_answer_changed()`.
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+
 #include "local_gnss.h"
 
 #include <atomic>
@@ -155,10 +173,11 @@ bool          quiet_logged   = false;
 
 // ONE LINE PER CHANGE OF ANSWER, NOT ONE PER EPOCH.
 //
-// `core::format_location_line` is the repository's engineering line and this is
-// its first production caller; until now only a host test asked for it. It
-// prints the coordinate, both ages, the validity, the receiver state and the
-// origin, and writes `UNKNOWN` in full wherever a number would imply a
+// `core::format_location_line` is the repository's engineering line -- shared
+// with `firmware/main/meshcore_ble.cpp:1920` -- "ESP_LOGI(kTag, \"Position   :
+// %s\", line);", which has printed the *node's* position through it since
+// before this file existed. It prints the coordinate, both ages, the validity,
+// the receiver state and the origin, and writes `UNKNOWN` in full wherever a number would imply a
 // measurement -- which is why it is the right thing to log and why nothing here
 // formats its own.
 //
@@ -218,8 +237,17 @@ void log_if_answer_changed()
     // from carrying the position, and a great deal to lose -- this log goes to
     // a USB console that asks nobody for a password, on a device worn by a
     // person, and `format_location_line` prints latitude and longitude at
-    // 10^-7 of a degree, which is about a centimetre. Nothing else in this
-    // firmware puts a coordinate at INFO. This is not going to be the first.
+    // 10^-7 of a degree, which is about a centimetre.
+    //
+    // One line in this firmware already does put a coordinate at INFO --
+    // `firmware/main/meshcore_ble.cpp:1920` -- "ESP_LOGI(kTag, \"Position   :
+    // %s\", line);" -- and the distinction is whose coordinate it is. That one
+    // prints the position a paired MeshCore node broadcast, on the boards that
+    // build BLE in; this one would print the wearer's own, from a receiver on
+    // the wrist. The second is the one worth a level. Whether the first should
+    // keep its level is a question about a subsystem this change does not
+    // touch, and it is older than this file -- so it is named here rather than
+    // quietly altered.
     ESP_LOGI(kTag, "avail %s src %s fix %s validity %s position %s",
              attadipa::core::to_string(now.availability),
              attadipa::core::to_string(now.source),
@@ -227,11 +255,23 @@ void log_if_answer_changed()
              attadipa::core::to_string(now.validity),
              now.has_position ? "held" : "none");
 
-    // The engineering line, with the coordinate, one level down -- off in the
-    // default image and reached by asking for it, which is the asking that
-    // makes it a decision. This is still `core::format_location_line` and not
-    // a second formatter: #442 said to use the existing one, and this is the
-    // place where using it is safe.
+    // The engineering line, with the coordinate, one level down -- compiled in
+    // (see LOG_LOCAL_LEVEL at the top of this file) and silent until something
+    // raises this tag, which is the asking that makes it a decision.
+    //
+    // WHAT THAT ASKING COSTS, SO NOBODY LOOKS FOR IT AT A BENCH: no product
+    // code raises it. The only `esp_log_level_set()` in this firmware is
+    // `firmware/main/gnss_bridge.cpp:307` -- "esp_log_level_set(\"*\",
+    // ESP_LOG_NONE);" -- and it silences, in the other direction, in another
+    // image. So today the line is reached by adding one
+    // `esp_log_level_set(kTag, ESP_LOG_DEBUG)` and reflashing. The guard below
+    // is a real runtime gate -- `CONFIG_LOG_DYNAMIC_LEVEL_CONTROL` is on -- so
+    // the day a console command or a Kconfig switch wants to raise it, that is
+    // all it has to do.
+    //
+    // This is still `core::format_location_line` and not a second formatter:
+    // #442 said to use the existing one, and this is the place where using it
+    // is safe.
     if (esp_log_level_get(kTag) < ESP_LOG_DEBUG) {
         return;
     }

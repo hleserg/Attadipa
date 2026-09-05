@@ -94,11 +94,13 @@
 // AND THE CAPTURE WAS THE CASE THAT STRESSES THE RULE HARDEST, which is what
 // makes the number load-bearing rather than lucky. The hazard is a receiver
 // standing still, so a capture taken while carrying one about would measure the
-// easy half and prove nothing. These were not -- the GT-U12 half of the 6.5 MB
-// at least, which is the half the owner can account for: it was set down on a
-// bench and left there, and the owner confirmed on 2026-09-05 that it had sat
-// untouched overnight. Hours of a receiver that never moved at all, and its
-// longest run of identical coordinates is still two epochs.
+// easy half and prove nothing. The GT-U12 half of the 6.5 MB was not carried:
+// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:558` -- "the owner
+// confirmed on 2026-09-05 that it" -- had sat untouched overnight, §5.1, which
+// labels it an owner attestation rather than a MEASURED quantity and records
+// that the AN3126 half has no such account. Hours of a receiver that never
+// moved at all, and its longest run of identical coordinates is still two
+// epochs.
 //
 // The upgrade path, if a module that latches its output ever turns up: give
 // `core::PositionSample` a flag saying its `observed_at` is an observation time
@@ -157,7 +159,7 @@ public:
     // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
     // control a module on that pad, and `Off` becomes reachable — but only for
     // a caller that owns the rail and passes the state in. Nothing gates ALDO1
-    // on this board today: `firmware/main/board_power.cpp:95` — "    {0x92, \"ALDO1\", RailPolicy::NotAuthorised," —
+    // on this board today: `firmware/main/board_power.cpp:110` — "    {0x92, \"ALDO1\", RailPolicy::NotAuthorised," —
     // leaves it as the PMU brings it up.
     core::Availability availability() const override;
 

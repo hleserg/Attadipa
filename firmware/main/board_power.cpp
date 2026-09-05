@@ -66,17 +66,30 @@ constexpr Rail kRails[] = {
      "wedged FT6336U (TWATCH_S3_PLUS_BSP_REUSE.md §8)"},
     {0x95, "ALDO4", RailPolicy::NotAuthorised,
      "radio; gateable when the radio holds no lease"},
-    {0, "BLDO1/BLDO2/DLDO1", RailPolicy::NotAuthorised,
-     "GNSS, haptic enable, amplifier; nothing has measured them"},
+    // The row the comment below used to predict. This image now raises this
+    // rail on purpose -- `board_power_enable_gnss_rail()` writes 0x96 = 0x1C
+    // and sets REG 90 bit 4 -- so a domain owner asking which regulator the
+    // receiver is on has an answer that is not "look in another function".
+    // `NotAuthorised`, unchanged and deliberately: naming a rail is not
+    // licensing a gate, and nothing has measured what this one costs.
+    {0x96, "BLDO1", RailPolicy::NotAuthorised,
+     "GNSS at 3300 mV (HARDWARE_MATRIX.md \"AXP2101 rail map\"); raised by "
+     "board_power_enable_gnss_rail(), and nothing has measured it. An LS550G "
+     "would need DC4 at 850 mV as well, and which module is fitted is per unit"},
+    {0, "BLDO2/DLDO1", RailPolicy::NotAuthorised,
+     "haptic enable, amplifier; nothing has measured them"},
 };
 
 // rail_for() indexes by position, and this is the table most likely to grow:
-// DC4, BLDO1 and BLDO2 each become a row when GNSS or the haptic arrives. A
-// row inserted above ALDO3 would silently move Display onto another regulator.
+// BLDO1 became a row above when GNSS arrived, and DC4 and BLDO2 each become
+// one when an LS550G or the haptic does. A row inserted above ALDO3 would
+// silently move Display onto another regulator.
 static_assert(kRails[3].voltage_register == 0x94 &&
-                  kRails[4].voltage_register == 0x95,
-              "Display is ALDO3 (0x94) and Radio is ALDO4 (0x95): a row was "
-              "inserted above them, so re-index rail_for()");
+                  kRails[4].voltage_register == 0x95 &&
+                  kRails[5].voltage_register == 0x96,
+              "Display is ALDO3 (0x94), Radio is ALDO4 (0x95) and Gnss is "
+              "BLDO1 (0x96): a row was inserted above them, so re-index "
+              "rail_for()");
 
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   switch (domain) {
@@ -84,6 +97,8 @@ const Rail *rail_for(attadipa::core::PowerDomain domain) {
     return &kRails[3];
   case attadipa::core::PowerDomain::Radio:
     return &kRails[4];
+  case attadipa::core::PowerDomain::Gnss:
+    return &kRails[5];
   default:
     return nullptr;
   }
@@ -117,8 +132,12 @@ static_assert(kRails[2].voltage_register == 0x93 &&
 // Only Display maps, and it maps to the trap rather than to a supply: a reader
 // who asks this owner to cut display power is asking for ALDO2, and the answer
 // they need is why that is the wrong rail. The other domains have no rail on
-// this board — Radio and NodeLink live on the SoC, Gnss and Imu are not fitted
-// — and an invented mapping would be a hardware claim with no source.
+// this board — Radio and NodeLink live on the SoC; no GNSS and no IMU are
+// fitted, and this board's rail map names no rail for either
+// (HARDWARE_MATRIX.md, the Waveshare "AXP2101 rail map"). A receiver on the
+// expansion pads is a receiver wired to a board that has no rail for it, which
+// is the same nullptr for a different reason — and an invented mapping would
+// be a hardware claim with no source.
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   return domain == attadipa::core::PowerDomain::Display ? &kRails[2] : nullptr;
 }
