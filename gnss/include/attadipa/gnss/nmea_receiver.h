@@ -108,6 +108,21 @@ public:
     // class's idea of now.
     void feed(const std::uint8_t* bytes, std::size_t count, core::MonotonicTime now);
 
+    // Throw away the half-assembled sentence and the half-assembled epoch,
+    // because the caller has just thrown away the bytes that would have
+    // finished them. Only the caller knows that: a driver that flushes its
+    // UART ring after a gap (`firmware/main/local_gnss.cpp`) leaves this class
+    // holding an RMC stamped before the gap, which the next GGA would complete
+    // and publish as if it had been observed now.
+    //
+    // What survives is deliberate: the last *published* observation stays, with
+    // the `observed_at` it was really given — the watch did have that fix, and
+    // `LocationService` ages it honestly from that stamp. So do `heard_`,
+    // `last_sentence_` and `discarded_`: a flush is not evidence about the
+    // module, only about this end's attention, and the silence timeout is
+    // measured from when a sentence last actually arrived.
+    void reset();
+
     // `Unprovisioned` until the first `feed()` — nothing is bound yet, which is
     // the state of a board with no module soldered to the pads. After that,
     // `Ready` while sentences are arriving and `Unreachable` when they stop.
@@ -152,7 +167,6 @@ private:
     bool                  saw_gga_    = false;
     std::uint8_t          gga_quality_ = 0;
     std::uint8_t          gsa_fix_     = 0;      // 1 none, 2 two-d, 3 three-d
-    char                  rmc_mode_    = '\0';
 
     core::GnssObservation published_{};
     bool                  has_published_ = false;

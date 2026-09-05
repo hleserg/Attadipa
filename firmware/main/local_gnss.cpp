@@ -86,6 +86,41 @@ std::uint64_t millis()
 
 std::uint64_t last_tick_ms = 0;
 
+// The one production reader of `discarded()`, and the only place a wrong pin or
+// a wrong baud rate says so out loud. The screen's `OwnReceiverSilent` tells
+// the wearer the receiver is not answering; this tells a bench session which of
+// the two it is — nothing arriving at all, or bytes arriving that never frame.
+//
+// Five seconds before it fires, because `Unreachable` is also the honest answer
+// for the first second of every boot and every wake, and a warning on every
+// healthy boot is a warning nobody reads. Edge-triggered on top of that: it
+// logs once per silence, and a receiver that comes back and goes quiet again
+// gets a second line.
+constexpr std::uint64_t kQuietWarnAfterMs = 5000;
+std::uint64_t quiet_since_ms = 0;  // 0 while sentences are arriving
+bool          quiet_logged   = false;
+
+void warn_if_quiet(attadipa::core::MonotonicTime now)
+{
+    if (receiver.availability() != attadipa::core::Availability::Unreachable) {
+        quiet_since_ms = 0;
+        quiet_logged   = false;
+        return;
+    }
+    if (quiet_since_ms == 0) {
+        quiet_since_ms = now.ms;
+        return;
+    }
+    if (!quiet_logged && now.ms - quiet_since_ms >= kQuietWarnAfterMs) {
+        quiet_logged = true;
+        ESP_LOGW(kTag, "nothing framable from GPIO %d for %llu ms, %lu sentences "
+                       "discarded; check the wiring and that the module speaks "
+                       "%d baud",
+                 kRxPin, static_cast<unsigned long long>(now.ms - quiet_since_ms),
+                 static_cast<unsigned long>(receiver.discarded()), kBaud);
+    }
+}
+
 // WHAT IS IN THE RING AFTER A GAP IS NOT A FIX, IT IS A MEMORY.
 //
 // ESP-IDF's RX ring drops *new* bytes when it is full, so the bytes that
@@ -110,6 +145,14 @@ void drain(attadipa::core::MonotonicTime now)
                        "stamping stale bytes with the time they were noticed",
                  static_cast<unsigned long long>(gap),
                  err == ESP_OK ? "discarded" : "failed to discard");
+        // Order matters: the ring is gone, so the sentence and the epoch it
+        // was going to finish have to go with it, and only then is the
+        // receiver told what time it is. Without the reset an RMC stamped
+        // before the gap survives, and the first GGA after it closes that
+        // epoch — publishing a coordinate observed after the gap under a
+        // stamp from before it, which is the exact lie the flush is here to
+        // prevent.
+        receiver.reset();
         receiver.feed(nullptr, 0, now);
         return;
     }
@@ -189,6 +232,7 @@ void local_gnss_tick()
     }
     const attadipa::core::MonotonicTime now{millis()};
     drain(now);
+    warn_if_quiet(now);
     location.poll();
     published = location.state(now);
 #endif

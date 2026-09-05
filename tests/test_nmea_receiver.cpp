@@ -534,6 +534,57 @@ void the_readout_stops_saying_waiting_for_gps()
     CHECK(text.status_code != apps::NavStatus::WaitingForGps);
 }
 
+// The driver flushes its UART ring after a gap because ESP-IDF's ring drops the
+// *new* bytes when it fills, so what survives a long silence is the oldest data
+// (`firmware/main/local_gnss.cpp:89` — "// WHAT IS IN THE RING AFTER A GAP IS
+// NOT A FIX, IT IS A MEMORY."). Flushing the ring is only half of it: the epoch
+// this class had half-assembled is made of those same bytes, and a GGA arriving
+// after the gap would have completed it and published a post-gap coordinate
+// under a pre-gap `observed_at` — the arrival-time-as-observation-time lie the
+// flush exists to prevent, running backwards.
+void a_flush_takes_the_open_epoch_with_it()
+{
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    const std::uint64_t before = g_now.ms;
+    deliver(receiver, "$GNRMC,135222.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,135227.00,A,0030.00009,N,00100.00009,E,0.010,,040926,,,D,V*1B");
+    // The first epoch closed on the second RMC, stamped when it opened. The
+    // second epoch is open and unpublished — RMC is the boundary, so an epoch
+    // is published by the sentence *after* it, and that is why the stamp below
+    // does not advance across the gap.
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.observed_at.ms == before);
+
+    // Ten minutes of sleep, and the driver's flush.
+    g_now.ms += 600000;
+    const std::uint64_t after = g_now.ms;
+    receiver.reset();
+    receiver.feed(nullptr, 0, g_now);
+
+    // What was already published survives, and must: the watch did have that
+    // fix, with the stamp it was really given. `classify()` ages it from there,
+    // which is the honest answer — dropping it would be the opposite lie.
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.observed_at.ms == before);
+
+    // Now the bytes that were in flight when the gap began. Without the reset
+    // this GGA completes the epoch opened before the sleep and the RMC after it
+    // publishes the pair.
+    deliver(receiver, "$GNGGA,135222.00,0030.00004,N,00100.00004,E,2,12,1.58,12.4,M,25.0,M,,*79");
+    deliver(receiver, "$GNRMC,135227.00,A,0030.00009,N,00100.00009,E,0.010,,040926,,,D,V*1B");
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.observed_at.ms == before);  // still the old one
+
+    // And the epoch that opened after the gap closes with its own stamp.
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,135227.00,A,0030.00009,N,00100.00009,E,0.010,,040926,,,D,V*1B");
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.observed_at.ms == after);
+}
+
 int main()
 {
     a_receiver_nobody_has_wired_up_says_so();
@@ -544,6 +595,7 @@ int main()
     one_sentence_saying_no_fix_is_enough();
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
     silence_is_not_the_same_as_never_having_answered();
+    a_flush_takes_the_open_epoch_with_it();
     the_chain_ends_in_a_location_state();
     the_readout_stops_saying_waiting_for_gps();
 

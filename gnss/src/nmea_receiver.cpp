@@ -173,7 +173,6 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         saw_gga_ = false;
         gga_quality_ = 0;
         gsa_fix_ = 0;
-        rmc_mode_ = '\0';
 
         if (frame.valid) {
             Position position{};
@@ -286,6 +285,19 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
     }
 }
 
+void NmeaReceiver::reset()
+{
+    length_     = 0;
+    collecting_ = false;
+    overflowed_ = false;
+    open_       = GnssObservation{};
+    open_valid_ = false;
+    rmc_active_ = false;
+    saw_gga_    = false;
+    gga_quality_ = 0;
+    gsa_fix_     = 0;
+}
+
 void NmeaReceiver::close_epoch()
 {
     if (!open_valid_) return;
@@ -321,12 +333,15 @@ void NmeaReceiver::close_epoch()
 
     // The receiver's own words, for a field report that has to be diagnosable
     // after the fact. Opaque above this driver, so the packing is this file's
-    // business: GGA quality in the low byte, GSA mode in the next, the RMC FAA
-    // mode character above that.
+    // business: GGA quality in the low byte, GSA mode in the next. Two bytes,
+    // not three: the RMC FAA mode character used to occupy a third and was
+    // always zero, because `minmea_sentence_rmc` has no member for it and this
+    // driver never read the field by hand. A byte reserved for a value nothing
+    // writes is worse than an absent one — a field report would have read it as
+    // "the receiver reported no mode".
     open_.native.vendor = 1;  // 1 is NMEA 0183 text, this driver
     open_.native.status = static_cast<std::uint32_t>(gga_quality_) |
-                          (static_cast<std::uint32_t>(gsa_fix_) << 8) |
-                          (static_cast<std::uint32_t>(static_cast<unsigned char>(rmc_mode_)) << 16);
+                          (static_cast<std::uint32_t>(gsa_fix_) << 8);
 
     published_ = open_;
     has_published_ = true;
