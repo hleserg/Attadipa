@@ -244,7 +244,8 @@ the watch, and [HARDWARE_MATRIX](HARDWARE_MATRIX.md) already records the
 T-Watch's own on-board receiver. These two boards are for bench experiments on
 the node side — a first `PositionProvider` fed by a real receiver over UART, and
 the questions OD-5 raises about a receiver's own integrity protection — and the
-first thing owed is the read-off — and before any power, the supply: find the
+first thing owed was the read-off — done 2026-09-04, above — and before any
+power, the supply: find the
 regulator or its absence on each carrier and what `VCC` wants, because two
 units with no spare do not survive a guess.
 

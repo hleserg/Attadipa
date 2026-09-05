@@ -35,7 +35,7 @@ AN3126, and the two parts turned out to be nothing like each other.
 | Default baud | 115200 | 38400 |
 | Binary protocol | ALLYSTAR, sync `F1 D9` | UBX, sync `B5 62` |
 | NMEA as shipped | 4.00 (`CFG-NMEAVER=02`) | 4.11 |
-| Config storage | not probed | **none usable** — BBR and Flash NAK |
+| Config storage | not probed | **`UNKNOWN`** — the BBR/Flash NAKs are the documented answer for a key never written there |
 | Price paid | 1 596 ₽ | 791 ₽ |
 
 ## 1. AN3126 — a u-blox M10, and it is single band
@@ -93,11 +93,11 @@ only, nothing written that survives a power cycle.
 | Measurement | Value | Conditions |
 | --- | --- | --- |
 | Bands | L1/E1 only. `UBX-NAV-SIG` reports GPS L1C/A ×9, GAL E1 ×9, BDS B1C ×8, GLO L1 ×7, SBAS L1 ×4 — **no L5, E5a, B2a or L2 anywhere** | 37 signals, 17 used |
-| Constellations | GPS, GLONASS, BeiDou, Galileo enabled; **3 simultaneous** whatever is enabled | `UBX-MON-GNSS` |
+| Constellations | GPS, GLONASS, BeiDou, Galileo all **enabled**, and all four appear in the `NAV-SIG` snapshot above. `MON-GNSS` also reports `simultaneous = 3`, which did **not** stop four being tracked at once here — read it as the field's own capability figure, whose exact meaning on this firmware is `UNKNOWN`, not as a cap #429 should configure around | `UBX-MON-GNSS` |
 | Horizontal precision | **rms 4.07 m**, median 3.96, 68 % 5.16, 95 % 6.66, max 7.02 | 60 s static, 12 sats, quality 2 |
-| `hAcc` vs its own scatter | receiver claimed **4.28 m** against 4.07 m measured — 5.2 % apart | same window; this is scatter, not true error |
+| `hAcc` vs its own scatter | receiver claimed **4.28 m** against 4.07 m measured — 0.21 m on 4.07 m, 5.2 % | same window; this is scatter, not true error |
 | Best C/N0 | 42–44 dBHz | balcony |
-| **Hot** TTFF | **820 ms**, from the receiver's own `UBX-NAV-PVT` counter; a guarded run separately reported 0.1 s by an unrecorded method | **ephemeris retained** — u-blox's hot start, not warm. **Sub-second is the defensible claim**: 0.1 s is a tenth of this receiver's own 1000 ms measurement period, so it cannot be resolved by watching solutions, and this same bench caught `UBX-NAV-STATUS.ttff` reporting a stale value in a frame with `gpsFix = 0` |
+| **Hot** TTFF | **`UNKNOWN`.** The receiver reported **820 ms** in `UBX-NAV-STATUS.ttff` — **not** `NAV-PVT`, which carries no such field — and a guarded run separately reported 0.1 s by a method nobody recorded | **ephemeris retained**, so this is u-blox's hot start and not warm. Neither number is usable. **`NAV-STATUS.ttff` is the one field this bench caught lying**: it reported `ttff = 163152 ms` in a frame whose own `gpsFix` was `0`, so it is not trustworthy without a guard, and 820 ms comes from it. And 0.1 s is below this part's 1000 ms measurement period, which is the floor on any true TTFF |
 | Cold TTFF | **40.0 s** | `UBX-CFG-RST`, BBR wiped, antenna secured and guarded |
 | **Warm** TTFF | **NOT MEASURED** | almanac and position kept, ephemeris dropped — never run |
 | Solution rate | 1 Hz — `CFG-RATE-MEAS 1000 ms`, `CFG-RATE-NAV 1` | `CFG-VALGET`, RAM |
@@ -110,7 +110,7 @@ north–south spread is 2.5× the east–west one because a window frame cuts pa
 of the sky — the DOP components show the same skew.
 
 **So the `hAcc` comparison is bounded the same way.** What 4.28 m claimed
-against 4.07 m measured — 5.2 % apart — shows is that the receiver's estimate tracks its own
+against 4.07 m measured — 0.21 m on 4.07 m, 5.2 % — shows is that the receiver's estimate tracks its own
 *scatter* honestly, at one window, over one minute, in one sky. It is **not**
 evidence that `hAcc` bounds true error, which this method cannot see. For
 [#429](https://github.com/hleserg/Attadipa/issues/429) that is still the useful
@@ -155,7 +155,7 @@ as a fact, not as work.
 The monitor was left **on in RAM only**; unplugging the module reverts it. No
 save command was sent at any point.
 
-### 1.5 It has nowhere to put a firmware image
+### 1.5 It runs from ROM — and what the layer probe does *not* show
 
 `UBX-CFG-VALGET` names the layer it reads, so the same key was asked of all
 four:
@@ -167,11 +167,27 @@ layer 2 Flash   -> NAK
 layer 7 Default -> ANSWERED 0x00      (the control)
 ```
 
-The layer-7 control is what makes the two NAKs evidence: Default lives in ROM
-and answered, so the failures are the receiver saying that storage is not
-there rather than the script building a bad frame. `UBX-MON-PATCH` reports two
-patch entries, both activated, both `location = eFuse` — the corrections on top
-of the ROM were burned at the factory.
+The layer-7 control shows the frames were well formed: Default lives in ROM and
+answered, so the two NAKs are not the script.
+
+**But an earlier version of this section read them as "the storage is not
+there", and that is retracted — it steps past what the probe licenses.** On
+gen-9/gen-10 u-blox, `CFG-VALGET` returns an item from a *storage* layer only
+if something was written there, and NAKs otherwise; RAM and Default hold every
+key unconditionally. So the two layers that answered are the two that always
+answer, and the two that NAKed are the two that answer only for saved keys —
+and `CFG-ITFM-ENABLE` was never saved to either, by design: the only write this
+session made was `layers = 0x01`, RAM. **A part with perfectly good BBR and
+flash returns exactly this pattern for an unwritten key.** Whether this module
+has usable BBR or flash is therefore **`UNKNOWN`**, not "none". The next action
+is one reversible step — `CFG-VALSET` of a harmless key to layer 1 and re-poll
+it — and it is still **not** a save command in the sense H18 forbids.
+
+**The firmware conclusion does not rest on that probe and stands.** The banner
+and `UBX-MON-VER` both report `ROM SPG 5.10`: u-blox names a ROM-based part
+`ROM` and a flash-based one `EXT`, and `UBX-MON-PATCH` reports two patch
+entries, both activated, both `location = eFuse` — the corrections on top of the
+ROM were burned at the factory, not loaded from a writable store.
 
 A firmware update in the ordinary sense therefore has nowhere to go. The route
 that remains is u-blox's for ROM parts — the host pushes an image into RAM at
@@ -479,8 +495,9 @@ once. No later behaviour of that part should be attributed to the discharge.
 - **Both carriers' regulators**, and what each `VCC` actually wants. Neither
   board was inspected for one; both were run from the bridge's regulated 3.3 V,
   which works but proves nothing about the carrier.
-- **Both modules' TX idle voltage — and, on the GT-U12, the back-drive path in
-  §2.4.** Neither is measured, and they are one item, not two: an idle-voltage
+- **Three things, matching the H18 row: both carriers' regulators (above), both
+  modules' TX idle voltage, and the GT-U12's back-drive path in §2.4.** The last
+  two are one measurement, not two: an idle-voltage
   reading taken with everything powered does not cover a module that keeps
   driving its `TX` after its `VCC` lead comes off. This is the half of H18 that
   guards an ESP32-S3 pin, and §4 is where those pins now are — so it has to be
@@ -512,6 +529,7 @@ once. No later behaviour of that part should be attributed to the discharge.
   on the other: nothing equivalent was read from the ALLYSTAR.
 - **A driver that wants a jamming indication from an M10 inherits a constraint
   §1.4 and §1.5 only imply separately.** `CFG-ITFM-ENABLE` is `0x00` on the
-  Default layer and there is nowhere to persist an override — BBR and Flash both
-  NAK — so the monitor must be re-enabled **in RAM at every boot**, and until it
-  is, `jammingState = 0` means *not looking*. It must never be read as *ok*.
+  Default layer, and whether an override can be persisted is `UNKNOWN` (§1.5),
+  so until somebody shows otherwise the monitor must be re-enabled **in RAM at
+  every boot** — and until it is, `jammingState = 0` means *not looking*. It must
+  never be read as *ok*.
