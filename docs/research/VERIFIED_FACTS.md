@@ -636,6 +636,20 @@ to every unit of the same model.
   exercised. So **nothing here shows that toggling BLDO1 controls the module** —
   which is exactly what a power gate or a sleep path would assume. Anything that
   proposes to switch this rail at runtime owes that experiment first.
+- **What it detects, MEASURED 2026-09-05:** spoofing detection is running
+  (`UBX-NAV-STATUS` `spoofDetState = 1`); **jamming detection is disabled**
+  (`CFG-ITFM-ENABLE = 0` in the RAM layer, the documented default, and
+  `MON-RF` `jammingState = 0` agrees); and there is **no signal
+  authentication** — `UBX-SEC` in this firmware holds only `SEC-UNIQID`, and
+  0 of 26 signals reported `authStatus = Authenticated`. None of it can change
+  on this unit: generation-10 firmware runs from internal ROM, and this module
+  reports `ROM SPG 5.10 (7b202e)` with no `EXT` marker.
+  See [§4b](TWATCH_GNSS_READOFF_2026-09-05.md).
+- **Impact:** none of this reaches NMEA. The watch emits GGA, GSA, GSV, RMC,
+  VTG and GLL and no `TXT`, so a parser that reads only NMEA — which is what
+  #429 proposes — cannot see interference or a spoofing flag at all. That is a
+  constraint on what `PositionValidity` can honestly mean, not a reason to
+  build a UBX layer now.
 
 ### The T-Watch touch panel has no reset line
 
