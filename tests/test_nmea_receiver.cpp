@@ -551,6 +551,64 @@ void a_binary_stream_moves_both_numbers_and_neither_names_it()
     CHECK(receiver.availability() != core::Availability::Ready);
 }
 
+void an_rmc_with_no_hemisphere_states_no_position()
+{
+    // THE REPRO IS THE ABSENT FIELD, NOT A MALFORMED ONE. minmea reads an empty
+    // `N`/`S` as direction zero rather than as an error and then multiplies the
+    // latitude by it, so this sentence framed, passed its checksum, carried the
+    // `A` status and stated a latitude of exactly 0.0000000 -- half of the
+    // `(0, 0)` this repository refuses to put on a screen, and with a valid fix
+    // flag beside it.
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,135222.00,A,0030.00004,,00100.00004,E,0.085,,040926,,,D,V*5C");
+    deliver(receiver, "$GNRMC,135223.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*13");
+
+    // It was believed as a sentence. Without this the test would pass for the
+    // wrong reason -- a mistyped checksum discards it and the epoch is empty
+    // whatever the guard does.
+    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.sample(sample));
+
+    // No coordinate at all, rather than one at the equator. `close_epoch()`
+    // already turns an absent position into `NoFix`, so the refusal reaches the
+    // readout as "no fix" and not as a fix somewhere off Africa.
+    CHECK(!sample.observation.position.has_value());
+    CHECK(sample.observation.fix_type == core::FixType::NoFix);
+}
+
+void a_gga_with_no_hemisphere_keeps_the_rest_of_the_sentence()
+{
+    // The same absence in GGA, and the point of the second test is the second
+    // assertion: the guard refuses the coordinate and nothing else. An
+    // altitude, a satellite count and an HDOP are not made wrong by a missing
+    // `E`/`W`, and discarding the whole sentence would throw away numbers the
+    // receiver did state.
+    //
+    // The RMC is the no-fix one both bench modules emit before they solve, so
+    // it opens an epoch and puts no coordinate in it -- otherwise this would be
+    // testing RMC's guard a second time.
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,,V,,,,,,,,,,N,V*37");
+    deliver(receiver, "$GNGGA,135223.00,0030.00004,N,00100.00004,,1,08,1.20,120.5,M,15.0,M,,*08");
+    deliver(receiver, "$GNRMC,,V,,,,,,,,,,N,V*37");
+
+    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.sample(sample));
+    CHECK(!sample.observation.position.has_value());
+
+    // Believed, from the same sentence whose coordinate was refused.
+    CHECK(sample.observation.altitude_msl_mm.has_value());
+    CHECK(*sample.observation.altitude_msl_mm == 120500);
+    CHECK(sample.observation.satellites_used.has_value());
+    CHECK(*sample.observation.satellites_used == 8);
+}
+
 void the_chain_ends_in_a_location_state()
 {
     // The seam this whole slice exists for: bytes off a wire, through the
@@ -723,6 +781,8 @@ int main()
     a_flush_takes_the_open_epoch_with_it();
     bytes_that_never_frame_are_counted_as_bytes();
     a_binary_stream_moves_both_numbers_and_neither_names_it();
+    an_rmc_with_no_hemisphere_states_no_position();
+    a_gga_with_no_hemisphere_keeps_the_rest_of_the_sentence();
     the_chain_ends_in_a_location_state();
     the_readout_stops_saying_waiting_for_gps();
 

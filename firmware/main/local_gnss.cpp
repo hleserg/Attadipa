@@ -109,12 +109,12 @@ std::uint64_t last_tick_ms = 0;
 // ROW, and naming it as one is the error this paragraph replaces. The GT-U12
 // emits GGA, GSA, GSV, RMC and VTG at 1 Hz, three of which this parser reads
 // (`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:210` — "| Sentence set | GGA, GSA, GSV, RMC, VTG at **1.000 Hz**"),
-// and its ALLYSTAR binary comes only in answer to a poll
-// (`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:259` — "Polls only — zero-length payloads."),
-// which this driver never sends because it never transmits at all —
-// `uart_set_pin()` below leaves TX unrouted. So with that part on this pad the
-// second row is about the baud, the wiring or the line level, not about the
-// protocol the module speaks.
+// What the part does behind its ALLYSTAR sync word is deliberately not claimed
+// here. The read-off probed it with polls, so what it measured is what the
+// module *replies*, not what it says unasked, and this driver asks nothing --
+// `uart_set_pin()` below leaves TX unrouted. The measured NMEA carries the
+// point on its own: with that part on this pad, the second row is about the
+// baud, the wiring or the line level.
 //
 // Neither number is reset by the flush at a gap, so a bench session reads a
 // total since boot rather than since the last wake.
