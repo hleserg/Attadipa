@@ -38,6 +38,11 @@ constexpr uart_port_t kPort = UART_NUM_1;
 // the defaults file. The GPIO matrix makes the peripheral independent of the
 // pin anyway, and leaving UART0 unclaimed means a bench session can still open
 // a serial console on these pads without fighting this driver for them.
+//
+// That paragraph is the Waveshare's story; the T-Watch's pin is GPIO 41, which
+// is nobody's `U0RXD`. UART1 is right there for the plainer reason: the GPIO
+// matrix does not care, and one peripheral for both boards is one fewer thing
+// for the board to decide.
 constexpr int kRxPin = CONFIG_ATTADIPA_GNSS_LOCAL_RX;
 constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 
@@ -57,6 +62,13 @@ constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 // That worst window is a power cycle — a burst of `$GNTXT` banner on top of a
 // full sky — which is the same event that produces a long gap, so it is the
 // right case to size against rather than an outlier to set aside.
+//
+// The T-Watch's own module is inside that measurement rather than beside it:
+// it is a u-blox M10 at 38400, and one of the two parts those captures were
+// taken from — the AN3126 — is a u-blox M10 at 38400. Same family, same
+// protocol version, half the wire rate of the GT-U12 that set the worst case.
+// Not the same part number, so this is an argument and not a reading; the thing
+// that would turn it into one is a capture from the watch.
 constexpr int kRxRing = 8192;
 
 // The UI timer runs at 500–1000 ms, so three seconds is past the slowest of
@@ -128,6 +140,71 @@ constexpr std::uint64_t kQuietWarnAfterMs = 5000;
 std::uint64_t quiet_since_ms = 0;  // 0 while sentences are arriving
 bool          quiet_logged   = false;
 
+// ONE LINE PER CHANGE OF ANSWER, NOT ONE PER EPOCH.
+//
+// `core::format_location_line` is the repository's engineering line and this is
+// its first production caller; until now only a host test asked for it. It
+// prints the coordinate, both ages, the validity, the receiver state and the
+// origin, and writes `UNKNOWN` in full wherever a number would imply a
+// measurement -- which is why it is the right thing to log and why nothing here
+// formats its own.
+//
+// Edge-triggered on the fields that change what the line *means*: availability,
+// whether there is a coordinate at all, which source it came from, the fix type
+// and the validity. Deliberately not the coordinate and not the ages. A
+// receiver solving at 1 Hz moves the low digits and the age every epoch, so
+// logging on those is logging every second -- which on a watch is a log nobody
+// reads and a flash nobody wanted written. The five below change when the
+// device's answer changes, which is the event worth a line.
+struct LoggedAnswer {
+    attadipa::core::Availability     availability{};
+    bool                             has_position = false;
+    attadipa::core::PositionSource   source{};
+    attadipa::core::FixType          fix_type{};
+    attadipa::core::PositionValidity validity{};
+
+    bool operator==(const LoggedAnswer& other) const
+    {
+        return availability == other.availability &&
+               has_position == other.has_position && source == other.source &&
+               fix_type == other.fix_type && validity == other.validity;
+    }
+};
+
+LoggedAnswer answer_of(const attadipa::core::LocationState& state)
+{
+    return {state.availability, state.has_position, state.source,
+            state.fix_type, state.validity};
+}
+
+// Seeded from a default-constructed `LocationState` rather than left blank, so
+// the first tick logs only if the receiver has already said something. A watch
+// that boots with no module attached stays quiet here and `warn_if_quiet()`
+// above is what speaks for it -- one voice per silence, not two.
+LoggedAnswer logged = answer_of(attadipa::core::LocationState{});
+
+void log_if_answer_changed()
+{
+    const LoggedAnswer now = answer_of(published);
+    if (now == logged) {
+        return;
+    }
+    logged = now;
+    // 224 bytes: the line is three 16-byte numbers, a 16-byte age, an 8-byte
+    // origin and about 110 of fixed text. `format_location_line` returns the
+    // length it wanted, so a future field that overruns this shows up as a
+    // truncation warning rather than as silence.
+    char line[224];
+    const std::size_t wanted =
+        attadipa::core::format_location_line(published, line, sizeof(line));
+    if (wanted >= sizeof(line)) {
+        ESP_LOGW(kTag, "engineering line truncated at %u of %u bytes",
+                 static_cast<unsigned>(sizeof(line) - 1),
+                 static_cast<unsigned>(wanted));
+    }
+    ESP_LOGI(kTag, "%s", line);
+}
+
 void warn_if_quiet(attadipa::core::MonotonicTime now)
 {
     if (receiver.availability() != attadipa::core::Availability::Unreachable) {
@@ -162,8 +239,10 @@ void warn_if_quiet(attadipa::core::MonotonicTime now)
 // show a minute-old position as a current fix.
 //
 // So a gap longer than a tick could honestly explain throws the ring away. The
-// board sleeps inside an LVGL timer callback (`physical_input.cpp`), so this
-// fires on every wake, and the receiver's own silence timeout then reports
+// Waveshare sleeps inside an LVGL timer callback (`physical_input.cpp`), so this
+// fires on every wake there; the T-Watch bring-up image does not sleep at all
+// yet, so on that board it fires only if a tick is genuinely starved. Either
+// way the receiver's own silence timeout then reports
 // `Unreachable` for as long as it takes real sentences to come back — which is
 // the true answer for a device that was not listening.
 void drain(attadipa::core::MonotonicTime now)
@@ -266,6 +345,7 @@ void local_gnss_tick()
     warn_if_quiet(now);
     location.poll();
     published = location.state(now);
+    log_if_answer_changed();
 #endif
 }
 

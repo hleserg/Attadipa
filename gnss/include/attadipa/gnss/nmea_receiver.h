@@ -91,6 +91,14 @@
 // epochs** — two seconds against a thirty-second threshold. 10^-5 of a minute
 // is 1.85 cm, and a consumer receiver jitters metres.
 //
+// AND THE CAPTURE WAS THE CASE THAT STRESSES THE RULE HARDEST, which is what
+// makes the number load-bearing rather than lucky. The hazard is a receiver
+// standing still, so a capture taken while carrying one about would measure the
+// easy half and prove nothing. These were not: the GT-U12 was set down on a
+// bench and left there, and the owner confirmed on 2026-09-05 that it had sat
+// untouched overnight. Hours of a receiver that never moved at all, and its
+// longest run of identical coordinates is still two epochs.
+//
 // The upgrade path, if a module that latches its output ever turns up: give
 // `core::PositionSample` a flag saying its `observed_at` is an observation time
 // rather than an arrival stamp, and let `poll()` refresh on a repeat only for

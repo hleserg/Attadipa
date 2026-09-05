@@ -58,8 +58,8 @@ the finger. That run is a physical touch-coordinate **FAIL**, not a pass
 inferred from the I2C ACK.
 
 The display orientation needs both touch axes mirrored. The correction is at
-`firmware/main/twatch_board.cpp:337` — "config.flags.mirror_x = true;" and
-`firmware/main/twatch_board.cpp:338` — "config.flags.mirror_y = true;". After
+`firmware/main/twatch_board.cpp:345` — "config.flags.mirror_x = true;" and
+`firmware/main/twatch_board.cpp:346` — "config.flags.mirror_y = true;". After
 flashing `4c662c3`, the owner followed the four-corners-and-centre check and
 reported that the marker coincided with the finger. This is a physical touch
 transform **PASS**.

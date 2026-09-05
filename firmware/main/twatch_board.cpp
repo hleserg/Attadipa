@@ -35,12 +35,20 @@
 #include "attadipa/platform/board_profile.h"
 #include "board_power.h"
 #include "boot_rollback.h"
+#include "local_gnss.h"
 #include "twatch_panel_exercise.h"
 
 namespace {
 
 constexpr char kTag[] = "twatch";
 constexpr char kBoardProfileId[] = "t-watch-s3-plus";
+
+#if CONFIG_ATTADIPA_GNSS_LOCAL
+// One NMEA epoch at the 1 Hz the MIA-M10Q emits, and a third of the 3000 ms gap
+// `local_gnss.cpp` treats as a sleep, so a tick that runs late twice over still
+// does not trip the flush that exists for a real one.
+constexpr std::uint32_t kGnssTickMs = 1000;
+#endif
 
 // Main I2C: AXP2101 0x34, BMA423 0x19, PCF8563 0x51, DRV2605 0x5A. All four
 // ACKed here on 2026-08-28 from a RAM-loaded probe (#300).
@@ -724,6 +732,40 @@ esp_err_t start_twatch_ui() {
       }
     }
     build_bringup_screen();
+#if CONFIG_ATTADIPA_GNSS_LOCAL
+    // The tick this board does not otherwise have. On the Waveshare the ring is
+    // read from `refresh_ui`, the timer that already draws the clock; this
+    // image draws one static screen and has no such callback, so the receiver
+    // gets a timer of its own.
+    //
+    // Not a new task: `esp_lvgl_port` runs one already -- `lvgl_port_init()` in
+    // initialize_panel() -- and every `lv_timer` rides it, which is why
+    // `local_gnss.h`'s "everything runs on the LVGL task and there is no lock"
+    // stays true here. Registered under the port lock for the reason
+    // build_bringup_screen() takes it: that task is running by now.
+    //
+    // Registered here because this is where LVGL is known to be up, and left
+    // running while the port is still shut: `local_gnss_start()` is the last
+    // thing this function does, for the rollback reason given down there, so
+    // these first ticks find `port_open` false and return. Nothing is lost by
+    // them -- `local_gnss_start()` stamps `last_tick_ms` itself, so the gap
+    // before the port existed is not mistaken for a sleep.
+    //
+    // Guarded, unlike that call, because with the feature off this would be a
+    // timer that exists to call a no-op once a second forever.
+    lvgl_port_lock(0);
+    lv_timer_t *gnss_timer = lv_timer_create(
+        [](lv_timer_t *) { attadipa::firmware::local_gnss_tick(); },
+        kGnssTickMs, nullptr);
+    lvgl_port_unlock();
+    if (gnss_timer == nullptr) {
+      // Not fatal and not silent. Nothing would read the ring, so the receiver
+      // would look like a module that never answered -- which is a different
+      // fault from the one that happened, and the wrong one to debug.
+      ESP_LOGE(kTag, "no LVGL timer for the GNSS tick: the receiver will not "
+                     "be read this boot");
+    }
+#endif
     // Two LVGL refresh periods: the first frame is in GRAM before the LED is.
     vTaskDelay(pdMS_TO_TICKS(200));
     err = backlight(true);
@@ -763,5 +805,21 @@ esp_err_t start_twatch_ui() {
   if (panel_err != ESP_OK) {
     return abandon_twatch_after(panel_err, "display capability");
   }
+
+  // LAST, AND PAST EVERY abandon_twatch_after ABOVE. `local_gnss.h` says the
+  // UART driver's RX ring is allocated once and never freed because the call
+  // happens after the last step boot can roll back -- and on this board that is
+  // a condition to satisfy rather than a fact to inherit.
+  // `rollback_boot_retaining_all()` does not reboot: it tears the stack down
+  // and returns an error, so a port opened earlier would outlive the rollback
+  // with nothing left to read it, and `ops.remove_pmu()` would drop the handle
+  // that could have turned BLDO1 back off -- a module drawing current with no
+  // driver and no way to stop it. Here, every rollback has already returned.
+  //
+  // The tick registered above has been running throughout, finding the port
+  // shut and returning at once. That is what `local_gnss.cpp`'s `port_open`
+  // atomic is for: the header calls the boot task racing the LVGL timer the
+  // exception, and this is it.
+  (void)attadipa::firmware::local_gnss_start();
   return ESP_OK;
 }

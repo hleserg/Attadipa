@@ -485,14 +485,17 @@ esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
                  "ALDO2 backlight)",
            aldo, aldo | 0x06);
 
-#if CONFIG_ATTADIPA_GNSS_BRIDGE
+#if CONFIG_ATTADIPA_GNSS_BRIDGE || CONFIG_ATTADIPA_GNSS_LOCAL
   // BLDO1 feeds the GNSS daughterboard — HARDWARE_MATRIX.md's GNSS row, "BLDO1
   // (+ DC4 @850 mV for LS550G)". Same encoding as the ALDOs, 0x1C = 3.3 V (REG
   // 96, AXP2101 datasheet V1.4 6.13.2.81), enable REG 90 bit 4 (6.13.2.75).
   //
-  // Only under the bridge flag, because nothing else in this firmware speaks to
-  // that module yet and a rail with no driver behind it is current spent on
-  // nothing. It becomes unconditional when the GNSS driver lands (#429).
+  // Only under a flag that means something is listening, because a rail with no
+  // driver behind it is current spent on nothing. That used to be the bridge
+  // alone; #442 adds the local receiver, which is the driver the bridge was
+  // asking on behalf of. Still not unconditional: the T-Watch image without
+  // either symbol never speaks to the module, and this write is what would
+  // make it pay for it anyway.
   //
   // DC3 is deliberately *not* written. The vendor drives it to 3300 mV for
   // "earlier versions" of this watch, but our datasheet copy documents DCDC3
@@ -507,9 +510,12 @@ esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, "enable BLDO1");
   ESP_LOGI(kTag, "AXP2101: LDO enable -> 0x%02x (BLDO1 3.3 V, GNSS)",
            aldo | 0x10);
-  // Read-only, and only under this flag. Question D6 asks which rail feeds the
-  // GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up has
-  // not answered it. REG 80 bit 2 is DCDC3 (datasheet V1.4 6.13.2.68).
+  // Read-only, and only under these flags. Question D6 asked which rail feeds
+  // the GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up
+  // would not have answered it. The bench run of 2026-09-05 answered it with
+  // DCDC3 clear while the module was talking, so this line is now a check that
+  // the answer still holds rather than the question. REG 80 bit 2 is DCDC3
+  // (datasheet V1.4 6.13.2.68).
   std::uint8_t dcdc = 0;
   ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
   ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x (DC3 %s) -- read, not written",

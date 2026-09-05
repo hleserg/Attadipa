@@ -18,12 +18,15 @@ endif()
 if(CONFIG_ATTADIPA_GNSS_BRIDGE)
     list(APPEND ATTADIPA_MAIN_SOURCES "gnss_bridge.cpp")
 endif()
-# Compiled into every Waveshare image, feature or not: with the symbol off its
-# three functions are the no-ops the header promises, so waveshare_board.cpp
-# calls them unconditionally and has no #if of its own to get wrong.
-if(CONFIG_ATTADIPA_BOARD_WAVESHARE_AMOLED_206)
-    list(APPEND ATTADIPA_MAIN_SOURCES "local_gnss.cpp")
-endif()
+# Compiled into every image, feature or not: with the symbol off its three
+# functions are the no-ops the header promises, so both board files call them
+# unconditionally and neither needs an #if of its own to get wrong.
+#
+# It used to be behind the Waveshare board guard, which was the build-side half
+# of the Kconfig refusal #442 removed. Left there, a T-Watch image with the
+# feature on would have failed at the link rather than at the prompt -- the
+# outcome that guard existed to prevent, arriving because the guard stayed.
+list(APPEND ATTADIPA_MAIN_SOURCES "local_gnss.cpp")
 idf_component_register(SRCS ${ATTADIPA_MAIN_SOURCES} INCLUDE_DIRS ".")
 
 # The host libraries are *linked*, not copied. These are the same CMakeLists the

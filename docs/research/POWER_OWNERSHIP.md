@@ -109,14 +109,14 @@ What it does not have is a way for anyone else to take part.
 ### 2.2 One rail writer, which is accidentally right
 
 `initialize_pmu()` programs three rails and enables two:
-[`firmware/main/board_power.cpp:522`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:528`](../../firmware/main/board_power.cpp) —
 "DC1 3.3 V", then ALDO1 and
-[`firmware/main/board_power.cpp:524`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:530`](../../firmware/main/board_power.cpp) —
 "ALDO2 3.3 V", enabling them read-modify-write at
-[`firmware/main/board_power.cpp:531`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:537`](../../firmware/main/board_power.cpp) —
 "ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,". Its comment
 states the discipline it is keeping —
-[`firmware/main/board_power.cpp:520`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:526`](../../firmware/main/board_power.cpp) —
 "// Preserve unrelated rails. The known-working board implementation needs".
 The three writes moved into the owner unchanged; `initialize_pmu()` now calls
 `board_power_bring_up_rails()` and the boot sequence is byte-identical.
@@ -288,7 +288,7 @@ The decision is written once, board-agnostic and template-only, in
 argument above reaches the display stack and nothing else: it authorises
 retaining neither board's I2C. What separates the answers is who owns the
 touch handle. On the T-Watch the LVGL port does —
-[`firmware/main/twatch_board.cpp:719`](../../firmware/main/twatch_board.cpp) —
+[`firmware/main/twatch_board.cpp:727`](../../firmware/main/twatch_board.cpp) —
 "state.indev = lvgl_port_add_touch(&touch);" — and rollback removes no indev,
 so an LVGL still running still reads that `esp_lcd_touch_t`; retaining the
 display has to retain touch and its bus with it. On the Waveshare the input
