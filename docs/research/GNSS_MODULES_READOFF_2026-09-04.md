@@ -50,7 +50,7 @@ AN3126, and the two parts turned out to be nothing like each other.
 | Identity | `UBX-MON-VER`, and the power-up `$GNTXT` banner, agreeing | MEASURED |
 | Sentence set | GGA, GSA, GSV, RMC, VTG, GLL at 1 Hz; talkers GP, GL, GA, GB, GQ. **No `$GIGSV`** — no NavIC | MEASURED |
 | Non-NMEA framing | UBX, both directions. `CFG-UART1` reports `UBX 1, NMEA 1` in and out | MEASURED |
-| Fix acquired, and cold TTFF | yes. **Hot** 0.1 s (ephemeris retained), **cold 40.0 s** (the cold run guarded, the hot one too short to need it). **Warm — ephemeris dropped, almanac kept — was never run** | MEASURED for hot and cold; **NOT MEASURED** for warm |
+| Fix acquired, and cold TTFF | yes. **Hot sub-second** — 820 ms on the receiver's own counter — and **cold 40.0 s**, guarded. **Warm — ephemeris dropped, almanac kept — was never run** | MEASURED for hot and cold; **NOT MEASURED** for warm |
 | Position, satellites, HDOP | logged on the bench; the position itself is not committed | MEASURED, off-repo |
 | Raw log attached | **no** — see the note on coordinates above | not met, deliberately |
 
@@ -97,7 +97,7 @@ only, nothing written that survives a power cycle.
 | Horizontal precision | **rms 4.07 m**, median 3.96, 68 % 5.16, 95 % 6.66, max 7.02 | 60 s static, 12 sats, quality 2 |
 | `hAcc` vs its own scatter | receiver claimed **4.28 m** against 4.07 m measured — 5.2 % apart | same window; this is scatter, not true error |
 | Best C/N0 | 42–44 dBHz | balcony |
-| **Hot** TTFF | **0.1 s** | **ephemeris retained** — u-blox's hot start, not warm |
+| **Hot** TTFF | **820 ms**, from the receiver's own `UBX-NAV-PVT` counter; a guarded run separately reported 0.1 s by an unrecorded method | **ephemeris retained** — u-blox's hot start, not warm. **Sub-second is the defensible claim**: 0.1 s is a tenth of this receiver's own 1000 ms measurement period, so it cannot be resolved by watching solutions, and this same bench caught `UBX-NAV-STATUS.ttff` reporting a stale value in a frame with `gpsFix = 0` |
 | Cold TTFF | **40.0 s** | `UBX-CFG-RST`, BBR wiped, antenna secured and guarded |
 | **Warm** TTFF | **NOT MEASURED** | almanac and position kept, ephemeris dropped — never run |
 | Solution rate | 1 Hz — `CFG-RATE-MEAS 1000 ms`, `CFG-RATE-NAV 1` | `CFG-VALGET`, RAM |
@@ -118,8 +118,8 @@ result — it means `hAcc` can be carried into `PositionValidity` as the receive
 reports it, rather than being scaled by a fudge factor invented here — but the
 claim is "not optimistic about its own noise", not "accurate to 4 m".
 
-**And the two TTFF numbers are the two ends, not the middle.** 0.1 s is a hot
-start and 40.0 s is a cold one; the **warm** case — almanac and position kept,
+**And the two TTFF numbers are the two ends, not the middle.** Sub-second is a
+hot start and 40.0 s is a cold one; the **warm** case — almanac and position kept,
 ephemeris stale — was never run, and that is the case a duty-cycled watch
 actually wakes into. Nothing here prices it.
 
@@ -330,9 +330,16 @@ AN3126      GSA  19 fields in all 351 sentences,  systemId PRESENT
 
 **GSV is not fixed-length, and that is the trap.** A GSV sentence carries four
 header fields and then a four-field block per satellite, so its length is
-`4 + 4n` without `signalId` and `5 + 4n` with it — and `n` is 1 to 4, because
-the last sentence of a group carries only the satellites left over. Counted
-across the two captures:
+`4 + 4n` without `signalId` and `5 + 4n` with it. **`n` is 0 to 4**: 4 is the
+block limit, the last sentence of a group carries only the satellites left
+over, and **0 is real** — a u-blox M10 emits one GSV per *enabled*
+constellation whether anything is visible in it or not. The AN3126 capture
+contains `$GQGSV,1,1,00,0*64`, five fields, QZSS with nothing in view, and the
+watch's own MIA-M10Q does the same
+(`docs/research/TWATCH_GNSS_READOFF_2026-09-05.md:124` — "  sentence GAGSV      sentence GNGSA      sentence GPGSV").
+A parser that bounds `n` below at 1 rejects one to four well-formed sentences
+per epoch and makes a correct receiver look like a stream of parse errors.
+Counted across the two captures:
 
 ```
 GT-U12      GSV field counts  {8, 16, 20}          signalId ABSENT
