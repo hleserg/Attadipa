@@ -412,8 +412,8 @@ housing. Expect 1.25 mm. One reading closes the `LIKELY` row in
 ### On the powered board, whenever convenient
 
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
-  `0x69` — the five eFuse-defaulted registers of §1.3. Until then every
-  "default" claimed for them is `UNKNOWN`.
+  `0x69` — the five eFuse-defaulted registers of §1.3. `0x62` was read
+  2026-08-23 (§6), but a *default* needs a cold read, so those stay `UNKNOWN`.
   **Watch for one pathological combination**: `0x50` bit 4 = 0 *and* bits 3:2 =
   00 (current source off) makes `TS` read 0 V through `RP2`, which the part sees
   as "battery far too hot" and refuses to charge. With the source at its 50 µA
@@ -542,11 +542,11 @@ maximum · **D** 150 mA = 0.47C at 320 mAh, 175 mA = 0.44C at 400 · **E** 300 m
   this class specifies. It exceeds 0.5C for **every** cell in **every** row.
 - **The POR default is eFuse-trimmed** — the datasheet prints it
   `{EFUSE, 0b, EFUSE}`, so there is no silicon constant to quote. X-Powers'
-  prose gives the intended value as 300 mA, which is **1.0C** on the real cell.
-  It has never been read on this board.
+  prose gives 300 mA, **1.0C** on the real cell. **Still never read as a POR
+  default**: the 2026-08-23 read below came after the factory image had run.
 
-**So: read `REG 0x62`, then write it explicitly at every PMU init.** Not because
-the value might be wrong — because we do not know what it is.
+**So: read `REG 0x62`, then write it explicitly at every PMU init.** The read
+half is done — `0x11`, below — and that is exactly why the write half stands.
 
 ### Which AXP2101 is on this board is `UNKNOWN`, and it matters here
 
@@ -586,12 +586,17 @@ codes 5 through 9 decode identically in both parts:
    `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:412` —
    "  0x62 ICC_CFG        = 0x11", i.e. `10001b`, the bottom of that
    range. Nothing in this firmware writes `REG 0x62`, so it is not a value
-   anybody here chose: on the SWcharge part the charger is already set to
-   **1100 mA**, and on the linear part it is running on a reserved code.
-   The hazard above is therefore not only what a mistake *could* reach —
-   the register was found there with no mistake required. Whether it still
-   reads `0x11` is one register read away and was not repeated for this
-   note.
+   anybody here chose: on the SWcharge part the charger is set to
+   **1100 mA**, which on this section's own 250–310 mAh estimate is
+   **3.5–4.4C** — three to four times the 1.0C the bullet above gives as
+   the reason the vendor's 400 mA is wrong. On the linear part it is
+   running on a reserved code. The hazard above is therefore not only what
+   a mistake *could* reach — the register was found there with no mistake
+   required. **And it does not need re-reading to still be true**: by the
+   `REG 0x64` argument under *The other four registers* below, the PMU sees
+   no POR while the cell stays connected, and nothing here writes the
+   register, so only unplugging the cell can have moved it. Not re-read
+   today, and not claimed as re-read.
 2. **The linear thermal model may be the wrong model.** `(VBUS − VBAT) × I_CC`
    dissipated in the package is a linear-charger calculation; through an 85 %
    buck it is roughly an order of magnitude lower. The conclusions stay
@@ -956,8 +961,10 @@ cell is `ESTIMATED`; every hardware test named here is
    `R13` (47 kΩ pulldown on `Q1`) is missing from the drive circuit. Evidence in
    §1.1 and §1.4. Documentation only.
 4. **Read the five eFuse-defaulted AXP2101 registers on the powered board.**
-   `0x62`, `0x50`, `0x58`, `0x12`, `0x69`, in one I²C burst at `0x34`. Until then
-   every "default" claimed for them is `UNKNOWN`. `needs-hardware`.
+   `0x62`, `0x50`, `0x58`, `0x12`, `0x69`, in one I²C burst at `0x34`. **One
+   fifth done**: `0x62` read `0x11` on 2026-08-23 (§6). A powered read still is
+   not a *default* — for that the PMU has to come up cold — so every "default"
+   claimed for them stays `UNKNOWN`. `needs-hardware`.
 5. **Settle which AXP2101 variant is fitted.** Scope the `LP2`/`SW` node while
    charging: the SWcharge part switches there, the linear part should be quiet.
    Never probe it by writing high `REG 0x62` codes. Decides whether 1.5 A is
