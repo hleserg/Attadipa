@@ -258,41 +258,88 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
           [ "$run" = no ] || exit 0
           echo "::notice::#$PR has had its five review rounds (OD-25); round $((round + 1)) was not run."
-          # A STANDING BLOCK IS NOT CLEARED BY RE-RUNNING THE WORKFLOW. The
-          # invalidation step above strips both labels on `synchronize` only, so
-          # after a push there is no label here and the cap hands over the pass
-          # round six would have returned. Without a push the round-five
-          # `ai-review:blocking` is still on the pull request, and applying a
-          # pass over it would let a bare re-run launder a blocking verdict into
-          # a merge with no commit in between. Push the fix; the cap clears it.
+          # A STANDING BLOCK IS NOT CLEARED BY RE-RUNNING THE WORKFLOW, AND IS
+          # CLEARED BY A PUSH -- HERE, BECAUSE NOTHING ELSE DOES IT. This comment
+          # used to say the invalidation step above strips both labels on a
+          # `synchronize`. It does not, and deliberately: its own comment says a
+          # review that has not run yet has said nothing that justifies releasing
+          # somebody else's hold, and while a round is still going to run that is
+          # right -- the round re-decides within minutes. Past the ceiling no
+          # round will ever run again, so "wait for the next round" stops being
+          # an option and the block stands for ever. #445 merged carrying one,
+          # blocked 22:30:26Z, fixed and pushed 22:42:37Z, and this step could
+          # only print a warning about it.
+          #
+          # So the cap asks the question the invalidation step is not entitled to
+          # ask: has the head moved since the block was applied? If it has, the
+          # block was about code that is no longer being merged and nothing will
+          # ever judge what replaced it. If it has not, this is the bare re-run
+          # that must keep being refused -- a pass over a standing block with no
+          # commit in between is exactly the laundering.
+          #
+          # Every failure below leaves the block standing. An unanswerable
+          # question is not a clearance.
           blocking=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' | grep -cx 'ai-review:blocking') || blocking=0
+          stale=no
+          if [ "$blocking" -gt 0 ]; then
+            # `--paginate` runs the jq filter once per page, so this ends in a
+            # `tail -1` rather than a jq `last`, for the reason `paid` above is
+            # counted with `wc` rather than `jq | length`.
+            blocked_at=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --jq '.[] | select(.event == "labeled") | select(.label.name == "ai-review:blocking") | .created_at' | tail -1) || blocked_at=""
+            head_sha=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq '.headRefOid') || head_sha=""
+            head_at=""
+            if [ -n "$head_sha" ]; then
+              head_at=$(gh api "repos/$REPO/commits/$head_sha" --jq '.commit.committer.date') || head_at=""
+            fi
+            # Both are ISO-8601 in UTC with a fixed width, so a string compare is
+            # a time compare. A commit whose committer date is somehow older than
+            # the label keeps the block, which is the fail-safe direction.
+            if [ -n "$blocked_at" ] && [ -n "$head_at" ] && [[ "$head_at" > "$blocked_at" ]]; then
+              stale=yes
+              echo "::notice::#$PR is capped and its \`ai-review:blocking\` predates the head being merged ($blocked_at < $head_at); clearing it."
+            fi
+          fi
           # One note, not one per trigger. The ledger comment it points at is
           # already on the page with every finding and its status: OD-25 stops
           # the review holding, and now reviewing, but never recording.
           marker='<!-- attadipa-review-cap -->'
-          said=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_LEDGER_ACTOR) | select(.body | startswith("<!-- attadipa-review-cap -->")) | .id' | tail -1) || said=""
+          # ONE NOTE PER OUTCOME, NOT ONE PER PULL REQUEST. A held block and a
+          # cleared one are different things to tell the reader, and the held
+          # note is the one a later push makes untrue -- so the flavour is in the
+          # marker and each is posted at most once. Bounded at two comments.
+          if [ "$blocking" -gt 0 ] && [ "$stale" = no ]; then
+            flavour='<!-- attadipa-review-cap:held -->'
+          else
+            flavour='<!-- attadipa-review-cap:cleared -->'
+          fi
+          said=$(ATTADIPA_CAP_FLAVOUR="$flavour" gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_LEDGER_ACTOR) | select(.body | startswith("<!-- attadipa-review-cap -->")) | select(.body | contains(env.ATTADIPA_CAP_FLAVOUR)) | .id' | tail -1) || said=""
           # The single quotes are the point: every `backtick` below is markdown
           # for the comment this writes, not a command substitution waiting to
           # expand. Double quotes here would run them.
           # shellcheck disable=SC2016
           {
             printf '%s\n' "$marker"
-            if [ "$blocking" -gt 0 ]; then
+            printf '%s\n' "$flavour"
+            if [ "$blocking" -gt 0 ] && [ "$stale" = no ]; then
               printf '**The independent review has had its five rounds (OD-25), and this pull request still carries `ai-review:blocking`.**\n\n'
-              printf 'No round will run on it again. That label is from round %s, and only a push clears it: pushing the fix drops the stale verdict, and the cap then hands over `ai-review:pass` without paying for a round whose answer is already fixed. Re-running this workflow will not clear it, on purpose — a re-run with no commit between it and the block would turn a blocking verdict into a merge with nothing changed.\n\n' "$round"
+              printf 'No round will run on it again. That label is from round %s, and a push clears it: push the fix, and the next run of this workflow sees a head newer than the block, drops the stale verdict and hands over `ai-review:pass` without paying for a round whose answer is already fixed. Re-running this workflow against the same head will not clear it, on purpose — a pass over a standing block with no commit in between would turn a blocking verdict into a merge with nothing changed.\n\n' "$round"
               printf 'Круги ревью исчерпаны (OD-25, пять кругов). `ai-review:blocking` с круга %s снимается только пушем: перезапуск воркфлоу его намеренно не снимает.\n' "$round"
             else
               printf '**The independent review has had its five rounds (OD-25), so this one did not run.**\n\n'
+              if [ "$stale" = yes ]; then
+                printf 'The `ai-review:blocking` this pull request carried has been taken off: it was applied to a head that is no longer the one being merged, and no round will ever read what replaced it. **That is a clearance by expiry, not by review** — the fix that was pushed after the block was checked by nothing.\n\n'
+                printf '`ai-review:blocking` снята: она относилась к голове, которая больше не мержится, и прочитать то, что пришло ей на смену, уже некому. **Это снятие по истечении кругов, а не по результату ревью** — исправление, запушенное после блокировки, никто не проверял.\n\n'
+              fi
               printf 'Round %s published, and from round six no finding holds a pull request at all — a `floor` finding included. A sixth round could only have returned the verdict this label already carries, so it was not bought.\n\n' "$round"
               printf '`ai-review:pass` here means *the review is over*, not *the review found nothing*: %s open finding(s) remain in the review ledger on this page, and past the ceiling none of them holds a pull request. Read them before merging. One may be `floor` — a finding that *did* hold this pull request up to round five, whose fix, if it was pushed, was checked by nothing. The ledger table says which.\n\n' "$open"
               printf 'Независимое ревью исчерпало пять кругов (OD-25) и на этот раз не запускалось. Круг %s опубликован; за потолком ни одна находка PR не держит. `ai-review:pass` здесь значит «ревью закончено», а не «замечаний нет»: открытых находок в леджере — %s, и среди них может быть `floor`, который держал PR до пятого круга и чьё исправление никто не проверял.\n' "$round" "$open"
             fi
           } > /tmp/cap-note.md
-          if [ "$blocking" -eq 0 ]; then
+          if [ "$blocking" -eq 0 ] || [ "$stale" = yes ]; then
             gh pr edit "$PR" --repo "$REPO" --add-label ai-review:pass --remove-label ai-review:blocking ||
               echo "::error::could not apply \`ai-review:pass\` to #$PR after the review cap; add it by hand"
           else
-            echo "::warning::#$PR is capped and still carries \`ai-review:blocking\` from round $round. The cap does not clear it without a push."
+            echo "::warning::#$PR is capped and still carries \`ai-review:blocking\` from round $round, applied to the head being merged. The cap does not clear it without a push."
           fi
           [ -z "$said" ] || exit 0
           gh pr comment "$PR" --repo "$REPO" --body-file /tmp/cap-note.md || true
