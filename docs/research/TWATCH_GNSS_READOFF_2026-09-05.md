@@ -282,6 +282,10 @@ UBX-NAV-SIG      26 signals, 0 with authStatus = Authenticated
 - What DC4 feeds. §3.
 - Whether the module retains an almanac across a power cycle on this board,
   which is a backup-supply question and was not asked.
+- Whether the module ever sends `TXT`. §4 explains why these windows cannot
+  answer it: none of them began at the module's power-up. The same BLDO1
+  cycle §3 already owes would settle this and the almanac question above in
+  one run.
 
 ## 6. What this changes elsewhere
 
