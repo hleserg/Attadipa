@@ -281,7 +281,7 @@ Two consequences follow, both from facts this repository already holds at
   the panel keeps ageing on battery depends on what the factory image does there,
   which is `UNKNOWN` — unobserved, not weighed and discarded. This is the
   correction to the third row of the table.
-- **Leaving it plugged sits on a charge path that has been read once.** The
+- **Leaving it plugged sits on a charge path that has now been read.** The
   AXP2101 `TS` pin goes through `RP2` to `GND` and never reaches `J1`, so **the
   charger never sees cell temperature**; Waveshare's BSP configures the charger
   not at all — though its **demo** does, and that is the nearest evidence anyone
@@ -289,11 +289,11 @@ Two consequences follow, both from facts this repository already holds at
   (`BATTERY_UPGRADE` §1.1, `VERIFIED`), which points *away* from the float-charge
   case rather than toward it — and what `phone_s3_box_3` left in those registers
   **has since been read**: the 2026-08-23 dump gives `0x62`, `0x63` and `0x64`
-  (`WAVESHARE_RUNNING_OUR_CODE` §3.4, read-only by construction). They are
-  that image's values, because **the PMU never sees a POR while the cell is
-  connected** and this repository writes no charger register — so `REG 0x64`
-  (CV target) and `REG 0x63[4]` (termination enable) hold what it last wrote,
-  and the dump is what that was.
+  (`WAVESHARE_RUNNING_OUR_CODE` §3.4, read-only by construction). That is the
+  state the unit was in under that image — **written by it or simply left at
+  the default, and which of the two is not established here**. So `REG 0x64`
+  (CV target) and `REG 0x63[4]` (termination enable) persist as whatever that
+  image last wrote, if it wrote them at all.
   With `0x63[4]` clear the charger holds CV indefinitely, float-charging a
   Li-ion — `BATTERY_UPGRADE` §6. **That bit is in the dump and is not decoded
   here**: the decode wants its own evidence, so this stays open on paper while
@@ -315,8 +315,9 @@ already answered, and answered well**: `0x03` = `011b` = **4.2 V**, the value
 4.2 V cell to 4.35. It read `0x03` in the 2026-08-23 dump and `0x03` again on
 this board on 2026-08-28 —
 `docs/research/BENCH_DEVICES.md:185` — "`REG 0x64` on `0x34` read back `0x03`."
-— across the 2026-08-25 factory restore above, which is a *measured* instance
-of the persistence this section relies on. What is left is narrower: `0x63` was
+— across the 2026-08-25 factory restore above, in which `phone_s3_box_3` itself
+booted again. That is measured evidence that the vendor image does **not**
+change `REG 0x64`. It says nothing about `REG 0x62`. What is left is narrower: `0x63` was
 read but is not decoded here, and `0x61` was not read at all.
 **The owner was asked whether he wanted them read and said yes**
 (2026-08-24, under OD-18 in

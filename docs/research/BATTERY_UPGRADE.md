@@ -588,14 +588,16 @@ codes 5 through 9 decode identically in both parts:
    range. Nothing in this firmware writes `REG 0x62`, so it is not a value
    anybody here chose: on the SWcharge part the charger is set to
    **1100 mA**, which on this section's own 250–310 mAh estimate is
-   **3.5–4.4C** — three to four times the 1.0C the bullet above gives as
+   **3.5–4.4C** — more than three times the 1.0C the bullet above gives as
    the reason the vendor's 400 mA is wrong. On the linear part it is
    running on a reserved code. The hazard above is therefore not only what
    a mistake *could* reach — the register was found there with no mistake
-   required. **And it does not need re-reading to still be true**: by the
-   `REG 0x64` argument under *The other four registers* below, the PMU sees
-   no POR while the cell stays connected, and nothing here writes the
-   register, so only unplugging the cell can have moved it. Not re-read
+   required. **Whether it still reads `0x11` is not established here.** The
+   PMU sees no POR while the cell stays connected and nothing in this
+   repository writes the register — but that is not the whole interval.
+   `phone_s3_box_3` booted again during the factory restore of 2026-08-25:
+`docs/hardware/BENCH_HANDLING.md:222` — "On 2026-08-25 a full factory restore followed by a hard reset brought the panel"
+   — and what that image does to `REG 0x62` is not known. Not re-read
    today, and not claimed as re-read.
 2. **The linear thermal model may be the wrong model.** `(VBUS − VBAT) × I_CC`
    dissipated in the package is a linear-charger calculation; through an 85 %
