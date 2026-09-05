@@ -144,10 +144,16 @@ a new owner is two risks in one change.
 The first implementation changes no observable behaviour except wake
 classification, which becomes correct where it was previously coincidental. That
 is deliberate: the seam has to exist before any power *policy* can be judged,
-and the measurements a policy would need — current per state (H1), whether the
-AXP2101 can measure current on these boards at all (H2), usable wake sources and
-their cost (H5), AMOLED brightness against power (H6), and what the six idle
-rails are costing — are all **UNKNOWN** or **NOT EXECUTED — HARDWARE REQUIRED**.
+and the measurements a policy would need are still not there. Two have moved
+since this was written and neither moves this: **H2 is answered** — the AXP2101
+cannot measure current on these boards at all, so no register read will ever
+supply them — and **H1 is `PARTIAL`**, one idle state on one board, measured
+2026-09-05 at the USB input upstream of the PMU (S16,
+[VERIFIED_FACTS](../research/VERIFIED_FACTS.md)). An input figure separates no
+rail, so it says nothing about what any rail costs. Usable wake sources and
+their cost (H5), AMOLED brightness against power (H6), what the six idle rails
+are costing, and every other power state on either board remain **UNKNOWN** or
+**NOT EXECUTED — HARDWARE REQUIRED**.
 
 Gating a rail to save power is therefore explicitly *not* authorised by this
 ADR. It is authorised by a measurement, applied through the owner this ADR

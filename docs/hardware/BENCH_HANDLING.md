@@ -314,7 +314,7 @@ already answered, and answered well**: `0x03` = `011b` = **4.2 V**, the value
 `BATTERY_UPGRADE` §6 prescribes rather than the `100b`/`101b` that would take a
 4.2 V cell to 4.35. It read `0x03` in the 2026-08-23 dump and `0x03` again on
 this board on 2026-08-28 —
-`docs/research/BENCH_DEVICES.md:185` — "`REG 0x64` on `0x34` read back `0x03`."
+`docs/research/BENCH_DEVICES.md:196` — "`REG 0x64` on `0x34` read back `0x03`."
 — across the 2026-08-25 factory restore above, in which `phone_s3_box_3` itself
 booted again. That is measured evidence that the vendor image does **not**
 change `REG 0x64`. It says nothing about `REG 0x62` — and `0x62` is the

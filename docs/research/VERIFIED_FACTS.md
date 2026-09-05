@@ -2419,14 +2419,31 @@ ones that heading states.
   mean sits 1.7 mW above it.
 - **Source:** S16 — a FNIRSI FNB-58 inline on the board's USB-C input,
   2026-09-05, logged over its HID interface with
-  `baryluk/fnirsi-usb-power-data-logger`.
-- **Which build was on the board is `UNKNOWN`.** It was not recorded at
-  measurement time and [BENCH_DEVICES](BENCH_DEVICES.md) carries no firmware row
-  for this unit, so there is nothing to cite; do not backfill it from
-  `git log`. What *is* established is the screen the owner read off the board,
-  which is what names the state. A repeat should record the image first.
-- **Zero offset subtracted: 2.484 mA**, itself measured over 2122 samples with
-  the meter's output open. That is a self-measured offset, **not a calibration
+  `baryluk/fnirsi-usb-power-data-logger` at **an `UNKNOWN` revision**: none was
+  recorded and the working copy was not kept, so a repeat against a later `main`
+  is not guaranteed comparable and nothing in the log would reveal the
+  difference. What *is* pinned is the USB layer under it, `pyusb 1.3.1` in the
+  bench virtualenv. The meter speaks an undocumented HID protocol, so that
+  decode is what turns the capture into volts and amps; the next run records the
+  commit id, the way S14 pins its four repositories.
+- **The window: 21 440 samples over 238.1 s at 90.0 samples/s**, beginning
+  17:59Z. That matters for the BLE question below, because advertising shows as
+  periodic bumps and a transient count without a timebase cannot bound it: at
+  this rate the 0.028 % above 150 mA is six samples spread over four minutes,
+  which is what a bounded statement about it looks like.
+- **Which build was on the board is `UNKNOWN`, and the bound on it contradicts
+  [BENCH_DEVICES](BENCH_DEVICES.md).** Nothing recorded the image at measurement
+  time. But the screen the owner read off the board is the provisioning entry
+  pad, which arrived in `87cb64c` on **2026-09-02** (#406), so whatever ran
+  contained #406 and was therefore newer than that date. `BENCH_DEVICES.md:27`
+  — "| Current firmware | **Attadipa T-166 bench candidate**" — records a
+  bring-up probe written 2026-08-25, a week before that screen existed, so the
+  two disagree. Which way is not established here: the unit may have been
+  reflashed since, or this may have been a RAM boot the way S15's was, and
+  nothing recorded either. The bound above is read off the panel, not backfilled
+  from `git log`, and a repeat records the image first.
+- **Zero offset subtracted: 2.484 mA**, itself measured over 2122 samples in
+  23.4 s at 90.7 samples/s with the meter's output open. That is a self-measured offset, **not a calibration
   against a known source**. The meter's own rated accuracy is `UNKNOWN` — no
   specification for the FNB-58 has been traced here — so how this offset ranks
   against the instrument's gain error cannot be stated, only that it is 3 % of
@@ -2437,14 +2454,16 @@ ones that heading states.
 - **This is input power at VBUS, not board consumption by rail.** The meter sits
   upstream of the AXP2101, so the number includes the PMU's conversion losses,
   and it is *board* consumption only because the cell was disconnected — with a
-  cell attached the charger current is in the same reading. An earlier run that
-  still had the cell attached read **bimodally, 84 mA and 213 mA in bursts**;
-  that run lives only in bench logs, which are not repository artefacts, and it
-  is cited here for one thing only — its 84 mA mode is this same baseline to
+  cell attached the charger current is in the same reading. An earlier run the
+  same day — **2026-09-05, beginning 15:23Z, 215 946 samples over 2398.1 s at
+  90.0 samples/s**, same meter, same board, cell still attached — read
+  **bimodally, 84 mA and 213 mA in bursts**; that run lives only in bench logs,
+  which are not repository artefacts, and it is cited here for one thing only — its 84 mA mode is this same baseline to
   within 1 %, which is what turned an inference into a measurement. **Nothing
   measured the charger current**, so that the 213 mA mode was charging is
   *consistent with* the cell being attached and is not established here.
-- **One residual `UNKNOWN`: whether the BLE radio was powered.** A host scan
+- **The third residual `UNKNOWN` — after the decoder revision and the meter's
+  rated accuracy above — is whether the BLE radio was powered.** A host scan
   does not settle it — in MeshCore the *node* advertises and the watch is the
   central, so the watch is not expected to appear in a scan whether its radio is
   up or not. Do not read its absence as "radio off".

@@ -67,6 +67,17 @@ subsequent replug, the owner installed a FAT32-formatted microSD/TF card. The
 card's physical presence and format are owner-reported bench state; mounting,
 reading and writing it from Attadipa are `NOT EXECUTED — HARDWARE REQUIRED`.
 
+**The `Current firmware` row above is contradicted and has not been repaired,
+because repairing it would mean asserting something nobody recorded.** The S16
+power measurement of 2026-09-05 was taken with the provisioning entry pad on
+screen, and that screen arrived in `87cb64c` on 2026-09-02 (#406) — a week after
+T-166 was written. So whatever ran that day contained #406 and the row naming a
+2026-08-25 bring-up probe cannot describe it. Which way the row is wrong is
+`UNKNOWN`: the unit may have been reflashed since, or that session may have been
+a RAM boot the way S15's was, and nothing recorded either. Until someone reads
+the image off the unit, this paragraph is the fact and the row is the stale
+half. [VERIFIED_FACTS](VERIFIED_FACTS.md) carries the measurement.
+
 **`F8:5B:1B:A1:98:24` is not ours to write to.** It is a MeshCore node somebody
 is using, and the correct handling is to leave it alone. Name it by serial, not
 by position: it used to be *the other one* of two, and it is now one of three.

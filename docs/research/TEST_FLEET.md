@@ -65,7 +65,7 @@ by this table instead gets `ERR`/`NOT_FOUND`.
   "to be flashed with the latest official"), taken when this repository believed the fleet held two. The Home
   Assistant node is one of them. **The Room Server and the repeater are in
   service, their firmware has never been read, and no decision covers writing to
-  them** — treat them the way [`BENCH_DEVICES.md:70`](BENCH_DEVICES.md)
+  them** — treat them the way [`BENCH_DEVICES.md:81`](BENCH_DEVICES.md)
   "not ours to write to" treats the MeshCore node on this host: do not flash
   without an owner decision naming the node.
 - **GNSS fitment is known for two T114s and `UNKNOWN` for two.** The Home
@@ -108,7 +108,7 @@ by this table instead gets `ERR`/`NOT_FOUND`.
   `MeshCore-🤘Beta Serega`
   ([`T114_BLE_COMPANION_DEFECTS_2026-08-26.md:24`](T114_BLE_COMPANION_DEFECTS_2026-08-26.md)
   "advertised as"), on a board the same report labels `OPERATOR REPORTED` as a
-  T114 and which [`BENCH_DEVICES.md:111`](BENCH_DEVICES.md)
+  T114 and which [`BENCH_DEVICES.md:122`](BENCH_DEVICES.md)
   "Do not close that gap by inference" refuses to tie to either bench node. It is
   not the V4.3's: the earlier reading that gave both names to one unit is
   withdrawn ([`MESHCORE_T114_FIRST_CONTACT.md:81`](MESHCORE_T114_FIRST_CONTACT.md)
