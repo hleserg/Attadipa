@@ -27,6 +27,7 @@ Required for every entry:
 | **`espressif/esp_lcd_touch`** | **1.2.1**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | this resolution is what `firmware/dependencies.lock` records, and CI fails the build on any drift from it (*Where the resolved graph lives*, above); re-audit the licence when a deliberate bump moves it |
 | **`espressif/cmake_utilities`** | **0.5.3**, transitive resolution audited 2026-08-26 | Apache-2.0, read from the resolved component's `license.txt` | this resolution is what `firmware/dependencies.lock` records, and CI fails the build on any drift from it (*Where the resolved graph lives*, above); re-audit the licence when a deliberate bump moves it |
 | **LVGL** | **v9.5.0** — `85aa60d18b3d5e5588d7b247abf90198f07c8a63`, 2026-02-18 | MIT | tagged releases only. Retest both geometries, the font-subset size and asset regeneration on every bump |
+| **minmea** | `2dd2cd11a359de5583e68053182d5bbf29725934`, 2026-07-15 — **vendored** at `gnss/vendor/minmea/`, unmodified: `minmea.c` SHA-256 `3b30b322…20fbe1`, `minmea.h` SHA-256 `d7f7817c…a9dfce1` | **MIT**, taken under `LICENSE.grants` — upstream's own `COPYING` is WTFPL-2.0 and the grant offers MIT or LGPL-3.0-or-later at the recipient's option; all three files are copied beside the source | replace both files, update the SHA-256 table in `gnss/vendor/minmea/README.attadipa.md` and this row together, and re-run `test_nmea_receiver`. It asserts against sentences a real receiver emitted, not against minmea's own suite — the bump to watch for is kosma/minmea#104, the overflow guard that can be defeated into a negative scale |
 | **MeshCore** | `d92964352441e53b93e8667b802e04f6e072b39e`, 2026-08-14, tag `companion-v1.17.1` | MIT | upstream is active. Re-run the radio census (`grep RADIO_CLASS variants/`) on every bump — [ADR-0003](../adr/0003-radio-not-lora.md) is *about* this revision |
 | **RadioLib** | `510e00cfb05bbc3c2b7b524262785454944adb6e`, tag **7.7.1**, 2026-08-13 | MIT | follows MeshCore's pin |
 | **`lv_font_conv`** | **1.5.3** — npm, integrity `sha512-0xJQThBOw2ipt…TuBIbQ==` | MIT (read from the tarball, not the manifest) | it generates a build artefact that ships in flash, so a bump means re-measuring the subset. [FONT_MEASUREMENTS](FONT_MEASUREMENTS.md) |
@@ -178,13 +179,22 @@ release is what turns it into one.
 
 | Result | Components | Distribution consequence |
 |---|---|---|
-| **Compatible** | ESP-IDF and the five managed components above (Apache-2.0); LVGL, FreeRTOS, MeshCore and RadioLib (MIT); Newlib and the GCC runtime libraries with their runtime exception; Nunito Sans (OFL-1.1) | These may be used with GPLv3 code. Their own copyright, licence and notice obligations remain; the OFL font remains under OFL-1.1 rather than being relicensed |
+| **Compatible** | ESP-IDF and the five managed components above (Apache-2.0); LVGL, FreeRTOS, MeshCore, RadioLib and minmea (MIT); Newlib and the GCC runtime libraries with their runtime exception; Nunito Sans (OFL-1.1) | These may be used with GPLv3 code. Their own copyright, licence and notice obligations remain; the OFL font remains under OFL-1.1 rather than being relicensed |
 | **Build/tool only** | CMake (BSD), SDL2 (Zlib), `lv_font_conv` and its npm graph (permissive), `pypng` (MIT), Python `lz4` (BSD-3-Clause), Pillow (HPND) and GitHub Actions used by CI | They are not linked into or shipped as the firmware. Preserve their licences if a tool is redistributed |
 | **Requires attention** | the future release notice bundle | The audited graph is compatible and no longer free to move underneath this table: `firmware/dependencies.lock` is tracked and CI fails on drift (*Where the resolved graph lives*, above), so a transitive version that moves is a red build rather than a silently stale audit. What is still open is the other half — the notices themselves, which are assembled per release artefact and no release artefact exists yet |
 | **Do not combine into the current distribution** | Espressif `esp-sr`, `esp_audio_codec`, `esp_audio_effects` and `esp_codec_dev` 2.x field-of-use licences; proprietary vendor SDKs; AGPL-3.0 code unless the combined work is distributed under AGPL terms | These are not current dependencies. The field-of-use and proprietary terms are incompatible with the project's GPL terms; an AGPL combination could not be distributed solely as `GPL-3.0-or-later` |
 
 No incompatible component or proprietary blob was found in the current linked
 firmware image. Apache-2.0 compatibility here relies on GPLv3, not GPLv2.
+
+**minmea joined this table on 2026-09-05**, later than the audit above and on
+its own evidence: upstream's `COPYING` is WTFPL-2.0, and `LICENSE.grants`
+beside it grants MIT or LGPL-3.0-or-later at the recipient's option. Attadipa
+takes the MIT branch, and all three files are copied into
+`gnss/vendor/minmea/` so the grant travels with what it grants. It is the
+first vendored dependency that is *linked into the firmware* rather than
+tool-time, so unlike `LVGLImage.py` it carries a notice obligation into the
+release bundle the row below is still waiting on.
 
 MeshCore and RadioLib are pinned as *read* rather than as *linked* — nothing
 compiles against them yet. The pin is what makes ADR-0003's compatibility matrix
