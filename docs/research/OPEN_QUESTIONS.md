@@ -78,7 +78,7 @@ proceed; hardware work does not.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | H1 | Real power draw of Attadipa firmware per state, per board | UNKNOWN | measurement; vendor figures are a target, not evidence |
-| H2 | **Can the AXP2101 measure current/energy on these boards, or only voltage?** The PMU half is **answered, 2026-09-05: only voltage** — there is no current channel to turn on, in either AXP2101 variant, and a premise behind H1 and H5–H9 goes with it. The registers, the quotations and what is left are in [the answer below](#h2-in-full--the-pmu-measures-voltage-only-and-it-took-both-datasheets-to-say-so) | **PARTIAL** (was UNKNOWN) | the board half: whether either board fits a sense resistor something could read. The Waveshare battery lead is answered and the answer is no; the T-Watch schematic is in hand and has not been read for one. Failing a shunt, H1 and H5–H9 need external instrumentation |
+| H2 | **Can the AXP2101 measure current/energy on these boards, or only voltage?** The PMU half is **answered, 2026-09-05: only voltage** — there is no current channel to turn on, in either AXP2101 variant, and a premise behind H1, H5, H6 and H9 goes with it. The registers, the quotations and what is left are in [the answer below](#h2-in-full--the-pmu-measures-voltage-only-and-it-took-both-datasheets-to-say-so) | **PARTIAL** (was UNKNOWN) | the board half: whether either board fits a sense resistor something could read. The Waveshare battery lead is answered and the answer is no; the T-Watch schematic is in hand and has not been read for one. Failing a shunt, H1, H5, H6 and H9 need external instrumentation |
 | H3 | Real TTFF and fix quality for the fitted GNSS module | UNKNOWN | outdoor measurement |
 | H4 | Does any of the suspected interference actually occur? | UNKNOWN | the measurement procedure in [../hardware/INTERFERENCE_MATRIX.md](../hardware/INTERFERENCE_MATRIX.md) |
 | H5 | Which wake sources are usable in practice, and what does each cost? | UNKNOWN | measurement; vendor table gives the shape |
@@ -647,7 +647,7 @@ So the fuel gauge's battery percentage (`0xA4`, read-only, linear §6.13.2.88) i
 the only consumption-related number the PMU will hand over, and it is a slow
 integrated one.
 
-### A premise behind H1 and H5–H9 goes with it
+### A premise behind H1, H5, H6 and H9 goes with it
 
 The appealing idea was to put the watch on its battery in software — USB still
 plugged so the serial bridge stays live, the cell carrying the load so its
@@ -655,10 +655,20 @@ discharge could be watched. Neither datasheet allows it.
 
 `0x16[2:0]` is an input current **ceiling**, not a floor, and its lowest setting
 is `000` = 100 mA rather than zero (§6.13.2.12 and POR default `100b` = 1500 mA,
-identical in both documents). Below the cap the input supplies the whole system
-and the cell supplies nothing; only above it does the cell carry the difference.
-The idle draw H1 and H5–H9 exist to measure is the regime that sits *under* a
-100 mA cap — which is exactly where this trick does not work.
+identical in both documents). That breaks the idea twice over, and neither
+argument needs to know what the board draws.
+
+**There is no setting at which the input contributes nothing.** Capped as hard
+as the register allows, VBUS may still deliver 100 mA into the system. The
+condition being aimed at — the cell carrying the load — is not reachable by
+writing this register at all, whatever the draw turns out to be.
+
+**And which side of the cap a given state sits on is the unknown itself.** Under
+the cap the input supplies everything and the cell supplies nothing; over it the
+cell carries the difference. Deciding whether a measurement was battery-borne
+would therefore need the number that H1, H5, H6 and H9 exist to produce, so the
+experiment would take its own result as an input. This document does not assert
+which side any state falls on: that is `UNKNOWN` and stays so.
 
 Nor is there a way to take the input off. The part has no `HIZ` bit. The word
 does occur, in both documents and in one register only — `0x69`, CHGLED setting
@@ -689,7 +699,8 @@ remains is whether either board already fits one that something could read.
   — but nobody has looked at its battery path for a series sense element. That
   is a reading, not a measurement, and it is the cheapest thing left here.
 
-Failing a shunt on either board, H1 and H5–H9 need external instrumentation —
+Failing a shunt on either board, H1, H5, H6 and H9 need external
+instrumentation —
 an inline USB power meter, or a bench supply with an ammeter — which is the
 owner's bench question rather than a documentary one.
 
