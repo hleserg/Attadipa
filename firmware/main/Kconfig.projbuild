@@ -137,4 +137,47 @@ config ATTADIPA_GNSS_BRIDGE_PIN_B
         tries both orientations and reports which one answered rather than
         assuming; these two are a pair, not a fixed rx/tx assignment.
 
+config ATTADIPA_GNSS_LOCAL
+    bool "Local GNSS receiver on the Waveshare UART pads"
+    # The tick, the navigation page and the second LocationService are all in
+    # waveshare_board.cpp; the T-Watch slice has none of them, and its own
+    # module is on 41/42 behind a rail. Refused here rather than failing at the
+    # link -- the same reason ATTADIPA_WATCH_CONTROL gives.
+    depends on ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    default n
+    help
+        Listen for NMEA on the RXD pad and turn what arrives into this
+        device's own position, so the navigation readout shows a real
+        distance and bearing instead of "Waiting for GPS". No module is
+        fitted to this board (HARDWARE_MATRIX.md, GNSS row: not present),
+        so this is off unless you soldered one: enabling it is the
+        configuration change that makes the readout's "no provider is
+        bound" answer stop being the true one.
+
+        Receive only. Nothing is transmitted to the module and the TXD pad
+        is never driven, so no GNSS configuration can be written or saved.
+        It adds no task, timer or queue -- the UART driver's RX ring is
+        read from the tick that already draws the screen.
+
+config ATTADIPA_GNSS_LOCAL_RX
+    int "GNSS receive GPIO"
+    depends on ATTADIPA_GNSS_LOCAL
+    default 44
+    help
+        The RXD pad, VERIFIED. docs/research/WAVESHARE_BOARD_RECEIVED.md's
+        pad table, row 7: "| 7 | `RXD` | UART0 receive — **GPIO 44** |".
+        This is the pin the CPU listens on, so the module's TX goes here.
+        Unlike the T-Watch pair, the orientation is not ambiguous, and
+        nothing here sweeps for it.
+
+config ATTADIPA_GNSS_LOCAL_BAUD
+    int "GNSS UART baud"
+    depends on ATTADIPA_GNSS_LOCAL
+    default 115200
+    help
+        MEASURED for the GT-U12 on the bench (#427). The T-Watch's MIA-M10Q
+        answers at 38400. Nothing here sweeps: a receiver whose rate you do
+        not know is a bring-up question, and firmware/main/gnss_bridge.cpp
+        is the instrument that answers it.
+
 endmenu

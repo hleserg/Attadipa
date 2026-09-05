@@ -1,0 +1,20 @@
+# Overlay: turn the local GNSS receiver on. Stack it on the defaults, which are
+# already the Waveshare's — this is the product image plus a receiver, not a
+# bring-up instrument:
+#
+#   idf.py -B build-i429 -DSDKCONFIG=build-i429/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.gnsslocal" build
+#
+# Not stacked on sdkconfig.twatch: the T-Watch has a receiver of its own on
+# different pins behind a rail, and the Kconfig symbol refuses that board
+# because the navigation page and the tick that feeds this live in
+# waveshare_board.cpp.
+#
+# The pin is not a pair to try: WAVESHARE_BOARD_RECEIVED.md's pad table, row 7,
+# reads "| 7 | `RXD` | UART0 receive — **GPIO 44** |" -- this CPU's receive
+# line, so a module's TX goes there and nothing here transmits. The baud is what the
+# GT-U12 was MEASURED talking at on the bench (#427); a different module needs
+# a different number here, not a sweep.
+CONFIG_ATTADIPA_GNSS_LOCAL=y
+CONFIG_ATTADIPA_GNSS_LOCAL_RX=44
+CONFIG_ATTADIPA_GNSS_LOCAL_BAUD=115200

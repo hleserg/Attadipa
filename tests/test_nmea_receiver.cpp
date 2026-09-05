@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "attadipa/apps/navigation.h"
 #include "attadipa/core/location_service.h"
 #include "attadipa/gnss/nmea_receiver.h"
 
@@ -486,6 +487,53 @@ void the_chain_ends_in_a_location_state()
 
 }  // namespace
 
+// AND THE LAST LINK, WHICH IS THE ONE THE ISSUE IS ABOUT.
+//
+// Everything above proves the parser reaches a `LocationState`. This proves
+// the state reaches a sentence a person reads: issue #429's fourth scope item
+// is that the readout "stops saying `Waiting for GPS` and starts showing a
+// real distance and bearing", and until this ran, no test in this repository
+// had ever put a *parsed* position into `own` — `tests/test_navigation.cpp`
+// builds its own by hand, which proves the formatter and not the chain.
+//
+// It is still a host test. It says nothing about a module on the pads.
+void the_readout_stops_saying_waiting_for_gps()
+{
+    gnss::NmeaReceiver receiver;
+    core::LocationService location(receiver);
+    for (const std::string& line : fixture_lines()) {
+        g_now.ms += 100;
+        deliver(receiver, line);
+        location.poll();
+    }
+
+    apps::NavState nav;
+    nav.own = location.state(g_now);
+    // What the node link produces, and no more: a coordinate, an arrival age,
+    // no fix type. Due north of the fixture's position by 66730e-7 degrees.
+    nav.target.availability = core::Availability::Ready;
+    nav.target.has_position = true;
+    nav.target.position.value = {5066741, 10000011};
+    nav.target.position.age_at_us_ms = 3000;
+    nav.target.validity = core::PositionValidity::NoFix;
+    nav.target.source = core::PositionSource::NodeGnss;
+
+    const apps::NavText text = apps::format_navigation(nav);
+    CHECK(text.has_distance);
+    CHECK(text.has_bearing);
+    CHECK(std::strcmp(text.distance, "\xE2\x80\x94") != 0);
+    CHECK(std::strcmp(text.distance, "742 m") == 0);
+    CHECK(std::strcmp(text.bearing, "000\xC2\xB0") == 0);
+
+    // The caveat survives, and must: the *node* still states no fix type, so
+    // the readout keeps saying so even though this device's own position is
+    // now a real one. A chain that silenced that would have made the local
+    // receiver launder the node's uncertainty.
+    CHECK(text.caveat[0] != '\0');
+    // And the status is no longer the one this test is named after.
+    CHECK(text.status_code != apps::NavStatus::WaitingForGps);
+}
+
 int main()
 {
     a_receiver_nobody_has_wired_up_says_so();
@@ -497,6 +545,7 @@ int main()
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
     silence_is_not_the_same_as_never_having_answered();
     the_chain_ends_in_a_location_state();
+    the_readout_stops_saying_waiting_for_gps();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

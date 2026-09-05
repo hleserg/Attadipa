@@ -1654,7 +1654,7 @@ storage is one entry in the `attadipa_mesh` namespace #304 already created; what
 it has no part of is a seam a product image compiles. The shape is already
 written — `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" —
 but the layer it lives in is added only under
-`firmware/main/CMakeLists.txt:40` — "if(CONFIG_ATTADIPA_WATCH_CONTROL)", the
+`firmware/main/CMakeLists.txt:46` — "if(CONFIG_ATTADIPA_WATCH_CONTROL)", the
 same symbol that keeps the debug bridge out. So the passkey half is a `core::`
 method with a firmware provider behind it — ungating `MeshSink` would make it
 nameable in `firmware/main/` and nowhere `apps/` links, and what it may not be
