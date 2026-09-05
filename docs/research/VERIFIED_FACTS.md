@@ -2403,17 +2403,20 @@ ones that heading states.
 
 ## Measured at the USB input with an inline meter (S16)
 
-### The Waveshare board draws 415 mW at its USB input in one named idle state
+### The Waveshare board draws 413 mW at its USB input in one named idle state
 
 - **Claim:** with **the cell disconnected**, the received
   `ESP32-S3-Touch-AMOLED-2.06` running an Attadipa image, **screen on at minimum
   brightness**, static on the **provisioning entry screen**
   (`apps/include/attadipa/apps/provisioning.h` — the fourteen-key pad that asks
   for date, UTC time, local offset and the node's six-digit passkey), **idle,
-  awaiting input, unprovisioned**, draws a **median 82.83 mA at 4.981 V** at its
-  USB-C input — **≈ 415 mW**. Mean 83.32 mA, p1–p99 81.2–86.4 mA over 21 440
-  samples. Transients reach **1282 mA**, but only **0.028 %** of samples sit
-  above 150 mA, which is why the median and not the mean is the figure to quote.
+  awaiting input, unprovisioned**, draws a **median 82.83 mA at a median
+  4.990 V** at its USB-C input — a **median 413 mW**, taken as the median of the
+  per-sample product rather than a product of two medians. Over the same 21 440
+  samples the mean is 83.32 mA at 4.981 V, **415 mW**; p1–p99 is 81.2–86.4 mA.
+  Transients reach **1282 mA**, but only **0.028 %** of samples sit above
+  150 mA, which is why **413 mW, the median, is the figure to quote** and the
+  mean sits 1.7 mW above it.
 - **Source:** S16 — a FNIRSI FNB-58 inline on the board's USB-C input,
   2026-09-05, logged over its HID interface with
   `baryluk/fnirsi-usb-power-data-logger`.
@@ -2447,8 +2450,7 @@ ones that heading states.
   up or not. Do not read its absence as "radio off".
 - **What this is not.** It is one state, not a power budget: no sleep figure, no
   screen-off figure, no per-rail split, and nothing about the T-Watch, which is
-  micro-USB ([HARDWARE_MATRIX](HARDWARE_MATRIX.md) `:90` — "| USB | Micro-USB,
-  charge + programming only, no external supply function | VERIFIED |") and
+  micro-USB — `docs/research/HARDWARE_MATRIX.md:90` — "| USB | Micro-USB, charge + programming only" — and
   needs an adapter the bench does not have. It is the first number of its kind
   here, and the AXP2101 has no current channel on either silicon variant, so
   external instrumentation is the only way any of the others can be taken.
