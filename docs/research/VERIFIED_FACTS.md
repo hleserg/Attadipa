@@ -2363,3 +2363,40 @@ ones that heading states.
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.
+
+### The Waveshare expansion pads `RXD`/`TXD` are UART0 — GPIO 44 and GPIO 43
+
+- **Claim:** on the `ESP32-S3-Touch-AMOLED-2.06`, the two uncommitted pads on
+  the bottom-edge pad row are **`RXD` = GPIO 44** and **`TXD` = GPIO 43**, the
+  IO-MUX pins of UART0.
+- **Source, in three links, none of them inferred from the others.** The
+  schematic's test-point block names `TP13 U0TXD` and `TP6 U0RXD`, in a
+  ten-entry list that is the exact mirror of the ten silkscreened pads
+  `WAVESHARE_BOARD_RECEIVED.md` §1.5 records — 10 of 10, which is also why this
+  sheet is known to describe this board. Those nets land on `U2` — a bare
+  `ESP32-S3R8` in QFN56 — at **pin 49 `U0TXD`** and **pin 50 `U0RXD`**, read
+  off a symbol whose numbering was cross-checked on `MTMS`/`MTDI`/`MTDO`/`MTCK`
+  at pins 48/47/45/44 against the published GPIO 42/41/40/39. ESP-IDF vendor
+  source `components/soc/esp32s3/include/soc/uart_pins.h` then gives
+  `U0RXD_GPIO_NUM 44` and `U0TXD_GPIO_NUM 43`. Written up with the rendering
+  method in
+  [GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) §4.
+- **Checked:** 2026-09-04, against schematic V1.0 and ESP-IDF v5.5.5. A change
+  of console backend, or an ESP-IDF whose `uart_pins.h` moves, re-reads both.
+- **Why they are free.** This firmware's console is the SoC's native USB, not a
+  UART bridge — `firmware/sdkconfig.defaults:65` —
+  "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y" — so UART0 carries no console, and
+  nothing under `platform/` or `firmware/` claims 43 or 44. (`boards/` is
+  the directory `AGENTS.md` names for future board code; this tree has none.)
+- **What this does *not* license.** The **first-stage ROM bootloader still
+  prints on UART0**, independently of the application console: ESP-IDF's
+  `components/efuse/esp32s3/esp_efuse_table.csv` describes `UART_PRINT_CONTROL`
+  (BLK0 bit 134) as "Set the default UART boot message output mode" with `0:
+  "Enable"` as the unburned default, and USB printing is a separate bit
+  (`DIS_USB_SERIAL_JTAG_ROM_PRINT`, BLK0 bit 130). Disabling it means burning an
+  eFuse, which `AGENTS.md` forbids. So anything wired to pad `TXD` sees boot
+  chatter on its `RX` at every reset and must tolerate it. The baud of that
+  message is **UNKNOWN** — not read off — and **this unit's eFuse was not
+  read**: the Waveshare was not on the bench for this session, so the default
+  above is the vendor's documented default and not a measurement of this board.
+  `espefuse.py summary` is read-only and would settle it.

@@ -137,8 +137,8 @@ with the board oriented so the silkscreen title is upright:
 | 4 | `D-/IO19` | USB D−, native USB on IO19 |
 | 5 | `IO15` | **main I2C `SDA`** |
 | 6 | `IO14` | **main I2C `SCL`** |
-| 7 | `RXD` | UART receive |
-| 8 | `TXD` | UART transmit |
+| 7 | `RXD` | UART0 receive — **GPIO 44** |
+| 8 | `TXD` | UART0 transmit — **GPIO 43** |
 | 9 | `GND` | ground |
 | 10 | `3V3` | 3.3 V rail |
 
@@ -156,8 +156,8 @@ enough to look like a software bug.
 
 **What this leaves for an attached Attadipa node** — a node supplying LoRa and
 GNSS to a watch that has neither, per the capability-provider design — is the
-`RXD`/`TXD` pair. That is one UART, at 3V3, with a ground and a rail beside it.
-It is enough, and it is the only thing here that is enough. Adding the node as a
+`RXD`/`TXD` pair: **UART0, `RXD` = GPIO 44, `TXD` = GPIO 43**, traced in §4 of
+[the module read-off](GNSS_MODULES_READOFF_2026-09-04.md). Adding the node as a
 seventh I2C device on pads 5 and 6 is *possible* and is a worse idea: it puts a
 detachable peripheral on the bus that the PMU and the touch controller share, so
 a node that browns out or holds `SDA` low takes the watch's power management
