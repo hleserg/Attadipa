@@ -86,10 +86,22 @@ std::uint64_t millis()
 
 std::uint64_t last_tick_ms = 0;
 
-// The one production reader of `discarded()`, and the only place a wrong pin or
-// a wrong baud rate says so out loud. The screen's `OwnReceiverSilent` tells
-// the wearer the receiver is not answering; this tells a bench session which of
-// the two it is — nothing arriving at all, or bytes arriving that never frame.
+// The one production reader of the two byte counters, and the only place a
+// wrong pin, a wrong baud rate or an unpowered module says so out loud. The
+// screen's `OwnReceiverSilent` tells the wearer the receiver is not answering;
+// this tells a bench session *which* of three things it is, and the two numbers
+// are what separate them:
+//
+//   0 unframed, 0 discarded — nothing is on the wire. A pad not connected, a
+//     module with no supply, or the wrong GPIO.
+//   N unframed, 0 discarded — bytes are arriving and none of them ever starts a
+//     sentence. A module in a binary protocol, or a line at the wrong level.
+//     The GT-U12 on this bench does exactly this: `docs/research/OPEN_QUESTIONS.md:93` — "speaking ALLYSTAR binary behind the sync word **`F1 D9`**"
+//   N unframed, M discarded — sentences are framing and failing. The wrong baud
+//     rate, or a noisy line.
+//
+// Neither number is reset by the flush at a gap, so a bench session reads a
+// total since boot rather than since the last wake.
 //
 // Five seconds before it fires, because `Unreachable` is also the honest answer
 // for the first second of every boot and every wake, and a warning on every
@@ -113,10 +125,12 @@ void warn_if_quiet(attadipa::core::MonotonicTime now)
     }
     if (!quiet_logged && now.ms - quiet_since_ms >= kQuietWarnAfterMs) {
         quiet_logged = true;
-        ESP_LOGW(kTag, "nothing framable from GPIO %d for %llu ms, %lu sentences "
-                       "discarded; check the wiring and that the module speaks "
-                       "%d baud",
+        ESP_LOGW(kTag, "nothing framable from GPIO %d for %llu ms: %lu bytes "
+                       "outside a sentence, %lu sentences discarded; check the "
+                       "module's power and wiring, that it emits NMEA rather "
+                       "than a binary protocol, and that it speaks %d baud",
                  kRxPin, static_cast<unsigned long long>(now.ms - quiet_since_ms),
+                 static_cast<unsigned long>(receiver.unframed()),
                  static_cast<unsigned long>(receiver.discarded()), kBaud);
     }
 }

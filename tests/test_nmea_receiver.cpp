@@ -157,6 +157,19 @@ void a_real_epoch_arrives_whole()
         deliver(receiver, line);
     }
 
+    // Exactly the bytes the fixture puts outside a sentence, and not one more.
+    // Two lines produce them: the 47-byte tail of a sentence whose `$` was lost
+    // (`tests/gnss/bench-epochs.nmea:49` — "30.00004,N,00100.00004,E,0.085,,040926,,,D,V*1F") and the four
+    // bytes of noise after it. 51 together.
+    //
+    // THE NUMBER IS THE CR/LF PROOF. `deliver()` ends every line `\r\n`; the
+    // `\r` closes the run and clears `collecting_`, so the `\n` behind it
+    // reaches the outside-a-sentence branch on *every* line of this fixture. A
+    // counter that did not exclude line terminators would report one per
+    // sentence on top of these, and would call a receiver reading a clean
+    // stream faulty.
+    CHECK(receiver.unframed() == 51);
+
     core::PositionSample sample;
     CHECK(receiver.sample(sample));
     const core::GnssObservation& o = sample.observation;
@@ -428,6 +441,43 @@ void silence_is_not_the_same_as_never_having_answered()
     CHECK(sample.receiver == core::ReceiverPresence::Unknown);
 }
 
+void bytes_that_never_frame_are_counted_as_bytes()
+{
+    // THE CASE `discarded()` CANNOT SEE, AND THE ONE THIS BENCH WILL MEET.
+    // A module in a binary protocol never emits `$`, so no run is ever framed
+    // and no run is ever thrown away: `discarded()` stays at zero however long
+    // it talks, which reads identically to a pad with nothing on it. The
+    // GT-U12 on this bench speaks ALLYSTAR binary behind `F1 D9`, so this is
+    // not a hypothetical shape.
+    gnss::NmeaReceiver receiver;
+    const std::vector<std::uint8_t> quiet_noise(64, 0x00);
+    g_now.ms += 1000;
+    receiver.feed(quiet_noise.data(), quiet_noise.size(), g_now);
+
+    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.unframed() == 64);
+
+    // Nothing framed, so nothing was heard, and the provider says so rather
+    // than inventing a presence out of traffic it could not read.
+    core::PositionSample sample;
+    CHECK(!receiver.sample(sample));
+    CHECK(receiver.availability() != core::Availability::Ready);
+
+    // The two numbers survive the flush, because the question they answer —
+    // has anything ever been on this wire — is not re-opened by this end
+    // deciding to stop trusting a gap's worth of bytes.
+    receiver.reset();
+    CHECK(receiver.unframed() == 64);
+    CHECK(receiver.discarded() == 0);
+
+    // And a real sentence afterwards frames normally: dropping bytes on the
+    // floor did not leave the assembler mid-line. The count keeps its history
+    // rather than being cleared by the recovery.
+    deliver(receiver, "$GNRMC,135222.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+    CHECK(receiver.unframed() == 64);
+    CHECK(receiver.availability() == core::Availability::Ready);
+}
+
 void the_chain_ends_in_a_location_state()
 {
     // The seam this whole slice exists for: bytes off a wire, through the
@@ -596,6 +646,7 @@ int main()
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
     silence_is_not_the_same_as_never_having_answered();
     a_flush_takes_the_open_epoch_with_it();
+    bytes_that_never_frame_are_counted_as_bytes();
     the_chain_ends_in_a_location_state();
     the_readout_stops_saying_waiting_for_gps();
 

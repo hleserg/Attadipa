@@ -8,13 +8,25 @@
 
 // A local NMEA 0183 receiver, as a `core::PositionProvider`.
 //
-// The second provider this repository has, and the first one whose observation
-// time is real. `link::NodePositionProvider` stamps its observation with the
-// moment a coordinate *arrived* because the node states nothing better; a
-// receiver on this board solves at an epoch and says so a few milliseconds
-// later, so `observed_at` here is what the word means. That difference is the
-// whole reason `classify()`'s staleness test exists, and this is the first
-// provider it can actually reach.
+// The second provider this repository has, and the one with the best
+// observation time in it — which is not the same as a real one, and the
+// difference is worth stating because a later diagnostics or trust surface
+// will be written against whichever of the two it believes.
+//
+// `link::NodePositionProvider` stamps its observation with the moment a
+// coordinate *arrived*, because the node states nothing better. Here
+// `observed_at` is the caller's tick at the moment the epoch's RMC was read,
+// which is after the receiver solved by however long the caller waited between
+// reads — in the direction that makes a fix look younger than it is. Bounded
+// and small against `classify()`'s staleness window, so the staleness test is
+// the first one this tree can meaningfully reach; still this end's clock
+// reporting when it noticed, not the source stating when it sampled.
+//
+// **So `age_at_source_ms` stays empty for this provider too**, and
+// `core::LocationService`'s rule that no producer states an observation age
+// (`core/include/attadipa/core/location_service.h:181` — "    // How old the coordinate was when its source sampled it. **Always empty in")
+// still holds. Writing that field from RMC's own UTC would need a wall clock
+// trusted before the fix that is supposed to establish it.
 //
 // Bytes in, observations out. There is no task, no timer, no queue and no
 // reconnect loop: the caller reads its UART however it already does and hands
@@ -118,24 +130,45 @@ public:
     // What survives is deliberate: the last *published* observation stays, with
     // the `observed_at` it was really given — the watch did have that fix, and
     // `LocationService` ages it honestly from that stamp. So do `heard_`,
-    // `last_sentence_` and `discarded_`: a flush is not evidence about the
-    // module, only about this end's attention, and the silence timeout is
-    // measured from when a sentence last actually arrived.
+    // `last_sentence_`, `discarded_` and `unframed_`: a flush is not evidence
+    // about the module, only about this end's attention, and the silence
+    // timeout is measured from when a sentence last actually arrived.
     void reset();
 
     // `Unprovisioned` until the first `feed()` — nothing is bound yet, which is
     // the state of a board with no module soldered to the pads. After that,
     // `Ready` while sentences are arriving and `Unreachable` when they stop.
-    // Never `Off`: no rail on this device controls a module on the `3V3` pad,
-    // and `Off` is defined as a remedy the user can undo.
+    // Never `Off`, and the reason is this class rather than the board: nothing
+    // is fed in from which a rail state could be learned. `feed()` takes bytes
+    // and a time; a provider cannot report a supply it is not told about.
+    //
+    // The board fact is deliberately not asserted here, because this repository
+    // records it as unknown:
+    // `docs/research/MAGNETOMETER_RETROFIT.md:1878` — "**Q5 · Is the `+3V3` expansion pad always-on or `ALDO1`-switched?**"
+    // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
+    // control a module on that pad, and `Off` becomes reachable — but only for
+    // a caller that owns the rail and passes the state in. Nothing gates ALDO1
+    // on this board today: `firmware/main/board_power.cpp:95` — "    {0x92, \"ALDO1\", RailPolicy::NotAuthorised," —
+    // leaves it as the PMU brings it up.
     core::Availability availability() const override;
 
     bool sample(core::PositionSample& out) const override;
 
-    // Sentences that arrived and were thrown away: a bad checksum, a line
-    // longer than NMEA allows, or bytes before the first `$`. Diagnostics, and
-    // the number a bench session watches when a wire is suspect.
+    // Framed sentences that arrived and were thrown away: a bad checksum, a
+    // line longer than NMEA allows, or a field that would not parse. Framed
+    // only — a byte that never got inside a `$`...CRLF run is not here, it is
+    // in `unframed()`.
     std::uint32_t discarded() const { return discarded_; }
+
+    // Bytes that arrived outside any sentence, CR and LF excluded because
+    // every healthy sentence ends with them and counting those would report a
+    // fault on a clean stream.
+    //
+    // THIS IS THE HALF THAT ANSWERS "IS ANYTHING ON THE WIRE AT ALL". A module
+    // talking a binary protocol, or a line at the wrong level, never produces
+    // a `$`, so `discarded()` stays at zero for it forever and on its own
+    // cannot tell that apart from a dead pad. This can.
+    std::uint32_t unframed() const { return unframed_; }
 
 private:
     void assemble(char byte, core::MonotonicTime now);
@@ -159,6 +192,7 @@ private:
     core::MonotonicTime last_sentence_{};
     bool                heard_      = false;  // a well-formed sentence, ever
     std::uint32_t       discarded_  = 0;
+    std::uint32_t       unframed_   = 0;   // bytes outside any sentence, no CR/LF
 
     // The epoch being assembled, and the last one that closed.
     core::GnssObservation open_{};

@@ -118,8 +118,16 @@ void NmeaReceiver::assemble(char byte, MonotonicTime now)
     }
     if (!collecting_) {
         // Bytes before the first `$`, or the tail of a line already discarded.
-        // Counted once per run rather than per byte: `overflowed_` is cleared
-        // by the next `$`.
+        //
+        // CR AND LF ARE NOT FAULTS HERE AND MUST NOT BE COUNTED. Every healthy
+        // sentence ends `\r\n`; the `\r` closes the run below and clears
+        // `collecting_`, so the `\n` that follows arrives on this branch on
+        // every good line. Counting it would put a rising fault number on a
+        // perfectly framed stream, which is the opposite of what the caller
+        // reads this for.
+        if (byte != '\r' && byte != '\n') {
+            ++unframed_;
+        }
         return;
     }
     if (byte == '\r' || byte == '\n') {
