@@ -641,7 +641,10 @@ set_tests_properties(replay_rig PROPERTIES LABELS gnss)
 # with the position scrubbed and the checksums recomputed, from the captures
 # taken off both bench modules on 2026-09-04.
 add_executable(test_nmea_receiver test_nmea_receiver.cpp)
-target_link_libraries(test_nmea_receiver PRIVATE attadipa_gnss)
+# apps and l10n as well as gnss: the last case walks the whole chain the
+# issue's Definition of Done names, from bytes to the sentence on the watch.
+target_link_libraries(test_nmea_receiver PRIVATE attadipa_gnss attadipa_apps
+                                                 attadipa_l10n)
 target_compile_definitions(test_nmea_receiver PRIVATE
     ATTADIPA_GNSS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gnss")
 add_test(NAME nmea_receiver COMMAND test_nmea_receiver)

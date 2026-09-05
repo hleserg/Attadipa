@@ -4,6 +4,7 @@
 #include "waveshare_board.h"
 #include "board_power.h"
 #include "boot_rollback.h"
+#include "local_gnss.h"
 
 #include "pcf85063_time.h"
 #include "provision_time.h"
@@ -946,16 +947,6 @@ attadipa::ui::NavFaceConfig nav_config() {
 }
 
 void refresh_nav() {
-  // `own` is left at its default, and that default is the honest one:
-  // `Unprovisioned`, "a supported provider would give it; none is bound"
-  // (`core/include/attadipa/core/availability.h:18`). Not `Unsupported`, which
-  // is terminal: no receiver is fitted today
-  // (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |"),
-  // and #429 exists to wire one to this board's own pads, so this device's
-  // configuration is exactly what would change the answer.
-  //
-  // So the readout says "Waiting for GPS", names the missing provider, and
-  // draws no needle, which is what it should say until #429 gives it a fix.
   // Before anything is drawn: `NavFace::build()` cleans the screen under the
   // outgoing face, and a clock face left thinking it is built keeps a 50 ms
   // timer writing into the objects that clean just freed.
@@ -965,6 +956,20 @@ void refresh_nav() {
   // of one watch never disagree about their language.
   nav.locale = attadipa::l10n::Locale::En;
   nav.target = meshcore_ble_location();
+  // Two positions, two instances of one class, and neither knows about the
+  // other. `own` comes from the receiver on this board's pads and carries a
+  // real observation time; `target` is what the node said about itself and
+  // carries the moment it arrived. `format_navigation()` is where that
+  // difference becomes a sentence a person reads.
+  //
+  // With CONFIG_ATTADIPA_GNSS_LOCAL off — which is the default, because no
+  // module is fitted (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |")
+  // — this returns the honest default, `Unprovisioned`: "a supported provider
+  // would give it; none is bound" (`core/include/attadipa/core/availability.h:18`).
+  // Not `Unsupported`, which is terminal; this device's configuration is
+  // exactly what would change the answer, and the readout still says
+  // "Waiting for GPS" and draws no needle.
+  nav.own = attadipa::firmware::local_gnss_location();
   const attadipa::apps::NavText text = attadipa::apps::format_navigation(nav);
   if (state.nav_face.built()) {
     state.nav_face.update(text);
@@ -1039,6 +1044,12 @@ void long_press(lv_event_t *) {
 }
 
 void refresh_ui(lv_timer_t *timer) {
+  // FIRST, AND ABOVE EVERY EARLY RETURN BELOW. The UART ring is filled by
+  // hardware whatever page is showing, and a receiver only read while its own
+  // page is up would be handed a ring full of history the moment somebody
+  // navigated to it. It is a no-op when the feature is off or the port never
+  // opened.
+  attadipa::firmware::local_gnss_tick();
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
     // The node pages clean the LVGL screen under whatever is on it. An entry
@@ -1439,6 +1450,11 @@ esp_err_t start_waveshare_ui() {
              esp_err_to_name(err));
     return err;
   }
+  // Last, and deliberately: past the final rollback point, so a port that will
+  // not open is reported the way a dead RTC is rather than costing the wearer a
+  // watch. Nothing after this can fail, so no rollback step has to learn to
+  // undo it and `boot_rollback.h` is untouched.
+  (void)attadipa::firmware::local_gnss_start();
   ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%%, touch %s, RTC %s",
            kBrightnessPercent, state.touch != nullptr ? "present" : "absent",
            state.rtc != nullptr ? "present" : "absent");

@@ -783,6 +783,20 @@ jobs:
           grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE=y$" build-twatch-gnss/sdkconfig
           grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE_PASSTHROUGH=y$" build-twatch-gnss/sdkconfig
 
+      # The one build that compiles gnss/ for xtensa. The host suite builds the
+      # parser for the machine it runs on; nothing else in this file reaches
+      # local_gnss.cpp, the vendored minmea, or the -Dtimegm=mktime that the
+      # shipping newlib makes necessary. It also exercises the composition
+      # root's direct-link contract, which only fires when the layer is added.
+      - name: Build the Waveshare image with the local GNSS receiver
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          idf.py -B build-gnss -DSDKCONFIG=build-gnss/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.gnsslocal" build
+          grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL=y$" build-gnss/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL_RX=44$" build-gnss/sdkconfig
+
       # The RAM route is the one proved to work on the received unit and the one
       # with nothing to undo, so it is the one a bench session reaches for first.
       # If it stops building, that is found here rather than at the bench.

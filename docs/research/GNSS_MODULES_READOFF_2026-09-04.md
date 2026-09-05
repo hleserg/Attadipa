@@ -407,6 +407,35 @@ onto `GnssObservation` and `PositionValidity` without sentence assembly. That is
 an argument for a driver, not a decision, and the two bench parts speak
 different binary protocols anyway.
 
+### 3.1 How much a receiver says in a second — MEASURED, and a buffer depends on it
+
+A driver that reads the UART from an existing tick has to size two things
+against each other: the ring the ESP-IDF driver fills, and how long the tick
+may be away before what is in that ring stops being current. Both need a
+number, and the sixteen captures have it. One epoch a second in every one:
+
+| Capture set | Module | Bytes per epoch |
+| --- | --- | --- |
+| `boot-…090718Z`, `cap-38400-…`, `live-…`, two `waitfix-…` | AN3126 (u-blox M10) | 437–444 |
+| `fix-…1353Z`, five `gtu12-…` | GT-U12 (ALLYSTAR HD8041D) | 1039–1099 |
+| four `boot…-1400…` | GT-U12, after NMEA 4.10 was selected | 1210–1217 |
+
+So **437 to 1217 bytes per second**, and 1217 is the number a buffer must
+survive. The spread is not noise: the AN3126 was configured for fewer
+constellations, and the GT-U12's own rate rises by 15% when NMEA 4.10 adds
+`signalId` to every GSV.
+
+What this decides in `firmware/main/local_gnss.cpp`: a 4096-byte ring is 3.4
+seconds at the worst measured rate, and the driver discards the ring after a
+3-second gap — so the discard always happens before the ring can overflow and
+begin keeping the *oldest* bytes, which is the failure that would present a
+minute-old position as a current fix.
+
+**Counted from the captures in `~/attadipa-bench/i427/`, which are not
+committed** — they carry the owner's real position. The counts are
+reproducible from any capture of the same modules: sentence bytes including
+CRLF, divided by the number of RMC sentences.
+
 ## 4. The Waveshare expansion pads: `RXD` = GPIO 44, `TXD` = GPIO 43 — VERIFIED
 
 §1.5 of [WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) records the pad

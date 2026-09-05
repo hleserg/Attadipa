@@ -18,6 +18,12 @@ endif()
 if(CONFIG_ATTADIPA_GNSS_BRIDGE)
     list(APPEND ATTADIPA_MAIN_SOURCES "gnss_bridge.cpp")
 endif()
+# Compiled into every Waveshare image, feature or not: with the symbol off its
+# three functions are the no-ops the header promises, so waveshare_board.cpp
+# calls them unconditionally and has no #if of its own to get wrong.
+if(CONFIG_ATTADIPA_BOARD_WAVESHARE_AMOLED_206)
+    list(APPEND ATTADIPA_MAIN_SOURCES "local_gnss.cpp")
+endif()
 idf_component_register(SRCS ${ATTADIPA_MAIN_SOURCES} INCLUDE_DIRS ".")
 
 # The host libraries are *linked*, not copied. These are the same CMakeLists the
@@ -39,6 +45,9 @@ target_include_directories(attadipa_headers INTERFACE ${ATTADIPA_ROOT}/include)
 set(ATTADIPA_LAYERS platform core link l10n ui apps)
 if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_LAYERS debug)
+endif()
+if(CONFIG_ATTADIPA_GNSS_LOCAL)
+    list(APPEND ATTADIPA_LAYERS gnss)
 endif()
 foreach(layer ${ATTADIPA_LAYERS})
     add_subdirectory(${ATTADIPA_ROOT}/${layer} ${CMAKE_CURRENT_BINARY_DIR}/attadipa_${layer})
@@ -62,6 +71,12 @@ set(ATTADIPA_DIRECT_LIBRARIES attadipa_core attadipa_platform attadipa_link
                               attadipa_fonts attadipa_clock_ui)
 if(CONFIG_ATTADIPA_WATCH_CONTROL)
     list(APPEND ATTADIPA_DIRECT_LIBRARIES attadipa_debug)
+endif()
+# Gated with the layer above, and for the reason the ELF check exists: a
+# library linked into an image that calls nothing in it contributes no code,
+# and that check would fail rather than the link.
+if(CONFIG_ATTADIPA_GNSS_LOCAL)
+    list(APPEND ATTADIPA_DIRECT_LIBRARIES attadipa_gnss)
 endif()
 target_link_libraries(${COMPONENT_LIB} PRIVATE ${ATTADIPA_DIRECT_LIBRARIES})
 target_link_libraries(${COMPONENT_LIB} PRIVATE idf::nvs_flash)
