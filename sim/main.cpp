@@ -121,7 +121,6 @@ AcceptingProvisioner g_provisioner;
 std::optional<apps::ProvisioningEntry> g_entry;
 ui::ProvisionFace g_provision_face;
 ui::ProvisionFaceConfig g_provision_config;
-bool g_provision_active = false;
 
 void rebuild_provision_screen() {
   g_provision_config.locale = l10n::locale();
@@ -172,7 +171,6 @@ void leave_provisioning(lv_timer_t *timer) {
   lv_timer_delete(timer);
   g_provision_face.clear();
   g_entry.reset();
-  g_provision_active = false;
   g_clock_active = true;
   l10n::set_locale_changed_handler(rebuild_clock_screen);
   attadipa::sim::set_theme_toggle(toggle_clock_theme);
@@ -186,7 +184,6 @@ void on_long_press(lv_event_t *) {
   }
   g_clock_face.clear();
   g_clock_active = false;
-  g_provision_active = true;
   g_provision_config = provision_config_for(g_clock_config);
   g_entry.emplace(g_provisioner);
   l10n::set_locale_changed_handler(rebuild_provision_screen);

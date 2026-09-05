@@ -22,8 +22,9 @@
 // This is the regression for #432: `--nav` advertised "T toggles it while
 // running" and the navigation readout did not follow, because `main.cpp`
 // answered `T` with an `if` ladder over the screens it remembered and the
-// readout was not in it. The console said `theme: night` while the panel stayed
-// in day, which is worse than silence.
+// readout was not in it. The console said as much — `theme: night (nothing on
+// screen follows it in this mode)` — so the defect was never a lying console.
+// It was a key the help text promised and the screen on the panel ignored.
 //
 // **Nothing here is a copy of the decision.** It creates a real LVGL keypad
 // input device, puts the real screen in a real group, and lets LVGL's own

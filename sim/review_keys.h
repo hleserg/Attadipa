@@ -18,9 +18,11 @@ namespace attadipa::sim {
 // screens that file happened to know were active, with the boot screen's own
 // toggle as the fallback for everything else — so the navigation readout, added
 // later to the same file and never added to the ladder, took a theme once at
-// startup and never heard about a change again. The console said `theme: night`
-// while the panel stayed in day, which reads as confirmation (#432, and #430's
-// unresolved review comment before it).
+// startup and never heard about a change again. The console did not lie about
+// it: with no boot screen built the old line qualified itself as `theme: night
+// (nothing on screen follows it in this mode)`. It is `--help` that promised
+// "T toggles it while running", and under `--nav` nothing did (#432, and
+// #430's unresolved review comment before it).
 //
 // So `T` gets the shape `L` has: one address, set where the screen is built. A
 // screen that is not on the panel cannot answer for a palette it does not own,

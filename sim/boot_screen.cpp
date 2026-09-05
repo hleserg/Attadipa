@@ -341,9 +341,12 @@ Theme toggle_theme() {
   // built the screen, and this function is registered by `build_boot_screen`
   // and by nothing else. It used to be the answer for every mode the key
   // handler had not been taught about — under `--diagnostic` and `--nav` it
-  // flipped a private theme, printed `theme: night`, and rebuilt nothing,
-  // because `rebuild_boot_screen` is a no-op with no inventory installed. That
-  // line reads as confirmation, which is the worst thing a diagnostic can do.
+  // flipped a private theme and rebuilt nothing, because `rebuild_boot_screen`
+  // is a no-op with no inventory installed. The console was not the part that
+  // went wrong: with no inventory the old line qualified itself, `theme: night
+  // (nothing on screen follows it in this mode)`, and that is true. What was
+  // wrong is that `--help` advertised the key, so an honest line arrived under
+  // a promise the mode could not keep.
   g_theme = g_theme == Theme::Day ? Theme::Night : Theme::Day;
   rebuild_boot_screen();
   return g_theme;

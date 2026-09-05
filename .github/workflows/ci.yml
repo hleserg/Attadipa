@@ -542,7 +542,7 @@ jobs:
       # This drives the command line with a recorder behind it. Its sibling
       # `tools/watch/selftest.py` -- which drives `Watch` against a scripted
       # device, 41 groups and no socket -- is deliberately NOT a step here: it
-      # is registered at `tests/CMakeLists.txt:449` -- "add_test(NAME watch_tool"
+      # is registered at `tests/CMakeLists.txt:502` -- "add_test(NAME watch_tool"
       # -- so six jobs already run it, and a step for it would be the tenth
       # duplicate of the nine this pull request removed. Faster feedback in a
       # job with no C++ build would be a reason to keep one; it is not a reason

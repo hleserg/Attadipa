@@ -33,8 +33,8 @@ void on_screen_key(lv_event_t *event) {
       return;
     }
     // Printed after the screen has been rebuilt, and from the theme the screen
-    // reports it is now drawn in. Announcing a change before making it is how
-    // the console came to describe a panel nobody had repainted.
+    // reports it is now drawn in, rather than from a variable this file flipped
+    // and hoped something downstream would honour.
     std::printf("theme: %s\n", ui::name_of(g_theme_toggle()));
   }
 }
