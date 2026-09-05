@@ -456,7 +456,7 @@ wake source on this board, this is it.
 **With one open dependency, and it is not small.** The pull-up is only as
 always-on as `+3V3`, and `+3V3` is **H8**. `docs/research/HARDWARE_MATRIX.md:205` — "Do not pick" the convenient reading —
 says so about this exact rail, and the fact index carries the same warning:
-`docs/research/VERIFIED_FACTS.md:1095` — "if the schematic is right". If
+`docs/research/VERIFIED_FACTS.md:1099` — "if the schematic is right". If
 ALDO1 is the rail and #367's power owner ever gates it, R288 dies with it, IO17
 floats or is dragged low, and an armed `GPIO_INTR_LOW_LEVEL` fires immediately
 and forever — the failure this section prices for ALDO3 and touch at §3.4 ("and

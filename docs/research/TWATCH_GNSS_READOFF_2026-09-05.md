@@ -115,6 +115,32 @@ absent**, so GLONASS is disabled in the configuration the module is running,
 even though §1 shows the firmware supports it. That is an observation about the
 current configuration, not about the part, and nothing was written to change it.
 
+Sentences seen. The instrument prints each distinct id once and every `TXT`
+verbatim —
+`firmware/main/gnss_bridge.cpp:256` — "// Every distinct five-character sentence id once, plus every TXT verbatim."
+Four separate runs printed the same nine ids and no tenth:
+
+```
+  sentence GAGSV      sentence GNGSA      sentence GPGSV
+  sentence GBGSV      sentence GNRMC      sentence GQGSV
+  sentence GNGGA      sentence GNVTG
+  sentence GNGLL
+```
+
+That is six sentence types — `GGA`, `GLL`, `GSA`, `RMC`, `VTG` and `GSV` — with
+`GSV` repeated once per constellation, which is what the talker list above
+already says. The logs are `i436-run2.log` through `i436-run5.log` under
+`~/attadipa-bench/i436/`, uncommitted for the same reason §4a's scripts are.
+
+**Whether the module sends `TXT` is `UNKNOWN`, and no run here could answer
+it.** The instrument does look for it — the same line above says so, and it
+prints every `TXT` verbatim — and it printed none. But `TXT` is what a module
+says unprompted at start-up, and no window here began at the module's
+power-up: `msss` read 4986591 ms, so BLDO1 had been up 83 minutes across
+several CPU reboots. An absence over that window
+is the window's property, not the module's. **Next action:** cycle BLDO1 with
+the bridge listening — the same rail cycle §3 already owes.
+
 ## 4a. What the module does under sky — MEASURED, and it is not accuracy
 
 Two runs on a balcony, the second of them alongside a reference receiver.

@@ -645,9 +645,13 @@ to every unit of the same model.
   on this unit: generation-10 firmware runs from internal ROM, and this module
   reports `ROM SPG 5.10 (7b202e)` with no `EXT` marker.
   See [§4b](TWATCH_GNSS_READOFF_2026-09-05.md).
-- **Impact:** none of this reaches NMEA. The watch emits GGA, GSA, GSV, RMC,
-  VTG and GLL and no `TXT`, so a parser that reads only NMEA — which is what
-  #429 proposes — cannot see interference or a spoofing flag at all. That is a
+- **Impact:** none of this reaches NMEA. The watch emits `GGA`, `GLL`, `GSA`,
+  `RMC`, `VTG` and `GSV` — the nine sentence ids
+  [§4](TWATCH_GNSS_READOFF_2026-09-05.md) transcribes from four runs — so a
+  parser that reads only NMEA, which is what #429 proposes, cannot see
+  interference or a spoofing flag at all. Whether it also sends `TXT` is
+  `UNKNOWN`: no window began at the module's power-up, so an absence over these
+  windows is the window's property rather than the module's. That is a
   constraint on what `PositionValidity` can honestly mean, not a reason to
   build a UBX layer now.
 
@@ -842,7 +846,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1953`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:1957`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1928,7 +1932,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:825`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:829`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
