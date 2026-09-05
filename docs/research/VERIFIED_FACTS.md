@@ -2400,3 +2400,55 @@ ones that heading states.
   read**: the Waveshare was not on the bench for this session, so the default
   above is the vendor's documented default and not a measurement of this board.
   `espefuse.py summary` is read-only and would settle it.
+
+## Measured at the USB input with an inline meter (S16)
+
+### The Waveshare board draws 415 mW at its USB input in one named idle state
+
+- **Claim:** with **the cell disconnected**, the received
+  `ESP32-S3-Touch-AMOLED-2.06` running an Attadipa image, **screen on at minimum
+  brightness**, static on the **provisioning entry screen**
+  (`apps/include/attadipa/apps/provisioning.h` — the fourteen-key pad that asks
+  for date, UTC time, local offset and the node's six-digit passkey), **idle,
+  awaiting input, unprovisioned**, draws a **median 82.83 mA at 4.981 V** at its
+  USB-C input — **≈ 415 mW**. Mean 83.32 mA, p1–p99 81.2–86.4 mA over 21 440
+  samples. Transients reach **1282 mA**, but only **0.028 %** of samples sit
+  above 150 mA, which is why the median and not the mean is the figure to quote.
+- **Source:** S16 — a FNIRSI FNB-58 inline on the board's USB-C input,
+  2026-09-05, logged over its HID interface with
+  `baryluk/fnirsi-usb-power-data-logger`.
+- **Which build was on the board is `UNKNOWN`.** It was not recorded at
+  measurement time and [BENCH_DEVICES](BENCH_DEVICES.md) carries no firmware row
+  for this unit, so there is nothing to cite; do not backfill it from
+  `git log`. What *is* established is the screen the owner read off the board,
+  which is what names the state. A repeat should record the image first.
+- **Zero offset subtracted: 2.484 mA**, itself measured over 2122 samples with
+  the meter's output open. That is a self-measured offset, **not a calibration
+  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no
+  specification for the FNB-58 has been traced here — so how this offset ranks
+  against the instrument's gain error cannot be stated, only that it is 3 % of
+  the reading and was subtracted.
+- **Checked:** 2026-09-05. **Board revision:** V1.0, the revision the received
+  unit's silkscreen matches
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1).
+- **This is input power at VBUS, not board consumption by rail.** The meter sits
+  upstream of the AXP2101, so the number includes the PMU's conversion losses,
+  and it is *board* consumption only because the cell was disconnected — with a
+  cell attached the charger current is in the same reading. An earlier run that
+  still had the cell attached read **bimodally, 84 mA and 213 mA in bursts**;
+  that run lives only in bench logs, which are not repository artefacts, and it
+  is cited here for one thing only — its 84 mA mode is this same baseline to
+  within 1 %, which is what turned an inference into a measurement. **Nothing
+  measured the charger current**, so that the 213 mA mode was charging is
+  *consistent with* the cell being attached and is not established here.
+- **One residual `UNKNOWN`: whether the BLE radio was powered.** A host scan
+  does not settle it — in MeshCore the *node* advertises and the watch is the
+  central, so the watch is not expected to appear in a scan whether its radio is
+  up or not. Do not read its absence as "radio off".
+- **What this is not.** It is one state, not a power budget: no sleep figure, no
+  screen-off figure, no per-rail split, and nothing about the T-Watch, which is
+  micro-USB ([HARDWARE_MATRIX](HARDWARE_MATRIX.md) `:90` — "| USB | Micro-USB,
+  charge + programming only, no external supply function | VERIFIED |") and
+  needs an adapter the bench does not have. It is the first number of its kind
+  here, and the AXP2101 has no current channel on either silicon variant, so
+  external instrumentation is the only way any of the others can be taken.
