@@ -4,7 +4,11 @@ Both receivers the owner bought on 2026-09-02 have now been powered, read and
 identified from what they say about themselves. This report replaces the
 listing-derived `UNKNOWN`s in
 [BENCH_DEVICES](BENCH_DEVICES.md#two-gnss-modules-delivered-2026-09-02--read-off-2026-09-04)
-and closes [H18](OPEN_QUESTIONS.md#hardware--measurement-required). It also
+and answers [H18](OPEN_QUESTIONS.md#hardware--measurement-required) on identity,
+baud, protocol and bands. **It does not close H18**, which stays `PARTIAL`: its
+supply half — a regulator on each carrier, and each module's TX idle voltage —
+is untouched, and §4 is exactly where that matters, because those pins are now
+named. It also
 carries the one desk-resolvable item [#427](https://github.com/hleserg/Attadipa/issues/427)
 attached to the same bench trip: the GPIO numbers behind the Waveshare
 expansion pads, in §4.
@@ -93,20 +97,31 @@ only, nothing written that survives a power cycle.
 | Horizontal precision | **rms 4.07 m**, median 3.96, 68 % 5.16, 95 % 6.66, max 7.02 | 60 s static, 12 sats, quality 2 |
 | `hAcc` honesty | receiver claimed **4.28 m** against 4.07 m measured — within 5 % | same window |
 | Best C/N0 | 42–44 dBHz | balcony |
-| Warm TTFF | **0.1 s** | ephemeris retained, fix then held 60 s |
+| **Hot** TTFF | **0.1 s** | **ephemeris retained** — u-blox's hot start, not warm |
 | Cold TTFF | **40.0 s** | `UBX-CFG-RST`, BBR wiped, antenna secured and guarded |
+| **Warm** TTFF | **NOT MEASURED** | almanac and position kept, ephemeris dropped — never run |
 | Solution rate | 1 Hz — `CFG-RATE-MEAS 1000 ms`, `CFG-RATE-NAV 1` | `CFG-VALGET`, RAM |
 
-Two things this does **not** establish. The scatter is repeatability, not
-absolute accuracy: a constant offset of the whole cluster is invisible to the
-method, and the bench has no surveyed point. And the north–south spread is
-2.5× the east–west one because a window frame cuts part of the sky — the DOP
-components show the same skew.
+Three things this does **not** establish.
 
-The `hAcc` result is the one that matters for
-[#429](https://github.com/hleserg/Attadipa/issues/429): the receiver's own
-estimate can be carried into `PositionValidity` as reported, without a
-correction factor invented here.
+**The scatter is repeatability, not accuracy.** A constant offset of the whole
+cluster is invisible to the method, and the bench has no surveyed point. The
+north–south spread is 2.5× the east–west one because a window frame cuts part
+of the sky — the DOP components show the same skew.
+
+**So the `hAcc` comparison is bounded the same way.** What 4.28 m claimed
+against 4.07 m measured shows is that the receiver's estimate tracks its own
+*scatter* honestly, at one window, over one minute, in one sky. It is **not**
+evidence that `hAcc` bounds true error, which this method cannot see. For
+[#429](https://github.com/hleserg/Attadipa/issues/429) that is still the useful
+result — it means `hAcc` can be carried into `PositionValidity` as the receiver
+reports it, rather than being scaled by a fudge factor invented here — but the
+claim is "not optimistic about its own noise", not "accurate to 4 m".
+
+**And the two TTFF numbers are the two ends, not the middle.** 0.1 s is a hot
+start and 40.0 s is a cold one; the **warm** case — almanac and position kept,
+ephemeris stale — was never run, and that is the case a duty-cycled watch
+actually wakes into. Nothing here prices it.
 
 ### 1.4 Interference and spoofing — one detector, one monitor, and it ships off
 
@@ -276,9 +291,16 @@ remove any phantom feed through the module's `RX` pin — recorded **zero
 interruption** in the NMEA stream while the owner reports pulling the `VCC`
 lead. GGA timestamps run one per second with no gap and no backward jump across
 all three. Holding TX low changed nothing, so a phantom path through `RX` is
-disproved too. `UNKNOWN`, no longer blocking anything, and left recorded because
-an unexplained power path is exactly what matters if this part is ever
-considered for the product.
+genuinely disproved.
+
+**This is not a curiosity, and calling it non-blocking would be wrong.** §2.1
+photographed the likely answer — "a round can (backup cell or supercapacitor)"
+on the carrier back — and if that can holds the module up, then the module can
+drive its `TX` while the host rail is down. That is a back-drive case, and it
+sits directly on the gate §6 names: a single TX idle-voltage reading taken with
+everything powered does not cover it. So this `UNKNOWN` is **part of** the
+supply half of H18, not orthogonal to it, and it has to be answered before
+either module's `TX` reaches GPIO 44.
 
 ## 3. What #429 must not do — the parser hazard, measured
 
@@ -347,7 +369,7 @@ channel on it, but the GPIO numbers behind those two pads were recorded nowhere.
 
 They are genuinely free on this firmware. The Waveshare console is the SoC's
 native USB, not a UART bridge
-(`firmware/sdkconfig.waveshare:65` — "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"),
+(`firmware/sdkconfig.defaults:65` — "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"),
 so UART0 is not carrying the console, and nothing under `boards/`, `platform/`
 or `firmware/main/` claims 43 or 44.
 
@@ -424,8 +446,10 @@ once. No later behaviour of that part should be attributed to the discharge.
 ## 7. What this changes elsewhere
 
 - `BENCH_DEVICES.md`'s module section is no longer the listing; it points here.
-- `OPEN_QUESTIONS.md` **H18 closes** on identity, baud, protocol and bands, and
-  the supply/level half moves to the two `NOT MEASURED` rows above.
+- `OPEN_QUESTIONS.md` **H18 moves to `PARTIAL`**: identity, baud, protocol and
+  bands are answered; its supply half — a regulator on each carrier, each
+  module's TX idle voltage, and the GT-U12's unexplained power path in §2.4 —
+  is not, and that half is the gate on wiring either part to the pads in §4.
 - `HARDWARE_MATRIX.md`'s expansion pad row and
   `WAVESHARE_BOARD_RECEIVED.md` §1.5 both gain the GPIO numbers from §4.
 - [#429](https://github.com/hleserg/Attadipa/issues/429) is unblocked on the

@@ -204,17 +204,21 @@ They arrived on 2026-09-02 and were **read off the parts on 2026-09-04** —
 [GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) is the
 report and is the canonical source for what each one is. The table below is
 kept as what the *listings* claimed, so a claim can be compared against what
-the part turned out to be; it is not evidence and never was.
-Every value in it comes from the owner's four screenshots of the two marketplace
+the part turned out to be. **Its first row is the read-off and is evidence;
+every row below that one is a listing claim and is not.** Everything the rest
+of this paragraph says applies to the listing rows only.
+Every listing value comes from the owner's four screenshots of the two marketplace
 listings — title, product photo and description text — sent in the working
 session of 2026-09-02 and recorded through
 [#415](https://github.com/hleserg/Attadipa/pull/415); the marketplace itself
 and the order references were not captured, so a claim that disagrees with
 the board in hand cannot be re-checked against its listing later. A listing is
 an advertisement, not a datasheet; until a module has been powered, its NMEA
-read on a host and its chip identified from its own version sentence, each row
-is `UNKNOWN` in the sense AGENTS.md means. This section exists so the next
-session knows the boards are on the bench and does not order or assume a
+read on a host and its chip identified from its own version sentence, each
+listing row is `UNKNOWN` in the sense AGENTS.md means. **That has now happened
+for both parts** — which is what the read-off row records, and why the two
+kinds of row must not be read the same way. This section still exists so the
+next session knows the boards are on the bench and does not order or assume a
 third. The read-off is [H18](OPEN_QUESTIONS.md#hardware--measurement-required),
 and the owner's own plan for it — authenticity check of the u-blox part,
 chipset identification of the GT-U12 by its NMEA prefixes and vendor probes,
@@ -242,9 +246,21 @@ the node side — a first `PositionProvider` fed by a real receiver over UART, a
 the questions OD-5 raises about a receiver's own integrity protection — and the
 first thing owed is the read-off — and before any power, the supply: find the
 regulator or its absence on each carrier and what `VCC` wants, because two
-units with no spare do not survive a guess. Then a USB-UART bridge, a minute of
-NMEA, and the `UNKNOWN`s above replaced with what the module says about
-itself. Until then no code depends on either.
+units with no spare do not survive a guess.
+
+**That supply rule was not followed, and both parts were powered anyway.**
+Neither carrier was inspected for a regulator; both were run from a CH340G
+bridge's regulated 3.3 V, which worked and survived, and which proves nothing
+about what either `VCC` wants. Recorded here rather than left as silence,
+because a rule this section states and the record quietly bypasses is worse
+than no rule. It stays owed, together with each module's TX idle voltage, and
+those two are what keep H18 `PARTIAL` rather than closed — see
+[GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) §6.
+
+**No code depends on either part yet, and the pin question is now the gate.**
+The read-off named the Waveshare pads these would wire to (`RXD` = GPIO 44,
+`TXD` = GPIO 43), and the ESP32-S3 is not 5 V tolerant, so the unmeasured TX
+idle voltage above is what stands between here and a wire.
 
 ## What this does not say
 

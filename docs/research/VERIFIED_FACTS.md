@@ -2381,8 +2381,10 @@ ones that heading states.
   `U0RXD_GPIO_NUM 44` and `U0TXD_GPIO_NUM 43`. Written up with the rendering
   method in
   [GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) §4.
+- **Checked:** 2026-09-04, against schematic V1.0 and ESP-IDF v5.5.5. A change
+  of console backend, or an ESP-IDF whose `uart_pins.h` moves, re-reads both.
 - **Why they are free.** This firmware's console is the SoC's native USB, not a
-  UART bridge — `firmware/sdkconfig.waveshare:65` —
+  UART bridge — `firmware/sdkconfig.defaults:65` —
   "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y" — so UART0 carries no console, and
   nothing under `boards/`, `platform/` or `firmware/main/` claims 43 or 44.
 - **What this does *not* license.** The **first-stage ROM bootloader still
