@@ -50,7 +50,7 @@ AN3126, and the two parts turned out to be nothing like each other.
 | Identity | `UBX-MON-VER`, and the power-up `$GNTXT` banner, agreeing | MEASURED |
 | Sentence set | GGA, GSA, GSV, RMC, VTG, GLL at 1 Hz; talkers GP, GL, GA, GB, GQ. **No `$GIGSV`** — no NavIC | MEASURED |
 | Non-NMEA framing | UBX, both directions. `CFG-UART1` reports `UBX 1, NMEA 1` in and out | MEASURED |
-| Fix acquired, and cold TTFF | yes. Warm 0.1 s, **cold 40.0 s** | MEASURED |
+| Fix acquired, and cold TTFF | yes. **Hot** 0.1 s (ephemeris retained), **cold 40.0 s**, both guarded. **Warm — ephemeris dropped, almanac kept — was never run** | MEASURED for hot and cold; **NOT MEASURED** for warm |
 | Position, satellites, HDOP | logged on the bench; the position itself is not committed | MEASURED, off-repo |
 | Raw log attached | **no** — see the note on coordinates above | not met, deliberately |
 
@@ -95,7 +95,7 @@ only, nothing written that survives a power cycle.
 | Bands | L1/E1 only. `UBX-NAV-SIG` reports GPS L1C/A ×9, GAL E1 ×9, BDS B1C ×8, GLO L1 ×7, SBAS L1 ×4 — **no L5, E5a, B2a or L2 anywhere** | 37 signals, 17 used |
 | Constellations | GPS, GLONASS, BeiDou, Galileo enabled; **3 simultaneous** whatever is enabled | `UBX-MON-GNSS` |
 | Horizontal precision | **rms 4.07 m**, median 3.96, 68 % 5.16, 95 % 6.66, max 7.02 | 60 s static, 12 sats, quality 2 |
-| `hAcc` honesty | receiver claimed **4.28 m** against 4.07 m measured — within 5 % | same window |
+| `hAcc` vs its own scatter | receiver claimed **4.28 m** against 4.07 m measured — 5.2 % apart | same window; this is scatter, not true error |
 | Best C/N0 | 42–44 dBHz | balcony |
 | **Hot** TTFF | **0.1 s** | **ephemeris retained** — u-blox's hot start, not warm |
 | Cold TTFF | **40.0 s** | `UBX-CFG-RST`, BBR wiped, antenna secured and guarded |
@@ -110,7 +110,7 @@ north–south spread is 2.5× the east–west one because a window frame cuts pa
 of the sky — the DOP components show the same skew.
 
 **So the `hAcc` comparison is bounded the same way.** What 4.28 m claimed
-against 4.07 m measured shows is that the receiver's estimate tracks its own
+against 4.07 m measured — 5.2 % apart — shows is that the receiver's estimate tracks its own
 *scatter* honestly, at one window, over one minute, in one sky. It is **not**
 evidence that `hAcc` bounds true error, which this method cannot see. For
 [#429](https://github.com/hleserg/Attadipa/issues/429) that is still the useful
@@ -428,10 +428,13 @@ once. No later behaviour of that part should be attributed to the discharge.
 - **Both carriers' regulators**, and what each `VCC` actually wants. Neither
   board was inspected for one; both were run from the bridge's regulated 3.3 V,
   which works but proves nothing about the carrier.
-- **Both modules' TX idle voltage.** Never measured. This is the half of H18
-  that guards an ESP32-S3 pin, and §4 is where those pins now are — so it has
-  to be answered before either module is wired to the Waveshare pad row, not
-  before the next bench capture.
+- **Both modules' TX idle voltage — and, on the GT-U12, the back-drive path in
+  §2.4.** Neither is measured, and they are one item, not two: an idle-voltage
+  reading taken with everything powered does not cover a module that keeps
+  driving its `TX` after its `VCC` lead comes off. This is the half of H18 that
+  guards an ESP32-S3 pin, and §4 is where those pins now are — so it has to be
+  answered before either module is wired to the Waveshare pad row, not before
+  the next bench capture.
 - **The GT-U12's accuracy and cold-start TTFF.** `NOT EXECUTED — HARDWARE
   REQUIRED`, and the reason the two parts cannot yet be compared where it
   matters.
@@ -439,7 +442,6 @@ once. No later behaviour of that part should be attributed to the discharge.
   shipped mask is decoded; ALLYSTAR publishes no part brief naming `HD8041` at
   all, and the dual-band TAU1202 brief's `HD804XD` is a family resemblance, not
   an identification.
-- **Why the GT-U12 keeps running with `VCC` unplugged.** §2.4.
 - **The ROM boot-message baud on UART0, and this Waveshare unit's eFuse state.**
   §4.
 

@@ -257,10 +257,12 @@ than no rule. It stays owed, together with each module's TX idle voltage, and
 those two are what keep H18 `PARTIAL` rather than closed — see
 [GNSS_MODULES_READOFF_2026-09-04](GNSS_MODULES_READOFF_2026-09-04.md) §6.
 
-**No code depends on either part yet, and the pin question is now the gate.**
-The read-off named the Waveshare pads these would wire to (`RXD` = GPIO 44,
-`TXD` = GPIO 43), and the ESP32-S3 is not 5 V tolerant, so the unmeasured TX
-idle voltage above is what stands between here and a wire.
+**No code depends on either part yet, and the pin question is no longer what
+stops it.** The read-off named the Waveshare pads these would wire to
+(`RXD` = GPIO 44, `TXD` = GPIO 43). The gate is now electrical: the ESP32-S3 is
+not 5 V tolerant, so the unmeasured TX idle voltage above — and, on the GT-U12,
+the unexplained path that keeps it running with `VCC` off — is what stands
+between here and a wire.
 
 ## What this does not say
 
