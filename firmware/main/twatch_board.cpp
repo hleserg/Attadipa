@@ -820,6 +820,24 @@ esp_err_t start_twatch_ui() {
   // shut and returning at once. That is what `local_gnss.cpp`'s `port_open`
   // atomic is for: the header calls the boot task racing the LVGL timer the
   // exception, and this is it.
+#if CONFIG_ATTADIPA_GNSS_LOCAL
+  // The rail comes up here, with its reader, and not in `initialize_pmu()`
+  // where the bridge's does. The paragraph above is the reason: a rail raised
+  // before a rollback is exactly the stranded module it describes, and #442
+  // first shipped the port fixed and the rail still early. One place, one
+  // moment, for both halves of "something is listening".
+  //
+  // Non-fatal, like the start below it. A PMU that will not take the write
+  // leaves the module unpowered and the port opening onto silence, which
+  // `warn_if_quiet()` reports five seconds later in the words a bench needs.
+  const esp_err_t rail_err =
+      attadipa::firmware::board_power_enable_gnss_rail(state.pmu);
+  if (rail_err != ESP_OK) {
+    ESP_LOGE(kTag, "GNSS rail did not come up (%s): the receiver will read a "
+                   "module that has no power",
+             esp_err_to_name(rail_err));
+  }
+#endif
   (void)attadipa::firmware::local_gnss_start();
   return ESP_OK;
 }

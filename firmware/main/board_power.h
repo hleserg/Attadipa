@@ -59,6 +59,18 @@
 
 namespace attadipa::firmware {
 
+// Raise the rail this board's GNSS module sits on, and read back the one it
+// might have sat on instead. ESP_OK and no bus traffic when there is nothing to
+// raise: a board whose GNSS takes no PMU rail, or an image with no GNSS
+// consumer compiled into it at all.
+//
+// Separate from `board_power_bring_up_rails()` below because the right moment
+// differs by consumer, not by board: a consumer that runs past a boot rollback
+// must raise it past the rollback too, since the rollback drops the PMU handle
+// and a rail with no handle can no longer be switched off. The full argument is
+// at the definition.
+esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu);
+
 // Bring the rails this board needs up, and own only those.
 //
 // Moved here unchanged from `waveshare_board.cpp`'s `initialize_pmu()`: same

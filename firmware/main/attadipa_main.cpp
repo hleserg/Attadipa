@@ -340,7 +340,7 @@ extern "C" void app_main(void)
 
 #if CONFIG_ATTADIPA_GNSS_BRIDGE
     // *After* the UI, unlike the I2C scan above, because starting the UI is
-    // what brings the rails up — `firmware/main/twatch_board.cpp:168` —
+    // what brings the rails up — `firmware/main/twatch_board.cpp:176` —
     // "return attadipa::firmware::board_power_bring_up_rails(state.pmu);" —
     // and BLDO1 is the GNSS supply. Run before it, the sweep would be reading a
     // module with no power and calling the silence a result.

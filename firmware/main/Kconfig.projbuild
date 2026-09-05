@@ -101,14 +101,29 @@ config ATTADIPA_GNSS_BRIDGE
     depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
     default n
     help
-        Ask the T-Watch GNSS module what it is. Which part is fitted is
-        UNKNOWN (docs/research/OPEN_QUESTIONS.md, question A2), and so is
-        which PMU rail powers it (question D6). This sweeps baud rate and
+        Ask the T-Watch GNSS module what it is. This sweeps baud rate and
         UART orientation until something answers, logs what the port
         carries, then sends version queries in u-blox, ALLYSTAR and three
         ASCII dialects. It writes no GNSS configuration and saves nothing;
-        a silent port is logged as a silent port. Enabling this also brings
-        BLDO1 up at 3.3 V, which no other build needs yet.
+        a silent port is logged as a silent port.
+
+        It has already answered its two questions, on the owner's unit, on
+        2026-09-05: A2 -- which part is fitted -- came back MOD=MIA-M10Q
+        from the module itself, and D6 -- which PMU rail powers it -- came
+        back BLDO1 with DCDC3 clear. Both rows are struck through in
+        docs/research/OPEN_QUESTIONS.md and the run is written up in
+        docs/research/TWATCH_GNSS_READOFF_2026-09-05.md. Keep this build
+        for a unit that has not been read off: the product ships MIA-M10Q
+        or Quectel LS550G and one read-off retires neither possibility for
+        anyone else's watch. On a unit already read off it tells you
+        nothing new, and ATTADIPA_GNSS_LOCAL is what you want instead.
+
+        Enabling this brings BLDO1 up at 3.3 V during rail bring-up, early,
+        because the sweep runs after the UI has returned and needs the rail
+        up however that call ended. ATTADIPA_GNSS_LOCAL needs the same rail
+        but raises it itself, later, next to the port it opens -- so this
+        is no longer the only build that needs BLDO1, only the one that
+        needs it first.
 
 config ATTADIPA_GNSS_BRIDGE_PASSTHROUGH
     bool "GNSS bridge: hand the port to the host when the sweep is done"
@@ -171,9 +186,18 @@ config ATTADIPA_GNSS_LOCAL
 config ATTADIPA_GNSS_LOCAL_RX
     int "GNSS receive GPIO"
     depends on ATTADIPA_GNSS_LOCAL
-    default 44 if ATTADIPA_BOARD_WAVESHARE_AMOLED_206
     default 41 if ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default 44 if ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    default 0
     help
+        A third board gets 0, which is a refusal and not a pin. The symbol
+        above is offered on any board -- that is the point of #442 -- but a
+        pin is a per-board fact and this file only has two of them. 0 is not
+        a plausible wrong answer that boots: GPIO 0 is a strap, and
+        local_gnss.cpp refuses to compile on it, so a new board declares its
+        pin here or does not build with the receiver on. Silence was the
+        alternative, and silence would have listened on the strap pin.
+
         This is the pin the CPU listens on, so it is the module's TX in
         both defaults below.
 
@@ -199,9 +223,13 @@ config ATTADIPA_GNSS_LOCAL_RX
 config ATTADIPA_GNSS_LOCAL_BAUD
     int "GNSS UART baud"
     depends on ATTADIPA_GNSS_LOCAL
-    default 115200 if ATTADIPA_BOARD_WAVESHARE_AMOLED_206
     default 38400 if ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default 115200 if ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    default 0
     help
+        0 on a board that names no speed, refused at compile time for the
+        same reason as the pin above.
+
         Waveshare 115200 -- MEASURED for the GT-U12 on the bench (#427).
 
         T-Watch 38400 -- MEASURED on the bench unit 2026-09-05, in the same

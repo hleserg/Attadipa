@@ -26,6 +26,19 @@ namespace {
 
 #if CONFIG_ATTADIPA_GNSS_LOCAL
 
+// A board that turned the receiver on without declaring where it listens.
+// `Kconfig.projbuild` names a pin and a speed per board and falls through to 0,
+// and 0 is not a usable value for either: GPIO 0 is a boot strap and no
+// receiver speaks at 0 baud. Refusing here rather than at the prompt is
+// deliberate -- the symbol is offered on every board on purpose, so the thing
+// to catch is a board that took the offer without doing its half.
+#if CONFIG_ATTADIPA_GNSS_LOCAL_RX <= 0
+#error "ATTADIPA_GNSS_LOCAL is on but this board declares no RX pin: add a `default <gpio> if ATTADIPA_BOARD_<yours>` to ATTADIPA_GNSS_LOCAL_RX."
+#endif
+#if CONFIG_ATTADIPA_GNSS_LOCAL_BAUD <= 0
+#error "ATTADIPA_GNSS_LOCAL is on but this board declares no baud: add a `default <baud> if ATTADIPA_BOARD_<yours>` to ATTADIPA_GNSS_LOCAL_BAUD."
+#endif
+
 constexpr char kTag[] = "gnss";
 
 constexpr uart_port_t kPort = UART_NUM_1;
@@ -197,6 +210,31 @@ void log_if_answer_changed()
         return;
     }
     logged = now;
+
+    // THE COORDINATE IS NOT IN THIS LINE, AND THAT IS THE POINT. What changed
+    // is what `LoggedAnswer` holds, and it holds no position on purpose: a
+    // watch that has moved thirty metres has not changed state and says
+    // nothing here. So the line that announces the change has nothing to gain
+    // from carrying the position, and a great deal to lose -- this log goes to
+    // a USB console that asks nobody for a password, on a device worn by a
+    // person, and `format_location_line` prints latitude and longitude at
+    // 10^-7 of a degree, which is about a centimetre. Nothing else in this
+    // firmware puts a coordinate at INFO. This is not going to be the first.
+    ESP_LOGI(kTag, "avail %s src %s fix %s validity %s position %s",
+             attadipa::core::to_string(now.availability),
+             attadipa::core::to_string(now.source),
+             attadipa::core::to_string(now.fix_type),
+             attadipa::core::to_string(now.validity),
+             now.has_position ? "held" : "none");
+
+    // The engineering line, with the coordinate, one level down -- off in the
+    // default image and reached by asking for it, which is the asking that
+    // makes it a decision. This is still `core::format_location_line` and not
+    // a second formatter: #442 said to use the existing one, and this is the
+    // place where using it is safe.
+    if (esp_log_level_get(kTag) < ESP_LOG_DEBUG) {
+        return;
+    }
     // 224 bytes: the line is three 16-byte numbers, a 16-byte age, an 8-byte
     // origin and about 110 of fixed text. `format_location_line` returns the
     // length it wanted, so a future field that overruns this shows up as a
@@ -209,7 +247,7 @@ void log_if_answer_changed()
                  static_cast<unsigned>(sizeof(line) - 1),
                  static_cast<unsigned>(wanted));
     }
-    ESP_LOGI(kTag, "%s", line);
+    ESP_LOGD(kTag, "%s", line);
 }
 
 void warn_if_quiet(attadipa::core::MonotonicTime now)
