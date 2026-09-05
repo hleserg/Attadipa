@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <ctime>
-#include <optional>
 #include <vector>
 
 #include "lvgl.h"
@@ -13,11 +12,9 @@
 #include "attadipa/apps/clock.h"
 #include "attadipa/core/input.h"
 #include "attadipa/debug/bridge.h"
-#include "attadipa/ui/clock_face.h"
-#include "attadipa/ui/provision_face.h"
-#include "attadipa/ui/tokens.h"
 
 #include "boot_screen.h"
+#include "clock_screen.h"
 #include "debug_server.h"
 #include "diagnostic_screen.h"
 #include "nav_screen.h"
@@ -38,178 +35,6 @@
 namespace {
 
 using namespace attadipa;
-
-ui::ClockFace g_clock_face;
-ui::ClockFaceConfig g_clock_config;
-apps::ClockState g_clock_state;
-bool g_clock_active = false;
-bool g_clock_live = false;
-
-// A board that takes whatever it is given. The simulator has no RTC and no
-// radio to hand a value to, so the seam ends here, out loud.
-//
-// The passkey is answered the way the board answers it and not one step
-// earlier: taken now, terminal on a later tick. There is no worker behind it
-// here, so the wait is one poll long -- but a screen that never saw `Pending`
-// in the simulator is a screen nobody looked at in the state the watch spends
-// real milliseconds in (#416).
-struct AcceptingProvisioner final : core::Provisioner {
-  core::ProvisionOutcome
-  set_wall_clock(const core::WallClockEntry &entry) override {
-    std::printf("provision: clock %lld s, offset %d min\n",
-                static_cast<long long>(entry.utc_seconds),
-                static_cast<int>(entry.timezone_offset_minutes));
-    return core::ProvisionOutcome::Accepted;
-  }
-  core::ProvisionOutcome set_mesh_passkey(std::uint32_t passkey) override {
-    std::printf("provision: passkey %06u queued\n",
-                static_cast<unsigned>(passkey));
-    in_flight_ = true;
-    return core::ProvisionOutcome::Pending;
-  }
-  core::ProvisionOutcome mesh_passkey_outcome() override {
-    if (!in_flight_) {
-      // Nothing outstanding. `Failed` and not `Pending`, or a screen that asks
-      // without having been told `Pending` waits for ever.
-      return core::ProvisionOutcome::Failed;
-    }
-    in_flight_ = false;
-    std::printf("provision: passkey armed\n");
-    return core::ProvisionOutcome::Accepted;
-  }
-
-  // Pinned to a made-up node until it is forgotten, so the entry screen's
-  // node field has something to show. The key is not a real node's.
-  bool mesh_node(core::MeshPeerId &out) override {
-    if (!pinned_) {
-      return false;
-    }
-    out = core::MeshPeerId{};
-    out.public_key[0] = 0xA1;
-    out.public_key[1] = 0xB2;
-    out.public_key[2] = 0xC3;
-    out.public_key[3] = 0xD4;
-    return true;
-  }
-  core::ProvisionOutcome forget_mesh_node() override {
-    if (!pinned_) {
-      return core::ProvisionOutcome::Rejected;
-    }
-    std::printf("provision: forget node queued\n");
-    forget_in_flight_ = true;
-    return core::ProvisionOutcome::Pending;
-  }
-  core::MeshForgetOutcome mesh_forget_outcome() override {
-    if (!forget_in_flight_) {
-      return core::MeshForgetOutcome::BondKept;
-    }
-    forget_in_flight_ = false;
-    pinned_ = false;
-    std::printf("provision: node forgotten\n");
-    return core::MeshForgetOutcome::Forgotten;
-  }
-
-private:
-  bool in_flight_ = false;
-  bool forget_in_flight_ = false;
-  bool pinned_ = true;
-};
-
-void rebuild_clock_screen();
-
-AcceptingProvisioner g_provisioner;
-std::optional<apps::ProvisioningEntry> g_entry;
-ui::ProvisionFace g_provision_face;
-ui::ProvisionFaceConfig g_provision_config;
-
-void rebuild_provision_screen() {
-  g_provision_config.locale = l10n::locale();
-  g_provision_face.build(lv_screen_active(), g_provision_config, *g_entry);
-}
-
-// What `T` does to each of the two faces this file owns the config of.
-//
-// Registered where the face is put on the panel, beside the line that says
-// what `L` does to it — see `sim/review_keys.h` for why the key needs an owner
-// at all rather than an `if` ladder over whichever screens this file remembers.
-ui::Theme toggle_clock_theme() {
-  g_clock_config.theme = g_clock_config.theme == ui::Theme::Day
-                             ? ui::Theme::Night
-                             : ui::Theme::Day;
-  rebuild_clock_screen();
-  return g_clock_config.theme;
-}
-
-ui::Theme toggle_provision_theme() {
-  g_provision_config.theme = g_provision_config.theme == ui::Theme::Day
-                                 ? ui::Theme::Night
-                                 : ui::Theme::Day;
-  rebuild_provision_screen();
-  return g_provision_config.theme;
-}
-
-ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
-  return {clock.width_px, clock.height_px, clock.theme,
-          clock.pixel_cost, clock.metrics,  l10n::locale()};
-}
-
-// The same loop the board runs: Done shows for a moment, then the clock is
-// back. Here it is an LVGL timer that deletes itself; there it is the
-// clock's own refresh timer counting ticks.
-void leave_provisioning(lv_timer_t *timer) {
-  // The board polls the passkey on its clock tick; here it is this timer, and
-  // it is the only thing that can end the wait. The tick that hears the answer
-  // draws it and stops there: leaving on the same tick would put Done on the
-  // screen for no frames at all. The board spends three ticks on it.
-  if (g_entry->poll()) {
-    g_provision_face.update();
-    return;
-  }
-  if (!g_entry->finished()) {
-    return;
-  }
-  lv_timer_delete(timer);
-  g_provision_face.clear();
-  g_entry.reset();
-  g_clock_active = true;
-  l10n::set_locale_changed_handler(rebuild_clock_screen);
-  attadipa::sim::set_theme_toggle(toggle_clock_theme);
-  rebuild_clock_screen();
-}
-
-// A long press on the clock opens the entry screen, as on the board.
-void on_long_press(lv_event_t *) {
-  if (!g_clock_active) {
-    return;
-  }
-  g_clock_face.clear();
-  g_clock_active = false;
-  g_provision_config = provision_config_for(g_clock_config);
-  g_entry.emplace(g_provisioner);
-  l10n::set_locale_changed_handler(rebuild_provision_screen);
-  attadipa::sim::set_theme_toggle(toggle_provision_theme);
-  rebuild_provision_screen();
-  lv_timer_create(leave_provisioning,
-                  ui::milliseconds_of(ui::Motion::Slow) * 8U, nullptr);
-}
-
-void rebuild_clock_screen() {
-  g_clock_state.locale = l10n::locale();
-  g_clock_face.build(
-      lv_screen_active(), g_clock_config,
-      apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
-}
-
-void refresh_clock(lv_timer_t *timer) {
-  if (g_clock_live) {
-    g_clock_state.time.value.unix_seconds =
-        static_cast<std::int64_t>(std::time(nullptr));
-  }
-  g_clock_state.locale = l10n::locale();
-  g_clock_face.update(
-      apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
-  lv_timer_set_period(timer, apps::clock_manifest().tick_period.value);
-}
 
 // A simulated bring-up. On a board this is drivers coming up over I2C, SPI and
 // a set of PMU rails; here it is a loop, and the loop is honest about what it
@@ -360,18 +185,8 @@ int main(int argc, char **argv) {
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_nav_screen);
     attadipa::sim::build_nav_screen(options.board, options.theme);
   } else if (options.clock_screen || options.provision_screen) {
-    g_clock_active = true;
-    g_clock_live = !options.clock_time_set;
-    g_clock_config = {
-        options.board.display.width_px,
-        options.board.display.height_px,
-        options.theme,
-        options.board.display.technology == platform::PanelTechnology::Amoled
-            ? ui::PixelCost::PerPixel
-            : ui::PixelCost::Fixed,
-        ui::Metrics::for_dpi(options.board.display.dpi()),
-    };
-    g_clock_state.time = {
+    apps::ClockState state;
+    state.time = {
         options.clock_time_set
             ? options.clock_time
             : core::WallTime{static_cast<std::int64_t>(std::time(nullptr))},
@@ -379,24 +194,17 @@ int main(int argc, char **argv) {
         0,
         options.clock_validity,
     };
-    g_clock_state.availability = options.clock_availability;
-    g_clock_state.touch_absent = options.touch_absent;
-    g_clock_state.locale = options.locale;
-    g_clock_state.mode =
+    state.availability = options.clock_availability;
+    state.touch_absent = options.touch_absent;
+    state.locale = options.locale;
+    state.mode =
         options.child_mode ? apps::ClockMode::Child : apps::ClockMode::Adult;
-    l10n::set_locale_changed_handler(rebuild_clock_screen);
-    attadipa::sim::set_theme_toggle(toggle_clock_theme);
-    rebuild_clock_screen();
-    if (g_clock_live) {
-      lv_timer_create(refresh_clock, apps::clock_manifest().tick_period.value,
-                      nullptr);
-    }
-    lv_obj_add_event_cb(lv_screen_active(), on_long_press,
-                        LV_EVENT_LONG_PRESSED, nullptr);
+    attadipa::sim::build_clock_screen(options.board, options.theme, state,
+                                      !options.clock_time_set);
     if (options.provision_screen) {
       // Straight to the entry screen, for a screenshot that does not need a
       // finger held on the clock first.
-      lv_obj_send_event(lv_screen_active(), LV_EVENT_LONG_PRESSED, nullptr);
+      attadipa::sim::enter_provisioning();
     }
   } else {
     attadipa::sim::build_boot_screen(inventory, caps);

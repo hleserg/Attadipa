@@ -6,6 +6,7 @@
 
 #include "lvgl.h"
 
+#include "attadipa/apps/clock.h"
 #include "attadipa/core/capability_registry.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
@@ -13,6 +14,7 @@
 #include "attadipa/ui/color.h"
 
 #include "boot_screen.h"
+#include "clock_screen.h"
 #include "diagnostic_screen.h"
 #include "nav_screen.h"
 #include "review_keys.h"
@@ -345,6 +347,83 @@ void boot_screen_still_follows_the_theme_key(
   panel.close();
 }
 
+// The clock, and the entry screen a long press opens. Both took their theme
+// once at startup from a config that lived in `main.cpp`, so both were owners
+// no test could reach — the #432 fix moved them, and this is what says they
+// arrived. The clock is the screen the watch actually shows, which makes it the
+// one whose theme key mattering is not a convenience for reviewers.
+void the_clock_follows_the_theme_key(const platform::BoardProfile &board) {
+  Panel panel;
+  panel.open(board);
+  l10n::set_locale(l10n::Locale::En);
+
+  // Pinned, not the host clock: `live` would start the refresh timer and
+  // `run_frames` would then redraw a different minute under the comparison.
+  apps::ClockState state;
+  state.time = {core::WallTime{1'700'000'000}, 0, 0, core::Validity::Valid};
+  state.availability = core::Availability::Ready;
+  attadipa::sim::build_clock_screen(board, ui::Theme::Day, state, false);
+  run_frames(2);
+
+  const std::vector<std::uint8_t> day = pixels();
+  const std::string day_layout = layout();
+  CHECK(corner(day) == page_colour(ui::Theme::Day, board));
+
+  // Night is a different picture here, and deliberately more than a palette:
+  // `ui/lvgl/clock_face.cpp` draws a meadow image and four fireflies under the
+  // numerals for `Theme::Night` and nothing at all for `Theme::Day`. So the
+  // assertion the navigation readout can make — same geometry, same words —
+  // is false for this screen by design, and asserting it here would be
+  // asserting the wrong thing loudly. What `T` has to prove is that the screen
+  // on the panel followed it, and that a second press puts back exactly what
+  // was there.
+  press('T');
+  const std::vector<std::uint8_t> night = pixels();
+  CHECK(night != day);
+  CHECK(layout() != day_layout);
+
+  press('T');
+  CHECK(pixels() == day);
+  CHECK(layout() == day_layout);
+
+  // `L` still reaches it, and neither key takes the other with it. The clock
+  // formats a weekday, so the two locales are two pictures on both boards.
+  press('L');
+  CHECK(l10n::locale() == l10n::Locale::Ru);
+  const std::string russian = layout();
+  CHECK(russian != day_layout);
+  const std::vector<std::uint8_t> russian_day = pixels();
+
+  press('T');
+  CHECK(l10n::locale() == l10n::Locale::Ru);
+  CHECK(pixels() != russian_day);
+
+  press('T');
+  CHECK(pixels() == russian_day);
+
+  press('L');
+  CHECK(l10n::locale() == l10n::Locale::En);
+  CHECK(pixels() == day);
+
+  // And the entry screen takes the key over when it takes the panel. Entered
+  // directly rather than through a long press: the transition is not what is
+  // under test, and `leave_provisioning` is a timer that would hand the panel
+  // back mid-comparison if the entry ever finished.
+  attadipa::sim::enter_provisioning();
+  run_frames(2);
+  const std::vector<std::uint8_t> entry_day = pixels();
+  CHECK(corner(entry_day) == page_colour(ui::Theme::Day, board));
+
+  press('T');
+  CHECK(corner(pixels()) == page_colour(ui::Theme::Night, board));
+
+  press('T');
+  CHECK(pixels() == entry_day);
+
+  l10n::set_locale(l10n::Locale::En);
+  panel.close();
+}
+
 void the_test_pattern_ignores_the_theme_key(
     const platform::BoardProfile &board) {
   Panel panel;
@@ -385,6 +464,7 @@ int main() {
   for (std::uint8_t i = 0; i < count; ++i) {
     nav_follows_the_theme_key(profiles[i]);
     boot_screen_still_follows_the_theme_key(profiles[i]);
+    the_clock_follows_the_theme_key(profiles[i]);
     the_test_pattern_ignores_the_theme_key(profiles[i]);
   }
 

@@ -17,6 +17,7 @@ find_package(SDL2 REQUIRED)
 # are the parts a test cannot have anyway.
 add_library(attadipa_sim_screens
     boot_screen.cpp
+    clock_screen.cpp
     diagnostic_screen.cpp
     labels.cpp
     nav_screen.cpp
