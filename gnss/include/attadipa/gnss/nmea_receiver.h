@@ -95,7 +95,7 @@
 // makes the number load-bearing rather than lucky. The hazard is a receiver
 // standing still, so a capture taken while carrying one about would measure the
 // easy half and prove nothing. The GT-U12 half of the 6.5 MB was not carried:
-// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:558` -- "the owner
+// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:561` -- "the owner
 // confirmed on 2026-09-05 that it" -- had sat untouched overnight, §5.1, which
 // labels it an owner attestation rather than a MEASURED quantity and records
 // that the AN3126 half has no such account. Hours of a receiver that never

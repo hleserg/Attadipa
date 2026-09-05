@@ -550,7 +550,10 @@ once. No later behaviour of that part should be attributed to the discharge.
 
 ### 5.1 The repeat-rate capture sat still — owner-attested, not MEASURED
 
-The parser rule in §3 rests on a repeat rate, and a repeat rate only carries
+The parser rule that rests on a repeat rate is `LocationService::poll()`'s, and
+the rate itself is recorded where it is used rather than in this report:
+`gnss/include/attadipa/gnss/nmea_receiver.h:90` — "the longest consecutive run is two".
+A repeat rate only carries
 weight if the receiver was standing still while it was taken: a receiver being
 carried about cannot repeat a coordinate to the last digit, so a capture in
 motion would measure the easy half of the hazard. For the **GT-U12** half the
@@ -568,8 +571,8 @@ audit — §5's own rule, applied to a run that predates it.
 
 The **AN3126** half of the 6.5 MB carries no such record and must not be given
 one: its physical condition during capture is **UNKNOWN**. The repeat figures
-in §3 are quoted for both modules, so a future reader tightening that threshold
-has one half attested and one half not.
+cited at the head of this section are quoted for both modules together, so a
+future reader tightening that threshold has one half attested and one half not.
 
 ## 6. What is still UNKNOWN
 

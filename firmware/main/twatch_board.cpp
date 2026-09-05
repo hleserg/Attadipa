@@ -719,6 +719,13 @@ esp_err_t start_twatch_ui() {
     abandon_touch();
   }
 
+#if CONFIG_ATTADIPA_GNSS_LOCAL
+  // Hoisted here because `gnss_timer` below dies with the block it is declared
+  // in, and the two calls at the end of this function have to know whether
+  // anything will read the module. Reaching them means `panel_err == ESP_OK`,
+  // so this is always assigned before it is read.
+  bool gnss_tick_up = false;
+#endif
   if (panel_err == ESP_OK) {
     if (touch_err == ESP_OK) {
       lvgl_port_touch_cfg_t touch{};
@@ -758,6 +765,7 @@ esp_err_t start_twatch_ui() {
         [](lv_timer_t *) { attadipa::firmware::local_gnss_tick(); },
         kGnssTickMs, nullptr);
     lvgl_port_unlock();
+    gnss_tick_up = gnss_timer != nullptr;
     if (gnss_timer == nullptr) {
       // Not fatal and not silent. Nothing would read the ring, so the receiver
       // would look like a module that never answered -- which is a different
@@ -836,20 +844,41 @@ esp_err_t start_twatch_ui() {
   // The rail comes up here, with its reader, and not in `initialize_pmu()`
   // where the bridge's does. The paragraph above is the reason: a rail raised
   // before a rollback is exactly the stranded module it describes, and #442
-  // first shipped the port fixed and the rail still early. One place, one
-  // moment, for both halves of "something is listening".
+  // first shipped the port fixed and the rail still early.
   //
-  // Non-fatal, like the start below it. A PMU that will not take the write
-  // leaves the module unpowered and the port opening onto silence, which
-  // `warn_if_quiet()` reports five seconds later in the words a bench needs.
-  const esp_err_t rail_err =
-      attadipa::firmware::board_power_enable_gnss_rail(state.pmu);
-  if (rail_err != ESP_OK) {
-    ESP_LOGE(kTag, "GNSS rail did not come up (%s): the receiver will read a "
-                   "module that has no power",
-             esp_err_to_name(rail_err));
+  // AND ONLY IF THERE IS A READER. Both halves can fail and both say so: the
+  // timer above logs that the receiver will not be read this boot, and
+  // `local_gnss_start()` logs the port it could not open. #442 raised the rail
+  // across both of those anyway, which is the same defect one paragraph up --
+  // "a powered module with nothing reading it" -- reached by a different route
+  // and without the excuse of a lost handle. Here the handle is live, so the
+  // cheapest fix is not to raise the rail at all. Short-circuit: no reader
+  // means no port either, since a port opened onto a rail that stays down is
+  // the second half of the same waste.
+  //
+  // The port now opens before the module has power, which is the swap that
+  // buys this. It costs nothing a reader can mistake for a fix: whatever the
+  // pin does while BLDO1 is still down -- unmeasured, and this comment does
+  // not guess -- it is not framed NMEA, and
+  // `gnss/include/attadipa/gnss/nmea_receiver.h:172` --
+  // "    std::uint32_t discarded() const { return discarded_; }" -- counts
+  // what frames and fails its checksum, while anything that never framed is
+  // `unframed_`. Neither becomes a position. `local_gnss_start()` stamps
+  // `last_tick_ms` as it returns, so `warn_if_quiet()` still measures from the
+  // moment the port opened.
+  //
+  // Non-fatal. A PMU that will not take the write leaves the module unpowered
+  // and the port already open onto silence, which `warn_if_quiet()` reports
+  // five seconds later in the words a bench needs.
+  if (gnss_tick_up && attadipa::firmware::local_gnss_start() == ESP_OK) {
+    const esp_err_t rail_err =
+        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);
+    if (rail_err != ESP_OK) {
+      ESP_LOGE(kTag, "GNSS rail did not come up (%s): the receiver will read a "
+                     "module that has no power",
+               esp_err_to_name(rail_err));
+    }
   }
 #endif
-  (void)attadipa::firmware::local_gnss_start();
   return ESP_OK;
 }

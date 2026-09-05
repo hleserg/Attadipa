@@ -515,8 +515,9 @@ esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
   // difference is a defect the review caught in #442. The bridge asks during
   // `board_power_bring_up_rails()`, early, because it runs after the UI has
   // returned and needs the rail up however that call ended. The local receiver
-  // asks from `twatch_board.cpp`, immediately before `local_gnss_start()` and
-  // past every `abandon_twatch_after`, because one branch of
+  // asks from `twatch_board.cpp`, immediately after a `local_gnss_start()`
+  // that returned ESP_OK -- so the rail is never raised without a reader --
+  // and past every `abandon_twatch_after`, because one branch of
   // `rollback_boot_retaining_all()` drops the PMU handle and returns without
   // rebooting -- the branch taken when no display is registered, which is the
   // one the "display capability" rollback takes. A rail raised before that
