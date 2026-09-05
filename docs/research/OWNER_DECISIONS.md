@@ -1478,8 +1478,8 @@ opaque — so *"stays powered and attached", indefinitely* has a second consumab
 in it that nobody costed, and the option that was ranked last, unplugging, does
 not even stop the first one. The facts are in
 [`../hardware/BENCH_HANDLING.md`](../hardware/BENCH_HANDLING.md) under *"What is
-not established"*, and they stay `UNKNOWN` there: no register on that charger has
-been read, and neither state is established as the kinder one. This is **not** a
+not established"*: three of those registers were read 2026-08-23 and `0x61` was
+not, and neither state is established as the kinder one. This is **not** a
 reason to reopen the decision — the owner chose availability knowingly and that
 choice stands. It is here so that the decision is not read as having weighed a
 question it was never asked.
@@ -1516,17 +1516,17 @@ Raised 2026-08-24. **Answered the same day: read them.** The owner chose the
 read, so the cell-safety registers stop being something a bench session might
 have room for and become something the next trip to the bench owes. No new task
 was filed, because the read already had an owner: `T-106`'s eight-register leg
-carries `0x61`, `0x62`, `0x63` and `0x64` at I²C `0x34`, and that bullet is
-where the answer is recorded as a promise rather than a convenience. **Nothing
-about OD-18 changes** — the unit stays powered and attached, by the owner's
-decision, and the read does not reopen it. What the read closes is narrower than
-the question that prompted it: it establishes what the running image left in
-those registers, which is the cell half of *"stays powered and attached"*; it
-does not establish that either state is kinder, and no reading of it should be
-written as if it had. Until the burst is actually taken every figure stays
-`UNKNOWN`: an answered question is not a measurement. Like the item below it,
-this is written into the register rather than into a pull request comment because
-a squash merge keeps the file and discards the comment.
+carries `0x61`, `0x62`, `0x63` and `0x64` at I²C `0x34`. **Nothing about OD-18
+changes** — the unit stays powered and attached, by the owner's decision. But
+**three of those four had already been read the day before the question was
+put**: the 2026-08-23 dump carries `0x62`, `0x63` and `0x64` —
+`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:413` — "  0x63 CHG_ITERM_CFG  = 0x15".
+So "nobody has read a register on that charger" was false as written; `0x61`
+is what the burst still owes, and decoding the three is separate work. What
+the read closes stays narrower than the question: what the running image left,
+not which state is kinder. Like the item below it, this is written into the
+register rather than into a pull request comment because a squash merge keeps
+the file and discards the comment.
 
 **Answered by the owner: this register is published, and its convention has
 changed.** `docs/` is the GitHub Pages root for this repository —
