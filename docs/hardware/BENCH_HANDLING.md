@@ -281,18 +281,23 @@ Two consequences follow, both from facts this repository already holds at
   the panel keeps ageing on battery depends on what the factory image does there,
   which is `UNKNOWN` — unobserved, not weighed and discarded. This is the
   correction to the third row of the table.
-- **Leaving it plugged sits on a charge path nobody here has read.** The
+- **Leaving it plugged sits on a charge path that has been read once.** The
   AXP2101 `TS` pin goes through `RP2` to `GND` and never reaches `J1`, so **the
   charger never sees cell temperature**; Waveshare's BSP configures the charger
   not at all — though its **demo** does, and that is the nearest evidence anyone
   has: 400 mA CC, 4.2 V, precharge 50 mA, **termination 25 mA**, `TS` disabled
   (`BATTERY_UPGRADE` §1.1, `VERIFIED`), which points *away* from the float-charge
-  case rather than toward it — and what `phone_s3_box_3` does to those registers
-  has not been read either; and **the PMU never
-  sees a POR while the cell is connected**, so `REG 0x64` (CV target) and
-  `REG 0x63[4]` (termination enable) persist as whatever that image last wrote.
+  case rather than toward it — and what `phone_s3_box_3` left in those registers
+  **has since been read**: the 2026-08-23 dump gives `0x62`, `0x63` and `0x64`
+  (`WAVESHARE_RUNNING_OUR_CODE` §3.4, read-only by construction). They are
+  that image's values, because **the PMU never sees a POR while the cell is
+  connected** and this repository writes no charger register — so `REG 0x64`
+  (CV target) and `REG 0x63[4]` (termination enable) hold what it last wrote,
+  and the dump is what that was.
   With `0x63[4]` clear the charger holds CV indefinitely, float-charging a
-  Li-ion — `BATTERY_UPGRADE` §6.
+  Li-ion — `BATTERY_UPGRADE` §6. **That bit is in the dump and is not decoded
+  here**: the decode wants its own evidence, so this stays open on paper while
+  the datum that settles it is already on file.
 
   **`REG 0x61` (precharge) persists the same way and is live down a different
   path** — row 3 of the table above, the one whose cost is the unit *"left
@@ -304,8 +309,9 @@ Two consequences follow, both from facts this repository already holds at
   written down here rather than raised as an alarm.
 
 **And that is where it stops.** Nothing here says the cell is being harmed:
-those registers have not been read, and reading them means running our code on
-the unit. **The owner was asked whether he wanted them read and said yes**
+three of those four registers were read on 2026-08-23 and none has been
+decoded here; `0x61` was not read at all. **The owner was asked whether he
+wanted them read and said yes**
 (2026-08-24, under OD-18 in
 [`../research/OWNER_DECISIONS.md`](../research/OWNER_DECISIONS.md)), so the read
 is owed on the next bench trip rather than merely available — which changes when

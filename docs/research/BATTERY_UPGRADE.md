@@ -412,8 +412,8 @@ housing. Expect 1.25 mm. One reading closes the `LIKELY` row in
 ### On the powered board, whenever convenient
 
 - **One I²C read burst at `0x34`** covering `0x62`, `0x50`, `0x58`, `0x12`,
-  `0x69` — the five eFuse-defaulted registers of §1.3. `0x62` was read
-  2026-08-23 (§6), but a *default* needs a cold read, so those stay `UNKNOWN`.
+  `0x69` — the five eFuse-defaulted registers of §1.3. `0x62` and `0x12` were
+  read 2026-08-23 (§6); a *default* needs a cold read, so those stay `UNKNOWN`.
   **Watch for one pathological combination**: `0x50` bit 4 = 0 *and* bits 3:2 =
   00 (current source off) makes `TS` read 0 V through `RP2`, which the part sees
   as "battery far too hot" and refuses to charge. With the source at its 50 µA
@@ -961,10 +961,12 @@ cell is `ESTIMATED`; every hardware test named here is
    `R13` (47 kΩ pulldown on `Q1`) is missing from the drive circuit. Evidence in
    §1.1 and §1.4. Documentation only.
 4. **Read the five eFuse-defaulted AXP2101 registers on the powered board.**
-   `0x62`, `0x50`, `0x58`, `0x12`, `0x69`, in one I²C burst at `0x34`. **One
-   fifth done**: `0x62` read `0x11` on 2026-08-23 (§6). A powered read still is
-   not a *default* — for that the PMU has to come up cold — so every "default"
-   claimed for them stays `UNKNOWN`. `needs-hardware`.
+   `0x62`, `0x50`, `0x58`, `0x12`, `0x69`, in one I²C burst at `0x34`. **Two
+   fifths are already done** — 2026-08-23, §6, and
+   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:407` — "  0x12 BATFET_CTRL    = 0x08"
+   beside `0x62`. `0x50`, `0x58` and `0x69` are what the burst still owes. A
+   powered read is still not a *default* — for that the PMU has to come up
+   cold — so every "default" claimed for them stays `UNKNOWN`. `needs-hardware`.
 5. **Settle which AXP2101 variant is fitted.** Scope the `LP2`/`SW` node while
    charging: the SWcharge part switches there, the linear part should be quiet.
    Never probe it by writing high `REG 0x62` codes. Decides whether 1.5 A is
