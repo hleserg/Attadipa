@@ -633,6 +633,21 @@ add_test(NAME replay_rig COMMAND test_replay_rig)
 set_tests_properties(replay_rig PROPERTIES LABELS gnss)
 
 # ---------------------------------------------------------------------------
+# The NMEA front-end, against sentences a real receiver emitted.
+#
+# The rig above replays *normalized observations*, which is the level the trust
+# and validity model works at and is deliberately not a parser test. This is the
+# parser test, and its fixture is the other half of the same argument: bytes,
+# with the position scrubbed and the checksums recomputed, from the captures
+# taken off both bench modules on 2026-09-04.
+add_executable(test_nmea_receiver test_nmea_receiver.cpp)
+target_link_libraries(test_nmea_receiver PRIVATE attadipa_gnss)
+target_compile_definitions(test_nmea_receiver PRIVATE
+    ATTADIPA_GNSS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gnss")
+add_test(NAME nmea_receiver COMMAND test_nmea_receiver)
+set_tests_properties(nmea_receiver PROPERTIES LABELS gnss)
+
+# ---------------------------------------------------------------------------
 # The diagnostics snapshot.
 #
 # Mostly a plain structure, so the tests are about its structural properties

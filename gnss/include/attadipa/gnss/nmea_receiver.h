@@ -1,0 +1,161 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+#include "attadipa/core/location_service.h"
+#include "attadipa/core/position.h"
+
+// A local NMEA 0183 receiver, as a `core::PositionProvider`.
+//
+// The second provider this repository has, and the first one whose observation
+// time is real. `link::NodePositionProvider` stamps its observation with the
+// moment a coordinate *arrived* because the node states nothing better; a
+// receiver on this board solves at an epoch and says so a few milliseconds
+// later, so `observed_at` here is what the word means. That difference is the
+// whole reason `classify()`'s staleness test exists, and this is the first
+// provider it can actually reach.
+//
+// Bytes in, observations out. There is no task, no timer, no queue and no
+// reconnect loop: the caller reads its UART however it already does and hands
+// over what it got, on whatever tick it already has (ADR-0016). A caller that
+// has nothing to hand over still calls `feed()` with zero bytes, because the
+// silence timeout below is measured from the `now` this class is given and
+// there is nowhere else it could come from.
+//
+// ## What NMEA cannot say, and is therefore not said
+//
+// `horizontal_accuracy_mm`, `vertical_accuracy_mm` and `speed_accuracy_mm_s`
+// stay empty: no sentence in the set this parses carries an accuracy estimate,
+// and GST — which does — is not in the stream either module emits. That is not
+// a gap to paper over. `classify()` guards its accuracy test with
+// `has_value()`, so an absent bound costs nothing, while a fabricated one would
+// be a number nobody measured deciding whether a fix is trustworthy.
+//
+// `jamming` and `spoofing` stay at `ReceiverIndication::Unknown`, and the
+// choice between that and `Unsupported` is deliberate. `Unsupported` means
+// *this part cannot detect it*, which is a claim about the hardware; all this
+// driver knows is that the protocol it reads has no field for the answer. The
+// part may well detect interference and report it over UBX. Saying `Unknown`
+// leaves that question where it belongs, with whoever writes that driver.
+//
+// `FixType::TimeOnly` is never produced. Telling a solved clock from one the
+// receiver is propagating needs UBX; RMC says only valid or not.
+//
+// ## The epoch
+//
+// RMC, GGA and the several GSAs of one second are one observation, and RMC is
+// the boundary: an arriving RMC closes the epoch that was open and starts a
+// new one. It is first in every capture from both bench modules and appears
+// exactly once per second (`fix-20260904T1353Z.nmea`: 70 GNRMC, 70 GNGGA, 351
+// GNGSA — one RMC and one GGA per epoch, one GSA per constellation).
+//
+// Not the UTC stamp, which is the obvious key and is wrong: a receiver with no
+// fix yet emits `$GNRMC,,V,,,,,,,,,,N,V*37` and `$GNGGA,,,,,,0,00,99.99,,,,,,*56`
+// with the time field *empty*, so every no-fix epoch would share one absent key,
+// nothing would ever close, and the watch would show "waiting" for a receiver
+// that is powered, talking, and correctly reporting that it cannot see the sky.
+//
+// ponytail: an RMC lost to a bad checksum merges two epochs into one. The
+// fields latch rather than accumulate, so the result is one observation with
+// the later epoch's values and the earlier epoch's `observed_at` — up to a
+// second early, against a 30 s staleness threshold. A sequence counter would
+// close that and is not worth a field until something measures a stream where
+// it matters.
+//
+// ## One known ceiling, measured rather than assumed
+//
+// ponytail: `LocationService::poll()` does not refresh either age when a
+// sample repeats the coordinate it already holds — "an unchanged read is
+// evidence against a live fix" — and that rule was written for the node
+// provider, which restates one retained coordinate on every poll. A local
+// receiver standing still can legitimately repeat a coordinate to the last
+// digit, and a long enough run of them would age a live fix past 30 s and show
+// `Stale` for a receiver that is solving perfectly well.
+//
+// It is left alone because the measurement says it does not happen here: over
+// the 6.5 MB of bench capture from both modules, exact epoch-to-epoch repeats
+// of the GGA coordinate run at 0–8.1% and **the longest consecutive run is two
+// epochs** — two seconds against a thirty-second threshold. 10^-5 of a minute
+// is 1.85 cm, and a consumer receiver jitters metres.
+//
+// The upgrade path, if a module that latches its output ever turns up: give
+// `core::PositionSample` a flag saying its `observed_at` is an observation time
+// rather than an arrival stamp, and let `poll()` refresh on a repeat only for
+// providers that set it. That cannot be done by comparing `observed_at`
+// directly — `link/src/meshcore_companion.cpp:416` — "node_position_at_ = now;"
+// — restamps on every accepted frame whether or not the coordinate moved, so a
+// stamp comparison would switch the rule off exactly where it belongs.
+
+namespace attadipa::gnss {
+
+class NmeaReceiver final : public core::PositionProvider {
+public:
+    // How long a receiver may be silent before this stops calling it reachable.
+    // Both bench modules emit at 1 Hz, so five seconds is five missed epochs.
+    // The retained observation is *not* dropped when it expires — that is
+    // `LocationService`'s decision and it keeps ageing the coordinate instead,
+    // which is the honest answer for a fix that was real a moment ago.
+    static constexpr core::Millis kDefaultSilence{5000};
+
+    explicit NmeaReceiver(core::Millis silence_after = kDefaultSilence)
+        : silence_after_(silence_after)
+    {
+    }
+
+    // Hand over whatever the UART had. `count` may be zero, and calling with
+    // zero on every idle tick is the intended use: it is what advances this
+    // class's idea of now.
+    void feed(const std::uint8_t* bytes, std::size_t count, core::MonotonicTime now);
+
+    // `Unprovisioned` until the first `feed()` — nothing is bound yet, which is
+    // the state of a board with no module soldered to the pads. After that,
+    // `Ready` while sentences are arriving and `Unreachable` when they stop.
+    // Never `Off`: no rail on this device controls a module on the `3V3` pad,
+    // and `Off` is defined as a remedy the user can undo.
+    core::Availability availability() const override;
+
+    bool sample(core::PositionSample& out) const override;
+
+    // Sentences that arrived and were thrown away: a bad checksum, a line
+    // longer than NMEA allows, or bytes before the first `$`. Diagnostics, and
+    // the number a bench session watches when a wire is suspect.
+    std::uint32_t discarded() const { return discarded_; }
+
+private:
+    void assemble(char byte, core::MonotonicTime now);
+    void take_sentence(core::MonotonicTime now);
+    void close_epoch();
+
+    // NMEA 0183 allows 82 characters including the leading `$` and the closing
+    // CRLF. One more for the terminator this hands to minmea, which takes a
+    // NUL-terminated string. Anything longer is discarded rather than truncated:
+    // a truncated sentence with a recomputed checksum is a sentence nobody sent.
+    static constexpr std::size_t kMaxSentence = 82;
+
+    core::Millis        silence_after_;
+    char                line_[kMaxSentence + 1] = {};
+    std::size_t         length_    = 0;
+    bool                collecting_ = false;
+    bool                overflowed_ = false;
+
+    bool                started_    = false;  // feed() has been called at least once
+    core::MonotonicTime now_{};
+    core::MonotonicTime last_sentence_{};
+    bool                heard_      = false;  // a well-formed sentence, ever
+    std::uint32_t       discarded_  = 0;
+
+    // The epoch being assembled, and the last one that closed.
+    core::GnssObservation open_{};
+    bool                  open_valid_ = false;   // an RMC has opened one
+    bool                  rmc_active_ = false;   // RMC status was 'A'
+    bool                  saw_gga_    = false;
+    std::uint8_t          gga_quality_ = 0;
+    std::uint8_t          gsa_fix_     = 0;      // 1 none, 2 two-d, 3 three-d
+    char                  rmc_mode_    = '\0';
+
+    core::GnssObservation published_{};
+    bool                  has_published_ = false;
+};
+
+}  // namespace attadipa::gnss
