@@ -94,7 +94,8 @@
 // AND THE CAPTURE WAS THE CASE THAT STRESSES THE RULE HARDEST, which is what
 // makes the number load-bearing rather than lucky. The hazard is a receiver
 // standing still, so a capture taken while carrying one about would measure the
-// easy half and prove nothing. These were not: the GT-U12 was set down on a
+// easy half and prove nothing. These were not -- the GT-U12 half of the 6.5 MB
+// at least, which is the half the owner can account for: it was set down on a
 // bench and left there, and the owner confirmed on 2026-09-05 that it had sat
 // untouched overnight. Hours of a receiver that never moved at all, and its
 // longest run of identical coordinates is still two epochs.

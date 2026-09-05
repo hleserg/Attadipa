@@ -74,8 +74,13 @@ namespace attadipa::firmware {
 //
 // The one allocation is ESP-IDF's RX ring, made once here and never freed:
 // this is called after the last step boot can roll back, so no teardown path
-// can reach it (ADR-0016 asks for no *new* task, timer or queue; the UART
-// driver's event queue is explicitly not created).
+// can reach it. The UART driver's event queue is explicitly not created.
+//
+// ADR-0016 §2 says "no heap, no new task", and says it of the lease table
+// rather than of this file -- so it is a house rule borrowed here, not a
+// clause that already covered GNSS. It holds either way: the T-Watch's tick
+// is an `lv_timer`, which is not a task. It rides the one `esp_lvgl_port`
+// already owns, the same task the Waveshare's `refresh_ui` rides.
 esp_err_t local_gnss_start();
 
 // Read whatever the ring holds, hand it to the parser, age the result. Cheap

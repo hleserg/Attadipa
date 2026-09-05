@@ -177,10 +177,17 @@ LoggedAnswer answer_of(const attadipa::core::LocationState& state)
             state.fix_type, state.validity};
 }
 
-// Seeded from a default-constructed `LocationState` rather than left blank, so
-// the first tick logs only if the receiver has already said something. A watch
-// that boots with no module attached stays quiet here and `warn_if_quiet()`
-// above is what speaks for it -- one voice per silence, not two.
+// Seeded from a default-constructed `LocationState`, whose availability is
+// `Unprovisioned` -- the state of a port that never opened. A port that did
+// open reads `Unreachable` until a sentence lands (`gnss/src/nmea_receiver.cpp`
+// -- "if (!heard_) return Availability::Unreachable;"), so the first tick after
+// a successful `local_gnss_start()` does log a line, and that line is the proof
+// the port is open with nothing heard on it yet. Only a start that failed is
+// quiet here, which is right: it has already logged its own error.
+//
+// `warn_if_quiet()` above is not a second voice for that. It speaks to a
+// different fact at a different time -- five seconds of silence from a port
+// that opened -- and it is the one that says to go and look at the wiring.
 LoggedAnswer logged = answer_of(attadipa::core::LocationState{});
 
 void log_if_answer_changed()
