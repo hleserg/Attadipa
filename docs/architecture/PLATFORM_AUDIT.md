@@ -549,9 +549,9 @@ issue per accepted item; existing issue #264 and PR #282 remain canonical.
 
 - **Problem, and it is answered:** the rich GNSS domain types had no producer,
   so the first module wanting a coordinate would have had to wire one into an
-  application. The owner exists now — `core/include/attadipa/core/location_service.h:101`
+  application. The owner exists now — `core/include/attadipa/core/location_service.h:111`
   — "class PositionProvider {" is the one contract and
-  `core/include/attadipa/core/location_service.h:150` — "class LocationService {"
+  `core/include/attadipa/core/location_service.h:161` — "class LocationService {"
   is the owner above it, publishing availability, validity, trust, provenance
   and both ages. There is no second forwarding HAL and applications name no
   provider.

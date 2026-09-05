@@ -255,8 +255,21 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
                 // Height above the ellipsoid is the orthometric height plus the
                 // geoid separation. Both, or neither: an ellipsoidal altitude
                 // computed from a separation nobody sent is a guess.
+                //
+                // Summed in 64 bits and range-checked again, the way the
+                // helpers above check each field alone. Both fit `int32_t`
+                // separately and their sum need not: `int + int` is a 32-bit
+                // add, so a GGA stating two absurd metre values would be signed
+                // overflow — undefined behaviour, and this repository builds
+                // its tests with `-fsanitize=undefined`. Out of range refuses
+                // the ellipsoidal height rather than wrapping it; the
+                // orthometric one passed its own check and stands.
                 if (frame.height_units == 'M' && millimetres(frame.height, geoid)) {
-                    open_.altitude_ellipsoid_mm = altitude + geoid;
+                    const std::int64_t sum =
+                        static_cast<std::int64_t>(altitude) + static_cast<std::int64_t>(geoid);
+                    if (sum >= -2147483648LL && sum <= 2147483647LL) {
+                        open_.altitude_ellipsoid_mm = static_cast<std::int32_t>(sum);
+                    }
                 }
             }
         }

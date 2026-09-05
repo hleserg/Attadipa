@@ -89,16 +89,21 @@ std::uint64_t last_tick_ms = 0;
 // The one production reader of the two byte counters, and the only place a
 // wrong pin, a wrong baud rate or an unpowered module says so out loud. The
 // screen's `OwnReceiverSilent` tells the wearer the receiver is not answering;
-// this tells a bench session *which* of three things it is, and the two numbers
-// are what separate them:
+// this tells a bench session which *kind* of nothing it is, and there are two
+// of those, not three:
 //
 //   0 unframed, 0 discarded — nothing is on the wire. A pad not connected, a
 //     module with no supply, or the wrong GPIO.
-//   N unframed, 0 discarded — bytes are arriving and none of them ever starts a
-//     sentence. A module in a binary protocol, or a line at the wrong level.
-//     The GT-U12 on this bench does exactly this: `docs/research/OPEN_QUESTIONS.md:93` — "speaking ALLYSTAR binary behind the sync word **`F1 D9`**"
-//   N unframed, M discarded — sentences are framing and failing. The wrong baud
-//     rate, or a noisy line.
+//   anything else — bytes are arriving and are not framing as NMEA. Check the
+//     baud rate, the line level, and whether the module emits NMEA at all; the
+//     GT-U12 on this bench does not: `docs/research/OPEN_QUESTIONS.md:93` — "speaking ALLYSTAR binary behind the sync word **`F1 D9`**"
+//
+// WHICH OF THOSE THREE IT IS CANNOT BE READ OFF THE RATIO, and an earlier
+// version of this comment claimed it could. A binary stream contains `0x24`
+// like any other byte — about every 256 — and a CR or LF about every 128, so
+// it frames runs and fails them exactly as a stream at the wrong baud does.
+// Both numbers move in both cases. The pair separates "something" from
+// "nothing" and hands the rest to a person with an oscilloscope.
 //
 // Neither number is reset by the flush at a gap, so a bench session reads a
 // total since boot rather than since the last wake.
@@ -126,9 +131,10 @@ void warn_if_quiet(attadipa::core::MonotonicTime now)
     if (!quiet_logged && now.ms - quiet_since_ms >= kQuietWarnAfterMs) {
         quiet_logged = true;
         ESP_LOGW(kTag, "nothing framable from GPIO %d for %llu ms: %lu bytes "
-                       "outside a sentence, %lu sentences discarded; check the "
-                       "module's power and wiring, that it emits NMEA rather "
-                       "than a binary protocol, and that it speaks %d baud",
+                       "outside a sentence, %lu sentences discarded; if both "
+                       "are zero check the module's power and this pad's "
+                       "wiring, and if they are not check %d baud, the line "
+                       "level, and that the module emits NMEA at all",
                  kRxPin, static_cast<unsigned long long>(now.ms - quiet_since_ms),
                  static_cast<unsigned long>(receiver.unframed()),
                  static_cast<unsigned long>(receiver.discarded()), kBaud);

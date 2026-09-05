@@ -164,10 +164,22 @@ public:
     // every healthy sentence ends with them and counting those would report a
     // fault on a clean stream.
     //
-    // THIS IS THE HALF THAT ANSWERS "IS ANYTHING ON THE WIRE AT ALL". A module
-    // talking a binary protocol, or a line at the wrong level, never produces
-    // a `$`, so `discarded()` stays at zero for it forever and on its own
-    // cannot tell that apart from a dead pad. This can.
+    // THIS IS THE HALF THAT ANSWERS "IS ANYTHING ON THE WIRE AT ALL", which
+    // `discarded()` cannot: that one counts only runs that framed, so a stream
+    // which never frames leaves it at zero however long it talks, and zero
+    // reads exactly like a pad with nothing on it.
+    //
+    // It does not say *what* is wrong, and no arithmetic on the pair will.
+    // Binary at the right baud and NMEA at the wrong one produce the same
+    // statistics — an incidental `0x24` about every 256 bytes and a terminator
+    // about every 128 — so both counters climb in both cases and any ratio
+    // named here would be a guess dressed as a tell. Two states, not more:
+    // nothing at all, or bytes arriving that never frame.
+    //
+    // And the pair is a sample, not a census. Bytes inside a run that resyncs
+    // on the next `$` without ever seeing a terminator are counted by neither,
+    // which on such a stream is most of the traffic — 512 bytes of binary in
+    // `tests/test_nmea_receiver.cpp` produce 58 and 1.
     std::uint32_t unframed() const { return unframed_; }
 
 private:
