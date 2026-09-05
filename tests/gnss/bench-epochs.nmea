@@ -1,0 +1,97 @@
+# Sentences a real receiver emitted, with the position scrubbed.
+#
+# Captured from the two bench modules on 2026-09-04 (issue #427) and then
+# rewritten: every coordinate is the replay rig's deliberately-nowhere
+# position, half a degree north and one degree east, and every checksum was
+# recomputed from the scrubbed body. A scrubbed sentence carrying its
+# original checksum is one no receiver could have sent, and the parser under
+# test would discard it — the fixture would then pass by testing nothing.
+#
+# No real location belonging to anybody appears in this repository.
+#
+# What survives the scrub is the *shape*, which is what the parser is about:
+# NMEA 4.10 field counts (RMC with the trailing mode and nav status, GSA with
+# the trailing system id), five GSAs to one RMC, empty course while standing
+# still, and a no-fix epoch whose time field is empty.
+#
+# Lines beginning with # are the reader's, not the receiver's; the parser
+# never sees them.
+
+# --- three no-fix epochs, from a cold start ---------------------------------
+# `boot-20260904T090718Z.nmea`. RMC status V, every field empty, GGA quality 0,
+# GSA mode 1, and — the part that decides the epoch rule — no UTC either.
+$GNRMC,,V,,,,,,,,,,N,V*37
+$GNGGA,,,,,,0,00,99.99,,,,,,*56
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,1*33
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,2*30
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,3*31
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,4*36
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,5*37
+$GNRMC,,V,,,,,,,,,,N,V*37
+$GNGGA,,,,,,0,00,99.99,,,,,,*56
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,1*33
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,2*30
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,3*31
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,4*36
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,5*37
+$GNRMC,,V,,,,,,,,,,N,V*37
+$GNGGA,,,,,,0,00,99.99,,,,,,*56
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,1*33
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,2*30
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,3*31
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,4*36
+$GNGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99,5*37
+
+# --- a fragment, and bytes with no sentence around them ---------------------
+# The assembler resynchronises on `$` and on nothing else. The first line here
+# is the tail of a sentence whose beginning was lost — which is what a receiver
+# powering up mid-byte actually produces — and the second is noise.
+30.00004,N,00100.00004,E,0.085,,040926,,,D,V*1F
+~~~~
+
+# --- five epochs with a fix ------------------------------------------------
+# `fix-20260904T1353Z.nmea`. GGA quality 2 (differential), twelve satellites,
+# HDOP 1.58, GSA mode 3. Course is empty in every one: the module was on a
+# desk. That empty field is the reason this repository parses with minmea —
+# `scale == 0` is absent, and absent is not 0° due north.
+$GNRMC,135222.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12
+$GNGGA,135222.00,0030.00004,N,00100.00004,E,2,12,1.58,12.4,M,25.0,M,,*79
+$GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1*0A
+$GNGSA,A,3,68,80,69,,,,,,,,,,2.42,1.58,1.83,2*09
+$GNGSA,A,3,02,25,,,,,,,,,,,2.42,1.58,1.83,3*04
+$GNGSA,A,3,25,41,33,,,,,,,,,,2.42,1.58,1.83,4*04
+$GNGSA,A,3,,,,,,,,,,,,,2.42,1.58,1.83,5*07
+$GNRMC,135223.00,A,0030.00005,N,00100.00005,E,0.093,,040926,,,D,V*14
+$GNGGA,135223.00,0030.00005,N,00100.00005,E,2,12,1.58,12.5,M,25.0,M,,*79
+$GNGSA,A,3,21,22,05,09,14,,,,,,,,2.42,1.58,1.83,1*09
+$GNGSA,A,3,68,80,69,,,,,,,,,,2.42,1.58,1.83,2*09
+$GNGSA,A,3,02,25,,,,,,,,,,,2.42,1.58,1.83,3*04
+$GNGSA,A,3,25,41,33,,,,,,,,,,2.42,1.58,1.83,4*04
+$GNGSA,A,3,,,,,,,,,,,,,2.42,1.58,1.83,5*07
+$GNRMC,135224.00,A,0030.00006,N,00100.00006,E,0.101,,040926,,,D,V*19
+$GNGGA,135224.00,0030.00006,N,00100.00006,E,2,12,1.58,12.6,M,25.0,M,,*7D
+$GNGSA,A,3,07,21,22,30,05,09,14,,,,,,2.42,1.58,1.83,1*0D
+$GNGSA,A,3,68,80,69,,,,,,,,,,2.42,1.58,1.83,2*09
+$GNGSA,A,3,02,25,,,,,,,,,,,2.42,1.58,1.83,3*04
+$GNGSA,A,3,25,41,33,,,,,,,,,,2.42,1.58,1.83,4*04
+$GNGSA,A,3,,,,,,,,,,,,,2.42,1.58,1.83,5*07
+$GNRMC,135225.00,A,0030.00007,N,00100.00007,E,0.163,,040926,,,D,V*1C
+$GNGGA,135225.00,0030.00007,N,00100.00007,E,2,12,1.58,12.7,M,25.0,M,,*7D
+$GNGSA,A,3,21,22,05,09,14,,,,,,,,2.42,1.58,1.83,1*09
+$GNGSA,A,3,68,80,69,,,,,,,,,,2.42,1.58,1.83,2*09
+$GNGSA,A,3,02,25,,,,,,,,,,,2.42,1.58,1.83,3*04
+$GNGSA,A,3,25,41,33,,,,,,,,,,2.42,1.58,1.83,4*04
+$GNGSA,A,3,,,,,,,,,,,,,2.42,1.58,1.83,5*07
+$GNRMC,135226.00,A,0030.00008,N,00100.00008,E,0.089,,040926,,,D,V*1A
+$GNGGA,135226.00,0030.00008,N,00100.00008,E,2,12,1.58,12.8,M,25.0,M,,*71
+$GNGSA,A,3,21,22,05,09,14,,,,,,,,2.42,1.58,1.83,1*09
+$GNGSA,A,3,68,80,69,,,,,,,,,,2.42,1.58,1.83,2*09
+$GNGSA,A,3,02,25,,,,,,,,,,,2.42,1.58,1.83,3*04
+$GNGSA,A,3,25,41,33,,,,,,,,,,2.42,1.58,1.83,4*04
+$GNGSA,A,3,,,,,,,,,,,,,2.42,1.58,1.83,5*07
+
+# --- one sentence with a corrupted checksum ---------------------------------
+# Byte for byte the last epoch above, with the checksum replaced. It must be
+# discarded whole: strict verification, not a warning beside a used value.
+$GNGGA,135222.00,0030.00008,N,00100.00008,E,2,12,1.58,12.8,M,25.0,M,,*00
+

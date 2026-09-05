@@ -117,7 +117,7 @@ three have since been answered the other way, by
 the decision row reads decided
 ([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "a board backend composes ESP-IDF"),
 and the sentence is the decision itself
-([DEPENDENCIES.md:364](DEPENDENCIES.md) "Neither vendor BSP becomes a"). The
+([DEPENDENCIES.md:374](DEPENDENCIES.md) "Neither vendor BSP becomes a"). The
 surrounding facts were already
 established too: BSP v2.0.0 declares `BSP_CAPS_BUTTONS 0` and `BSP_CAPS_IMU 0`
 and drives display, touch, audio and SD only, so it does not touch the QMI8658,

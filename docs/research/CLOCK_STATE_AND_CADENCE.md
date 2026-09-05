@@ -24,7 +24,8 @@ and no tick period on `AppManifest`. They are itemised in §10.
 **All five have since been built (2026-08-28).** The display faces are declared
 at [`assets/fonts/attadipa_fonts.h:25`](../../assets/fonts/attadipa_fonts.h) —
 "LV_FONT_DECLARE(attadipa_nunito_sans_96)"; the calendar at
-[`apps/src/clock.cpp:23`](../../apps/src/clock.cpp) — "days_from_civil"; the
+[`core/clock.h:160`](../../core/include/attadipa/core/clock.h) —
+"days_from_civil"; the
 temporal strings at
 [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) —
 "ClockMonthJan"; the simulator's state injection at
@@ -84,7 +85,7 @@ two answered.
 > §8 still reason from it, and a reader needs to know which of those
 > premises have expired. Checked row by row, in order:
 > calendar arithmetic exists —
-> [`apps/src/clock.cpp:23`](../../apps/src/clock.cpp) — "days_from_civil";
+> [`core/clock.h:160`](../../core/include/attadipa/core/clock.h) — "days_from_civil";
 > the catalogue is temporal —
 > [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) — "ClockMonthJan";
 > the manifest carries a tick period —
