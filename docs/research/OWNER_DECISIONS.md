@@ -1522,7 +1522,7 @@ changes** — the unit stays powered and attached, by the owner's decision. But
 put**: the 2026-08-23 dump carries `0x62`, `0x63` and `0x64` —
 `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:413` — "  0x63 CHG_ITERM_CFG  = 0x15".
 So "nobody has read a register on that charger" was false as written; `0x61`
-is what the burst still owes, and decoding the three is separate work. What
+is what the burst still owes and `0x63` the one still to decode. What
 the read closes stays narrower than the question: what the running image left,
 not which state is kinder. Like the item below it, this is written into the
 register rather than into a pull request comment because a squash merge keeps
