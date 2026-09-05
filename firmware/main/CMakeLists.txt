@@ -15,6 +15,9 @@ endif()
 if(CONFIG_ATTADIPA_I2C_PROBE)
     list(APPEND ATTADIPA_MAIN_SOURCES "i2c_probe.cpp")
 endif()
+if(CONFIG_ATTADIPA_GNSS_BRIDGE)
+    list(APPEND ATTADIPA_MAIN_SOURCES "gnss_bridge.cpp")
+endif()
 idf_component_register(SRCS ${ATTADIPA_MAIN_SOURCES} INCLUDE_DIRS ".")
 
 # The host libraries are *linked*, not copied. These are the same CMakeLists the

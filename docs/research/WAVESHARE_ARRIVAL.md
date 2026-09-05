@@ -76,7 +76,7 @@ flatly contradicts.
 **The claim that the board's PSRAM is absent or undeclared is false, and was
 false before the advice arrived.** [HARDWARE_MATRIX.md:377](HARDWARE_MATRIX.md)
 "8 MB **octal**" records 8 MB of PSRAM — now also octal-VERIFIED — and
-[VERIFIED_FACTS.md:1219](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
+[VERIFIED_FACTS.md:1252](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM"
 records the same as the resolution of D1. No line anywhere in the repository says the part is missing — the
 vocabulary for absence exists and is used plainly where it
 is meant, as in `| Sub-GHz radio | — | **not present** | — | — | VERIFIED |`
@@ -133,7 +133,7 @@ decision. **T-004 closed on 2026-08-25 at `v5.5.5`**
 ([DEPENDENCIES](DEPENDENCIES.md), "ESP-IDF" in *Decided*), and CI now builds
 `firmware/` on that version and prints the actual `firmware-build` dependency
 result rather than an unconditional success
-([`.github/workflows/ci.yml:858`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
+([`.github/workflows/ci.yml:866`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build").
 The paragraph is kept rather than deleted because the constraint it describes is
 what the rest of this section reasons from.
 
@@ -732,7 +732,7 @@ does not, kept because an uncorrected claim propagates.
 
 1. **"PSRAM is not declared for this board."** False, and contradicted by
    [HARDWARE_MATRIX.md:377](HARDWARE_MATRIX.md) "8 MB **octal**" and
-   [VERIFIED_FACTS.md:1219](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
+   [VERIFIED_FACTS.md:1252](VERIFIED_FACTS.md) "Waveshare memory: 32 MB flash, 8 MB PSRAM".
    Only the build-configuration reading was true at the time; T-165 has since
    added and exercised that configuration.
 2. **"Run `esp_psram_get_size()` on arrival."** As written this cannot do the job
@@ -773,7 +773,7 @@ does not, kept because an uncorrected claim propagates.
     line was cited at line 330 of `ci.yml`, where the file was 295 lines long.
     Both live citations are written above with fingerprints —
     [HARDWARE_MATRIX.md:401](HARDWARE_MATRIX.md) "Main I2C bus" and
-    [`.github/workflows/ci.yml:858`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
+    [`.github/workflows/ci.yml:866`](../../.github/workflows/ci.yml) "ESP32-S3 firmware build"
     — and the numbers in this paragraph are
     deliberately **not** citations: it is a record of where two claims used to
     point, and writing that record in the live syntax would make it four more

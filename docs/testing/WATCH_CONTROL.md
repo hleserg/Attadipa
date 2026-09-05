@@ -451,7 +451,7 @@ event. What stays HIL-only is watching it happen: the mesh screen's
 scans without showing that it does.
 
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
-(`attadipa_main.cpp:322` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
+(`attadipa_main.cpp:326` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
 `nimble_port_init()` (`meshcore_ble.cpp:1993` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack

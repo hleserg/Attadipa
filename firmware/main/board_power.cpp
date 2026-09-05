@@ -484,6 +484,37 @@ esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_LOGI(kTag, "AXP2101: LDO enable 0x%02x -> 0x%02x (ALDO3 panel+touch, "
                  "ALDO2 backlight)",
            aldo, aldo | 0x06);
+
+#if CONFIG_ATTADIPA_GNSS_BRIDGE
+  // BLDO1 feeds the GNSS daughterboard — HARDWARE_MATRIX.md's GNSS row, "BLDO1
+  // (+ DC4 @850 mV for LS550G)". Same encoding as the ALDOs, 0x1C = 3.3 V (REG
+  // 96, AXP2101 datasheet V1.4 6.13.2.81), enable REG 90 bit 4 (6.13.2.75).
+  //
+  // Only under the bridge flag, because nothing else in this firmware speaks to
+  // that module yet and a rail with no driver behind it is current spent on
+  // nothing. It becomes unconditional when the GNSS driver lands (#429).
+  //
+  // DC3 is deliberately *not* written. The vendor drives it to 3300 mV for
+  // "earlier versions" of this watch, but our datasheet copy documents DCDC3
+  // only to 1.54 V and marks 1011000~1111111 reserved (6.13.2.72) — the range
+  // LilyGO uses is undocumented here, so writing it would be an unevidenced
+  // hardware write. DC4 at 850 mV, which an LS550G needs for its core, waits on
+  // the same thing: knowing which module is fitted. Answering that is what the
+  // bridge is for; if BLDO1 alone yields silence, each of those is a separate
+  // evidenced step, not a guess to add here now.
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x96, 0x1C), kTag, "BLDO1 3.3 V");
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "re-read LDO enables");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, "enable BLDO1");
+  ESP_LOGI(kTag, "AXP2101: LDO enable -> 0x%02x (BLDO1 3.3 V, GNSS)",
+           aldo | 0x10);
+  // Read-only, and only under this flag. Question D6 asks which rail feeds the
+  // GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up has
+  // not answered it. REG 80 bit 2 is DCDC3 (datasheet V1.4 6.13.2.68).
+  std::uint8_t dcdc = 0;
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
+  ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x (DC3 %s) -- read, not written",
+           dcdc, (dcdc & 0x04) ? "ON" : "off");
+#endif
   return ESP_OK;
 #else
   // Preserve unrelated rails. The known-working board implementation needs
