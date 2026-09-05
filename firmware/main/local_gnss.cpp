@@ -49,10 +49,10 @@ constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 // behind, which is precisely the stamp `drain()` exists to refuse.
 //
 // MEASURED, over the sixteen #427 bench captures: the most bytes any three
-// consecutive seconds of them contain is **4157**, counted in
+// consecutive seconds of them contain is **4127**, counted in
 // `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:410` — "### 3.1 How much a receiver says in a second — MEASURED, and a buffer depends on it".
-// So 4096 would have been 61 bytes short of the worst case actually observed,
-// and 8192 clears it by 97%.
+// So 4096 would have been 31 bytes short of the worst case actually observed,
+// and 8192 clears it by 98%.
 //
 // That worst window is a power cycle — a burst of `$GNTXT` banner on top of a
 // full sky — which is the same event that produces a long gap, so it is the
