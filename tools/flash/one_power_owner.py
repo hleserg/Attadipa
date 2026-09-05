@@ -3,8 +3,8 @@
 
 [ADR-0016](../../docs/adr/0016-one-power-owner.md) section 1 says it plainly:
 sleep entry, `esp_sleep_enable_*` and writes to AXP2101 registers `0x80`,
-`0x90`, `0x82` and `0x92`-`0x95` "must appear in exactly one translation unit,
-checked in CI". This is that check.
+`0x90`, `0x82`, `0x92`-`0x95` and `0x96` "must appear in exactly one
+translation unit, checked in CI". This is that check.
 
 It exists because the rule it enforces was *already broken* when the ADR was
 written, and broken in the way rules like this always are -- not by anybody
@@ -83,9 +83,16 @@ SLEEP_PATTERNS = (
     ("wake arming", re.compile(r"\bgpio_wakeup_(enable|disable)\s*\(")),
 )
 
-# The AXP2101 registers ADR-0016 names: DC enable, LDO enable, DC1 voltage, and
-# the ALDO1-4 voltages.
-RAIL_REGISTERS = ("0x80", "0x90", "0x82", "0x92", "0x93", "0x94", "0x95")
+# The AXP2101 registers ADR-0016 names: DC enable, LDO enable, DC1 voltage, the
+# ALDO1-4 voltages, and BLDO1's. BLDO1 (0x96) joined them when GNSS arrived,
+# which the ADR's own Context said would happen -- `docs/adr/0016-one-power-owner.md:13`
+# -- "GNSS arrives." It is the rail `PowerDomain::Gnss` resolves to, and until
+# it was listed here it was the one rail register this firmware writes that a
+# second translation unit could have set the *voltage* of unseen. Switching it
+# always went through 0x90 and was always caught; its voltage was the gap, and
+# every other rail's voltage register in this tuple is fenced.
+RAIL_REGISTERS = ("0x80", "0x90", "0x82", "0x92", "0x93", "0x94", "0x95",
+                  "0x96")
 
 # A register literal on its own is not a rail write -- `0x93` is also a byte of
 # a BLE UUID in this tree, which is exactly the false positive that would have

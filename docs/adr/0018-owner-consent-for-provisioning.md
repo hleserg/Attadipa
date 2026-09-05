@@ -372,7 +372,7 @@ Beyond B and C:
   `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes
   and the firmware answers, which is the shape this needs. Neither is missing
-  and neither is merely uncalled. `firmware/main/CMakeLists.txt:46` —
+  and neither is merely uncalled. `firmware/main/CMakeLists.txt:49` —
   "if(CONFIG_ATTADIPA_WATCH_CONTROL)" — is what adds the `debug` layer, and
   `debug/CMakeLists.txt:14` — "target_include_directories(attadipa_debug PUBLIC include)"
   — is the only route its headers take into `firmware/main/`. So under the

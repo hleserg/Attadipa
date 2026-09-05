@@ -1,26 +1,30 @@
-# Overlay: turn the local GNSS receiver on. Stack it on the defaults, which are
-# already the Waveshare's — this is the product image plus a receiver, not a
-# bring-up instrument:
+# Overlay: turn the local GNSS receiver on. It names the symbol and nothing
+# else, so it stacks on either board:
 #
-#   idf.py -B build-i429 -DSDKCONFIG=build-i429/sdkconfig \
+#   idf.py -B build-gnss -DSDKCONFIG=build-gnss/sdkconfig \
 #          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.gnsslocal" build
+#   idf.py -B build-twatch-gnsslocal \
+#          -DSDKCONFIG=build-twatch-gnsslocal/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;sdkconfig.gnsslocal" build
 #
-# Not stacked on sdkconfig.twatch: the T-Watch has a receiver of its own on
-# different pins behind a rail, and the Kconfig symbol refuses that board
-# because the navigation page and the tick that feeds this live in
-# waveshare_board.cpp.
+# It used to pin the pin and the baud here, and to say the Kconfig symbol
+# refused the T-Watch. Both stopped being true in #442: the pin and the baud are
+# per-board defaults now -- 44 and 115200 on the Waveshare, 41 and 38400 on the
+# T-Watch, each MEASURED and each cited in Kconfig.projbuild -- so an overlay
+# that restated one board's pair would hand it to the other board as well. The
+# symbol is the whole overlay; the board underneath decides the rest.
 #
-# The pin is not a pair to try: WAVESHARE_BOARD_RECEIVED.md's pad table, row 7,
-# reads "| 7 | `RXD` | UART0 receive — **GPIO 44** |" -- this CPU's receive
-# line, so a module's TX goes there and nothing here transmits. The baud is what the
-# GT-U12 was MEASURED talking at on the bench (#427); a different module needs
-# a different number here, not a sweep.
+# Not with sdkconfig.gnssbridge. ATTADIPA_GNSS_LOCAL depends on
+# !ATTADIPA_GNSS_BRIDGE, because on the T-Watch both want GPIO 41 and they are
+# two stages of one job: the bridge asks the module what it is, this listens to
+# the answer.
 #
-# The pin is settled and the level on it is not. H18 in
-# docs/research/OPEN_QUESTIONS.md stays PARTIAL because neither bench module's
-# TX idle voltage has been measured and the S3 is not 5 V tolerant. NOT
-# MEASURED is the whole claim -- put a meter on the module's TX before this
-# overlay's pad sees it.
+# On the Waveshare this is the product image plus a receiver you soldered on;
+# on the T-Watch the module is already fitted, and the pair the bridge measured
+# on 2026-09-05 is what the defaults carry.
+#
+# The pin is settled on both and the level on it is not. H18 in
+# docs/research/OPEN_QUESTIONS.md stays PARTIAL because no bench module's TX
+# idle voltage has been measured and the S3 is not 5 V tolerant. NOT MEASURED
+# is the whole claim -- put a meter on the module's TX before a pad sees it.
 CONFIG_ATTADIPA_GNSS_LOCAL=y
-CONFIG_ATTADIPA_GNSS_LOCAL_RX=44
-CONFIG_ATTADIPA_GNSS_LOCAL_BAUD=115200

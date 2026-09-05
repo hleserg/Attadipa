@@ -427,8 +427,8 @@ spins. What would settle it: the Bosch BMA423 datasheet sections for
 ### 3.4 Per-line translation
 
 Read this alongside the existing seam. Today the firmware arms exactly one GPIO
-source: `firmware/main/board_power.cpp:287` — "gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL)",
-and the comment below it, `firmware/main/board_power.cpp:304` — "The AXP2101 has no wake line to",
+source: `firmware/main/board_power.cpp:322` — "gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL)",
+and the comment below it, `firmware/main/board_power.cpp:339` — "The AXP2101 has no wake line to",
 states a premise that is
 **true of the Waveshare board and false of the T-Watch**, where the AXP2101 IRQ
 does reach GPIO21. Whichever board that comment governs, the translation below is
@@ -469,7 +469,7 @@ well, and §5 says so.
 
 | Row | Value | Evidence |
 | --- | --- | --- |
-| Polarity | Active LOW — the vendor drives it `INPUT_PULLUP`, and the repository already arms `GPIO_INTR_LOW_LEVEL` on the equivalent line | Vendor firmware and `firmware/main/board_power.cpp:287` — "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);" |
+| Polarity | Active LOW — the vendor drives it `INPUT_PULLUP`, and the repository already arms `GPIO_INTR_LOW_LEVEL` on the equivalent line | Vendor firmware and `firmware/main/board_power.cpp:322` — "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);" |
 | External pull | **R551 10 kΩ to `AVDD`**, fed from `LDO3` | Schematic sheet 4 |
 | Rail | ALDO3, shared with the display — `docs/research/HARDWARE_MATRIX.md:97` — "**separate I2C**: SDA 39, SCL 40, INT 16" | — |
 | **The cost this imposes** | ALDO3 off means the FT6336U is unpowered **and its pull-up dies**, so IO16 floats or is dragged low and a LOW-level wake armed across that sleep fires immediately and forever. **Touch-as-wake requires ALDO3 to stay on through sleep** | Derived from schematic and rail map |

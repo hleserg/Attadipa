@@ -66,17 +66,38 @@ constexpr Rail kRails[] = {
      "wedged FT6336U (TWATCH_S3_PLUS_BSP_REUSE.md §8)"},
     {0x95, "ALDO4", RailPolicy::NotAuthorised,
      "radio; gateable when the radio holds no lease"},
-    {0, "BLDO1/BLDO2/DLDO1", RailPolicy::NotAuthorised,
-     "GNSS, haptic enable, amplifier; nothing has measured them"},
+    // The row the comment below used to predict. The GNSS images raise this
+    // rail on purpose -- `board_power_enable_gnss_rail()` writes 0x96 = 0x1C
+    // and sets REG 90 bit 4 -- so a domain owner asking which regulator the
+    // receiver is on has an answer that is not "look in another function".
+    // *The GNSS images*, not every image: that function is a no-op unless
+    // `CONFIG_ATTADIPA_GNSS_BRIDGE` or `CONFIG_ATTADIPA_GNSS_LOCAL` is set,
+    // and this table is built either way. Which rail feeds the receiver is a
+    // fact about the board and holds in every image; whether anything raised
+    // it is a fact about the build. A row that conflated the two would tell a
+    // reader on a plain T-Watch that BLDO1 is up when it is wherever the PMU
+    // left it.
+    // `NotAuthorised`, unchanged and deliberately: naming a rail is not
+    // licensing a gate, and nothing has measured what this one costs.
+    {0x96, "BLDO1", RailPolicy::NotAuthorised,
+     "GNSS at 3300 mV (HARDWARE_MATRIX.md \"AXP2101 rail map\"); raised in "
+     "the GNSS images by board_power_enable_gnss_rail(), and nothing has "
+     "measured it. An LS550G "
+     "would need DC4 at 850 mV as well, and which module is fitted is per unit"},
+    {0, "BLDO2/DLDO1", RailPolicy::NotAuthorised,
+     "haptic enable, amplifier; nothing has measured them"},
 };
 
 // rail_for() indexes by position, and this is the table most likely to grow:
-// DC4, BLDO1 and BLDO2 each become a row when GNSS or the haptic arrives. A
-// row inserted above ALDO3 would silently move Display onto another regulator.
+// BLDO1 became a row above when GNSS arrived, and DC4 and BLDO2 each become
+// one when an LS550G or the haptic does. A row inserted above ALDO3 would
+// silently move Display onto another regulator.
 static_assert(kRails[3].voltage_register == 0x94 &&
-                  kRails[4].voltage_register == 0x95,
-              "Display is ALDO3 (0x94) and Radio is ALDO4 (0x95): a row was "
-              "inserted above them, so re-index rail_for()");
+                  kRails[4].voltage_register == 0x95 &&
+                  kRails[5].voltage_register == 0x96,
+              "Display is ALDO3 (0x94), Radio is ALDO4 (0x95) and Gnss is "
+              "BLDO1 (0x96): a row was inserted above them, so re-index "
+              "rail_for()");
 
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   switch (domain) {
@@ -84,6 +105,8 @@ const Rail *rail_for(attadipa::core::PowerDomain domain) {
     return &kRails[3];
   case attadipa::core::PowerDomain::Radio:
     return &kRails[4];
+  case attadipa::core::PowerDomain::Gnss:
+    return &kRails[5];
   default:
     return nullptr;
   }
@@ -116,9 +139,21 @@ static_assert(kRails[2].voltage_register == 0x93 &&
 //
 // Only Display maps, and it maps to the trap rather than to a supply: a reader
 // who asks this owner to cut display power is asking for ALDO2, and the answer
-// they need is why that is the wrong rail. The other domains have no rail on
-// this board — Radio and NodeLink live on the SoC, Gnss and Imu are not fitted
-// — and an invented mapping would be a hardware claim with no source.
+// they need is why that is the wrong rail. The other domains reach that same
+// nullptr by three different routes, and they are worth keeping apart because
+// only one of them means nothing is there.
+//
+// Radio and NodeLink live on the SoC. No GNSS is fitted —
+// `docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** |"
+// — so a receiver on the expansion pads is one wired to a board whose rail
+// map names no rail for it. The IMU is the case that is *not* absence: a
+// QMI8658 sits on the main bus and has answered a scan —
+// `docs/research/HARDWARE_MATRIX.md:392` — "**`0x6B`, MEASURED**" — and its
+// `Power rail` column reads `D13`, which that table defines as a load known to
+// be on a PMU rail whose rail is unresolved. So for `Imu` this nullptr says
+// "which rail is UNKNOWN", not "nothing is there", and the two are not the
+// same answer to give whoever comes to gate the accelerometer. An invented
+// mapping would be a hardware claim with no source either way.
 const Rail *rail_for(attadipa::core::PowerDomain domain) {
   return domain == attadipa::core::PowerDomain::Display ? &kRails[2] : nullptr;
 }
@@ -465,6 +500,68 @@ attadipa::core::PowerOwner owner(hardware);
 
 } // namespace
 
+esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS && \
+    (CONFIG_ATTADIPA_GNSS_BRIDGE || CONFIG_ATTADIPA_GNSS_LOCAL)
+  ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
+  std::uint8_t aldo = 0;
+  // BLDO1 feeds the GNSS daughterboard — HARDWARE_MATRIX.md's GNSS row, "BLDO1
+  // (+ DC4 @850 mV for LS550G)". Same encoding as the ALDOs, 0x1C = 3.3 V (REG
+  // 96, AXP2101 datasheet V1.4 6.13.2.81), enable REG 90 bit 4 (6.13.2.75).
+  //
+  // WHEN this runs is the caller's business and it is not a detail. A rail with
+  // no driver behind it is current spent on nothing, so neither caller raises
+  // it unconditionally -- but they raise it at different moments, and the
+  // difference is a defect the review caught in #442. The bridge asks during
+  // `board_power_bring_up_rails()`, early, because it runs after the UI has
+  // returned and needs the rail up however that call ended. The local receiver
+  // asks from `twatch_board.cpp`, immediately after a `local_gnss_start()`
+  // that returned ESP_OK -- so the rail is never raised without a reader --
+  // and past every `abandon_twatch_after`, because one branch of
+  // `rollback_boot_retaining_all()` drops the PMU handle and returns without
+  // rebooting -- the branch taken when no display is registered, which is the
+  // one the "display capability" rollback takes. A rail raised before that
+  // point and rolled back over it is a powered module with nothing reading it
+  // and no handle left to switch it off. Raised after it, that cannot happen.
+  // The rollbacks that keep a registered display keep the handle with it, so
+  // those were never the hazard; the branch-by-branch argument is at the caller.
+  //
+  // DC3 is deliberately *not* written. The vendor drives it to 3300 mV for
+  // "earlier versions" of this watch, but our datasheet copy documents DCDC3
+  // only to 1.54 V and marks 1011000~1111111 reserved (6.13.2.72) — the range
+  // LilyGO uses is undocumented here, so writing it would be an unevidenced
+  // hardware write. DC4 at 850 mV, which an LS550G needs for its core, waits on
+  // the same thing: knowing which module is fitted. Answering that is what the
+  // bridge is for; if BLDO1 alone yields silence, each of those is a separate
+  // evidenced step, not a guess to add here now.
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x96, 0x1C), kTag, "BLDO1 3.3 V");
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "read LDO enables");
+  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, "enable BLDO1");
+  ESP_LOGI(kTag, "AXP2101: LDO enable -> 0x%02x (BLDO1 3.3 V, GNSS)",
+           aldo | 0x10);
+  // Read-only. Question D6 asked which rail feeds
+  // the GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up
+  // would not have answered it. The bench run of 2026-09-05 answered it with
+  // DCDC3 clear while the module was talking, so this line is now a check that
+  // the answer still holds rather than the question. REG 80 bit 2 is DCDC3
+  // (datasheet V1.4 6.13.2.68).
+  std::uint8_t dcdc = 0;
+  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
+  ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x (DC3 %s) -- read, not written",
+           dcdc, (dcdc & 0x04) ? "ON" : "off");
+  return ESP_OK;
+#else
+  // Nothing to do, for either of two reasons. On the Waveshare no PMU rail
+  // feeds GNSS at all -- the module sits on pads that take the board's own
+  // 3V3. On a T-Watch image with neither GNSS symbol there is no consumer, and
+  // a rail with nothing behind it is current spent on nothing; that image must
+  // not pay for a receiver it does not have, which is also why the body above
+  // is compiled out rather than merely left uncalled.
+  (void)pmu;
+  return ESP_OK;
+#endif
+}
+
 esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
 
@@ -486,34 +583,13 @@ esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
            aldo, aldo | 0x06);
 
 #if CONFIG_ATTADIPA_GNSS_BRIDGE
-  // BLDO1 feeds the GNSS daughterboard — HARDWARE_MATRIX.md's GNSS row, "BLDO1
-  // (+ DC4 @850 mV for LS550G)". Same encoding as the ALDOs, 0x1C = 3.3 V (REG
-  // 96, AXP2101 datasheet V1.4 6.13.2.81), enable REG 90 bit 4 (6.13.2.75).
-  //
-  // Only under the bridge flag, because nothing else in this firmware speaks to
-  // that module yet and a rail with no driver behind it is current spent on
-  // nothing. It becomes unconditional when the GNSS driver lands (#429).
-  //
-  // DC3 is deliberately *not* written. The vendor drives it to 3300 mV for
-  // "earlier versions" of this watch, but our datasheet copy documents DCDC3
-  // only to 1.54 V and marks 1011000~1111111 reserved (6.13.2.72) — the range
-  // LilyGO uses is undocumented here, so writing it would be an unevidenced
-  // hardware write. DC4 at 850 mV, which an LS550G needs for its core, waits on
-  // the same thing: knowing which module is fitted. Answering that is what the
-  // bridge is for; if BLDO1 alone yields silence, each of those is a separate
-  // evidenced step, not a guess to add here now.
-  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x96, 0x1C), kTag, "BLDO1 3.3 V");
-  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "re-read LDO enables");
-  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, "enable BLDO1");
-  ESP_LOGI(kTag, "AXP2101: LDO enable -> 0x%02x (BLDO1 3.3 V, GNSS)",
-           aldo | 0x10);
-  // Read-only, and only under this flag. Question D6 asks which rail feeds the
-  // GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up has
-  // not answered it. REG 80 bit 2 is DCDC3 (datasheet V1.4 6.13.2.68).
-  std::uint8_t dcdc = 0;
-  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
-  ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x (DC3 %s) -- read, not written",
-           dcdc, (dcdc & 0x04) ? "ON" : "off");
+  // The bridge, and only the bridge, gets its rail here. It runs from
+  // `attadipa_main.cpp` *after* `start_twatch_ui()` has returned -- including
+  // when it returned an error -- so it needs BLDO1 up before that call and
+  // regardless of how it ends. `CONFIG_ATTADIPA_GNSS_LOCAL` does not: it reads
+  // the module from inside the UI bring-up, past every rollback point, and it
+  // raises the rail there. See `board_power_enable_gnss_rail()`.
+  ESP_RETURN_ON_ERROR(board_power_enable_gnss_rail(pmu), kTag, "GNSS rail");
 #endif
   return ESP_OK;
 #else

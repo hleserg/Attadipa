@@ -5,6 +5,24 @@
                         // symbol undefined, so an unreachable sdkconfig.h makes
                         // every branch here agree on false and compile clean.
 
+// Raise this file above the image's log ceiling, and do it before the first
+// `esp_log.h`. `CONFIG_LOG_MAXIMUM_LEVEL` is 3 (INFO) in every image this
+// repository builds, and it is a *compile-time* gate: without this line the
+// `ESP_LOGD` in `log_if_answer_changed()` expands to nothing at all, the
+// runtime guard above it can never pass, and the engineering line is a line
+// the firmware cannot emit however the console is asked. That is not a log
+// level, it is a missing feature that looks like one -- and it looks like one
+// from the bench, at the moment somebody is trying to read a coordinate off a
+// receiver. The idiom is the vendor's:
+// `esp/esp-idf/components/log/include/esp_log_level.h` -- "To raise log level
+// above the default one for a given file, define LOG_LOCAL_LEVEL to one of the
+// ESP_LOG_* values, before including esp_log.h in this file."
+//
+// It costs one format string in the image. Nothing else in this file logs
+// below INFO, so nothing else changes size, and the DEBUG line still does not
+// *print* until a tag level asks for it -- see `log_if_answer_changed()`.
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+
 #include "local_gnss.h"
 
 #include <atomic>
@@ -26,6 +44,19 @@ namespace {
 
 #if CONFIG_ATTADIPA_GNSS_LOCAL
 
+// A board that turned the receiver on without declaring where it listens.
+// `Kconfig.projbuild` names a pin and a speed per board and falls through to 0,
+// and 0 is not a usable value for either: GPIO 0 is a boot strap and no
+// receiver speaks at 0 baud. Refusing here rather than at the prompt is
+// deliberate -- the symbol is offered on every board on purpose, so the thing
+// to catch is a board that took the offer without doing its half.
+#if CONFIG_ATTADIPA_GNSS_LOCAL_RX <= 0
+#error "ATTADIPA_GNSS_LOCAL is on but this board declares no RX pin: add a `default <gpio> if ATTADIPA_BOARD_<yours>` to ATTADIPA_GNSS_LOCAL_RX."
+#endif
+#if CONFIG_ATTADIPA_GNSS_LOCAL_BAUD <= 0
+#error "ATTADIPA_GNSS_LOCAL is on but this board declares no baud: add a `default <baud> if ATTADIPA_BOARD_<yours>` to ATTADIPA_GNSS_LOCAL_BAUD."
+#endif
+
 constexpr char kTag[] = "gnss";
 
 constexpr uart_port_t kPort = UART_NUM_1;
@@ -38,6 +69,11 @@ constexpr uart_port_t kPort = UART_NUM_1;
 // the defaults file. The GPIO matrix makes the peripheral independent of the
 // pin anyway, and leaving UART0 unclaimed means a bench session can still open
 // a serial console on these pads without fighting this driver for them.
+//
+// That paragraph is the Waveshare's story; the T-Watch's pin is GPIO 41, which
+// is nobody's `U0RXD`. UART1 is right there for the plainer reason: the GPIO
+// matrix does not care, and one peripheral for both boards is one fewer thing
+// for the board to decide.
 constexpr int kRxPin = CONFIG_ATTADIPA_GNSS_LOCAL_RX;
 constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 
@@ -57,6 +93,26 @@ constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 // That worst window is a power cycle — a burst of `$GNTXT` banner on top of a
 // full sky — which is the same event that produces a long gap, so it is the
 // right case to size against rather than an outlier to set aside.
+//
+// The T-Watch's own module is inside that measurement rather than beside it:
+// it is a u-blox M10 at 38400, and so is the part that set the worst case —
+// the AN3126, in the capture the 4127 was counted from
+// (`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:426` — "them is 4127
+// bytes**, in `boot4-…140439Z` — the capture taken across a power"). Same
+// family, same protocol version, same wire rate.
+//
+// The GT-U12 is the odd part here rather than the reference. It runs at
+// 115200, three times this module's rate, and its heaviest window was the
+// *smaller* of the two —
+// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:447` — "heaviest the
+// GT-U12 produced is 3332. Neither part is the reason for the" — because
+// what drives the spread is satellites in view, not the wire rate and not the
+// protocol version. So the headroom this constant has is 8192 over 4127, near
+// 2x, on this module's family at this module's baud. Reading it as more than
+// that would be borrowing margin from a part the watch does not have.
+//
+// Not the same part number, so this is an argument and not a reading; the thing
+// that would turn it into one is a capture from the watch.
 constexpr int kRxRing = 8192;
 
 // The UI timer runs at 500–1000 ms, so three seconds is past the slowest of
@@ -128,6 +184,125 @@ constexpr std::uint64_t kQuietWarnAfterMs = 5000;
 std::uint64_t quiet_since_ms = 0;  // 0 while sentences are arriving
 bool          quiet_logged   = false;
 
+// ONE LINE PER CHANGE OF ANSWER, NOT ONE PER EPOCH.
+//
+// `core::format_location_line` is the repository's engineering line -- shared
+// with `firmware/main/meshcore_ble.cpp:1920` -- "ESP_LOGI(kTag, \"Position   :
+// %s\", line);", which has printed the *node's* position through it since
+// before this file existed. It prints the coordinate, both ages, the validity,
+// the receiver state and the origin, and writes `UNKNOWN` in full wherever a number would imply a
+// measurement -- which is why it is the right thing to log and why nothing here
+// formats its own.
+//
+// Edge-triggered on the fields that change what the line *means*: availability,
+// whether there is a coordinate at all, which source it came from, the fix type
+// and the validity. Deliberately not the coordinate and not the ages. A
+// receiver solving at 1 Hz moves the low digits and the age every epoch, so
+// logging on those is logging every second -- which on a watch is a log nobody
+// reads and a flash nobody wanted written. The five below change when the
+// device's answer changes, which is the event worth a line.
+struct LoggedAnswer {
+    attadipa::core::Availability     availability{};
+    bool                             has_position = false;
+    attadipa::core::PositionSource   source{};
+    attadipa::core::FixType          fix_type{};
+    attadipa::core::PositionValidity validity{};
+
+    bool operator==(const LoggedAnswer& other) const
+    {
+        return availability == other.availability &&
+               has_position == other.has_position && source == other.source &&
+               fix_type == other.fix_type && validity == other.validity;
+    }
+};
+
+LoggedAnswer answer_of(const attadipa::core::LocationState& state)
+{
+    return {state.availability, state.has_position, state.source,
+            state.fix_type, state.validity};
+}
+
+// Seeded from a default-constructed `LocationState`, whose availability is
+// `Unprovisioned` -- the state of a port that never opened. A port that did
+// open reads `Unreachable` until a sentence lands (`gnss/src/nmea_receiver.cpp`
+// -- "if (!heard_) return Availability::Unreachable;"), so the first tick after
+// a successful `local_gnss_start()` does log a line, and that line is the proof
+// the port is open with nothing heard on it yet. Only a start that failed is
+// quiet here, which is right: it has already logged its own error.
+//
+// `warn_if_quiet()` above is not a second voice for that. It speaks to a
+// different fact at a different time -- five seconds of silence from a port
+// that opened -- and it is the one that says to go and look at the wiring.
+LoggedAnswer logged = answer_of(attadipa::core::LocationState{});
+
+void log_if_answer_changed()
+{
+    const LoggedAnswer now = answer_of(published);
+    if (now == logged) {
+        return;
+    }
+    logged = now;
+
+    // THE COORDINATE IS NOT IN THIS LINE, AND THAT IS THE POINT. What changed
+    // is what `LoggedAnswer` holds, and it holds no position on purpose: a
+    // watch that has moved thirty metres has not changed state and says
+    // nothing here. So the line that announces the change has nothing to gain
+    // from carrying the position, and a great deal to lose -- this log goes to
+    // a USB console that asks nobody for a password, on a device worn by a
+    // person, and `format_location_line` prints latitude and longitude at
+    // 10^-7 of a degree, which is about a centimetre.
+    //
+    // One line in this firmware already does put a coordinate at INFO --
+    // `firmware/main/meshcore_ble.cpp:1920` -- "ESP_LOGI(kTag, \"Position   :
+    // %s\", line);" -- and the distinction is whose coordinate it is. That one
+    // prints the position a paired MeshCore node broadcast, on the boards that
+    // build BLE in; this one would print the wearer's own, from a receiver on
+    // the wrist. The second is the one worth a level. Whether the first should
+    // keep its level is a question about a subsystem this change does not
+    // touch, and it is older than this file -- so it is named here rather than
+    // quietly altered.
+    ESP_LOGI(kTag, "avail %s src %s fix %s validity %s position %s",
+             attadipa::core::to_string(now.availability),
+             attadipa::core::to_string(now.source),
+             attadipa::core::to_string(now.fix_type),
+             attadipa::core::to_string(now.validity),
+             now.has_position ? "held" : "none");
+
+    // The engineering line, with the coordinate, one level down -- compiled in
+    // (see LOG_LOCAL_LEVEL at the top of this file) and silent until something
+    // raises this tag, which is the asking that makes it a decision.
+    //
+    // WHAT THAT ASKING COSTS, SO NOBODY LOOKS FOR IT AT A BENCH: no product
+    // code raises it. The only `esp_log_level_set()` in this firmware is
+    // `firmware/main/gnss_bridge.cpp:307` -- "esp_log_level_set(\"*\",
+    // ESP_LOG_NONE);" -- and it silences, in the other direction, in another
+    // image. So today the line is reached by adding one
+    // `esp_log_level_set(kTag, ESP_LOG_DEBUG)` and reflashing. The guard below
+    // is a real runtime gate -- `CONFIG_LOG_DYNAMIC_LEVEL_CONTROL` is on -- so
+    // the day a console command or a Kconfig switch wants to raise it, that is
+    // all it has to do.
+    //
+    // This is still `core::format_location_line` and not a second formatter:
+    // #442 said to use the existing one, and this is the place where using it
+    // is safe.
+    if (esp_log_level_get(kTag) < ESP_LOG_DEBUG) {
+        return;
+    }
+    // 224 bytes: the line is three 16-byte numbers, a 16-byte age, an 8-byte
+    // origin and about 110 of fixed text. `format_location_line` returns the
+    // length it wanted, so a future field that overruns this shows up as a
+    // truncation warning rather than as silence.
+    char line[224];
+    const std::size_t wanted =
+        attadipa::core::format_location_line(published, line, sizeof(line));
+    if (wanted >= sizeof(line)) {
+        ESP_LOGW(kTag, "engineering line truncated at %u of %u bytes",
+                 static_cast<unsigned>(sizeof(line) - 1),
+                 static_cast<unsigned>(wanted));
+    }
+    ESP_LOGD(kTag, "%s", line);
+}
+
 void warn_if_quiet(attadipa::core::MonotonicTime now)
 {
     if (receiver.availability() != attadipa::core::Availability::Unreachable) {
@@ -162,8 +337,10 @@ void warn_if_quiet(attadipa::core::MonotonicTime now)
 // show a minute-old position as a current fix.
 //
 // So a gap longer than a tick could honestly explain throws the ring away. The
-// board sleeps inside an LVGL timer callback (`physical_input.cpp`), so this
-// fires on every wake, and the receiver's own silence timeout then reports
+// Waveshare sleeps inside an LVGL timer callback (`physical_input.cpp`), so this
+// fires on every wake there; the T-Watch bring-up image does not sleep at all
+// yet, so on that board it fires only if a tick is genuinely starved. Either
+// way the receiver's own silence timeout then reports
 // `Unreachable` for as long as it takes real sentences to come back — which is
 // the true answer for a device that was not listening.
 void drain(attadipa::core::MonotonicTime now)
@@ -266,6 +443,7 @@ void local_gnss_tick()
     warn_if_quiet(now);
     location.poll();
     published = location.state(now);
+    log_if_answer_changed();
 #endif
 }
 

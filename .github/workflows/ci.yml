@@ -783,19 +783,46 @@ jobs:
           grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE=y$" build-twatch-gnss/sdkconfig
           grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE_PASSTHROUGH=y$" build-twatch-gnss/sdkconfig
 
-      # The one build that compiles gnss/ for xtensa. The host suite builds the
+      # The builds that compile gnss/ for xtensa. The host suite builds the
       # parser for the machine it runs on; nothing else in this file reaches
       # local_gnss.cpp, the vendored minmea, or the -Dtimegm=mktime that the
-      # shipping newlib makes necessary. It also exercises the composition
-      # root's direct-link contract, which only fires when the layer is added.
-      - name: Build the Waveshare image with the local GNSS receiver
+      # shipping newlib makes necessary. They also exercise the composition
+      # root's direct-link contract, which only fires when the layer is added --
+      # now from both boards, since #442 made the receiver board-neutral and
+      # local_gnss.cpp is in every image rather than the Waveshare's alone.
+      - name: Build both images with the local GNSS receiver
         shell: bash
         run: |
           . "$IDF_PATH/export.sh"
           cd firmware
           idf.py -B build-gnss -DSDKCONFIG=build-gnss/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.gnsslocal" build
           grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL=y$" build-gnss/sdkconfig
+          # The overlay names only the symbol since #442; these two are the
+          # per-board defaults, so the greps now check that the Waveshare still
+          # gets its own pair and not the T-Watch's.
           grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL_RX=44$" build-gnss/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL_BAUD=115200$" build-gnss/sdkconfig
+          # The same overlay on the other board, which is what #442 is for. This
+          # is the only build that compiles local_gnss.cpp and gnss/ against the
+          # T-Watch composition root, so without it the tick in twatch_board.cpp
+          # and the widened BLDO1 branch of board_power.cpp are code no compiler
+          # reads until somebody is at the bench with the watch already open.
+          idf.py -B build-twatch-gnsslocal -DSDKCONFIG=build-twatch-gnsslocal/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;sdkconfig.gnsslocal" build
+          grep -q "^CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y$" build-twatch-gnsslocal/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL_RX=41$" build-twatch-gnsslocal/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_GNSS_LOCAL_BAUD=38400$" build-twatch-gnsslocal/sdkconfig
+          # The refusal itself, which is a Kconfig claim and therefore only true
+          # if something asks. Stacking both overlays must leave the local
+          # receiver off rather than putting two UART drivers on GPIO 41.
+          idf.py -B build-twatch-gnssboth -DSDKCONFIG=build-twatch-gnssboth/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.twatch;sdkconfig.gnssbridge;sdkconfig.gnsslocal" reconfigure
+          grep -q "^CONFIG_ATTADIPA_GNSS_BRIDGE=y$" build-twatch-gnssboth/sdkconfig
+          # Absent, not "is not set": Kconfig omits a symbol whose dependency is
+          # unmet rather than writing it off, so the check is that the overlay
+          # asked for it and the generated config carries no trace of it.
+          if grep -q "ATTADIPA_GNSS_LOCAL" build-twatch-gnssboth/sdkconfig; then
+            echo "::error title=The GNSS refusal did not fire::ATTADIPA_GNSS_LOCAL survived alongside ATTADIPA_GNSS_BRIDGE; both would drive GPIO 41"
+            exit 1
+          fi
 
       # The RAM route is the one proved to work on the received unit and the one
       # with nothing to undo, so it is the one a bench session reaches for first.

@@ -101,14 +101,29 @@ config ATTADIPA_GNSS_BRIDGE
     depends on ATTADIPA_BOARD_TWATCH_S3_PLUS
     default n
     help
-        Ask the T-Watch GNSS module what it is. Which part is fitted is
-        UNKNOWN (docs/research/OPEN_QUESTIONS.md, question A2), and so is
-        which PMU rail powers it (question D6). This sweeps baud rate and
+        Ask the T-Watch GNSS module what it is. This sweeps baud rate and
         UART orientation until something answers, logs what the port
         carries, then sends version queries in u-blox, ALLYSTAR and three
         ASCII dialects. It writes no GNSS configuration and saves nothing;
-        a silent port is logged as a silent port. Enabling this also brings
-        BLDO1 up at 3.3 V, which no other build needs yet.
+        a silent port is logged as a silent port.
+
+        It has already answered its two questions, on the owner's unit, on
+        2026-09-05: A2 -- which part is fitted -- came back MOD=MIA-M10Q
+        from the module itself, and D6 -- which PMU rail powers it -- came
+        back BLDO1 with DCDC3 clear. Both rows are struck through in
+        docs/research/OPEN_QUESTIONS.md and the run is written up in
+        docs/research/TWATCH_GNSS_READOFF_2026-09-05.md. Keep this build
+        for a unit that has not been read off: the product ships MIA-M10Q
+        or Quectel LS550G and one read-off retires neither possibility for
+        anyone else's watch. On a unit already read off it tells you
+        nothing new, and ATTADIPA_GNSS_LOCAL is what you want instead.
+
+        Enabling this brings BLDO1 up at 3.3 V during rail bring-up, early,
+        because the sweep runs after the UI has returned and needs the rail
+        up however that call ended. ATTADIPA_GNSS_LOCAL needs the same rail
+        but raises it itself, later, next to the port it opens -- so this
+        is no longer the only build that needs BLDO1, only the one that
+        needs it first.
 
 config ATTADIPA_GNSS_BRIDGE_PASSTHROUGH
     bool "GNSS bridge: hand the port to the host when the sweep is done"
@@ -138,52 +153,107 @@ config ATTADIPA_GNSS_BRIDGE_PIN_B
         assuming; these two are a pair, not a fixed rx/tx assignment.
 
 config ATTADIPA_GNSS_LOCAL
-    bool "Local GNSS receiver on the Waveshare UART pads"
-    # The tick, the navigation page and the second LocationService are all in
-    # waveshare_board.cpp; the T-Watch slice has none of them, and its own
-    # module is on 41/42 behind a rail. Refused here rather than failing at the
-    # link -- the same reason ATTADIPA_WATCH_CONTROL gives.
-    depends on ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    bool "Local GNSS receiver on this board's UART"
+    # Not alongside the bridge. On the T-Watch both want GPIO 41, and two UART
+    # drivers on one pin is a configuration error worth refusing at the prompt
+    # rather than meeting as silence on a bench. They are also two stages of
+    # one job: the bridge is the instrument that asks the module what it is,
+    # this is the driver that uses the answer, and an image needs one of them.
+    depends on !ATTADIPA_GNSS_BRIDGE
     default n
     help
-        Listen for NMEA on the RXD pad and turn what arrives into this
-        device's own position, so the navigation readout shows a real
-        distance and bearing instead of "Waiting for GPS". No module is
-        fitted to this board (HARDWARE_MATRIX.md, GNSS row: not present),
-        so this is off unless you soldered one: enabling it is the
-        configuration change that makes the readout's "no provider is
-        bound" answer stop being the true one.
+        Listen for NMEA on this board's GNSS receive pin and turn what
+        arrives into this device's own position.
 
-        Receive only. Nothing is transmitted to the module and the TXD pad
-        is never driven, so no GNSS configuration can be written or saved.
-        It adds no task, timer or queue -- the UART driver's RX ring is
-        read from the tick that already draws the screen.
+        Off by default on both boards, for opposite reasons. Nothing is
+        fitted to the Waveshare (HARDWARE_MATRIX.md, GNSS row: "absent"),
+        so enabling it there is the configuration change that says you
+        soldered a module onto the pads. The T-Watch has one and it has
+        been read off -- a u-blox MIA-M10Q -- but this image is still the
+        bring-up slice, so listening to it is opt-in until something above
+        asks for a position.
+
+        Receive only. Nothing is transmitted to the module and this end's
+        TX stays unrouted, so no GNSS configuration can be written or
+        saved on either board.
+
+        No new task and no new queue. On the Waveshare the UART driver's
+        RX ring is read from the tick that already draws the screen; the
+        T-Watch bring-up image has no such tick, so board code there
+        registers one LVGL timer, which runs on the LVGL port's existing
+        task.
 
 config ATTADIPA_GNSS_LOCAL_RX
     int "GNSS receive GPIO"
     depends on ATTADIPA_GNSS_LOCAL
-    default 44
+    default 41 if ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default 44 if ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    default 0
     help
-        The RXD pad, VERIFIED. docs/research/WAVESHARE_BOARD_RECEIVED.md's
-        pad table, row 7: "| 7 | `RXD` | UART0 receive — **GPIO 44** |".
-        This is the pin the CPU listens on, so the module's TX goes here.
-        Unlike the T-Watch pair, the orientation is not ambiguous, and
-        nothing here sweeps for it.
+        A third board gets 0, which is a refusal and not a pin. The symbol
+        above is offered on any board -- that is the point of #442 -- but a
+        pin is a per-board fact and this file only has two of them. 0 is not
+        a plausible wrong answer that boots: GPIO 0 is a strap, and
+        local_gnss.cpp refuses to compile on it, so a new board declares its
+        pin here or does not build with the receiver on. Silence was the
+        alternative, and silence would have listened on the strap pin.
 
-        The pin is settled; the level on it is not. H18 in
-        docs/research/OPEN_QUESTIONS.md stays PARTIAL because neither bench
-        module's TX idle voltage has been measured and the S3 is not 5 V
-        tolerant. NOT MEASURED is the whole claim -- put a meter on the
-        module's TX before it reaches this pin.
+        This is the pin the CPU listens on, so it is the module's TX in
+        both defaults below.
+
+        Waveshare 44 -- the RXD pad, VERIFIED.
+        docs/research/WAVESHARE_BOARD_RECEIVED.md's pad table, row 7:
+        "| 7 | `RXD` | UART0 receive -- **GPIO 44** |". The orientation was
+        never ambiguous here.
+
+        T-Watch 41 -- MEASURED on the bench unit 2026-09-05 by sweeping
+        both orientations, which is what firmware/main/gnss_bridge.cpp
+        exists to do. docs/research/TWATCH_GNSS_READOFF_2026-09-05.md's
+        §2: "So **GPIO 41 is the module's TX and GPIO 42 its RX**". The
+        HARDWARE_MATRIX.md row that reads "UART: TX 42, RX 41" is written
+        from the CPU's side and agrees; it was correct and ambiguous at
+        once, and the sweep left only the correct half.
+
+        The pin is settled on both boards; the level on it is not settled
+        on either. H18 in docs/research/OPEN_QUESTIONS.md stays PARTIAL
+        because no bench module's TX idle voltage has been measured and
+        the S3 is not 5 V tolerant. NOT MEASURED is the whole claim -- put
+        a meter on the module's TX before it reaches a pin.
 
 config ATTADIPA_GNSS_LOCAL_BAUD
     int "GNSS UART baud"
     depends on ATTADIPA_GNSS_LOCAL
-    default 115200
+    default 38400 if ATTADIPA_BOARD_TWATCH_S3_PLUS
+    default 115200 if ATTADIPA_BOARD_WAVESHARE_AMOLED_206
+    default 0
     help
-        MEASURED for the GT-U12 on the bench (#427). The T-Watch's MIA-M10Q
-        answers at 38400. Nothing here sweeps: a receiver whose rate you do
-        not know is a bring-up question, and firmware/main/gnss_bridge.cpp
-        is the instrument that answers it.
+        0 on a board that names no speed, refused at compile time for the
+        same reason as the pin above.
 
+        Waveshare 115200 -- MEASURED for the GT-U12 on the bench (#427).
+
+        T-Watch 38400 -- MEASURED on the bench unit 2026-09-05, in the same
+        sweep that settled the pin, and the speed LilyGoLib@38e6f8d
+        src/LilyGoWatchS3.cpp:220 opens the port at.
+
+        Both are the module found on the bench, not a property of the
+        product: the T-Watch ships a MIA-M10Q *or* a Quectel LS550G, and
+        one read-off does not retire that.
+
+        A unit with the other part changes these two symbols and still
+        does not work, because the LS550G needs a rail this firmware
+        never raises. docs/research/HARDWARE_MATRIX.md:351 -- "- **The
+        LS550G variant needs two rails** (DC4 at 850 mV *and* BLDO1 at
+        3300 mV)" -- and board_power_enable_gnss_rail() raises BLDO1
+        alone. So on such a unit these two symbols open the port onto a
+        module whose core rail is down, and the readout blames power
+        five seconds later rather than the setting. That is deliberate,
+        not an oversight: firmware/main/board_power.cpp says why DC4 is
+        not written blind, and firmware/main/gnss_bridge.cpp is what
+        establishes which part is fitted before anyone writes it.
+
+        Nothing here sweeps. A receiver whose rate you do not know is a
+        bring-up question, and firmware/main/gnss_bridge.cpp is the
+        instrument that answers it -- and its own log records why a sweep
+        that scores on byte count picks noise over speech.
 endmenu

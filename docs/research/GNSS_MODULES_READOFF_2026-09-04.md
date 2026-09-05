@@ -548,6 +548,32 @@ found by elimination after a harness loopback that had bypassed the connector
 shells; replacing it restored the link, the UBX reverse channel and the fix at
 once. No later behaviour of that part should be attributed to the discharge.
 
+### 5.1 The repeat-rate capture sat still — owner-attested, not MEASURED
+
+The parser rule that rests on a repeat rate is `LocationService::poll()`'s, and
+the rate itself is recorded where it is used rather than in this report:
+`gnss/include/attadipa/gnss/nmea_receiver.h:90` — "the longest consecutive run is two".
+A repeat rate only carries
+weight if the receiver was standing still while it was taken: a receiver being
+carried about cannot repeat a coordinate to the last digit, so a capture in
+motion would measure the easy half of the hazard. For the **GT-U12** half the
+condition is recorded here rather than left to inference — the module was set
+down on a bench and left there, and **the owner confirmed on 2026-09-05 that it
+had sat untouched overnight**.
+
+That is an **owner attestation, not a MEASURED quantity**. Nothing in the
+capture proves it: there is no motion sensor in the harness and a stationary
+receiver and a wedged one write the same repeat. What stands behind it is the
+person who put the module down. It is written here because a number that
+depends on a physical condition is worth what the record of that condition is
+worth, and a condition that lives only in a source comment is one no reader can
+audit — §5's own rule, applied to a run that predates it.
+
+The **AN3126** half of the 6.5 MB carries no such record and must not be given
+one: its physical condition during capture is **UNKNOWN**. The repeat figures
+cited at the head of this section are quoted for both modules together, so a
+future reader tightening that threshold has one half attested and one half not.
+
 ## 6. What is still UNKNOWN
 
 - **Both carriers' regulators**, and what each `VCC` actually wants. Neither

@@ -31,7 +31,7 @@
 // Closing that needs the sleep itself to be refusable by the transport, which
 // `core/include/attadipa/core/power_owner.h:330` — "// does not yet have and which nothing in the current firmware needs, because"
 // — records as absent, and which
-// `docs/adr/0016-one-power-owner.md:93` — "consumer declares; **the first plan that does must close this window before it"
+// `docs/adr/0016-one-power-owner.md:97` — "consumer declares; **the first plan that does must close this window before it"
 // — requires of the first plan gating a rail on `NodeLink`, before that plan ships.
 //
 // What this deliberately does not do is gate anything. `sleep()` refuses on
