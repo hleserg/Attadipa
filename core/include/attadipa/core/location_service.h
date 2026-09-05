@@ -21,16 +21,25 @@
 // feature. They come from `docs/research/NODE_POSITION_FROM_MESHCORE.md`, which
 // read the node's firmware rather than its documentation.
 //
-//   1. **A coordinate is not a fix.** The only producer today is a MeshCore
-//      node, and a node holds the fix flag, the satellite count and the
-//      receiver's UTC and transmits none of them. Worse, `isValid()` there
-//      gates the *write*, not the send, so a receiver that loses its fix leaves
-//      the last coordinate in place and nothing on the wire changes. So a
-//      provider fed from that wire states `FixType::Unknown` and `classify()`
-//      answers `PositionValidity::NoFix` for every observation this slice can
-//      build -- at age zero and at an hour alike. That is not a bug to route
-//      around later; it is the truth about the input, and the tests assert it
-//      so that an ADR-0011 amendment cannot land silently.
+//   1. **A coordinate is not a fix.** A MeshCore node holds the fix flag, the
+//      satellite count and the receiver's UTC and transmits none of them.
+//      Worse, `isValid()` there gates the *write*, not the send, so a receiver
+//      that loses its fix leaves the last coordinate in place and nothing on
+//      the wire changes. So a provider fed from that wire states
+//      `FixType::Unknown` and `classify()` answers `PositionValidity::NoFix`
+//      for every observation it can build -- at age zero and at an hour alike.
+//      That is not a bug to route around later; it is the truth about *that*
+//      input, and the tests assert it so that an ADR-0011 amendment cannot land
+//      silently.
+//
+//      THE RULE IS ABOUT THE WIRE, NOT ABOUT THIS SERVICE, and the difference
+//      became visible the moment a second producer arrived.
+//      `gnss::NmeaReceiver` reads a receiver directly, so it states a real
+//      `FixType` from GGA's quality and GSA's mode, and `classify()` reaches
+//      `Valid`, `Degraded` and `Stale` for it. One classifier, two producers,
+//      and the verdicts differ because the inputs do — which is the whole
+//      point of putting the judgement in `classify()` rather than in either
+//      provider.
 //
 //   2. **A node's coordinate is not the wearer's.** `PositionSource::NodeGnss`
 //      says where it came from, and ADR-0009 already makes the same refusal for
@@ -82,12 +91,13 @@ enum class ReceiverPresence : std::uint8_t {
 // for exactly one rule: a changed identity **discards** the retained
 // observation rather than re-attributing it, because a new key is a new node.
 // It is `MeshPeerId` rather than a fresh 32-byte identity type of its own --
-// core already owns that type, the only producer's identity *is* a node public
-// key, and a parallel struct with the same shape and the same `operator==`
-// would be an abstraction with one implementation. A provider that has no
-// identity to offer (a local receiver, when one exists) leaves `has_origin`
-// false and the discard rule then never fires, which is the correct behaviour
-// for a source that cannot be swapped underneath us.
+// core already owns that type, the identity of the only producer that *has*
+// one is a node public key, and a parallel struct with the same shape and the
+// same `operator==` would be an abstraction with one implementation. A provider
+// with no identity to offer — `gnss::NmeaReceiver`, which reads a receiver
+// soldered to this board — leaves `has_origin` false and the discard rule then
+// never fires, which is the correct behaviour for a source that cannot be
+// swapped underneath us.
 struct PositionSample {
     GnssObservation  observation{};
     MeshPeerId       origin{};
@@ -128,7 +138,8 @@ struct LocationState {
 
     // The verdict, from `classify()` and from nothing else, so that the one
     // classifier this repository has is the one that judges a node coordinate
-    // too. `NoFix` for every observation this slice can build.
+    // too. `NoFix` for everything a node can produce (rule 1), and the full
+    // range for a local receiver, which states a fix type of its own.
     PositionValidity validity  = PositionValidity::NoFix;
     PositionSource   source    = PositionSource::Unknown;
     FixType          fix_type  = FixType::Unknown;

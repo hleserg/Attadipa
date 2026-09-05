@@ -343,9 +343,46 @@ void a_field_that_defeats_the_overflow_guard_is_not_a_position()
     CHECK(sample.observation.position->latitude_e7 == 5000006);
     CHECK(sample.observation.position->longitude_e7 == 10000006);
 
-    // And with no GGA coordinate there is no altitude either, from a sentence
-    // whose position field could not be read.
-    CHECK(sample.observation.altitude_msl_mm.has_value());  // GGA quality was 1
+    // The altitude *does* survive, and the two are separate on purpose: the
+    // GGA's quality was 1 and its altitude field parsed, so the height is a
+    // number the receiver stated. Only the coordinate was unreadable, and only
+    // the coordinate is refused. Rejecting one field does not condemn the
+    // sentence around it.
+    CHECK(sample.observation.altitude_msl_mm.has_value());
+}
+
+void two_altitudes_that_each_fit_and_do_not_together()
+{
+    // Each field passes `millimetres()` on its own — 2 000 000 m is 2e9 mm,
+    // inside `int32_t` — and their sum is 4e9, which is not. `int + int` is a
+    // 32-bit add, so before the fix this was signed overflow: undefined
+    // behaviour, and CI builds these tests with `-fsanitize=undefined
+    // -fno-sanitize-recover=all`, so it was a crash waiting for a GGA nobody
+    // had sent yet.
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,135222.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+    deliver(receiver,
+            "$GNGGA,135222.00,0030.00004,N,00100.00004,E,1,08,1.20,2000000.0,M,2000000.0,M,,*7E");
+    deliver(receiver, "$GNRMC,135223.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*13");
+
+    // The sentence framed and was believed. Without this the test would pass
+    // for the wrong reason: a mistyped checksum discards the GGA, both
+    // altitudes go missing, and the assertion below greens on an empty epoch.
+    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.sample(sample));
+
+    // The orthometric height passed its own range check and stands. Refusing
+    // it too would throw away a number the receiver actually stated because a
+    // *different* field made a sum impossible.
+    CHECK(sample.observation.altitude_msl_mm.has_value());
+    CHECK(*sample.observation.altitude_msl_mm == 2000000000);
+
+    // The ellipsoidal one is absent, not wrapped. Wrapped it would be about
+    // -295 000 km, which is a number no consumer has any defence against.
+    CHECK(!sample.observation.altitude_ellipsoid_mm.has_value());
 }
 
 void a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for()
@@ -443,12 +480,9 @@ void silence_is_not_the_same_as_never_having_answered()
 
 void bytes_that_never_frame_are_counted_as_bytes()
 {
-    // THE CASE `discarded()` CANNOT SEE, AND THE ONE THIS BENCH WILL MEET.
-    // A module in a binary protocol never emits `$`, so no run is ever framed
-    // and no run is ever thrown away: `discarded()` stays at zero however long
-    // it talks, which reads identically to a pad with nothing on it. The
-    // GT-U12 on this bench speaks ALLYSTAR binary behind `F1 D9`, so this is
-    // not a hypothetical shape.
+    // THE CASE `discarded()` CANNOT SEE: bytes that never frame, so no run is
+    // ever thrown away and `discarded()` stays at zero however long the module
+    // talks — which reads identically to a pad with nothing on it.
     gnss::NmeaReceiver receiver;
     const std::vector<std::uint8_t> quiet_noise(64, 0x00);
     g_now.ms += 1000;
@@ -476,6 +510,45 @@ void bytes_that_never_frame_are_counted_as_bytes()
     deliver(receiver, "$GNRMC,135222.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
     CHECK(receiver.unframed() == 64);
     CHECK(receiver.availability() == core::Availability::Ready);
+}
+
+void a_binary_stream_moves_both_numbers_and_neither_names_it()
+{
+    // THE CLAIM THIS TEST EXISTS TO REFUTE, WHICH THE HEADER USED TO MAKE:
+    // that a module in a binary protocol never emits `$`, so `unframed()`
+    // climbs alone and the pair therefore names the fault. It does not. `0x24`
+    // is an ordinary byte and so are CR and LF, so a binary stream frames runs
+    // and fails them exactly as a stream at the wrong baud rate does.
+    //
+    // Every byte value twice, which is the least contrived binary there is.
+    gnss::NmeaReceiver receiver;
+    std::vector<std::uint8_t> sweep;
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int b = 0; b <= 255; ++b) {
+            sweep.push_back(static_cast<std::uint8_t>(b));
+        }
+    }
+    g_now.ms += 1000;
+    receiver.feed(sweep.data(), sweep.size(), g_now);
+
+    // Both numbers move. `discarded()` at zero would have meant the old claim
+    // held; it is not zero, so a bench session reading these two cannot tell
+    // this stream from NMEA at 4800 baud, and the log must not pretend it can.
+    CHECK(receiver.unframed() == 58);
+    CHECK(receiver.discarded() == 1);
+
+    // AND THE PAIR IS A SAMPLE, NOT A CENSUS. 512 bytes went in and the two
+    // counters describe 59 events: the first `$` at 0x24 opens a run that
+    // overflows and is finally closed by the `\n` of the second pass — one
+    // discard standing for 230 bytes — and the second pass's `$` opens a run
+    // of 219 that is still open when the feed ends and is counted nowhere.
+    // Nothing downstream may divide by these or scale them to a byte rate.
+    CHECK(receiver.unframed() + receiver.discarded() < sweep.size() / 8);
+
+    // Nothing was heard, which is the one thing the pair does establish.
+    core::PositionSample sample;
+    CHECK(!receiver.sample(sample));
+    CHECK(receiver.availability() != core::Availability::Ready);
 }
 
 void the_chain_ends_in_a_location_state()
@@ -507,17 +580,18 @@ void the_chain_ends_in_a_location_state()
     // key and inventing one would hand the service a fact nobody measured.
     CHECK(!state.has_origin);
 
-    // `age_at_source` stays empty even now that a producer states a real
-    // observation time, and that is not an oversight: the field means "how old
-    // was the coordinate when its source sampled it", and a receiver reporting
-    // its own epoch has not answered that question — it has answered when the
-    // epoch was, which is `observed_at`.
+    // `age_at_source` stays empty for this provider too, and that is not an
+    // oversight: the field means "how old was the coordinate when its source
+    // sampled it", and this provider stamps `observed_at` with the caller's
+    // tick at the moment the RMC was *read*. That is this end's clock noticing,
+    // not the receiver stating when it solved, so there is still no answer to
+    // put in the field.
     CHECK(!location.age_at_source(g_now).has_value());
 
     // And `age_at_us` is small, because `observed_at` is the moment the epoch's
-    // RMC arrived rather than boot or zero. This is the first provider whose
-    // observation time is real, so it is the first one where that stamp has to
-    // be checked: the fixture's last closed epoch is seven sentences back at
+    // RMC arrived rather than boot or zero. It is the best stamp in this tree
+    // and still an arrival stamp, which is exactly why it has to be checked:
+    // the fixture's last closed epoch is seven sentences back at
     // 100 ms each, and nothing about this chain should make it look older.
     CHECK(location.age_at_us(g_now).has_value());
     CHECK(*location.age_at_us(g_now) < core::Millis{2000});
@@ -642,11 +716,13 @@ int main()
     a_real_epoch_arrives_whole();
     a_torn_sentence_is_dropped_whole();
     a_field_that_defeats_the_overflow_guard_is_not_a_position();
+    two_altitudes_that_each_fit_and_do_not_together();
     one_sentence_saying_no_fix_is_enough();
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
     silence_is_not_the_same_as_never_having_answered();
     a_flush_takes_the_open_epoch_with_it();
     bytes_that_never_frame_are_counted_as_bytes();
+    a_binary_stream_moves_both_numbers_and_neither_names_it();
     the_chain_ends_in_a_location_state();
     the_readout_stops_saying_waiting_for_gps();
 
