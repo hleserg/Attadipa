@@ -78,7 +78,7 @@ proceed; hardware work does not.
 | # | Question | Status | Resolved by |
 |---|---|---|---|
 | H1 | Real power draw of Attadipa firmware per state, per board | UNKNOWN | measurement; vendor figures are a target, not evidence |
-| H2 | **Can the AXP2101 measure current/energy on these boards, or only voltage?** **The PMU half is answered, 2026-09-05, from `AXP2101_Datasheet_V1.4_en.pdf`: only voltage, and there is no current channel to turn on.** REG `0x30` is the entire ADC channel-enable register and it offers six channels — general-purpose ADC, die temperature, `vsys`, `vbus` voltage, the `TS` pin, and `vbat` voltage (§6.13.2.29). The data block behind it, `0x34`–`0x3D`, is those same six (§6.13.2.30–39). **Neither register set contains a current.** The only current-related field in the part is a two-bit *direction* one, `Battery Current Direction` at REG `0x01[6:5]` (§6.13.2.2), reading standby / charge / discharge — which way, never how much. So the fuel gauge's battery percentage (REG `0xA4`, read-only, §6.13.2.88) is the only consumption-related number the PMU will hand over, and it is a slow integrated one. **A premise behind H1 and H5–H9 is disproved with it:** the watch cannot be put fully on its battery in software to make room for such a measurement. REG `0x16[2:0]`'s input current limit floors at **100 mA**, not zero (§6.13.2.12; POR default `100b` = 1500 mA), and the part has no `HIZ` bit — the word appears once in the datasheet, as a CHGLED pin drive mode at REG `0x69[5:4]` (§6.13.2.66). The two registers that look like the answer are not: `0x12[3]` gates `BATFET`, which is the **battery** side and only in the power-off battery-only condition (§6.13.2.8), and `0x18[1]` stops cell charging without taking VBUS off the system rail (§6.13.2.14). Capping to 100 mA does make the battery carry the rest, but half a watt keeps arriving from USB throughout, so it is not a battery-only condition and cannot stand in for one | **PARTIAL** (was UNKNOWN) | the PMU half is done, above. **The board half is still open:** whether either board fits a sense resistor the ESP32's own ADC could read — nothing in the PMU makes that unnecessary, and it is now the only on-board route to a current figure. Failing it, H1 and H5–H9 need external instrumentation — an inline USB power meter, or a bench supply with an ammeter — which is a bench question for the owner, not a documentary one |
+| H2 | **Can the AXP2101 measure current/energy on these boards, or only voltage?** The PMU half is **answered, 2026-09-05: only voltage** — there is no current channel to turn on, in either AXP2101 variant, and a premise behind H1 and H5–H9 goes with it. The registers, the quotations and what is left are in [the answer below](#h2-in-full--the-pmu-measures-voltage-only-and-it-took-both-datasheets-to-say-so) | **PARTIAL** (was UNKNOWN) | the board half: whether either board fits a sense resistor something could read. The Waveshare battery lead is answered and the answer is no; the T-Watch schematic is in hand and has not been read for one. Failing a shunt, H1 and H5–H9 need external instrumentation |
 | H3 | Real TTFF and fix quality for the fitted GNSS module | UNKNOWN | outdoor measurement |
 | H4 | Does any of the suspected interference actually occur? | UNKNOWN | the measurement procedure in [../hardware/INTERFERENCE_MATRIX.md](../hardware/INTERFERENCE_MATRIX.md) |
 | H5 | Which wake sources are usable in practice, and what does each cost? | UNKNOWN | measurement; vendor table gives the shape |
@@ -589,3 +589,106 @@ absence of a sub-GHz radio and GNSS on the Waveshare board; the absence of a
 magnetometer on both; the five radio and two GNSS variants of the T-Watch; the missing touch
 reset line; the haptic rail gating; the incomplete vendor BSP; and the
 CO5300 / SH8601 driver nuance.
+
+## H2 in full — the PMU measures voltage only, and it took both datasheets to say so
+
+**The PMU half is ANSWERED, 2026-09-05, documentary.** The board half is open,
+and it is a schematic that has not been read rather than a bench measurement
+nobody can take.
+
+### Why it took two documents
+
+Two different parts ship as "AXP2101" and their register maps disagree, so a
+claim read out of one datasheet is not automatically a claim about this board.
+Which part is fitted here is itself unresolved —
+`docs/research/BATTERY_UPGRADE.md:131` — "- **Which AXP2101 variant is fitted**, and this is not a footnote — see §6."
+— with the evidence there leaning to the switch-mode part, because Waveshare
+publish its datasheet in this board's own Resources list. So H2 was answered by
+reading **both**:
+
+- `AXP2101_Datasheet_V1.4_en.pdf`, the **linear** part — its cover says
+  `100mA-1A Linear charger` and its pin 35 is the `DCDC5` inductor.
+- `X-power-AXP2101_SWcharge_V1.0.pdf`, the **switch-mode** part, fetched
+  2026-09-05 from `files.waveshare.com/wiki/common/`. It has no `DCDC5` at all.
+
+Both are bench-only copies under `~/attadipa-bench/`; neither is committed.
+**They give the same answer, so the open variant question does not gate H2.**
+
+### Five channels, and none of them is a current
+
+The SWcharge document says it in prose, §6.10:
+
+> AXP2101 has a low speed 14 Bits SAR ADC for measuring BAT voltage, Vbus
+> voltage, Vsys voltage, TS voltage and die temperature.
+
+Its Table 6-7 lists exactly those five, and both register maps agree:
+`0x34`–`0x3D` is ten byte-wide registers — `vbat_h/l`, `ts_h/l`, `vbus_h/l`,
+`vsys_h/l`, `tdie_h/l` — five two-byte channels, after which the map goes
+straight to `0x40`, IRQ Enable 0 (linear §6.13.2.30–40; SWcharge §6.13.2.31–41).
+There is no `0x3E` and no `0x3F`. **Neither block contains a current.**
+
+The channel-enable register `0x30` does carry a sixth bit — bit 5, "general
+purpose ADC channel enable" — and what matters is what it is *not*. It has no
+data register in either map, no pin in the linear document's Table 4-1, and the
+SWcharge document does not count it among its channels at all; in the linear
+part it reaches the data path only through the debug multiplexer `ch_dbg_en`
+(`0x34[7:6]` with `0x36[6]`, value `110`). Whatever it reads, it is not a
+current, because there is no current in the part to read: the only
+current-related field in either register map is a two-bit **direction** one,
+`Battery Current Direction` at `0x01[6:5]` (linear §6.13.2.2) — standby, charge
+or discharge. Which way, never how much.
+
+The running board agrees. Under the vendor's own firmware this unit reads
+`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:403` — "  0x00 STATUS1        = 0x28      0x30 ADC_CH_EN      = 0x1D"
+— and `0x1D` against that bit map is die temperature, `vsys`, `vbus` and `vbat`
+on, `TS` off. Four channels running, not one of them a current.
+
+So the fuel gauge's battery percentage (`0xA4`, read-only, linear §6.13.2.88) is
+the only consumption-related number the PMU will hand over, and it is a slow
+integrated one.
+
+### A premise behind H1 and H5–H9 goes with it
+
+The appealing idea was to put the watch on its battery in software — USB still
+plugged so the serial bridge stays live, the cell carrying the load so its
+discharge could be watched. Neither datasheet allows it.
+
+`0x16[2:0]` is an input current **ceiling**, not a floor, and its lowest setting
+is `000` = 100 mA rather than zero (§6.13.2.12 and POR default `100b` = 1500 mA,
+identical in both documents). Below the cap the input supplies the whole system
+and the cell supplies nothing; only above it does the cell carry the difference.
+The idle draw H1 and H5–H9 exist to measure is the regime that sits *under* a
+100 mA cap — which is exactly where this trick does not work.
+
+Nor is there a way to take the input off. The part has no `HIZ` bit: the word
+occurs once in the linear datasheet, as a CHGLED pin drive mode (`0x69[5:4]`,
+§6.13.2.66). The two registers that look like the answer are not. `0x12[3]`
+gates `BATFET`, which is the **battery** side and only in the power-off
+battery-only condition (linear §6.13.2.8), and `0x18[1]` stops cell charging
+without taking VBUS off the system rail.
+
+### What is left: the board half
+
+Nothing in the PMU makes an external shunt unnecessary, so the question that
+remains is whether either board already fits one that something could read.
+
+- **Waveshare battery lead — answered, and the answer is no.** The schematic
+  read gives net `VBAT1` three connections and no series element:
+  `docs/research/BATTERY_UPGRADE.md:84` — "No protection FET, no fuel-gauge IC, no load switch, no series sense resistor"
+- **Waveshare elsewhere — one candidate, untraced.** `RP3` 0.01 Ω 1 % sits in
+  the `VSYS` node —
+  `docs/research/BATTERY_UPGRADE.md:566` — "`RP3` 0.01 Ω 1 %; and `DCDC5` is listed `NC` in the sheet's own rail table with"
+  — on a converter switch node rather than a clean DC lead, and where its other
+  end goes has not been traced. Not a measurement route until it is, and tracing
+  it means rendering the sheet again rather than grepping it.
+- **T-Watch S3 Plus — unread, not unavailable.** The main-board schematic is in
+  hand and has been read for other nets —
+  `docs/research/TWATCH_RTC_INPUT_WAKE.md:19` — "T-Watch S3 Plus schematic | `T_WATCH-S3 25-03-24.pdf`"
+  — but nobody has looked at its battery path for a series sense element. That
+  is a reading, not a measurement, and it is the cheapest thing left here.
+
+Failing a shunt on either board, H1 and H5–H9 need external instrumentation —
+an inline USB power meter, or a bench supply with an ammeter — which is the
+owner's bench question rather than a documentary one.
+
+
