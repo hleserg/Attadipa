@@ -660,9 +660,11 @@ and the cell supplies nothing; only above it does the cell carry the difference.
 The idle draw H1 and H5–H9 exist to measure is the regime that sits *under* a
 100 mA cap — which is exactly where this trick does not work.
 
-Nor is there a way to take the input off. The part has no `HIZ` bit: the word
-occurs once in the linear datasheet, as a CHGLED pin drive mode (`0x69[5:4]`,
-§6.13.2.66). The two registers that look like the answer are not. `0x12[3]`
+Nor is there a way to take the input off. The part has no `HIZ` bit. The word
+does occur, in both documents and in one register only — `0x69`, CHGLED setting
+and control (linear §6.13.2.66, SWcharge §6.13.2.67) — where it names that pin's
+drive modes: `00: Hiz`, `01: Low/Hiz 25%/75% duty 1Hz`. An indicator LED, not an
+input path. The two registers that look like the answer are not. `0x12[3]`
 gates `BATFET`, which is the **battery** side and only in the power-off
 battery-only condition (linear §6.13.2.8), and `0x18[1]` stops cell charging
 without taking VBUS off the system rail.
