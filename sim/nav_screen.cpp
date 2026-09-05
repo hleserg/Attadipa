@@ -81,6 +81,14 @@ bool stage_nav_scenario(const char *name) {
     node.position.age_at_us_ms = 45000;
     g_state.own = own;
     g_state.target = node;
+  } else if (std::strcmp(name, "receiver-silent") == 0) {
+    // The own half of `node-unavailable`: a receiver that is bound and has
+    // stopped answering. The retained coordinate still measures, so this is
+    // the layout case worth looking at — a status label over a full pair of
+    // numbers, not over two em dashes.
+    own.availability = core::Availability::Unreachable;
+    g_state.own = own;
+    g_state.target = node;
   } else if (std::strcmp(name, "node-unknown") == 0) {
     g_state.own = own;
     g_state.target.availability = core::Availability::Ready;
@@ -99,8 +107,8 @@ bool stage_nav_scenario(const char *name) {
   } else {
     std::fprintf(stderr,
                  "unknown --nav-state \"%s\"; one of: ready waiting no-fix "
-                 "own-stale own-degraded node-unavailable node-unknown "
-                 "node-stale arrived far\n",
+                 "own-stale own-degraded receiver-silent node-unavailable "
+                 "node-unknown node-stale arrived far\n",
                  name);
     return false;
   }

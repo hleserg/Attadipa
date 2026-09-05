@@ -113,6 +113,8 @@ const char *to_string(NavStatus status, l10n::Locale locale) {
       return l10n::tr(l10n::StringId::NavOwnPositionStale, locale);
     case NavStatus::OwnPositionDegraded:
       return l10n::tr(l10n::StringId::NavOwnPositionDegraded, locale);
+    case NavStatus::OwnReceiverSilent:
+      return l10n::tr(l10n::StringId::NavOwnReceiverSilent, locale);
     case NavStatus::NodeUnavailable:
       return l10n::tr(l10n::StringId::NavNodeUnavailable, locale);
     case NavStatus::NodePositionUnknown:
@@ -145,7 +147,29 @@ NavText format_navigation(const NavState &state) {
   // sent, which is the whole product.
   const bool own_ok = usable(state.own) &&
                       state.own.validity != core::PositionValidity::NoFix;
-  if (!own_ok) {
+  //
+  // The receiver first, before anything about the coordinate, because it is a
+  // statement about a different thing: `Unreachable` is bound-and-not-answering
+  // and it outranks every validity below it. Without this branch a provider
+  // that had stopped talking still read `Ready` with a full distance and
+  // bearing for as long as its last coordinate stayed inside 30 s, then
+  // `OwnPositionStale` — a claim about the coordinate's age when the story is
+  // that nothing is arriving. `NodeUnavailable` is the same sentence about the
+  // other half, and the numbers keep rendering here for the same reason they do
+  // there: a coordinate that was real is still drawn, under a line saying it is
+  // no longer being refreshed.
+  //
+  // Not `Unprovisioned` and not `Unsupported`: those two are handled below,
+  // where the caveat can tell the reader which one it is. Nothing can be silent
+  // that was never bound.
+  //
+  // The first second after every boot and every wake reads this way and then
+  // heals: the driver flushes its ring after a gap, so `heard_` is legitimately
+  // false until a real sentence lands. That is the true answer for a device
+  // that was not listening.
+  if (state.own.availability == core::Availability::Unreachable) {
+    text.status_code = NavStatus::OwnReceiverSilent;
+  } else if (!own_ok) {
     text.status_code = state.own.fix_type == core::FixType::NoFix
                            ? NavStatus::NoFix
                            : NavStatus::WaitingForGps;

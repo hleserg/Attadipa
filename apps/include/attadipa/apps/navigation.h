@@ -38,6 +38,7 @@ enum class NavStatus : std::uint8_t {
     NoFix,                // a receiver answered, and the answer is that it cannot solve
     OwnPositionStale,     // there was a local fix and it is too old to act on
     OwnPositionDegraded,  // there is a current local fix and it solved badly
+    OwnReceiverSilent,    // the receiver is bound and nothing is arriving from it
     NodeUnavailable,      // the link to the node is not up
     NodePositionUnknown,  // the node is reachable and has stated no coordinate
     NodePositionStale,    // it stated one, long enough ago that the age is the story

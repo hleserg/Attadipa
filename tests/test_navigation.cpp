@@ -177,6 +177,41 @@ void test_a_dropped_link_is_reported_as_a_link_and_not_as_a_coordinate() {
   CHECK(text.has_distance);
 }
 
+// The own half of the test above, and the one that was missing: a receiver
+// that is bound and has stopped answering said nothing the wearer could see.
+// It read `Ready` with a full distance while its last coordinate stayed inside
+// the freshness window, then `OwnPositionStale` — a claim about the age of a
+// coordinate when the story is that nothing is arriving at all.
+void test_a_receiver_that_stopped_answering_is_reported_as_a_receiver() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.own.availability = core::Availability::Unreachable;
+  state.target = node_coordinate({5100000, 10000000}, 3000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.status_code == apps::NavStatus::OwnReceiverSilent);
+  CHECK(is(text.status, "Receiver silent"));
+  // The retained coordinate goes on measuring, for the same reason the node's
+  // does across a dropped link: it was real, and the line above says it is no
+  // longer being refreshed.
+  CHECK(text.has_distance);
+
+  // And it outranks what the coordinate's own age would have said.
+  state.own.validity = core::PositionValidity::Stale;
+  CHECK(apps::format_navigation(state).status_code ==
+        apps::NavStatus::OwnReceiverSilent);
+
+  // Never having answered is the same sentence. This is the one that used to
+  // read "Waiting for GPS" — indistinguishable from a healthy receiver still
+  // acquiring, which is the state a wearer is meant to wait out rather than go
+  // and check the wiring for.
+  apps::NavState never;
+  never.own.availability = core::Availability::Unreachable;
+  never.own.receiver = core::ReceiverPresence::Running;
+  const apps::NavText cold = apps::format_navigation(never);
+  CHECK(cold.status_code == apps::NavStatus::OwnReceiverSilent);
+  check_no_numbers(cold);
+}
+
 void test_a_node_that_never_said_where_it_is() {
   apps::NavState state;
   state.own = own_fix(kHere);
@@ -312,7 +347,8 @@ void test_every_status_has_words() {
       apps::NavStatus::WaitingForGps,       apps::NavStatus::NoFix,
       apps::NavStatus::OwnPositionStale,    apps::NavStatus::OwnPositionDegraded,
       apps::NavStatus::NodeUnavailable,     apps::NavStatus::NodePositionUnknown,
-      apps::NavStatus::NodePositionStale,   apps::NavStatus::Ready};
+      apps::NavStatus::NodePositionStale,   apps::NavStatus::OwnReceiverSilent,
+      apps::NavStatus::Ready};
   // In both locales, because `l10n/strings.toml` is where the sentences live
   // now and a missing entry is a silent empty label rather than a link error.
   for (const apps::NavStatus status : all) {
@@ -425,6 +461,7 @@ int main() {
   test_an_old_node_coordinate_leads_with_its_age();
   test_the_threshold_belongs_to_the_caller();
   test_a_dropped_link_is_reported_as_a_link_and_not_as_a_coordinate();
+  test_a_receiver_that_stopped_answering_is_reported_as_a_receiver();
   test_a_node_that_never_said_where_it_is();
   test_a_coordinate_off_the_globe_is_refused_rather_than_saturated();
   test_a_stale_own_fix_is_neither_a_missing_one_nor_a_current_one();

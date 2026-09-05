@@ -563,6 +563,10 @@ ru = "Своя позиция устарела"
 en = "Own position degraded"
 ru = "Своя позиция неточна"
 
+[nav_own_receiver_silent]
+en = "Receiver silent"
+ru = "Приёмник молчит"
+
 [nav_node_unavailable]
 en = "Node unavailable"
 ru = "Узел недоступен"
