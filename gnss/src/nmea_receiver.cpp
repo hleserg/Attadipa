@@ -55,6 +55,35 @@ bool degrees_e7(const minmea_float& f, std::int32_t limit, std::int32_t& out)
     return true;
 }
 
+// MINMEA ANSWERS 0 FOR AN ABSENT HEMISPHERE AND THEN MULTIPLIES THE COORDINATE
+// BY IT.
+// `gnss/vendor/minmea/minmea.c:138` — "            case 'd': { // Single character direction field (int)."
+// treats an empty `N`/`S` or `E`/`W` field as zero rather than as a parse
+// error, and `minmea_parse_rmc()` then does `frame->latitude.value *=
+// latitude_direction`. So `$GNRMC,135222.00,A,0030.00004,,00100.00004,E,...`
+// parses clean, carries the `A` status, and states a latitude of exactly zero:
+// the `(0, 0)` this slice exists not to show, wearing a valid fix flag.
+//
+// Read a second time here rather than inferred from the value, because zero is
+// a real place. Refusing every coordinate that came out as zero would refuse a
+// fix on the equator or the prime meridian -- a band 1.85 cm wide, but a lie of
+// the same kind in the other direction, and one nothing in the stream would
+// explain.
+//
+// `_` skips a field, so the format walks to the two direction fields and
+// nowhere else: after the talker, RMC's are the 4th and 6th, GGA's the 3rd and
+// 5th. Both formats consume the same three arguments.
+bool hemispheres_present(const char* sentence, bool rmc)
+{
+    minmea_type type{};
+    int ns = 0;
+    int ew = 0;
+    if (!minmea_scan(sentence, rmc ? "t___d_d" : "t__d_d", &type, &ns, &ew)) {
+        return false;
+    }
+    return ns != 0 && ew != 0;
+}
+
 // Knots to millimetres per second: one knot is 1852 m/h.
 bool speed_mm_s(const minmea_float& f, std::uint32_t& out)
 {
@@ -184,7 +213,8 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 
         if (frame.valid) {
             Position position{};
-            if (degrees_e7(frame.latitude, core::kLatitudeMaxE7, position.latitude_e7) &&
+            if (hemispheres_present(line_, true) &&
+                degrees_e7(frame.latitude, core::kLatitudeMaxE7, position.latitude_e7) &&
                 degrees_e7(frame.longitude, core::kLongitudeMaxE7, position.longitude_e7)) {
                 open_.position = position;
             }
@@ -242,7 +272,8 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 
         if (gga_quality_ != 0) {
             Position position{};
-            if (degrees_e7(frame.latitude, core::kLatitudeMaxE7, position.latitude_e7) &&
+            if (hemispheres_present(line_, false) &&
+                degrees_e7(frame.latitude, core::kLatitudeMaxE7, position.latitude_e7) &&
                 degrees_e7(frame.longitude, core::kLongitudeMaxE7, position.longitude_e7)) {
                 // GGA over RMC when both are present: this is the sentence that
                 // states the fix quality beside the coordinate.
