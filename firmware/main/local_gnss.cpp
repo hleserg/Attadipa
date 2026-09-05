@@ -31,28 +31,33 @@ constexpr char kTag[] = "gnss";
 constexpr uart_port_t kPort = UART_NUM_1;
 
 // UART1, not UART0, although the pad is labelled for UART0 and GPIO 44 is this
-// chip's `U0RXD`. The console on this board is USB-Serial/JTAG, so UART0 is
-// free — but the GPIO matrix makes the choice of peripheral independent of the
-// pin anyway, and leaving UART0 alone means a bench session can still open a
-// real serial console on the same pads without fighting this driver for them.
+// chip's `U0RXD`. Nothing is taken from the console by doing so: this project
+// builds with `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y` and
+// `CONFIG_ESP_CONSOLE_UART_NUM=-1`, so there is no UART console on this image
+// at all — checked in the generated `build-gnss/sdkconfig`, not assumed from
+// the defaults file. The GPIO matrix makes the peripheral independent of the
+// pin anyway, and leaving UART0 unclaimed means a bench session can still open
+// a serial console on these pads without fighting this driver for them.
 constexpr int kRxPin = CONFIG_ATTADIPA_GNSS_LOCAL_RX;
 constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 
 // THESE TWO ARE A PAIR, AND THE INEQUALITY BETWEEN THEM IS THE POINT: the ring
-// must hold more than `kStaleGapMs` of traffic, so that the flush in `drain()`
-// always fires *before* the ring can overflow and start keeping the wrong
-// bytes.
+// must hold at least `kStaleGapMs` of traffic. A gap shorter than that keeps
+// its bytes rather than flushing them, so the ring has to have held them all —
+// otherwise the ESP-IDF driver has dropped the *new* bytes to keep the old
+// ones, and this tick reads a backlog whose newest sentence is already seconds
+// behind, which is precisely the stamp `drain()` exists to refuse.
 //
-// MEASURED, over the sixteen #427 bench captures — one epoch a second, 437 to
-// 1217 bytes an epoch, counted in
+// MEASURED, over the sixteen #427 bench captures — one epoch a second, and the
+// heaviest single epoch in any of them is **1727 bytes**, counted in
 // `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:410` — "### 3.1 How much a receiver says in a second — MEASURED, and a buffer depends on it".
-// So the worst case is 1217 B/s, 4096 bytes is 3.4 seconds of it, and three
-// seconds of gap is reached first with room to spare.
+// Three seconds of that is 5181 bytes, so 4096 would not have been enough:
+// 8192 is 4.7 seconds at the measured peak.
 //
-// A module noisier than either of those breaks that inequality rather than
-// silently mis-stamping: it overflows the ring inside one tick, the torn
-// sentences are discarded whole, and `discarded()` counts them.
-constexpr int kRxRing = 4096;
+// The peak scales with satellites in view, not with the module, and no bench
+// sky exceeded 38. At the measured ~30 bytes per satellite in view, an open sky
+// showing 45 would be about 1930 B/s — still 4.2 seconds in this ring.
+constexpr int kRxRing = 8192;
 
 // The UI timer runs at 500–1000 ms, so three seconds is past the slowest of
 // those with margin — a tick that merely ran late does not throw bytes away —
@@ -62,7 +67,7 @@ constexpr std::uint64_t kStaleGapMs = 3000;
 // One tick may not spend longer than this reading. Twice the ring, so a tick
 // after a busy second always empties it; a module babbling faster than the
 // captures would otherwise hold the LVGL task for as long as it kept talking.
-constexpr std::size_t kBytesPerTick = 8192;
+constexpr std::size_t kBytesPerTick = 16384;
 
 attadipa::gnss::NmeaReceiver     receiver;
 attadipa::core::LocationService  location(receiver);
@@ -101,7 +106,7 @@ void drain(attadipa::core::MonotonicTime now)
     last_tick_ms = now.ms;
     if (gap > kStaleGapMs) {
         const esp_err_t err = uart_flush_input(kPort);
-        ESP_LOGW(kTag, "%llu ms since the last read; %s the ring rather than "
+        ESP_LOGI(kTag, "%llu ms since the last read; %s the ring rather than "
                        "stamping stale bytes with the time they were noticed",
                  static_cast<unsigned long long>(gap),
                  err == ESP_OK ? "discarded" : "failed to discard");
