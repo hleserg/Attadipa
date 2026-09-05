@@ -309,7 +309,7 @@ Two consequences follow, both from facts this repository already holds at
   written down here rather than raised as an alarm.
 
 **And that is where it stops.** Nothing here says the cell is being harmed —
-and of the two registers named above as the dangerous ones, **`REG 0x64` is
+and of the registers named above as the dangerous ones, **`REG 0x64` is
 already answered, and answered well**: `0x03` = `011b` = **4.2 V**, the value
 `BATTERY_UPGRADE` §6 prescribes rather than the `100b`/`101b` that would take a
 4.2 V cell to 4.35. It read `0x03` in the 2026-08-23 dump and `0x03` again on
@@ -317,8 +317,13 @@ this board on 2026-08-28 —
 `docs/research/BENCH_DEVICES.md:185` — "`REG 0x64` on `0x34` read back `0x03`."
 — across the 2026-08-25 factory restore above, in which `phone_s3_box_3` itself
 booted again. That is measured evidence that the vendor image does **not**
-change `REG 0x64`. It says nothing about `REG 0x62`. What is left is narrower: `0x63` was
-read but is not decoded here, and `0x61` was not read at all.
+change `REG 0x64`. It says nothing about `REG 0x62` — and `0x62` is the
+dangerous one this section cannot close. It was read once, as `0x11`, which
+decodes to **1100 mA** on the SWcharge part and to a reserved code on the
+linear one, and whether it still reads that today is not established
+(`BATTERY_UPGRADE` §6). So what is left is narrower but still open at its
+worst point: `0x62`'s value today, `0x63` read but not decoded here, and
+`0x61` never read at all.
 **The owner was asked whether he wanted them read and said yes**
 (2026-08-24, under OD-18 in
 [`../research/OWNER_DECISIONS.md`](../research/OWNER_DECISIONS.md)), so the read
@@ -326,10 +331,13 @@ is owed on the next bench trip rather than merely available — which changes wh
 these `UNKNOWN`s get an answer and changes none of them today. The measurement
 plan in [`BATTERY_UPGRADE.md`](../research/BATTERY_UPGRADE.md) carries `0x63`,
 `0x64` and `0x61`: three cell-safety registers, and one burst reads all three.
-The bench session must have a GitHub issue before it starts; a bare task number
-in prose is not ownership. Until then the work is unclaimed — but what stays
-`UNKNOWN` is now only `0x61`'s value, `0x63[4]`'s decode, and which of the two
-states is kinder to the cell. `0x64` is not among them.
+**`0x62` belongs in that burst too** — it is in the §1.3 read set for the same
+reason, and re-reading it is the only thing that turns its value today back
+into a fact. The bench session must have a GitHub issue before it starts; a bare
+task number in prose is not ownership. Until then the work is unclaimed — and
+what stays `UNKNOWN` is `0x62`'s value today, `0x61`'s value, `0x63[4]`'s
+decode, and which of the two states is kinder to the cell. `0x64` is the one
+that is not among them.
 
 ## Identify a board by its USB serial, never by its port
 
