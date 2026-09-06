@@ -1760,13 +1760,21 @@ and identity are the reasons. A power log has neither, so the reason does not
 reach it.
 
 **This widens an exception that already exists; it does not create the first
-one.** #338 wrote a machine-enforced carve-out on 2026-08-31 —
-`.gitignore:57` — "# ...except a bench capture committed as the evidence for a MEASURED result." — sitting between `*.log` at `:56` and `!docs/research/*/*.log` at
-`:58`, with five captures tracked under
+one.** #338 wrote a machine-enforced carve-out on 2026-08-31, three consecutive
+lines of `.gitignore` reading `*.log`, then
+`# ...except a bench capture committed as the evidence for a MEASURED result.`,
+then `!docs/research/*/*.log` — with five captures tracked under
 `docs/research/pedometer-bench-2026-08-28/`. Its condition is *evidence for a
 `MEASURED` result*; this decision's is *carries neither position nor identity*.
 Two conditions, and a capture needs both. What this entry adds is the owner
 having decided the second, which until now was a working convention.
+
+The three rules are quoted rather than cited by line on purpose: `.gitignore` is
+not one of the suffixes `tools/docs/check_docs.py` will resolve a citation into,
+so a line number pointing at it is checked by nothing at all and would rot in
+silence the first time somebody inserted a line above it — with the entry then
+calling `*.log` the comment and the comment the negation, and the checker still
+exiting `0`.
 
 **What it obliges, including a path.** The `.gitignore` rule is written about
 the **path**, and `*` does not cross a `/`, so `!docs/research/*/*.log` reaches
@@ -1841,7 +1849,19 @@ wrong, or right and then stale, draws "you are here" over a place the wearer is
 not — the exact failure the rule existed to refuse, delivered by a screen that
 looks no different. So the mechanism is architectural and owes an ADR before any
 code: where the confirmation is entered, where it is stored, **when it expires**,
-and what the readout does once it has.
+what the readout does once it has, and — the one without which none of the rest
+renders — **what validity a confirmed companion's coordinate may carry.** The
+confirmation is necessary and it is not sufficient. Every coordinate off this
+channel is born `NoFix`:
+`link/src/node_position_provider.cpp:38` — "    out.observation.fix_type = core::FixType::Unknown;" — and `NoFix` is the one thing an own position may not be:
+`apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&".
+Build this decision exactly as written and the wearer confirms, the coordinate
+routes to `own`, and the face still says "Waiting for GPS". The other half of
+the answer is §4.1 of
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md), whose amendment
+tops out at `Stale` — which `own_ok` accepts. Deciding that is the ADR's, and
+leaving it unrecorded here is what made the struck `validity` binding look like
+a detail instead of the gate.
 
 **Expiry is a trust event, not only a screen event, and the ADR owes that too.**
 `core/src/trust.cpp:343` — "    // A CHANGE OF BODY IS A DISCONTINUITY, NOT A MEASUREMENT." — and the

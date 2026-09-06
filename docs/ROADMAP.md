@@ -36,16 +36,22 @@ Written 2026-08-24, after an independent cold read of the repository.
 > terminal on the wrist. **How many devices that is depends on the board, and
 > both answers are the product:**
 >
-> - **T-Watch S3 Plus — one device, self-contained.** Watch and companion on the
->   same board and therefore on the same body. Its GNSS named itself `MIA-M10Q`
->   on 2026-09-05
+> - **T-Watch S3 Plus — one device, not two.** The owner's product statement:
+>   watch and companion are meant to be the same unit here, so whatever this
+>   board provides, it provides on the same body. **What is verified is the
+>   receiver half, and that is the half #442 needs.** Its GNSS named itself
+>   `MIA-M10Q` on 2026-09-05
 >   ([TWATCH_GNSS_READOFF_2026-09-05](research/TWATCH_GNSS_READOFF_2026-09-05.md)),
->   and its radio is a sub-GHz one whose part number the order listing gives as
->   SX1262 with nobody having read off the chip, so only "sub-GHz" is
->   load-bearing here
->   ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "not a marking read off the part, so `RadioChip::Unknown` does not move and").
->   `own` comes from a receiver on this body, which is the body rule satisfied
->   rather than bent — no owner decision and no confirmation are involved.
+>   so `own` comes from a receiver on this body — the body rule satisfied rather
+>   than bent, with no owner decision and no confirmation involved.
+>   **The radio half is not verified and this block does not assert it.** Nobody
+>   has read the marking off the chip, five parts are possible and only some of
+>   them do LoRa at all
+>   ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "not a marking read off the part, so `RadioChip::Unknown` does not move and"),
+>   which is the precise failure [ADR-0003](adr/0003-radio-not-lora.md) is
+>   accepted to prevent — "A T-Watch fitted with a CC1101 would have advertised mesh messaging, offered the".
+>   So "self-contained" here says `own` needs no companion, and says **nothing**
+>   about this board carrying mesh.
 > - **Waveshare AMOLED 2.06 — two nodes, split.** The wrist, and a companion
 >   somewhere else. The board has neither receiver nor radio
 >   ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "| GNSS | yes — **two possible modules** | **absent** |")
@@ -119,11 +125,14 @@ Written 2026-08-24, after an independent cold read of the repository.
 > the first of three priced options: a companion the wearer has *explicitly
 > confirmed is on their body* may fill `own`, and without that confirmation its
 > coordinate stays `target` — [OWNER_DECISIONS](research/OWNER_DECISIONS.md)
-> OD-28. So the `OwnPosition` payload in the direction prompt is the mechanism
-> for a decision that has been made, rather than a proposal against a rule; what
-> it now owes is an ADR, because the word carrying the whole decision is
-> *confirmed* and a confirmation that is right and then stale is how the refused
-> failure arrives looking like a success. The two options not taken were
+> OD-28. So the `OwnPosition` payload in the direction prompt is no longer a
+> proposal against a rule; it is how the *coordinate* arrives. **Where the
+> confirmation itself lives is not decided and is not this payload's field** —
+> OD-28 leaves it to the ADR it orders, and the two things the ADR must not
+> conflate are the confirmation and the validity. The word carrying the whole
+> decision is *confirmed*, and a confirmation that is right and then stale is
+> how the refused failure arrives looking like a success. The two options not
+> taken were
 > soldering a receiver to the traced Waveshare pads, and dropping the distance
 > altogether. **The question was always the split topology's**, and OD-28 says
 > so in as many words: the self-contained one never had it, because there the
