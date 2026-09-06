@@ -19,12 +19,15 @@ Written 2026-08-24, after an independent cold read of the repository.
 > [MESHCORE_T114_FIRST_CONTACT](research/MESHCORE_T114_FIRST_CONTACT.md) §1a —
 > "Both advertise the Companion service and both pair with the same operator" —
 > is `MEASURED`. What is still open is narrower and is
-> [#304](https://github.com/hleserg/Attadipa/issues/304): the firmware connects
-> to whichever advertisement arrives first and does not log the peer's address,
-> so which of the two nodes a given run reached is recovered from that run's own
-> transcript, and whether the service UUID or the name substring is what matched
-> is not recorded at all. The delivery and the reply are the parts that remain
-> `NOT OBSERVED`. None of this is permission to change node firmware, add a
+> [#304](https://github.com/hleserg/Attadipa/issues/304), and it is *selection*
+> rather than identification: the firmware connects to whichever advertisement
+> arrives first, and whether the service UUID or the name substring is what
+> matched is not recorded at all. Which node a run is talking to is no longer
+> in doubt — the watch pins one by its public key and terminates every other
+> connection (`firmware/main/meshcore_node_pin.h`), and draws four bytes of that
+> key beside the name:
+> `firmware/main/waveshare_board.cpp:801` — "// Four bytes of a node's public key as hex. The bench reports identify nodes by".
+> The delivery and the reply are the parts that remain `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
 > **Direction, 2026-09-06 — the two halves, and what gates each.** Atta-dipa
@@ -33,9 +36,12 @@ Written 2026-08-24, after an independent cold read of the repository.
 > neither: the T-Watch S3 Plus has both on the board — its GNSS named itself
 > `MIA-M10Q` on 2026-09-05
 > ([TWATCH_GNSS_READOFF_2026-09-05](research/TWATCH_GNSS_READOFF_2026-09-05.md)),
-> and its radio is an SX1262 — and the Waveshare has neither
-> ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) —
-> "| GNSS | yes — **two possible modules** | **absent** |"). The product rule is the one
+> and its radio is a sub-GHz one whose part number the order listing gives as
+> SX1262 and nobody has read off the chip, so only "sub-GHz" is load-bearing here
+> ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "not a marking read off the part, so `RadioChip::Unknown` does not move and").
+> The Waveshare has neither
+> ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "| GNSS | yes — **two possible modules** | **absent** |").
+> The product rule is the one
 > [AGENTS.md](../AGENTS.md) already states — "Applications ask what a device can
 > do, not which board it is" — so the slice is written for a wrist with no
 > receiver of its own and is not broken by one that has one.
@@ -52,11 +58,25 @@ Written 2026-08-24, after an independent cold read of the repository.
 > before any GNSS hardware exists" — so the slice has an accepted end state that
 > contains no magnetometer: a north-up readout with the bearing marked. That
 > state is not a placeholder for the arrow, it is one of the seven rows
-> ADR-0009 §5 enumerates. Neither board draws it today, and the reason is the
-> other coordinate: `refresh_nav()` reads own position from the pads of a board
-> that has no receiver, so the Waveshare answers `Unprovisioned` and the face
-> says "Waiting for GPS" instead. It reaches the north-up state the moment its
-> own position arrives from the companion, which is what #450 builds.
+> ADR-0009 §5 enumerates. Neither board draws it today, and for two different
+> reasons. The Waveshare has the page and not the coordinate: `refresh_nav()`
+> reads own position from the pads of a board with no receiver, so
+> `Unprovisioned`, and the face says "Waiting for GPS". The T-Watch has the
+> receiver and not the page:
+> `firmware/main/local_gnss.h:50` — "call `local_gnss_location()` at all yet — it has no navigation page — so the".
+>
+> **And the coordinate the Waveshare is missing is its own, not the target's.**
+> In the two-device shape the companion is on the same body, so what it supplies
+> over BLE is *both*: a remote node's coordinate to walk to, and this body's own
+> coordinate to walk from. Nothing carries the second one today. Every position
+> the MeshCore channel produces states no fix type and therefore classifies
+> `NoFix`:
+> `link/src/meshcore_companion.cpp:564` — "path in this repository can reach `PositionValidity::Valid` from it."
+> And `NoFix` is exactly what an own position may not be —
+> `apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&" — on
+> purpose. So the `validity` field in #450's
+> `OwnPosition` payload is the point of the payload, not a detail of it, and
+> BLE alone does not unblock the Waveshare.
 >
 > **What hardware does gate is the arrow, and its first step is H16** — four
 > ohmmeter readings on two bare magnetometer modules, which arrived 2026-09-05
@@ -79,7 +99,9 @@ carrying prompts between agents.
 
 At the time of this decision, **none of it had ever run on a watch.**
 
-That is not an impression. It is what the tree says:
+That is not an impression. It is what the tree said, and every bullet below is
+that record rather than a live claim — the first of them, "there is no ESP-IDF
+project", stopped being true with T-165:
 
 - There is **no ESP-IDF project**. No `main/` component, no
   `idf_component_register` anywhere, no `sdkconfig.defaults`, no partition
@@ -146,8 +168,10 @@ defines M2 as *"Board Bring-Up / **Per board:** boot; display; touch; PMU
 basics; input; diagnostics"* — and that document is binding, so this is **the
 specification's M2 narrowed to one board, with the second still owed**, not a
 replacement for it. Finishing the six items below on the Waveshare does not
-finish M2: the T-Watch half remains, blocked on a board that is `ORDERED` and
-not in hand (T-010). Nobody may write *"M2 complete"* off this list alone.
+finish M2: the T-Watch half remains (T-010). That half was blocked on a board
+that was `ORDERED` and not in hand; the board arrived 2026-08-27
+([BENCH_DEVICES](research/BENCH_DEVICES.md)) and what remains is the bring-up
+itself. Nobody may write *"M2 complete"* off this list alone.
 
 The shape, end to end:
 
