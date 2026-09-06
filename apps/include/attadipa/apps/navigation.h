@@ -21,6 +21,13 @@
 // meaning as well — a fusion engine here would be an abstraction with two
 // inputs and one consumer, and it would have to invent a provenance for the
 // answer it produced.
+//
+// One exception, and it is a routing decision taken above this header rather
+// than a blending done inside it: a companion the wearer has explicitly
+// confirmed is on their body may fill `own`. It still carries `NoFix` at every
+// age and is judged by arrival age, as a target is. `docs/adr/0019-confirmed-companion-body.md`
+// decides where that confirmation is entered, where it lives, when it lapses,
+// and what this readout says while it holds.
 
 namespace attadipa::apps {
 

@@ -458,8 +458,10 @@ node coordinate is still `target`, and the word doing the work is *confirmed*.
 The rucksack, the windowsill and the wall are unchanged, and so is the failure
 they stand for — what OD-28 adds is a state, and what it therefore owes is an
 expiry, because a confirmation that was true this morning is exactly how that
-failure arrives looking like a success. None of it is built: the decision names
-an ADR as its next artefact and no code implements it yet.
+failure arrives looking like a success. That ADR is now written —
+[ADR-0019](../adr/0019-confirmed-companion-body.md) — and it leaves §4.1 alone:
+a confirmed coordinate still carries `NoFix`, and what moves is which slot of
+the readout it is routed to. No code implements any of it yet.
 
 ## 5. Correlation, timeouts and cadence
 

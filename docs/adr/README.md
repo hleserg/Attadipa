@@ -47,12 +47,13 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
 | [0011](0011-gnss-integrity.md) | GNSS integrity: the receiver's own defences, and a trust state with reasons | **accepted** |
 | [0012](0012-project-name-attadipa.md) | Project name is Attadipa | **accepted** |
-| [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** — one exempt state carved out by OD-28, its ADR unwritten |
+| [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** — one application-level exception on top of it, ADR-0019 |
 | [0014](0014-time-source-and-synchronization.md) | Time source, trust and synchronization | **accepted** |
 | [0015](0015-transport-session-ownership.md) | A transport session has one owner, a generation, and no lifecycle queue | **accepted** |
 | [0016](0016-one-power-owner.md) | Power, PMU rails and sleep have one owner, and consumers hold leases | **accepted** |
 | [0017](0017-board-backends-compose-esp-idf-drivers.md) | A board backend composes ESP-IDF drivers; a vendor BSP is read, not linked | **accepted** |
 | [0018](0018-owner-consent-for-provisioning.md) | What counts as owner consent when a product image is provisioned | **accepted** — the owner chose on-device entry, OD-26 |
+| [0019](0019-confirmed-companion-body.md) | A companion the wearer confirmed is on their body, and how that lapses | **accepted** — implements OD-28 |
 
 ### What the statuses mean here
 

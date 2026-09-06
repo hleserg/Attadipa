@@ -1900,5 +1900,19 @@ channel — a finger on the watch's own screen — is the obvious candidate and 
 not decided here; what is decided is that a second consent channel is not
 invented for it.
 
+**The ADR is written, and it answered the gate differently from the hint above.**
+[ADR-0019](../adr/0019-confirmed-companion-body.md) (2026-09-07) keeps §4.1
+deferred: a confirmed coordinate still carries `NoFix` at every age, because a
+confirmation is a statement about a body and validity is a statement about a
+fix. What moves instead is `own_ok`, on the reasoning its own comment already
+gives for the target three lines above it, and the confirmation is a routing
+decision made where `NavState` is filled — so `PositionSource`, `body_of()`,
+trust and GNSS power gating are all untouched and the `SensorBody::Watch` trap
+above is not entered. It also names the thing this decision quietly costs: a
+confirmed companion's coordinate is `own` and is therefore **not** `target`, so
+until a remote node's coordinate can be fetched the readout has no target at
+all, and an implementation that shows a distance here has put one coordinate in
+both slots.
+
 **What it does not decide:** which of the three upstream paths carries a
 *remote* node's coordinate. That stays open.
