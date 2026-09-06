@@ -131,9 +131,11 @@ Written 2026-08-24, after an independent cold read of the repository.
 > coordinate stays `target` — [OWNER_DECISIONS](research/OWNER_DECISIONS.md)
 > OD-28. So the `OwnPosition` payload in the direction prompt is no longer a
 > proposal against a rule; it is how the *coordinate* arrives. **Where the
-> confirmation itself lives is not decided and is not this payload's field** —
-> OD-28 leaves it to the ADR it orders, and the two things the ADR must not
-> conflate are the confirmation and the validity. The word carrying the whole
+> confirmation itself lives is now decided, and it is not this payload's field**
+> — [ADR-0019](adr/0019-confirmed-companion-body.md) puts it on the watch's own
+> screen through OD-26's channel, holds it in RAM against the ADR-0015 session
+> generation, and never persists it. The two things that ADR had to keep apart
+> are the confirmation and the validity, and it did: The word carrying the whole
 > decision is *confirmed*, and a confirmation that is right and then stale is
 > how the refused failure arrives looking like a success. The two options not
 > taken were
@@ -155,9 +157,15 @@ Written 2026-08-24, after an independent cold read of the repository.
 > `link/src/meshcore_companion.cpp:564` — "path in this repository can reach `PositionValidity::Valid` from it."
 > And `NoFix` is exactly what an own position may not be —
 > `apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&" — on
-> purpose. So the `validity` field in #450's `OwnPosition` payload is the point
-> of the payload, not a detail of it, and BLE alone does not unblock the
-> Waveshare.
+> purpose. **ADR-0019 answered that gate by moving `own_ok` rather than by
+> moving `validity`**: a confirmed coordinate still classifies `NoFix` at every
+> age, `PositionSource` stays `NodeGnss`, and what changes is which slot of
+> `NavState` the firmware routes it to. So the `validity` field in #450's
+> `OwnPosition` payload is a detail of the payload after all, not its point —
+> and BLE alone still does not unblock the Waveshare, for a different reason
+> than this paragraph used to give: a confirmed companion's coordinate becomes
+> `own` and is therefore **not** `target`, so the distance stays unrenderable
+> until a *remote* node's coordinate can be fetched, which OD-28 leaves open.
 >
 > **What hardware does gate is the arrow, and its first step is H16** — four
 > ohmmeter readings on two bare magnetometer modules, which arrived 2026-09-05

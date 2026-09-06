@@ -43,6 +43,13 @@ firmware that fills `NavState`, not by the application that reads it. It has to
 be: the source is not an application's to read —
 `core/include/attadipa/core/position.h:78` — "// Where the position came from. Applications never see this — ADR-0004 §2 —".
 
+**And the application learns of the confirmation from a field, never by sniffing
+the source.** The line above forbids the second, so `NavState` carries one
+`bool`-shaped fact — "this `own` was filled by a confirmed companion" — written
+by the same firmware that fills the slot and read by `format_navigation()` where
+decision 3 needs it. That is one field on a struct the router already owns,
+which is why this ADR adds no mechanism to carry it.
+
 **2. A confirmed coordinate carries `NoFix`, at every age, unchanged.** This is
 the question OD-28 said none of the rest renders without, and the answer is that
 the confirmation changes nothing about it. A confirmation is a statement about a
@@ -56,10 +63,20 @@ Three lines above it the code already says why `own` refuses `NoFix` and why
 `apps/src/navigation.cpp:143` — "// is the point: a receiver on this body reports its own fix state, so `NoFix`"
 and `apps/src/navigation.cpp:145` — "// last held. A node states no fix state at all, so `NoFix` there means only".
 A confirmed companion is the second case wearing the first case's slot: still a
-node, still stating nothing. So `own_ok` gains one clause — a confirmed `own` is
-judged by arrival age, exactly as `target` is — and nothing else in the ladder
-moves. The clause branches on the confirmation, **never on `validity`**, so that
-a later §4.1 amendment cannot silently retitle the line.
+node, still stating nothing. So `own_ok` gains one clause and it is the narrowest
+one that works: the `validity != NoFix` conjunct is **waived** when the
+confirmation holds, and nothing else in the ladder moves —
+`apps/src/navigation.cpp:148` — "  const bool own_ok = usable(state.own) &&".
+The clause branches on the confirmation, **never on `validity`**, so a later
+§4.1 amendment cannot silently retitle the line.
+
+**No age enters this gate, and an earlier draft said one did.** `own_ok` has no
+arrival-age term today and neither does the target's gate; the only age in the
+ladder picks a *label* further down —
+`apps/src/navigation.cpp:191` — "state.target.position.age_at_us_ms >= state.target_stale_after".
+So "judged by arrival age, exactly as `target` is" described neither slot.
+Decision 7 says what the age is for instead, and it is display rather than
+gating.
 
 **4. It is entered on the watch's own screen, and offered by capability.**
 OD-26's channel, unchanged; no second consent path is invented, and nothing here
@@ -68,13 +85,21 @@ local provider — `Availability::Unprovisioned` — which is a fact about this
 device's configuration and not about which board it is. The self-contained watch
 never shows it because its receiver answers.
 
+**And only where there is a session to name.** Decision 5 holds the confirmation
+against a transport session generation, so a device with no live node session has
+nothing to confirm and nothing to hold it against — a T-Watch built with
+`CONFIG_ATTADIPA_GNSS_LOCAL=n` is `Unprovisioned` too, and must not be offered a
+control that would ask the wearer to vouch for a companion that is not there.
+The precondition is both halves: `own` is `Unprovisioned` **and** a node session
+is live. The same conjunction gates the second `NavStatus` state of decision 7.
+
 **5. It lives in RAM, against a session generation, and is never persisted.**
 The confirmation names the transport session that was live when it was given —
 `docs/adr/0015-transport-session-ownership.md:48` — "generation is allocated once when a session begins, is never reused, and is" —
 and is refused under any other. A stored confirmation is precisely the stale one,
 so there is no NVS key and a reboot clears it.
 
-**6. It lapses on five things, and sleep is not one of them.**
+**6. It lapses on four things, and what a sleep does to it is `UNKNOWN`.**
 
 - the wearer revokes it, on the screen that set it;
 - the session generation changes — a reconnect, a re-bond, a different node. The
@@ -84,29 +109,73 @@ so there is no NVS key and a reboot clears it.
   others miss: the node stays in range and the wearer walks away from it. The
   number is chosen, not measured — long enough for a day out, short enough that
   a forgotten confirmation cannot survive a change of activity. What would move
-  it is bench evidence about how often a real outing reconnects, not taste;
+  it is bench evidence about how long a real outing runs and how often the
+  arrangement changes underneath it, not taste;
 - a reboot, per 5;
-- **not** a sleep or a wake. The watch sleeps constantly, and a confirmation
-  that dies on wake is a feature nobody can use.
+- a sleep **that ends the session**, and then by the rule three bullets up
+  rather than by a rule of its own.
 
-**7. The readout gains three sentences and loses `Ready`.** `NavStatus` gains a
-state for a live confirmation with a fresh coordinate, one for a live
-confirmation whose coordinate is past the age bound, and one for no live
-confirmation on a device with no receiver of its own. The numbers render under
-the first two, exactly as they render under `NodePositionStale` and for the same
-reason: a coordinate that was real is still drawn, under a line that says what
-is wrong with it. `Ready` is **not reachable** while `own` is filled this way —
-the position is a companion's, vouched for by a person rather than by a
-receiver, and the line must keep saying so.
+**That last bullet used to say a sleep does not lapse it, and that was a
+hardware claim with no source.** Sleep on this board is an unbounded loop of
+`esp_light_sleep_start()` —
+`firmware/main/board_power.cpp:416` — "    for (;;) {" —
+entered on the power key with NimBLE up, and whether the link survives it is
+already written down here as unmeasured:
+`docs/adr/0016-one-power-owner.md:23` — "   because nothing tells it not to; whether NimBLE survives that on this board".
+If it does not survive, the wake reconnects, the reconnect allocates the next
+generation, and bullet 2 fires on **every** wake — which is the "feature nobody
+can use" the old bullet was written to prevent, arriving through the door the
+old bullet left open. Writing the exemption down did not make the session
+survive; it only stopped the ADR from noticing that it might not.
 
-The third state replaces a sentence that is false on this board today —
+**The measurement that settles it** needs no instrument: confirm a companion,
+sleep the watch on the power key, wake it past the link's supervision timeout,
+and read whether the session generation moved. Until that runs, an
+implementation may assume neither answer, and the screen must be right under
+both — which decision 7 is, because it enumerates on the confirmation and never
+on the link.
+
+**7. The readout gains two sentences, and `Ready` goes out of reach while a
+confirmation holds.** `NavStatus` gains one state for a live confirmation, and
+one for no live confirmation on a device with no receiver of its own. The
+numbers render under the first, exactly as they render under `NodePositionStale`
+and for the same reason: a coordinate that was real is still drawn, under a line
+that says what is wrong with it. `Ready` stays reachable on a watch whose own
+receiver answers — the self-contained board, and a Waveshare that ever gets one
+fitted — and goes **out of reach while a confirmation is what filled the slot**,
+because the position is then a companion's, vouched for by a person rather than
+by a receiver, and the line must keep saying so.
+
+The second state replaces a sentence that is false on this board today —
 `firmware/main/waveshare_board.cpp:970` — "exactly what would change the answer, and the readout still says" —
 because a watch with no receiver fitted is not waiting for GPS.
 
-The age bound is the one already in `NavState` for the target. The coordinate
-arrives on the same link at the same cadence, so it is the same bound; an
-implementer reading `target_stale_after` against `own` is reading it correctly
-and should not add a second field.
+**The age is shown, not thresholded, and this is a correction.** An earlier
+draft split the live confirmation into a fresh state and a stale one at
+`target_stale_after`, reasoning that the coordinate "arrives on the same link at
+the same cadence". There is no cadence. It arrives **once per session**, in the
+`RESP_CODE_SELF_INFO` that answers `CMD_APP_START`, and asking again means
+sending `CMD_APP_START` again —
+`docs/research/NODE_POSITION_FROM_MESHCORE.md:424` — "**And on path A alone there is no second read, so `Degraded` is not reachable" —
+so a 120 s bound would put every confirmed coordinate on its far side two minutes
+into every session and leave it there until a reconnect, which lapses the
+confirmation anyway. A threshold that is true almost always is not a threshold.
+The age is rendered instead, through the caveat this repository already has for
+exactly this — `nav_caveat_node_unverified`, "node fix unverified, heard %s ago"
+— and **no second age field is added to `NavState`**.
+
+**What `own.availability` reads, because the ladder asks it first.** The status
+ladder tests availability before anything else —
+`apps/src/navigation.cpp:170` — "  if (state.own.availability == core::Availability::Unreachable) {" —
+and answers `OwnReceiverSilent`, which is a sentence about a receiver *on this
+body* going quiet. There is no receiver on this body, so the question does not
+apply, and the link's own availability must **not** be copied into the slot: a
+node that walks out of BLE range would otherwise print "Receiver silent" on a
+board with nothing fitted to be silent — the same false sentence the second
+state above exists to remove. So while the confirmation holds and a coordinate
+has arrived, the router sets `own.availability` to `Availability::Ready`; when
+the confirmation lapses, the slot returns to what it was without one, which on
+the split arrangement is `Availability::Unprovisioned`.
 
 **8. The coordinate moves. It is never in both slots.** A confirmed companion's
 self-position is `own` and is then not `target`, because the same coordinate in
@@ -168,10 +237,14 @@ mean changing the mapping, which is the alternative rejected first.
 
 A reconnect costs the wearer a tap. If the bench shows reconnects are frequent
 on a real outing, the fix is a measurement and a revised generation rule, not a
-persisted confirmation.
+persisted confirmation. **Whether a sleep is one of those reconnects is the open
+measurement decision 6 names**, and it is the one thing here that could make the
+feature unusable rather than merely inconvenient, so it is worth running before
+any of this is implemented rather than after.
 
-Three new `NavStatus` values need English and Russian strings, and the readout
-on a receiverless board stops claiming it is waiting for GPS.
+Two new `NavStatus` values need English and Russian strings, and the readout on
+a receiverless board stops claiming it is waiting for GPS. `NavState` gains one
+field for the confirmation and **no** second age bound.
 
 Nothing here supplies `target` on the split arrangement. The vertical slice
 still needs a remote node's coordinate, and that path is open.
