@@ -93,7 +93,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 >
 > **What is not open is which slot the companion's own coordinate fills.** It is
 > `target`, and it is settled by body rather than by preference —
-> `apps/include/attadipa/apps/navigation.h:18` — "// **own** position comes from a receiver on this body, **target** position is".
+> `apps/include/attadipa/apps/navigation.h:19` — "// **own** position comes from a receiver on this body, **target** position is".
 > A node in the wearer's pocket is not the case that promotes a node coordinate
 > to `own`; it is the case that rule exists to refuse, because a pocket is still
 > a different body and no transform is known —
