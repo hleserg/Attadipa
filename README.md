@@ -12,8 +12,8 @@
 
 <p align="center">
   <b>A watch that will not show you what it does not know.</b><br>
-  Independent by design: an open ESP32-S3 smartwatch platform<br>
-  for LoRa mesh and offline navigation —<br>
+  Independent by design — an open ESP32-S3 smartwatch platform<br>
+  for LoRa mesh and offline navigation:<br>
   no phone, no cloud, no subscription.
 </p>
 
@@ -200,8 +200,8 @@ picture.
   heading, BLE payload, navigation service, screen.
 - **The T-Watch GNSS** answers over UART at 38400 and names itself; the next
   step is an outdoor fix ([#442](https://github.com/hleserg/Attadipa/issues/442)).
-- **Magnetometer retrofit** — two modules on the bench, waiting on six meter
-  readings and four wires.
+- **Magnetometer retrofit** — two modules on the bench, waiting on an unpowered
+  ohmmeter check that decides whether the reset pad needs a wire of its own.
 - **Power** — there is a first measured number, and it is the only one.
 - **Sending into the mesh** — receive is proven, the reply has not been seen.
 
@@ -211,6 +211,7 @@ You do not need a board. The simulator is a first-class development target
 rather than a toy: the same application code, the same screens, both geometries.
 
 ```bash
+sudo apt install libsdl2-dev            # the one system package this needs
 cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON && cmake --build build-sim -j
 ./build-sim/sim/attadipa_sim --clock --theme night
 ```
@@ -309,6 +310,7 @@ looks the way it does:
 ESP-IDF **v5.5.5**, C++17, LVGL **v9.5.0**, FreeRTOS.
 
 ```bash
+cd firmware
 idf.py set-target esp32s3
 idf.py build flash monitor
 ```
@@ -323,8 +325,7 @@ profile what the device can do.
 ```
 core/          capabilities, position, time, battery — not one register
 apps/          screens and services; cannot link against the hardware layer
-platform/      ESP-IDF and host ports
-boards/        board profiles: what this board can do
+platform/      board profiles — what a board can do — and the ESP-IDF and host ports
 firmware/      the ESP32-S3 composition — the only place that knows the board
 sim/           the desktop LVGL simulator
 l10n/          strings: English and Russian

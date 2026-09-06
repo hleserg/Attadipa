@@ -141,8 +141,8 @@ this repository's evidence model is that its pictures are of things that exist.
    recruits UI contributors, because it says *"you can work on this today,
    without buying anything."*
 
-5. **The magnetometer retrofit, mid-solder.** An opened watch, the module, the
-   four wires, the flux. Hardware people trust a project that has opened the
+5. **The magnetometer retrofit, mid-solder.** An opened watch, the module, its
+   four or five wires — the ohmmeter check decides which — and the flux. Hardware people trust a project that has opened the
    case, and this is the picture that says the project does its own work rather
    than describing it. Take it whether or not the retrofit succeeds — a failed
    one is still evidence, and this repository publishes failures.
