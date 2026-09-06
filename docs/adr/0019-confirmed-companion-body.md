@@ -144,53 +144,92 @@ confirm a second time: the wearer already answered the question the control
 asks, and the screen has nothing to add by asking again. Nothing in the offer
 reads `NavStatus`.
 
-**5. It lives in RAM, against a session generation, and is never persisted.**
-The confirmation names the transport session that was live when it was given —
+**5. It lives in RAM, against the bonded peer and a last-heard time, and is
+never persisted.** A stored confirmation is precisely the stale one, so there is
+no NVS key and a reboot clears it. What it names is the peer it was given about
+and when that peer was last heard — not the transport session, and an earlier
+draft of this ADR named the session generation instead.
+
+**Why that changed, because it is the interesting half.** Binding to the
+generation —
 `docs/adr/0015-transport-session-ownership.md:48` — "generation is allocated once when a session begins, is never reused, and is" —
-and is refused under any other. A stored confirmation is precisely the stale one,
-so there is no NVS key and a reboot clears it.
+made *every* reconnect lapse the confirmation, and a reconnect is not the event
+this decision cares about. The event it cares about is **separation**, and the
+generation cannot see it: a two-second RF stumble and a walk to another building
+both allocate exactly one new generation. Binding to the peer and the gap sees
+the difference, costs one timestamp instead of a generation to track, and is a
+smaller thing to carry.
 
-**No session at all is also "any other".** A confirmation is not held pending
-the next connection; it lapses when its session does. That is what keeps the
-ladder from ever having to describe a confirmed companion that is not
-connected, and it is why decision 7 can place the confirmed state ahead of every
-sentence about the link.
-
-**6. It lapses on four things, and what a sleep does to it is `UNKNOWN`.**
+**6. It lapses on four things, and the gap that separates two of them is
+`UNKNOWN`.**
 
 - the wearer revokes it, on the screen that set it;
-- the session generation changes — a reconnect, a re-bond, a different node. The
-  watch cannot tell "reconnected to the node still in your pocket" from
-  "reconnected after you left it on a table", so it asks again;
-- **eight hours** since it was given. This is the backstop for the one case the
-  others miss: the node stays in range and the wearer walks away from it. The
-  number is chosen, not measured — long enough for a day out, short enough that
-  a forgotten confirmation cannot survive a change of activity. What would move
-  it is bench evidence about how long a real outing runs and how often the
-  arrangement changes underneath it, not taste;
-- a reboot, per 5;
-- a sleep **that ends the session**, and then by the rule three bullets up
-  rather than by a rule of its own.
+- **a different peer** connects. Another node is another body's business, and
+  there is nothing to carry across;
+- **the same peer is unheard for longer than a separation gap.** A reconnect on
+  its own does not lapse it, and an earlier draft of this ADR said it did — see
+  below;
+- **eight hours** since it was given, as a backstop for the case the radio
+  cannot see: the node stays in range and the wearer walks away from it inside
+  that range. The number is chosen, not measured — long enough for a day out,
+  short enough that a forgotten confirmation cannot survive a change of
+  activity. What would move it is bench evidence about how long a real outing
+  runs and how often the arrangement changes underneath it, not taste;
+- a reboot, per 5.
 
-**That last bullet used to say a sleep does not lapse it, and that was a
-hardware claim with no source.** Sleep on this board is an unbounded loop of
+**A reconnect used to cost a tap, and that was wrong.** The old bullet said the
+watch cannot tell "reconnected to the node still in your pocket" from
+"reconnected after you left it on a table". It can, and the evidence is the one
+thing this feature has that nothing else does: **the link itself is a continuous
+measurement of the distance between the two devices, and it is running whether
+or not anybody looks at it.** A companion that is genuinely on the wearer's body
+is at arm's length from the watch and stays connected; a companion left behind
+stops being heard the moment the wearer is far enough away, and stays unheard
+for as long as they are gone. The fact of a reconnect does not separate those
+two. **The length of the gap does**, and it is free — the watch already knows
+when it last heard the peer.
+
+**What that buys, stated as a bound rather than a promise.** While the link
+holds, the wearer's confirmation cannot be wrong by more than the radio's reach,
+because being wrong by more than that breaks the link, and a break long enough
+to matter lapses the confirmation. That is not the same as being right. It is a
+bounded error with a number this repository has not measured, and the eight-hour
+backstop and the revoke control exist for the residue inside it.
+
+**The gap is `UNKNOWN` and this ADR does not invent it.** It has to be longer
+than a supervision timeout and any RF stumble, and shorter than a walk away and
+back — and both ends are properties of this radio, this enclosure and a body in
+between, none of which is measured here. An implementation must read it from one
+named constant and must not ship a number this ADR has not been given.
+`docs/research/` gets the measurement, not this file.
+
+**And a sleep is no longer a rule of its own, which is the second thing the
+gap rule buys.** An earlier draft gave sleep its own bullet, first exempting it
+and then — correctly — refusing to, because whether the link survives is a
+hardware claim with no source. Under the gap rule the question stops mattering
+to this decision: a sleep that keeps the link changes nothing, and a sleep that
+drops it is a gap like any other, measured against the same constant. The
+watch's own sleep is not a special kind of absence.
+
+Sleep on this board is an unbounded loop of
 `esp_light_sleep_start()` —
 `firmware/main/board_power.cpp:416` — "    for (;;) {" —
 entered on the power key with NimBLE up, and whether the link survives it is
 already written down here as unmeasured:
 `docs/adr/0016-one-power-owner.md:23` — "   because nothing tells it not to; whether NimBLE survives that on this board".
-If it does not survive, the wake reconnects, the reconnect allocates the next
-generation, and bullet 2 fires on **every** wake — which is the "feature nobody
-can use" the old bullet was written to prevent, arriving through the door the
-old bullet left open. Writing the exemption down did not make the session
-survive; it only stopped the ADR from noticing that it might not.
+Under the old session-generation rule, a link that does not survive meant the
+wake reconnected, the reconnect allocated the next generation, and the
+confirmation lapsed on **every** wake — the "feature nobody can use" that draft
+was written to prevent, arriving through the door it left open. That is now
+answered by the same constant as everything else, and the measurement below is
+still worth taking, because it says whether a wake is a gap at all.
 
 **The measurement that settles it** needs no instrument: confirm a companion,
 sleep the watch on the power key, wake it past the link's supervision timeout,
-and read whether the session generation moved. Until that runs, an
-implementation may assume neither answer, and the screen must be right under
-both — which decision 7 is, because it enumerates on the confirmation and never
-on the link.
+and read whether the peer was lost and how long it went unheard. Until that
+runs, an implementation may assume neither answer, and the screen must be right
+under both — which decision 7 is, because it enumerates on the confirmation and
+never on the link.
 
 **7. The readout gains two sentences, and `Ready` goes out of reach while a
 confirmation holds.** `NavStatus` gains one state for an `own` filled by a
@@ -231,9 +270,11 @@ That the target branches sit behind these two is the intent, not an oversight.
 They are sentences about the *other* node's coordinate, and while a confirmation
 holds the wearer's own line is the one they can act on — the same ordering
 argument the caveat block below already makes. What the link is doing does not
-enter here either, because decision 5 already answered it: a link that goes away
-takes the confirmation with it, so there is no state in which this branch speaks
-for a companion that is no longer connected.
+enter here either, because decision 6 already answered it: a link that goes away
+for longer than the separation gap takes the confirmation with it, and inside
+that gap the coordinate is the same one the wearer confirmed, aging under the
+caveat exactly as it does when the link is up. There is no state in which this
+branch speaks for a companion the watch has decided is gone.
 
 **The age is shown, not thresholded, and this is a correction.** An earlier
 draft split the live confirmation into a fresh state and a stale one at
