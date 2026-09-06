@@ -102,10 +102,11 @@ bool stage_nav_scenario(const char *name) {
     g_state.target = node;
   } else if (std::strncmp(name, "head-up", 7) == 0) {
     // ADR-0009 §5 row 1, with the ring turned to four different places. The
-    // needle is wrist-relative and the `N` marker travels to where north is,
-    // and the four are here rather than one because the marker's *collisions*
-    // are what change with the angle: south puts it on the distance row of the
-    // 240x240 panel, east and west put it against the ring's sides.
+    // needle is wrist-relative and the `N` marker travels to where north is.
+    // Four angles rather than one because the marker orbits inside the ring and
+    // each quarter tests a different part of that path -- the bottom of the
+    // ring on `-south`, its two sides on `-east` and `-west` -- and the 240x240
+    // panel is where the ring has the least room around it.
     g_state.own = own;
     g_state.target = node;
     g_state.heading.source = core::HeadingSource::Magnetometer;
