@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#FFF6E8">
   <meta name="color-scheme" content="light dark">
   <title>Atta-dipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS</title>
-  <meta name="description" content="Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.">
+  <meta name="description" content="Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://hleserg.github.io/Attadipa/">
   <link rel="alternate" type="text/html" hreflang="x-default" href="https://hleserg.github.io/Attadipa/">
@@ -16,7 +16,7 @@
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="ru_RU">
   <meta property="og:title" content="Atta-dipa — open-source ESP32-S3 smartwatch firmware">
-  <meta property="og:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.">
+  <meta property="og:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.">
   <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
   <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
   <meta property="og:image:type" content="image/jpeg">
@@ -26,7 +26,7 @@
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Atta-dipa — open-source ESP32-S3 smartwatch firmware">
-  <meta name="twitter:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.">
+  <meta name="twitter:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.">
   <meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
   <meta name="twitter:image:alt" content="The Atta-dipa firefly mark to the left of the wordmark Atta-dipa, with the line Independent by design beneath it.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -65,7 +65,7 @@
         "@id": "https://hleserg.github.io/Attadipa/#website",
         "url": "https://hleserg.github.io/Attadipa/",
         "name": "Atta-dipa",
-        "description": "Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.",
+        "description": "Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.",
         "inLanguage": ["en", "ru"],
         "publisher": { "@id": "https://github.com/hleserg#person" }
       },
@@ -80,7 +80,7 @@
         "@id": "https://hleserg.github.io/Attadipa/#source",
         "name": "Atta-dipa",
         "alternateName": "Atta-dipa smartwatch firmware platform",
-        "description": "Firmware and application platform for ESP32-S3 smartwatches. Board differences live behind a capability registry, so an application asks what the device can do rather than which device it is. Targets the LilyGO T-Watch S3 Plus and the Waveshare ESP32-S3-Touch-AMOLED-2.06. Early implementation: the host libraries and a two-geometry simulator build and pass their tests, the firmware has not run on a board yet; only bench code has.",
+        "description": "Firmware and application platform for ESP32-S3 smartwatches. Board differences live behind a capability registry, so an application asks what the device can do rather than which device it is. Targets the LilyGO T-Watch S3 Plus and the Waveshare ESP32-S3-Touch-AMOLED-2.06. Early implementation: the host libraries and a two-geometry simulator build and pass their tests, and the firmware boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.",
         "codeRepository": "https://github.com/hleserg/Attadipa",
         "url": "https://hleserg.github.io/Attadipa/",
         "programmingLanguage": [
@@ -294,8 +294,8 @@
           <h3>Waveshare ESP32-S3 Touch AMOLED 2.06</h3>
           <p class="lang-en">A larger AMOLED target with no onboard sub-GHz mesh radio and no onboard GNSS. Those capabilities can be supplied by a separate Atta-dipa Node.</p>
           <p class="lang-ru">Модель с большим AMOLED-дисплеем, но без встроенного sub-GHz mesh-радио и GNSS. Эти возможности может предоставлять отдельный Atta-dipa Node.</p>
-          <p class="lang-en">One unit is here and has answered for itself over its own USB port: factory-default eFuses, 8&nbsp;MB PSRAM on the memory rail, external quad flash, chip revision v0.2. Nothing has been burned, and nothing has been measured.</p>
-          <p class="lang-ru">Одна плата уже здесь и ответила за себя через собственный USB-порт: eFuse на заводских значениях, 8&nbsp;МБ PSRAM на линии памяти, внешняя quad-флеш, ревизия кристалла v0.2. Ничего не прожжено — и ничего не измерено.</p>
+          <p class="lang-en">One unit is here and has answered for itself over its own USB port: factory-default eFuses, 8&nbsp;MB PSRAM on the memory rail, external quad flash, chip revision v0.2. Nothing has been burned. One number has now been measured: 413&nbsp;mW at its USB input, idle on one screen with the cell disconnected.</p>
+          <p class="lang-ru">Одна плата уже здесь и ответила за себя через собственный USB-порт: eFuse на заводских значениях, 8&nbsp;МБ PSRAM на линии памяти, внешняя quad-флеш, ревизия кристалла v0.2. Ничего не прожжено. Одно число уже измерено: 413&nbsp;мВт на входе USB, простой на одном экране с отключённым аккумулятором.</p>
         </article>
         <article class="hardware-card node-card reveal">
           <div class="hw-top"><span class="chip node-chip">COMPANION HARDWARE</span><span class="hw-dot amber-dot"></span></div>

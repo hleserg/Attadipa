@@ -44,16 +44,16 @@
       ogTitle: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware',
       locale: 'en_US',
       localeAlternate: 'ru_RU',
-      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — the firmware has not run on a board yet; only bench code has.',
-      cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — the firmware has not run on a board yet; only bench code has.'
+      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.',
+      cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.'
     },
     ru: {
       title: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
       ogTitle: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3',
       locale: 'ru_RU',
       localeAlternate: 'en_US',
-      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — прошивка ещё не запускалась на плате; запускался только стендовый код.',
-      cardDescription: 'LoRa-переписка через MeshCore, офлайн-навигация по GNSS и интерфейс LVGL на FreeRTOS на ESP32-S3. Ранняя стадия — прошивка ещё не запускалась на плате; запускался только стендовый код.'
+      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — она загружается на плате Waveshare из flash и управляет панелью, тачем и шинами PMU; питание, тайминги и GNSS не проверены.',
+      cardDescription: 'LoRa-переписка через MeshCore, офлайн-навигация по GNSS и интерфейс LVGL на FreeRTOS на ESP32-S3. Ранняя стадия — она загружается на плате Waveshare из flash и управляет панелью, тачем и шинами PMU; питание, тайминги и GNSS не проверены.'
     }
   };
 

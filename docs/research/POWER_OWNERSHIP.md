@@ -29,7 +29,7 @@ must guarantee before the second consumer is allowed to have an opinion.
 | XPowersLib builds against ESP-IDF's `driver/i2c_master.h`, not only Arduino | **VERIFIED** — XPowersLib `d699758`, §3.3 |
 | The IRQ byte-order bug that pin exists for cannot reach this firmware today | **VERIFIED** — §3.3 |
 | Which loads sit on each Waveshare AXP2101 rail | **VERIFIED** — D13, resolved 2026-08-28, §6.1 |
-| Current draw per power state, on either board | **NOT EXECUTED — HARDWARE REQUIRED** — H1 |
+| Current draw per power state, on either board | **PARTIAL** — H1. **One idle state on the Waveshare is MEASURED**, 2026-09-05, S16 — the figure, its conditions and its residual unknowns are in [VERIFIED_FACTS](VERIFIED_FACTS.md) and are not restated here. It is input power at VBUS, upstream of the PMU, so it separates no rail. Every other state, and the whole T-Watch, is still **NOT EXECUTED — HARDWARE REQUIRED** |
 | Whether the AXP2101 on these boards can measure current at all | **NO** — H2, answered 2026-09-05 from both AXP2101 datasheets: the ADC has five channels and every one is a voltage or a temperature. Whether either *board* fits a sense resistor is the half still open |
 | Which wake sources are usable in practice and what each costs | **NOT EXECUTED — HARDWARE REQUIRED** — H5 |
 | AMOLED brightness against power | **NOT EXECUTED — HARDWARE REQUIRED** — H6 |
@@ -699,11 +699,15 @@ eFuse, no secret, no irreversible setting, and never ALDO2.
 
 ### 6.3 What is still owed to hardware
 
-`H1` current per state, `H5` usable wake sources and their cost, `H6` AMOLED
-brightness against power — all **UNKNOWN**, all listed in `OPEN_QUESTIONS.md`,
-none changed by this document. `H2` is now **PARTIAL**: the PMU cannot measure
-current at all, so those three need a board shunt or external instrumentation
-rather than a register read. Add to them: BLE behaviour across Light-sleep (§4.8)
+`H5` usable wake sources and their cost and `H6` AMOLED brightness against
+power are **UNKNOWN**; `H1` current per state is **PARTIAL** — one idle state
+on the Waveshare was measured 2026-09-05 at the USB input and the rest was
+not. All three are listed in `OPEN_QUESTIONS.md`, and none of them was
+changed by this document — the H1 measurement is S16's, recorded here so the
+table above does not still read as though nothing had ever been metered.
+`H2` is now **PARTIAL**: the PMU cannot measure current at all, so those
+three need a board shunt or external instrumentation rather than a register
+read. Add to them: BLE behaviour across Light-sleep (§4.8)
 and the cost of the six idle rails (§6.1).
 
 None of these block the contract, and that is the point of separating them. The

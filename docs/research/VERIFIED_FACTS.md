@@ -2400,3 +2400,108 @@ ones that heading states.
   read**: the Waveshare was not on the bench for this session, so the default
   above is the vendor's documented default and not a measurement of this board.
   `espefuse.py summary` is read-only and would settle it.
+
+## Measured at the USB input with an inline meter (S16)
+
+### The Waveshare board draws 413 mW at its USB input in one named idle state
+
+- **Claim:** with **the cell disconnected**, the received
+  `ESP32-S3-Touch-AMOLED-2.06` running an Attadipa image, **screen on at minimum
+  brightness**, static on the **provisioning entry screen**
+  (`apps/include/attadipa/apps/provisioning.h` — the fourteen-key pad that asks
+  for date, UTC time, local offset and the node's six-digit passkey), **idle,
+  awaiting input, unprovisioned**, draws a **median 82.83 mA at a median
+  4.990 V** at its USB-C input — a **median 413 mW**, taken as the median of the
+  per-sample product rather than a product of two medians. Over the same 21 440
+  samples the mean is 83.32 mA at 4.981 V, **415 mW**; p1–p99 is 81.2–86.4 mA.
+  The largest single sample is **1282 mA**, and only **0.028 %** of samples —
+  six of them, spread over the 3.97 minutes — sit above 150 mA, which is why
+  **413 mW, the median, is the figure to quote** and the
+  mean sits 1.7 mW above it.
+- **The captures are pinned by hash and are not in the tree.** `.gitignore`
+  — "# ...except a bench capture committed as the evidence for a MEASURED
+  result." — is the exception S15's five logs are committed under, and this one
+  is not, because bench captures on this machine are held back by an owner
+  constraint rather than by this file's judgement. So the next best thing is
+  here instead: sha256 of the three decoded series, which lets anyone the owner
+  sends them to prove they are the ones these numbers came from.
+  `14d894faf8f1d779ce6e3e36c457e4ebafc610cd4f64fb961e1707627e560f55`
+  is the idle capture, `a28014c1f34a7bef7368da3a54ff68404b306afe3d5557140d966fde17aa6b1a`
+  the zero run, and `7cedcee5d6e6f21a4872ba74135c371a007ffb79aedb7a6f8f30c3d41a684786`
+  the cell-attached one. **Until they are in the tree every figure in this entry
+  is checkable by the owner alone** — and these figures have already moved twice
+  under re-analysis, so that is a real gap and not a formality. Whether the
+  constraint is lifted for a power log, which carries no position and no
+  identity, is the owner's to decide.
+- **Source:** S16 — a FNIRSI FNB-58 inline on the board's USB-C input,
+  2026-09-05, logged over its HID interface with
+  `baryluk/fnirsi-usb-power-data-logger` at **an `UNKNOWN` revision**: none was
+  recorded and the working copy was not kept, so a repeat against a later `main`
+  is not guaranteed comparable and nothing in the log would reveal the
+  difference. What *is* pinned is the USB layer under it, `pyusb 1.3.1` in the
+  bench virtualenv. The meter speaks an undocumented HID protocol, so that
+  decode is what turns the capture into volts and amps; the next run records the
+  commit id, the way S14 pins its four repositories.
+- **The window: 21 440 samples over 238.1 s at 90.0 samples/s**, beginning
+  17:59Z. That matters for the BLE question below, because advertising shows as
+  periodic bumps and a transient count without a timebase cannot bound it: at
+  this rate the 0.028 % above 150 mA is six samples spread over four minutes,
+  which is what a bounded statement about it looks like. It also bounds the
+  1282 mA above from **below only**: nothing shorter than 11.1 ms is visible to
+  this instrument, so that is the largest sample, not the peak current, and the
+  true peak is at least that. **It therefore does not answer the criterion left
+  open by** `docs/research/BATTERY_UPGRADE.md:740` — "The board's peak draw has" — which asks that an
+  over-current trip sit comfortably above a peak that has never been measured. Sizing pack protection from this number would be
+  sizing it from a floor read as a ceiling, and from an idle screen at that.
+- **Which build was on the board is `UNKNOWN`, and the bound on it contradicts
+  [BENCH_DEVICES](BENCH_DEVICES.md).** Nothing recorded the image at measurement
+  time. But the screen the owner read off the board is the provisioning entry
+  pad, which arrived in `87cb64c` on **2026-09-02** (#406), so whatever ran
+  contained #406 and was therefore newer than that date. `BENCH_DEVICES.md:27`
+  — "| Current firmware | **Attadipa T-166 bench candidate**" — records a
+  bring-up probe written 2026-08-25, a week before that screen existed, so the
+  two disagree. Which way is not established here: the unit may have been
+  reflashed since, or this may have been a RAM boot the way S15's was, and
+  nothing recorded either. The bound above is read off the panel, not backfilled
+  from `git log`, and a repeat records the image first.
+- **Zero offset subtracted: 2.484 mA**, itself measured over 2122 samples in
+  23.4 s at 90.7 samples/s with the meter's output open. That is a self-measured offset, **not a calibration
+  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no
+  specification for the FNB-58 has been traced here — so how this offset ranks
+  against the instrument's gain error cannot be stated, only that it is 3 % of
+  the reading and was subtracted.
+- **Checked:** 2026-09-05. **Board revision:** V1.0, the revision the received
+  unit's silkscreen matches
+  ([WAVESHARE_BOARD_RECEIVED](WAVESHARE_BOARD_RECEIVED.md) §1.1).
+- **This is input power at VBUS, not board consumption by rail.** The meter sits
+  upstream of the AXP2101, so the number includes the PMU's conversion losses,
+  and it is *board* consumption only because the cell was disconnected — with a
+  cell attached the charger current is in the same reading. An earlier run the
+  same day — **2026-09-05, beginning 15:23Z, 215 946 samples over 2398.1 s at
+  90.0 samples/s**, same meter, same board, cell still attached — read
+  **bimodally, 84 mA and 213 mA in bursts**; that run lives only in bench logs,
+  which are not committed (see the hashes above), and it is cited here for one
+  thing only. Its modes, separated at 150 mA and recomputed from that log rather
+  than read off a plot: the low mode is **83.92 mA median over 174 876 samples,
+  p5–p95 81.64–86.76 mA**, and the high mode **212.91 mA over 41 070**. The low
+  mode sits **1.09 mA — 1.3 % — above this entry's 82.83 mA median**, well
+  inside its own p5–p95 spread. That is an agreement at the order of magnitude
+  and it is what turned an inference into a measurement; it is **not**
+  corroboration at one percent, and the earlier "within 1 %" here was both wrong
+  and finer than either number can carry. **Nothing
+  measured the charger current**, so that the 213 mA mode was charging is
+  *consistent with* the cell being attached and is not established here.
+- **The fourth residual `UNKNOWN` — after the decoder revision, which build was
+  on the board, and the meter's rated accuracy, all above — is whether the BLE
+  radio was powered.** A host scan
+  does not settle it — in MeshCore the *node* advertises and the watch is the
+  central, so the watch is not expected to appear in a scan whether its radio is
+  up or not. Do not read its absence as "radio off".
+- **What this is not.** It is one state, not a power budget: no sleep figure, no
+  screen-off figure, no per-rail split, and nothing about the T-Watch, which is
+  micro-USB — `docs/research/HARDWARE_MATRIX.md:90` — "| USB | Micro-USB, charge + programming only" — and
+  needs an adapter the bench does not have. It is the first number of its kind
+  here, and the AXP2101 has no current channel on either silicon variant, so
+  external instrumentation — or a board shunt, if either board turns out to fit
+  one, which is H2's still-open half — is the only way any of the others can be
+  taken.
