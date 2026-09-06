@@ -2418,8 +2418,8 @@ ones that heading states.
   six of them, spread over the 3.97 minutes — sit above 150 mA, which is why
   **413 mW, the median, is the figure to quote** and the
   mean sits 1.7 mW above it.
-- **The captures are pinned by hash and are not in the tree.** `.gitignore:57`
-  — "# ...except a bench capture committed as the evidence for a `MEASURED`
+- **The captures are pinned by hash and are not in the tree.** `.gitignore`
+  — "# ...except a bench capture committed as the evidence for a MEASURED
   result." — is the exception S15's five logs are committed under, and this one
   is not, because bench captures on this machine are held back by an owner
   constraint rather than by this file's judgement. So the next best thing is
@@ -2480,7 +2480,7 @@ ones that heading states.
   same day — **2026-09-05, beginning 15:23Z, 215 946 samples over 2398.1 s at
   90.0 samples/s**, same meter, same board, cell still attached — read
   **bimodally, 84 mA and 213 mA in bursts**; that run lives only in bench logs,
-  which are not committed (see the hashes below), and it is cited here for one
+  which are not committed (see the hashes above), and it is cited here for one
   thing only. Its modes, separated at 150 mA and recomputed from that log rather
   than read off a plot: the low mode is **83.92 mA median over 174 876 samples,
   p5–p95 81.64–86.76 mA**, and the high mode **212.91 mA over 41 070**. The low
