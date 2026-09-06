@@ -634,13 +634,13 @@ that the Clock is one of the six minimum screens.
 
 | Axis | Today | Evidence |
 |---|---|---|
-| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:232-244` — "out.board = *found;" |
-| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:278-292` — "out.theme = ui::Theme::Day;" |
-| locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:263-276` — "out.locale = l10n::Locale::En;" |
+| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:234-246` — "out.board = *found;" |
+| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:280-294` — "out.theme = ui::Theme::Day;" |
+| locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:265-278` — "out.locale = l10n::Locale::En;" |
 | Adult/Child | **yes** — `--child` | [`sim/options.cpp:173`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:201`](../../sim/main.cpp) — "apps::ClockMode::Child" |
 | a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:184`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:203`](../../sim/main.cpp) — "!options.clock_time_set" and passed to `build_clock_screen` as its `live` argument |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
-| node attached / detached | **yes** — `--node` | `sim/options.cpp:137-140` — "out.node_attached = true;" |
+| node attached / detached | **yes** — `--node` | `sim/options.cpp:139-142` — "out.node_attached = true;" |
 | screenshot | **yes**, but the **first frame only** | `sim/main.cpp:286` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:

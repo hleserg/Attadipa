@@ -142,7 +142,7 @@ struct NavText {
     bool has_distance = false;
 
     // True only when there is a bearing *and* a heading that may orient it —
-    // `core::can_orient()` holds the three conditions. False is not a failure:
+    // `core::can_orient()` holds the four conditions. False is not a failure:
     // it is the north-up readout, which is what this screen has drawn since it
     // existed and what it draws on every board that has no magnetometer.
     bool has_arrow    = false;

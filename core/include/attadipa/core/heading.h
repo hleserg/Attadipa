@@ -96,7 +96,7 @@ struct Heading {
 
 // Whether this heading may turn a north-up bearing into a wrist-relative arrow.
 //
-// Three conditions, and dropping any one of them draws an arrow that points
+// Four conditions, and dropping any one of them draws an arrow that points
 // somewhere the wearer is not being sent:
 //
 //   * the frame is `WatchBody`. ADR-0009 §3 — a node's compass is the node's
@@ -109,7 +109,7 @@ struct Heading {
 //   * the source is one that can measure *this* case's orientation, which is
 //     `Magnetometer` or `SensorFusion` and nothing else.
 //
-// The fourth condition is not in the ADR's list of three, and it is the one
+// That fourth one is not in the ADR's list of three, and it is the one
 // that carries the ADR's own assertion. `WatchBody` is the *default* frame —
 // ADR-0009 §2 lists it first and this enum keeps that order — and `frame` is
 // the single field a driver has no local evidence for: it states which body the
@@ -128,6 +128,22 @@ struct Heading {
 // narrows, and the ADR enumerates when an arrow *may* be drawn, so a further
 // condition can refuse a heading the ADR allowed and can never allow one it
 // refused.
+// AND `Magnetometer` HERE MEANS AN ANGLE ALREADY CORRECTED TO TRUE NORTH.
+// `centideg` above says true north and a magnetometer measures magnetic north;
+// the difference is declination, it needs a position and a field model, and no
+// field of this struct can say which of the two an angle is. That gap is this
+// repository's own open question — MAGNETOMETER_RETROFIT.md Q10, "How does a
+// heading say 'magnetic north, declination unknown'?", whose answer is "either
+// the model gains the distinction or the Navigator must not label the arrow" —
+// and it is Q10's amending ADR that closes it, not this header.
+//
+// What this header can do is refuse to let the whitelist above quietly answer
+// it. A driver that cannot correct to true north **must not report `Valid`**:
+// `Uncalibrated` is exactly the state for a number with no reason to be
+// believed, and reporting it costs the arrow rather than the wearer. The
+// consequence of getting this wrong is not subtle. The needle would be drawn
+// from magnetic north beside a printed bearing measured from true north, both
+// unlabelled, and local anomalies run past ten degrees.
 constexpr bool can_orient(const Heading& heading, std::uint8_t min_confidence)
 {
     return heading.frame == ReferenceFrame::WatchBody &&

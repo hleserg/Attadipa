@@ -227,7 +227,7 @@ NavText format_navigation(const NavState &state) {
           cardinal_of(centideg, state.locale));
 
       // The wrist-relative half, and only when a heading may orient it.
-      // `can_orient()` is where the three conditions live, so that "may this
+      // `can_orient()` is where the four conditions live, so that "may this
       // angle turn the needle" has one definition rather than one per caller —
       // and the one that matters most is the frame: a `NodeBody` heading at
       // confidence 100 is a true statement about a body that is not this one,
