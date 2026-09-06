@@ -78,30 +78,46 @@ So "judged by arrival age, exactly as `target` is" described neither slot.
 Decision 7 says what the age is for instead, and it is display rather than
 gating.
 
-**And the waiver has a precondition, because path A's coordinate can be a number
-somebody typed.** `RESP_CODE_SELF_INFO` carries a lat/lon with nothing behind it:
+**And the waiver admits a coordinate that may be a number somebody typed.**
+`RESP_CODE_SELF_INFO` carries a lat/lon with nothing behind it:
 `docs/research/NODE_POSITION_FROM_MESHCORE.md:56` — "| **Present when the node has no GNSS** | **yes** — it is whatever is in prefs".
 On a node with no receiver it is a preference — restored from flash at boot,
 settable over `CMD_SET_ADVERT_LATLON` by any client, and range-checked to
-±90/±180 and nothing else. Waiving `NoFix` on *that* would put a number somebody
-typed on the wrist as the wearer's own position, under a confirmation that only
-ever said where the node is. That is the failure this whole readout exists to
-refuse, arriving through the gate this decision opens.
+±90/±180 and nothing else.
 
-One honest discriminator exists, and it is a proof of absence rather than a
-guess. `RESP_CODE_CUSTOM_VARS` publishes a `gps` key **only when a receiver was
-detected**:
-`docs/research/NODE_POSITION_FROM_MESHCORE.md:165` — "| no `gps` key | `gps_detected == false` — no receiver answered at boot".
-So the waiver requires that the node published a `gps` key at all. **Its value is
-deliberately not read**: `gps:0` and `gps:1` are both "possibly a fix, still
-indistinguishable", and separating them would invent a confidence the wire does
-not carry. With no key the confirmation still holds — the node is on the body —
-but `own` is not filled from it, and the readout is the second state of decision
-7 rather than a distance.
+**An earlier draft required the node to have published a `gps` key, and that is
+withdrawn.** The key proves a receiver was detected. It proves nothing about the
+coordinate, and the research says so on the row the requirement was resting on:
+`docs/research/NODE_POSITION_FROM_MESHCORE.md:166` — "| `gps:0` | receiver detected, switched off | a fix from earlier in this boot,".
+`gps:1` is no better — both values leave the number "possibly a fix, still
+indistinguishable". So the precondition bought a `CMD_GET_CUSTOM_VARS` round trip
+per session, refused nodes that are telling the truth, and still admitted the
+typed coordinate it was written to stop. A test that cannot fail the case it
+names is not a gate.
 
-That costs one command, `CMD_GET_CUSTOM_VARS` (40), once per session beside the
-handshake this feature already reads. No rail, no task, no queue, and nothing
-new on the wire between sessions.
+**What that coordinate gets instead is what this project already gives the same
+number in the other slot.** A node's self-position that may be a stored
+preference is rendered here today — as `target`, with no proof of fix demanded
+of it, under a line saying what is unproven about it and how long ago it was
+heard. A confirmed companion is that same number in the `own` slot. The `gps`
+key was asking of `own` a proof nothing has ever asked of `target`, and one the
+wire cannot supply; the compensation is therefore the compensation already in
+use — a status that names the confirmation rather than claiming a fix, and a
+caveat that carries the age. Decisions 7 and 8 are where that is written, and
+they are why the waiver is safe without a discriminator.
+
+**One value is refused, and it is refused because it is not a coordinate.**
+Exactly `(0, 0)` is the unset preference —
+`docs/research/NODE_POSITION_FROM_MESHCORE.md:620` — "The provider's frame cases are value cases: a coordinate of exactly (0, 0)," —
+and the usability test is a range check that admits it:
+`apps/src/navigation.cpp:33` — "  return state.has_position && core::in_range(state.position.value);".
+An unset pref worn as the wearer's own position is the one output no caveat can
+make honest, because every distance drawn from it is arithmetic on a
+placeholder. So the firmware of decision 1 does not place that value in `own`,
+the slot stays empty, and the readout is the second state of decision 7 rather
+than a distance. This is a refusal at the slot and **not** a change to the
+shared test: `target`'s exposure to the same value is exactly what it is today,
+neither widened nor narrowed here, and belongs to whoever takes it up.
 
 **4. It is entered on the watch's own screen, and offered by capability.**
 OD-26's channel, unchanged; no second consent path is invented, and nothing here
@@ -116,13 +132,29 @@ nothing to confirm and nothing to hold it against — a T-Watch built with
 `CONFIG_ATTADIPA_GNSS_LOCAL=n` is `Unprovisioned` too, and must not be offered a
 control that would ask the wearer to vouch for a companion that is not there.
 The precondition is both halves: `own` is `Unprovisioned` **and** a node session
-is live. The same conjunction gates the second `NavStatus` state of decision 7.
+is live. That conjunction gates the control and nothing else — decision 7's
+second state is the broader fact that this board has no receiver fitted, true
+whether or not a session is live, and the two are deliberately not one test.
+
+**And the control branches on the confirmation, never on the readout.** Once a
+confirmation is live the same screen offers revoking it, per decision 6's first
+bullet. So a companion that was confirmed and whose coordinate never arrived, or
+whose coordinate was the unset pref decision 3 refuses, is **not** asked to
+confirm a second time: the wearer already answered the question the control
+asks, and the screen has nothing to add by asking again. Nothing in the offer
+reads `NavStatus`.
 
 **5. It lives in RAM, against a session generation, and is never persisted.**
 The confirmation names the transport session that was live when it was given —
 `docs/adr/0015-transport-session-ownership.md:48` — "generation is allocated once when a session begins, is never reused, and is" —
 and is refused under any other. A stored confirmation is precisely the stale one,
 so there is no NVS key and a reboot clears it.
+
+**No session at all is also "any other".** A confirmation is not held pending
+the next connection; it lapses when its session does. That is what keeps the
+ladder from ever having to describe a confirmed companion that is not
+connected, and it is why decision 7 can place the confirmed state ahead of every
+sentence about the link.
 
 **6. It lapses on four things, and what a sleep does to it is `UNKNOWN`.**
 
@@ -161,9 +193,15 @@ both — which decision 7 is, because it enumerates on the confirmation and neve
 on the link.
 
 **7. The readout gains two sentences, and `Ready` goes out of reach while a
-confirmation holds.** `NavStatus` gains one state for a live confirmation, and
-one for no live confirmation on a device with no receiver of its own. The
-numbers render under the first, exactly as they render under `NodePositionStale`
+confirmation holds.** `NavStatus` gains one state for an `own` filled by a
+confirmed companion, and one for a device with no receiver of its own and no
+usable `own` coordinate — which is one state covering three arrivals: no
+confirmation was given, a confirmation was given and its coordinate has not
+arrived, and a confirmation was given and its coordinate was the unset pref
+decision 3 refuses. All three are the same sentence to a wearer, and splitting
+them would report the plumbing rather than the situation.
+
+The numbers render under the first, exactly as they render under `NodePositionStale`
 and for the same reason: a coordinate that was real is still drawn, under a line
 that says what is wrong with it. `Ready` stays reachable on a watch whose own
 receiver answers — the self-contained board, and a Waveshare that ever gets one
@@ -174,6 +212,28 @@ by a receiver, and the line must keep saying so.
 The second state replaces a sentence that is false on this board today —
 `firmware/main/waveshare_board.cpp:970` — "exactly what would change the answer, and the readout still says" —
 because a watch with no receiver fitted is not waiting for GPS.
+
+**Both states sit in one place in the ladder, and it is not the place a reader
+would first put them.** They go immediately after the `own_ok` branch —
+`apps/src/navigation.cpp:172` — "  } else if (!own_ok) {" —
+and **before** the validity branches —
+`apps/src/navigation.cpp:176` — "  } else if (state.own.validity == core::PositionValidity::Stale) {".
+Decision 2 is the reason. A confirmed `own` carries `NoFix` at every age, so
+`Stale` and `Degraded` never fire on it, and a state placed after them falls
+through to the target branches — which on the split arrangement are reading an
+empty slot (decision 8) and would answer `NodeUnavailable` or
+`NodePositionUnknown` about the node the wearer has just confirmed is in their
+pocket. Placing them here also makes this decision's `Ready` sentence structural
+rather than a second rule: `Ready` is the last rung, and a confirmation answers
+before it.
+
+That the target branches sit behind these two is the intent, not an oversight.
+They are sentences about the *other* node's coordinate, and while a confirmation
+holds the wearer's own line is the one they can act on — the same ordering
+argument the caveat block below already makes. What the link is doing does not
+enter here either, because decision 5 already answered it: a link that goes away
+takes the confirmation with it, so there is no state in which this branch speaks
+for a companion that is no longer connected.
 
 **The age is shown, not thresholded, and this is a correction.** An earlier
 draft split the live confirmation into a fresh state and a stale one at
@@ -197,8 +257,17 @@ that is the whole point of the arrangement — so the age this decision promises
 render would never be drawn at all. The gate becomes *the slot a node filled that
 states no fix*: a confirmed `own` first, then `target` as today. Own first for the
 reason the block's own comment already gives, that the wearer's sentence is the
-one they can act on. One condition changes; the string, its argument and the
-ordering rule do not, and no second age field appears.
+one they can act on.
+
+**The argument changes with the branch, and an earlier draft said it did not.**
+The confirmed branch renders `state.own.position.age_at_us_ms`, where the branch
+beside it renders the target's —
+`apps/src/navigation.cpp:290` — "    format_age(state.target.position.age_at_us_ms, state.locale, age," —
+because on the split arrangement the target slot is empty (decision 8) and an
+age read off an empty slot is zero. "Node fix unverified, heard 0 s ago", under
+a coordinate nobody has heard since the handshake, is worse than no caveat: it
+is the caveat lying about the one number it exists to carry. The string and the
+ordering rule are unchanged, and no second age field appears.
 
 **What `own.availability` reads, because the ladder asks it first.** The status
 ladder tests availability before anything else —

@@ -26,11 +26,11 @@
 // than a blending done inside it: a companion the wearer has explicitly
 // confirmed is on their body may fill `own`. It still carries `NoFix` at every
 // age — a confirmation is a statement about a body, not about a fix — so the
-// `NoFix` conjunct of `own_ok` is waived while it holds — but only for a node
-// that published a `gps` key, because without one its coordinate is a stored
-// preference and never a fix. The age is rendered in a caveat rather than
-// thresholded, because it arrives once per session and a threshold would be
-// true almost always.
+// `NoFix` conjunct of `own_ok` is waived while it holds. Nothing on the wire
+// proves that coordinate is a fix, so it is not asked to prove one: the status
+// names the confirmation instead of claiming a fix, and the age rides in a
+// caveat rather than a threshold, because it arrives once per session and a
+// threshold would be true almost always.
 // `docs/adr/0019-confirmed-companion-body.md` decides where that confirmation
 // is entered, where it lives, when it lapses, what the waiver requires, and
 // what this readout says while it holds.
