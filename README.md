@@ -87,11 +87,15 @@ and a distance that admits its own ceiling: past 1000 km the screen says
 `> 1000 km` rather than printing the clamp as if it were a measurement.
 
 No `0 m`. No `(0, 0)`. No arrow pointing somewhere plausible. If the watch
-cannot tell you, it says so — in English or Russian — and it says *which* thing
-it does not know.
+cannot tell you, it says so, and it says *which* thing it does not know. Every
+one of those sentences is written in both languages the project ships — so far
+only the English ones have been rendered on a panel.
 
 **Hardware-flexible, by construction.** Two watch boards with almost nothing in
-common run the same binary. Applications ask what the device can *do* —
+common run the same application code, the same services and the same UI. Which
+board a firmware image is composed for is one build-time choice in
+`firmware/main/` (`choice ATTADIPA_BOARD`), and the desktop simulator carries
+both geometries in a single binary. Applications ask what the device can *do* —
 `availability(Capability::Position)` — never what is soldered to it. They cannot
 even link against the hardware layer: asking a chip a question is a build error,
 not a review comment.
@@ -116,7 +120,7 @@ The interesting part of Atta-dipa is that "the watch" is not always one device.
 
   T-Watch S3 Plus                       Waveshare AMOLED 2.06
   ├── 240×240 display, touch            ├── 410×502 AMOLED, touch
-  ├── GNSS  (u-blox MIA-M10Q) ✔         └── BLE ──┐   no radio, no receiver
+  ├── GNSS  (MIA-M10Q or LS550G) ✔      └── BLE ──┐   no radio, no receiver
   ├── sub-GHz radio  (part UNKNOWN)                │        on this board
   └── Atta-dipa                                    ▼
                                         Companion node
@@ -151,23 +155,23 @@ instrument; `IMPLEMENTED` runs and is tested, but not on a board yet;
 | | State |
 |---|---|
 | **Boots from flash on a real watch** — AMOLED, capacitive touch, AXP2101 power rails, PCF85063 RTC, and a full [sleep/wake lifecycle](docs/hardware/SLEEP_WAKE_2026-08-26.md) | ✅ `MEASURED` on the Waveshare AMOLED 2.06 |
-| **Clock, provisioning and mesh screens on the device**, in English and Russian | ✅ `MEASURED` |
+| **Clock, provisioning and mesh screens on the device** | ✅ `MEASURED` in English ([bench record](docs/hardware/CLOCK_2026-08-26.md)); the firmware still hard-codes `Locale::En`, so a Russian screen on a panel is `NOT EXECUTED` |
 | **Talks to a MeshCore node over BLE** — pairs, connects, pins one node by its public key, and shows peers, SNR and the last message received over LoRa | ✅ `MEASURED` against a Heltec T114 ([bench record](docs/research/MESHCORE_T114_FIRST_CONTACT.md)) |
 | **Sending a message and seeing the reply on the wrist** | 🧪 `NOT OBSERVED` — the next physical seam |
 | **GNSS on the T-Watch S3 Plus** — the module named itself **u-blox MIA-M10Q**, and its NMEA reaches the position service | ✅ `MEASURED` indoors, no fix ([bench log](docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md)) |
 | **An outdoor fix on that receiver** | 🧪 `NOT EXECUTED — HARDWARE REQUIRED` |
-| **Navigation that refuses to invent** — bearing, great-circle distance, staleness and the eleven honest states above | ✅ `IMPLEMENTED` and rendering; distance to a *remote* node still needs [#450](https://github.com/hleserg/Attadipa/issues/450) |
+| **Navigation that refuses to invent** — bearing, great-circle distance, staleness and the nine honest states above | ✅ `IMPLEMENTED` and rendering; distance to a *remote* node still needs [#450](https://github.com/hleserg/Attadipa/issues/450) |
 | **Desktop simulator**, both geometries, radio and node presence switchable without a rebuild | ✅ `IMPLEMENTED` |
-| **Screenshot and drive the live UI from another process** — tap, swipe, buttons, scripted journeys | ✅ `MEASURED` on the simulator *and* the physical watch over USB |
+| **Screenshot and drive the live UI from another process** — tap, swipe, buttons, scripted journeys | ✅ `MEASURED` on the physical watch for capture, remote tap and the physical touch/BOOT/PWR paths ([bench record](docs/hardware/WATCH_CONTROL_2026-08-25.md)); swipes and scripted journeys so far only on the simulator |
 | **Design tokens** — twelve colour roles, day and night, with WCAG contrast arithmetic and a CI check that rejects a raw hex value in screen code | ✅ `IMPLEMENTED` |
 | **Fonts that cannot silently fail** — seven Nunito Sans subsets covering exactly the 177 codepoints of the charset; an undrawable character fails the build | ✅ `IMPLEMENTED` |
-| **Compass / heading** — the API exists and the needle turns with the wrist; neither board ships a magnetometer, and two modules are on the bench awaiting a retrofit | 🧪 [`MAGNETOMETER_RETROFIT`](docs/research/MAGNETOMETER_RETROFIT.md) |
+| **Compass / heading** — the API exists and the screen turns the needle, so far only from simulator fixtures. Neither board ships a magnetometer; two modules are on the bench awaiting a retrofit, and no firmware yet sets a heading | 🧪 [`MAGNETOMETER_RETROFIT`](docs/research/MAGNETOMETER_RETROFIT.md) |
 | **Haptics** — typed capability descriptors, no driver code yet | 📐 `PLANNED` |
 | **Child Mode** — a separate UX for a six-year-old, not the adult UI with bigger fonts | 📐 `PLANNED` |
 | **Power** — one honest number: **413 mW** at the Waveshare's USB input, idle on one screen, cell disconnected, 2026-09-05. No sleep figure, no screen-off figure, no per-rail split | 🔬 measuring |
 | **The T-Watch's sub-GHz radio** — five candidate parts, and only some of them do LoRa at all. Nobody has read the marking off the chip | ❓ `UNKNOWN` ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 
-Every one of those links to the evidence.
+The rows that say `MEASURED` link the bench record that produced them.
 [`docs/research/VERIFIED_FACTS.md`](docs/research/VERIFIED_FACTS.md) is the
 ledger, and [`docs/research/OPEN_QUESTIONS.md`](docs/research/OPEN_QUESTIONS.md)
 is the list of things nobody has established yet.
@@ -209,8 +213,8 @@ cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON && cmake --build build-sim
 --frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
 ```
 
-None of those need a rebuild — that is the point of them, and it is why this
-project has no per-board binaries. Try `--no-bring-up` first: it is the fastest
+None of those need a rebuild — that is the point of them, and it is why one
+simulator binary covers both boards. Try `--no-bring-up` first: it is the fastest
 way to see what "the watch tells you when it does not know" actually looks like.
 
 Then drive it from another terminal:
@@ -233,7 +237,7 @@ not be guessing at what the hardware does.
 |---|---|
 | **Embedded / ESP-IDF** | board bring-up, PMU rails, sleep paths, I2C peripherals, the second board's driver gaps |
 | **LoRa / MeshCore** | protocol integration, upstream compatibility, getting a message *and its reply* across |
-| **GNSS / navigation** | NMEA and UBX, fix quality, staleness, dead reckoning, the honest-state ladder |
+| **GNSS / navigation** | NMEA and UBX, fix quality, staleness, the honest-state ladder |
 | **Sensors / heading** | magnetometer retrofit, hard-iron and soft-iron calibration, tilt compensation |
 | **UI / LVGL** | watch faces, navigation UX, motion, two very different screen geometries |
 | **Hardware hacking** | bench measurements, antennas, power, soldering a sensor into a watch that never had one |
@@ -268,7 +272,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 | Board | Role | Radio / GNSS on board |
 |---|---|---|
-| LilyGO T-Watch S3 Plus | self-contained target | GNSS **verified** (MIA-M10Q); radio part **UNKNOWN** |
+| LilyGO T-Watch S3 Plus | self-contained target | GNSS present — the bench unit's module named itself **MIA-M10Q**, and the product ships that *or* a Quectel LS550G, which needs a different rail ([matrix](docs/research/HARDWARE_MATRIX.md)); radio part **UNKNOWN** |
 | Waveshare ESP32-S3 Touch AMOLED 2.06 | split target — the wearable half | **neither**, by design |
 | Companion node | separate device — LoRa, GNSS, an ESP32 | provides both, over a link |
 | Desktop simulator | first-class development target | simulated, node included |

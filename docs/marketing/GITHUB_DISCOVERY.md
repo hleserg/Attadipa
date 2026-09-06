@@ -64,7 +64,7 @@ is a swap list, not an addition list.
 | `offline-first` | an active community that is mostly web, and for whom a wearable that means it is genuinely novel |
 | `open-hardware` | the crowd that reads schematics for fun — the same people who can close an `OPEN_QUESTIONS` row |
 | `ble` | the MeshCore link is BLE; people searching BLE + ESP32 are the ones who can help with the transport |
-| `u-blox` | narrow and high-intent: the MIA-M10Q is a u-blox part and the GNSS work is real |
+| `u-blox` | narrow and high-intent: the bench T-Watch's GNSS module is a u-blox MIA-M10Q and the GNSS work is real |
 | `cpp` | the language filter a contributor actually uses when browsing embedded repos |
 
 **Resulting set (20):** `ble`, `cpp`, `embedded-systems`, `esp-idf`, `esp32`,
