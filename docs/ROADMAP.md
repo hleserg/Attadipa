@@ -77,7 +77,17 @@ Written 2026-08-24, after an independent cold read of the repository.
 > [NODE_POSITION_FROM_MESHCORE](research/NODE_POSITION_FROM_MESHCORE.md) §1 — "A MeshCore node emits its position in three places. The existing research" —
 > and what §6 argues against is *starting* with the telemetry path: a hundred
 > times coarser, four gates, a radio round trip. That is a price, not an
-> absence. So what #450 owes on this half is which path to pay for. It is not a
+> absence — and it is not the whole price either. Both remote paths are shut at
+> the node by default, and the telemetry one is shut by a *persisted user
+> preference*:
+> `docs/research/NODE_POSITION_FROM_MESHCORE.md:140` — "`gps_active` is **off by default** — `_prefs.gps_enabled = 0;` in `MyMesh.cpp`,".
+> Path C sits behind its own policy and is not costed at all —
+> `docs/research/NODE_POSITION_FROM_MESHCORE.md:55` — "requester mask ∧ `gps_active` | `advert_loc_policy` |".
+> A shut gate does not answer with an error, which is what makes this worth
+> writing down here rather than discovering in a decoder —
+> `docs/research/NODE_POSITION_FROM_MESHCORE.md:135` — "   returns a well-formed telemetry reply **with no GPS record in it**, and that".
+> So what #450 owes on this half is which path to pay for, and opening that
+> path's gate is bench configuration of a node, a step beside H16. It is not a
 > wire to invent, and it is certainly not a change to node firmware, which the
 > seam note above forbids in as many words.
 >
@@ -88,10 +98,20 @@ Written 2026-08-24, after an independent cold read of the repository.
 > to `own`; it is the case that rule exists to refuse, because a pocket is still
 > a different body and no transform is known —
 > `docs/research/NODE_POSITION_FROM_MESHCORE.md:443` — "position, and a detached node reports a place the wearer is not. Any consumer".
-> Which leaves the harder question, and it is the one #450 actually owes: **what
-> may ever fill `own` on a board with no receiver.** The `OwnPosition` payload in
-> the direction prompt is a proposal about exactly that, and it is a proposal
-> against this rule rather than a detail underneath it.
+> Which leaves the harder question, and it is the Waveshare's rather than the
+> slice's: **what may ever fill `own` on that wrist, which has no receiver.**
+> The `OwnPosition` payload in the direction prompt is a proposal about exactly
+> that, and it is a proposal against this rule rather than a detail underneath
+> it — an owner decision overriding an accepted contract, not a detail #450 can
+> settle on its own. The other board does not have the question: the T-Watch
+> fills `own` from a receiver on its own body, and what holds that off is
+> neither hardware nor a rule but a default waiting for a caller —
+> `firmware/main/Kconfig.projbuild:173` — "        bring-up slice, so listening to it is opt-in until something above".
+> That does not make it the competing task. A wrist drawing "you are here" from
+> its own receiver is the GPS-watch reading this direction exists to refuse, and
+> this block says at its head that the slice is written for the wrist with no
+> receiver on purpose. The Waveshare wins because the T-Watch's page is out of
+> scope, not because it is dearer.
 >
 > **And whatever answers it runs into one more rule.** Every position the MeshCore channel
 > produces states no fix type and therefore classifies `NoFix`:
