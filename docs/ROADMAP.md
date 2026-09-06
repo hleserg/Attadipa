@@ -25,8 +25,8 @@ Written 2026-08-24, after an independent cold read of the repository.
 > [#450](https://github.com/hleserg/Attadipa/issues/450): companion coordinates
 > reach the wrist as a distance and a direction relative to the watch body, with
 > no phone and no internet. That reorders the seam above rather than replacing
-> it. The BLE half looks nearer, because two nodes are physically on the bench
-> and have answered over BLE with their model and firmware — but their
+> it. The BLE half looks nearer, because two MeshCore nodes have answered over
+> BLE with their model and their firmware version — but their
 > advertised name is still `UNKNOWN` in
 > [BENCH_DEVICES.md](research/BENCH_DEVICES.md), and whether either advertises
 > the *published Companion service* is the exact condition the seam above is
