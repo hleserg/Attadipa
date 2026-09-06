@@ -13,9 +13,9 @@ What is actually on each board, and how it is wired.
 
 Everything below is `VERIFIED` against vendor documentation, vendor board
 support code, or the published schematic, unless the row says otherwise.
-**Eight physical sessions are in the source list below**, one of them a power
-measurement (S16). What they did not answer — GNSS performance, interference,
-every power state but that one — is in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+**Some of this now rests on a bench**: the source list below reaches the
+physical unit, most recently the power measurement S16. GNSS performance,
+interference and every other power state stay in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 Sources are listed at the bottom.
 
