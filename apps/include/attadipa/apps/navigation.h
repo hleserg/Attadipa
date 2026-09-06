@@ -79,10 +79,20 @@ struct NavState {
     //
     // Policy, not physics, and here for the same reason `target_stale_after`
     // is: ADR-0009 §6 carries confidence and leaves the threshold to whoever
-    // renders it. This is the user-facing half of "disturbed" — a compass
-    // beside a running motor or a speaker magnet reports a number and a low
+    // renders it. This is the *policy* half of "disturbed" — a compass beside
+    // a running motor or a speaker magnet reports a number and a low
     // confidence, and below this floor the readout goes back to north-up
-    // rather than swinging an arrow the wearer would follow. `ESTIMATED`: no
+    // rather than swinging an arrow the wearer would follow.
+    //
+    // The user-facing half is not here, and saying otherwise would be the
+    // second lie this file exists to refuse. Nothing below reads `heading` for
+    // anything but the needle: no status, caveat or string moves when the
+    // fallback fires, so the readout changes what it measures in silence and
+    // the only thing that says which frame the face is in is where the "N"
+    // marker sits. ADR-0009 §1 asks for the sentence as well —
+    // `docs/adr/0009-heading.md:50` — "is to draw the bearing against a fixed
+    // north-up reference and say so, not to" — and that needs a `NavText`
+    // field this change deliberately does not add. `ESTIMATED`: no
     // magnetometer has been on a board here, so nothing has measured what a
     // disturbed one reports.
     std::uint8_t min_heading_confidence = 40;

@@ -108,9 +108,9 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   lv_obj_set_style_text_color(title_, accent, LV_PART_MAIN);
   lv_obj_set_style_text_letter_space(title_, m.px(Dp{2}), LV_PART_MAIN);
 
-  // The ring is the frame of reference made visible: it does not turn, and the
-  // "N" sits at its top so that the needle is read against north rather than
-  // against the wearer.
+  // The ring is the frame of reference made visible. It never turns; what moves
+  // is the "N", which sits at its top while the face is north-up and at the
+  // drawn bearing of north once `point_needle()` has a heading to rotate by.
   ring_ = lv_obj_create(screen);
   bare(ring_);
   lv_obj_set_size(ring_, ring, ring);
@@ -267,10 +267,10 @@ void NavFace::point_needle(const apps::NavText &text) {
   // way round produces a needle that is plausible everywhere and correct only
   // at the four cardinal points.
   const double radians = drawn_centideg * kPi / 18000.0;
-  // The tip stops short of the rim so that a due-north needle does not cover
-  // the "N". That marker is what says the ring is north-up rather than a
-  // compass following the wrist, and a needle that hides it exactly when it
-  // points north hides it at the moment it is most likely to be misread.
+  // The tip stops short of the rim so that a due-north bearing does not put the
+  // needle over the "N" — which it would in either mode, the marker sitting at
+  // minus the heading and the needle at the bearing minus it. That marker is
+  // the only thing on screen saying which frame the face is in.
   const double tip = radius * 0.62;
   const double tail = radius * 0.24;
 

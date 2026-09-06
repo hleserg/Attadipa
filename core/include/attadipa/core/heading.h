@@ -138,9 +138,16 @@ struct Heading {
 // and it is Q10's amending ADR that closes it, not this header.
 //
 // What this header can do is refuse to let the whitelist above quietly answer
-// it. A driver that cannot correct to true north **must not report `Valid`**:
-// `Uncalibrated` is exactly the state for a number with no reason to be
-// believed, and reporting it costs the arrow rather than the wearer. The
+// it. A driver that cannot correct to true north **must not report `Valid`**,
+// and the state for that is `Invalid` — "an answer arrived and it cannot be
+// one" — because an angle measured from magnetic north cannot be the true-north
+// angle `centideg` promises. Deliberately **not** `Uncalibrated`: that word has
+// a remedy attached to it in an accepted ADR, `docs/adr/0009-heading.md` §5
+// row 7 offering the wearer the calibration entry point, and a compass with a
+// perfectly good calibration record on a watch that simply has no position fix
+// would then be sent to a wizard that cannot give the arrow back. Somebody
+// doing the wrong thing is worse than somebody doing nothing. Either way the
+// refusal costs the arrow rather than the wearer. The
 // consequence of getting this wrong is not subtle. The needle would be drawn
 // from magnetic north beside a printed bearing measured from true north, both
 // unlabelled, and local anomalies run past ten degrees.
