@@ -8,6 +8,11 @@
 namespace attadipa::ui {
 namespace {
 
+// Two places turn centidegrees into radians here — the needle and the north
+// marker — and they have to agree to the last digit or the marker drifts off
+// the needle's ring.
+constexpr double kPi = 3.14159265358979323846;
+
 lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost) {
   const auto value = color(role, theme, pixel_cost);
   return value ? lv_color_hex(value->packed()) : lv_color_black();
@@ -192,9 +197,31 @@ void NavFace::point_needle(const apps::NavText &text) {
 
   // Inside the ring's top edge, not above it: above it the marker collided
   // with the title on the 240x240 panel, where every row is close to its
-  // neighbour.
-  lv_obj_set_pos(north_, centre_x - lv_obj_get_width(north_) / 2,
-                 lv_obj_get_y(ring_) + lv_obj_get_height(ring_) / 12);
+  // neighbour. That inset is also the marker's orbit — its centre rides five
+  // twelfths of the ring's height out from the ring's centre — so the rotated
+  // placement below passes through exactly the old point at heading 0 and the
+  // north-up screen is pixel-for-pixel what it was.
+  const double marker_orbit = lv_obj_get_height(ring_) * 5.0 / 12.0 -
+                              lv_obj_get_height(north_) / 2.0;
+  // North-up: the marker sits at the top, the ring is a rose read against a
+  // map. Head-up: the ring has turned with the wrist, so the marker travels to
+  // where north actually is. It has to move. A marker pinned to the top beside
+  // a needle that turns with the wrist makes the ring and the needle two
+  // answers to one question, and nothing on the screen says which to follow.
+  //
+  // The negation is on a `double`, not on the centidegrees: `%` promotes them
+  // to `unsigned`, where unary minus is a wrap to about 4.29 billion rather
+  // than a turn anticlockwise.
+  const double marker_radians =
+      text.has_arrow
+          ? -static_cast<double>(text.heading_centideg % 36000U) * kPi / 18000.0
+          : 0.0;
+  lv_obj_set_pos(
+      north_,
+      static_cast<std::int32_t>(centre_x + std::sin(marker_radians) * marker_orbit -
+                                lv_obj_get_width(north_) / 2.0),
+      static_cast<std::int32_t>(centre_y - std::cos(marker_radians) * marker_orbit -
+                                lv_obj_get_height(north_) / 2.0));
   lv_obj_set_pos(hub_, centre_x - lv_obj_get_width(hub_) / 2,
                  centre_y - lv_obj_get_height(hub_) / 2);
 
@@ -217,7 +244,12 @@ void NavFace::point_needle(const apps::NavText &text) {
 
   // Re-pointing the line invalidates the whole object, and the readout
   // re-formats every tick whether or not the bearing moved.
-  if (needle_drawn_ && needle_centideg_ == text.bearing_centideg) {
+  // The wrist-relative angle when the watch knows which way it is turned, and
+  // the true bearing otherwise. One variable, so that the cache below and the
+  // trigonometry under it can never be told different things.
+  const std::uint16_t drawn_centideg =
+      text.has_arrow ? text.arrow_centideg : text.bearing_centideg;
+  if (needle_drawn_ && needle_centideg_ == drawn_centideg) {
     return;
   }
 
@@ -225,7 +257,7 @@ void NavFace::point_needle(const apps::NavText &text) {
   // sine goes on x and the *negated* cosine on y. Getting this pair the wrong
   // way round produces a needle that is plausible everywhere and correct only
   // at the four cardinal points.
-  const double radians = text.bearing_centideg * 3.14159265358979323846 / 18000.0;
+  const double radians = drawn_centideg * kPi / 18000.0;
   // The tip stops short of the rim so that a due-north needle does not cover
   // the "N". That marker is what says the ring is north-up rather than a
   // compass following the wrist, and a needle that hides it exactly when it
@@ -247,7 +279,7 @@ void NavFace::point_needle(const apps::NavText &text) {
       static_cast<lv_value_precise_t>(local_y - std::cos(radians) * tip)};
   lv_line_set_points(needle_, needle_points_, 3);
   needle_drawn_ = true;
-  needle_centideg_ = text.bearing_centideg;
+  needle_centideg_ = drawn_centideg;
 }
 
 void NavFace::update(const apps::NavText &text) {

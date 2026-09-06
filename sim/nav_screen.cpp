@@ -100,6 +100,42 @@ bool stage_nav_scenario(const char *name) {
     node.position.value = kHere;
     g_state.own = own;
     g_state.target = node;
+  } else if (std::strncmp(name, "head-up", 7) == 0) {
+    // ADR-0009 §5 row 1, with the ring turned to four different places. The
+    // needle is wrist-relative and the `N` marker travels to where north is,
+    // and the four are here rather than one because the marker's *collisions*
+    // are what change with the angle: south puts it on the distance row of the
+    // 240x240 panel, east and west put it against the ring's sides.
+    g_state.own = own;
+    g_state.target = node;
+    g_state.heading.source = core::HeadingSource::Magnetometer;
+    g_state.heading.frame = core::ReferenceFrame::WatchBody;
+    g_state.heading.validity = core::HeadingValidity::Valid;
+    g_state.heading.confidence = 90;
+    const char *facing = name + 7;
+    if (std::strcmp(facing, "-south") == 0) {
+      g_state.heading.centideg = 18000;
+    } else if (std::strcmp(facing, "-east") == 0) {
+      g_state.heading.centideg = 9000;
+    } else if (std::strcmp(facing, "-west") == 0) {
+      g_state.heading.centideg = 27000;
+    } else if (std::strcmp(facing, "") == 0) {
+      g_state.heading.centideg = 4500;
+    } else {
+      std::fprintf(stderr, "unknown --nav-state \"%s\"\n", name);
+      return false;
+    }
+  } else if (std::strcmp(name, "compass-unusable") == 0) {
+    // A heading that exists and may not turn anything: uncalibrated, so the
+    // readout goes back to north-up. The screen to check is that it is the
+    // *whole* north-up screen and not a half-rotated one.
+    g_state.own = own;
+    g_state.target = node;
+    g_state.heading.source = core::HeadingSource::Magnetometer;
+    g_state.heading.frame = core::ReferenceFrame::WatchBody;
+    g_state.heading.validity = core::HeadingValidity::Uncalibrated;
+    g_state.heading.centideg = 18000;
+    g_state.heading.confidence = 90;
   } else if (std::strcmp(name, "far") == 0) {
     node.position.value = core::Position{900000000, 10000000};
     g_state.own = own;
@@ -108,7 +144,8 @@ bool stage_nav_scenario(const char *name) {
     std::fprintf(stderr,
                  "unknown --nav-state \"%s\"; one of: ready waiting no-fix "
                  "own-stale own-degraded receiver-silent node-unavailable "
-                 "node-unknown node-stale arrived far\n",
+                 "node-unknown node-stale arrived far head-up head-up-east "
+                 "head-up-south head-up-west compass-unusable\n",
                  name);
     return false;
   }

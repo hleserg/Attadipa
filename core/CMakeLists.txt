@@ -12,6 +12,7 @@ add_library(attadipa_core
     src/diagnostics.cpp
     src/geo.cpp
     src/gnss_power.cpp
+    src/heading.cpp
     src/input.cpp
     src/location_service.cpp
     src/mesh_service.cpp

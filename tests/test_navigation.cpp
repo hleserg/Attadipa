@@ -60,6 +60,18 @@ core::LocationState node_coordinate(core::Position position, std::uint32_t age_m
   return state;
 }
 
+core::Heading watch_heading(std::uint16_t centideg,
+                            core::HeadingValidity validity = core::HeadingValidity::Valid,
+                            std::uint8_t confidence = 90) {
+  core::Heading heading;
+  heading.centideg = centideg;
+  heading.source = core::HeadingSource::Magnetometer;
+  heading.frame = core::ReferenceFrame::WatchBody;
+  heading.confidence = confidence;
+  heading.validity = validity;
+  return heading;
+}
+
 bool is(const char *actual, const char *expected) {
   return std::strcmp(actual, expected) == 0;
 }
@@ -452,6 +464,131 @@ void test_the_readout_speaks_the_locale_it_was_given() {
 
 }  // namespace
 
+// ---- heading, ADR-0009 -----------------------------------------------------
+
+// The one this file exists for. A node's compass is a true statement about a
+// body that is not this one, and turning the needle with it draws the most
+// plausible-looking wrong arrow this device can produce: everything on screen
+// looks right and the wearer walks the wrong way by however far the node
+// happens to be turned. ADR-0009 §3 decided this and nothing had to obey it
+// until now.
+void test_a_node_compass_never_turns_this_watch_s_needle() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
+  state.heading = watch_heading(9000);
+  state.heading.frame = core::ReferenceFrame::NodeBody;
+  state.heading.confidence = 100;  // perfect, and about the wrong body
+
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.has_bearing);
+  CHECK(!text.has_arrow);
+  CHECK(text.arrow_centideg == 0);
+  CHECK(text.heading_centideg == 0);
+
+  // And a course over ground is refused for the same reason: it is the
+  // direction of travel, not the direction the case is pointing.
+  state.heading.frame = core::ReferenceFrame::CourseOverGround;
+  CHECK(!apps::format_navigation(state).has_arrow);
+}
+
+// The intended experience, ADR-0009 §5 row 1. The printed bearing stays against
+// true north because a person checks it against a map; the needle is what turns.
+void test_a_watch_that_knows_which_way_it_faces_points_at_the_wearer() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
+  const apps::NavText north_up = apps::format_navigation(state);
+  CHECK(north_up.has_bearing);
+  CHECK(!north_up.has_arrow);
+
+  state.heading = watch_heading(9000);  // facing east
+  const apps::NavText head_up = apps::format_navigation(state);
+  CHECK(head_up.has_arrow);
+  CHECK(head_up.bearing_centideg == north_up.bearing_centideg);
+  CHECK(is(head_up.bearing, north_up.bearing));
+  CHECK(is(head_up.cardinal, north_up.cardinal));
+  CHECK(head_up.heading_centideg == 9000);
+  CHECK(head_up.arrow_centideg ==
+        core::relative_bearing(north_up.bearing_centideg, 9000));
+}
+
+// The subtraction wraps the short way round rather than through 65535. A
+// bearing west of the heading is the case that catches an unsigned subtraction
+// done without the extra turn, and it is not an edge case — it is half the
+// circle.
+void test_the_arrow_wraps_the_short_way_round() {
+  CHECK(core::relative_bearing(1000, 35000) == 2000);
+  CHECK(core::relative_bearing(35000, 1000) == 34000);
+  CHECK(core::relative_bearing(0, 0) == 0);
+  CHECK(core::relative_bearing(18000, 18000) == 0);
+  CHECK(core::relative_bearing(0, 18000) == 18000);
+}
+
+// Three of the five validities are not `Valid`, and none of them may turn the
+// needle. `Uncalibrated` is the interesting one: there is a number, and ADR-0009
+// §5 row 7 says to draw it marked — which is a calibration surface this readout
+// does not have yet, so until it does the honest fallback is the north-up
+// readout rather than an arrow nothing has calibrated.
+void test_a_heading_that_is_not_valid_does_not_turn_the_needle() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
+
+  const core::HeadingValidity refused[] = {
+      core::HeadingValidity::Invalid, core::HeadingValidity::NoMotion,
+      core::HeadingValidity::Stale, core::HeadingValidity::Uncalibrated};
+  for (const core::HeadingValidity validity : refused) {
+    state.heading = watch_heading(9000, validity);
+    const apps::NavText text = apps::format_navigation(state);
+    if (text.has_arrow) {
+      std::fprintf(stderr, "%s turned the needle\n",
+                   core::to_string(validity));
+      CHECK(!text.has_arrow);
+    }
+    CHECK(text.has_bearing);
+  }
+}
+
+// "Disturbed", without a sixth validity. ADR-0009 §6 carries confidence and
+// leaves the threshold to the renderer, so a compass beside a running motor
+// reports a number and a low confidence, and the readout goes back to north-up
+// rather than swinging an arrow somebody would follow.
+void test_a_disturbed_compass_falls_back_to_north_up() {
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
+  state.heading = watch_heading(9000, core::HeadingValidity::Valid, 10);
+  CHECK(!apps::format_navigation(state).has_arrow);
+
+  // The floor is the caller's, exactly as `target_stale_after` is.
+  state.min_heading_confidence = 5;
+  CHECK(apps::format_navigation(state).has_arrow);
+}
+
+// No bearing, no arrow. There is nothing to rotate, and an arrow drawn from a
+// heading alone points at where the wearer is facing rather than at anything
+// they are trying to reach.
+void test_a_heading_with_nowhere_to_go_draws_no_arrow() {
+  apps::NavState state;
+  state.heading = watch_heading(9000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(!text.has_bearing);
+  CHECK(!text.has_arrow);
+  check_no_numbers(text);
+}
+
+// The default is the honest one, and it is the state both boards are in.
+void test_the_default_heading_says_it_knows_nothing() {
+  const core::Heading heading;
+  CHECK(heading.validity == core::HeadingValidity::Invalid);
+  CHECK(heading.confidence == 0);
+  CHECK(!core::can_orient(heading, 0));
+  CHECK(core::to_string(core::HeadingSource::Unknown) != nullptr);
+  CHECK(core::to_string(core::ReferenceFrame::WatchBody) != nullptr);
+  CHECK(core::to_string(core::HeadingValidity::Invalid) != nullptr);
+}
+
 int main() {
   test_a_watch_that_knows_nothing_says_so();
   test_a_receiver_that_answered_no_is_not_a_receiver_still_starting();
@@ -473,6 +610,13 @@ int main() {
   test_a_degraded_own_fix_still_measures_and_still_says_so();
   test_an_unbound_provider_is_not_a_missing_receiver();
   test_the_readout_speaks_the_locale_it_was_given();
+  test_a_node_compass_never_turns_this_watch_s_needle();
+  test_a_watch_that_knows_which_way_it_faces_points_at_the_wearer();
+  test_the_arrow_wraps_the_short_way_round();
+  test_a_heading_that_is_not_valid_does_not_turn_the_needle();
+  test_a_disturbed_compass_falls_back_to_north_up();
+  test_a_heading_with_nowhere_to_go_draws_no_arrow();
+  test_the_default_heading_says_it_knows_nothing();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);

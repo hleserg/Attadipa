@@ -225,6 +225,23 @@ NavText format_navigation(const NavState &state) {
                     static_cast<unsigned>(centideg / 100U));
       put(text.cardinal, sizeof(text.cardinal),
           cardinal_of(centideg, state.locale));
+
+      // The wrist-relative half, and only when a heading may orient it.
+      // `can_orient()` is where the three conditions live, so that "may this
+      // angle turn the needle" has one definition rather than one per caller —
+      // and the one that matters most is the frame: a `NodeBody` heading at
+      // confidence 100 is a true statement about a body that is not this one,
+      // and ADR-0009 §3 exists because turning the needle with it is the most
+      // plausible-looking wrong arrow this device can draw.
+      if (core::can_orient(state.heading, state.min_heading_confidence)) {
+        text.arrow_centideg =
+            core::relative_bearing(centideg, state.heading.centideg);
+        text.heading_centideg = state.heading.centideg;
+        text.has_arrow = true;
+      }
+      // No else. A heading that cannot orient leaves `has_arrow` false and the
+      // face draws north-up, which is not a degraded arrow — it is a different
+      // and complete readout, and it is the one every board here draws today.
     }
     // No bearing and a distance is usually the arrival case: standing on it, or
     // on the same coordinate it reported. The distance still reads, and it
@@ -290,9 +307,10 @@ const AppManifest &navigation_manifest() {
   // already settled that this application takes none of its own.
   //
   // Heading is not required, and that is this alpha's shape rather than an
-  // oversight: the bearing is stated against true north on a north-up readout,
-  // so the application is useful with no magnetometer and becomes more useful
-  // with one.
+  // oversight: with no heading the bearing is stated against true north on a
+  // north-up readout, so the application is useful with no magnetometer. With
+  // one it turns the same bearing into an arrow relative to the wrist, which is
+  // more useful and is not a different application.
   static constexpr core::Capability required[] = {core::Capability::Position};
   static const AppManifest manifest{"navigation", required, 1,
                                     nullptr,      0,        core::Millis{1000}};
