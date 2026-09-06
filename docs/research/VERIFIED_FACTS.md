@@ -2414,8 +2414,9 @@ ones that heading states.
   4.990 V** at its USB-C input — a **median 413 mW**, taken as the median of the
   per-sample product rather than a product of two medians. Over the same 21 440
   samples the mean is 83.32 mA at 4.981 V, **415 mW**; p1–p99 is 81.2–86.4 mA.
-  Transients reach **1282 mA**, but only **0.028 %** of samples sit above
-  150 mA, which is why **413 mW, the median, is the figure to quote** and the
+  The largest single sample is **1282 mA**, and only **0.028 %** of samples —
+  six of them, spread over the 3.97 minutes — sit above 150 mA, which is why
+  **413 mW, the median, is the figure to quote** and the
   mean sits 1.7 mW above it.
 - **Source:** S16 — a FNIRSI FNB-58 inline on the board's USB-C input,
   2026-09-05, logged over its HID interface with
@@ -2430,7 +2431,13 @@ ones that heading states.
   17:59Z. That matters for the BLE question below, because advertising shows as
   periodic bumps and a transient count without a timebase cannot bound it: at
   this rate the 0.028 % above 150 mA is six samples spread over four minutes,
-  which is what a bounded statement about it looks like.
+  which is what a bounded statement about it looks like. It also bounds the
+  1282 mA above from **below only**: nothing shorter than 11.1 ms is visible to
+  this instrument, so that is the largest sample, not the peak current, and the
+  true peak is at least that. **It therefore does not answer the criterion left
+  open by** `docs/research/BATTERY_UPGRADE.md:740` — "The board's peak draw has" — which asks that an
+  over-current trip sit comfortably above a peak that has never been measured. Sizing pack protection from this number would be
+  sizing it from a floor read as a ceiling, and from an idle screen at that.
 - **Which build was on the board is `UNKNOWN`, and the bound on it contradicts
   [BENCH_DEVICES](BENCH_DEVICES.md).** Nothing recorded the image at measurement
   time. But the screen the owner read off the board is the provisioning entry
@@ -2458,12 +2465,17 @@ ones that heading states.
   same day — **2026-09-05, beginning 15:23Z, 215 946 samples over 2398.1 s at
   90.0 samples/s**, same meter, same board, cell still attached — read
   **bimodally, 84 mA and 213 mA in bursts**; that run lives only in bench logs,
-  which are not repository artefacts, and it is cited here for one thing only — its 84 mA mode is this same baseline to
-  within 1 %, which is what turned an inference into a measurement. **Nothing
+  which are not repository artefacts, and it is cited here for one thing only —
+  its 84 mA mode is **1.4 % above this median** (0.8 % above the mean, which is
+  the comparison that reads as "within 1 %" and is the median-for-mean slip this
+  entry already had once). Both are inside the mode's own precision: 84 mA is
+  quoted at two significant figures, so it cannot resolve a one-percent
+  difference at all. That is what turned an inference into a measurement. **Nothing
   measured the charger current**, so that the 213 mA mode was charging is
   *consistent with* the cell being attached and is not established here.
-- **The third residual `UNKNOWN` — after the decoder revision and the meter's
-  rated accuracy above — is whether the BLE radio was powered.** A host scan
+- **The fourth residual `UNKNOWN` — after the decoder revision, which build was
+  on the board, and the meter's rated accuracy, all above — is whether the BLE
+  radio was powered.** A host scan
   does not settle it — in MeshCore the *node* advertises and the watch is the
   central, so the watch is not expected to appear in a scan whether its radio is
   up or not. Do not read its absence as "radio off".
@@ -2472,4 +2484,6 @@ ones that heading states.
   micro-USB — `docs/research/HARDWARE_MATRIX.md:90` — "| USB | Micro-USB, charge + programming only" — and
   needs an adapter the bench does not have. It is the first number of its kind
   here, and the AXP2101 has no current channel on either silicon variant, so
-  external instrumentation is the only way any of the others can be taken.
+  external instrumentation — or a board shunt, if either board turns out to fit
+  one, which is H2's still-open half — is the only way any of the others can be
+  taken.

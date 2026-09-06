@@ -145,9 +145,10 @@ The first implementation changes no observable behaviour except wake
 classification, which becomes correct where it was previously coincidental. That
 is deliberate: the seam has to exist before any power *policy* can be judged,
 and the measurements a policy would need are still not there. Two have moved
-since this was written and neither moves this: **H2 is answered** — the AXP2101
-cannot measure current on these boards at all, so no register read will ever
-supply them — and **H1 is `PARTIAL`**, one idle state on one board, measured
+since this was written and neither moves this: **H2 is `PARTIAL`** — the
+AXP2101 cannot measure current on these boards at all, so no register read will
+ever supply them, while whether either board fits a sense resistor something
+could read is still open — and **H1 is `PARTIAL`**, one idle state on one board, measured
 2026-09-05 at the USB input upstream of the PMU (S16,
 [VERIFIED_FACTS](../research/VERIFIED_FACTS.md)). An input figure separates no
 rail, so it says nothing about what any rail costs. Usable wake sources and
