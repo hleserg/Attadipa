@@ -26,12 +26,14 @@
 // than a blending done inside it: a companion the wearer has explicitly
 // confirmed is on their body may fill `own`. It still carries `NoFix` at every
 // age — a confirmation is a statement about a body, not about a fix — so the
-// `NoFix` conjunct of `own_ok` is waived while it holds, and its age is
-// rendered in a caveat rather than thresholded, because it arrives once per
-// session and a threshold would be true almost always.
+// `NoFix` conjunct of `own_ok` is waived while it holds — but only for a node
+// that published a `gps` key, because without one its coordinate is a stored
+// preference and never a fix. The age is rendered in a caveat rather than
+// thresholded, because it arrives once per session and a threshold would be
+// true almost always.
 // `docs/adr/0019-confirmed-companion-body.md` decides where that confirmation
-// is entered, where it lives, when it lapses, and what this readout says while
-// it holds.
+// is entered, where it lives, when it lapses, what the waiver requires, and
+// what this readout says while it holds.
 
 namespace attadipa::apps {
 

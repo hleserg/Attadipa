@@ -78,6 +78,31 @@ So "judged by arrival age, exactly as `target` is" described neither slot.
 Decision 7 says what the age is for instead, and it is display rather than
 gating.
 
+**And the waiver has a precondition, because path A's coordinate can be a number
+somebody typed.** `RESP_CODE_SELF_INFO` carries a lat/lon with nothing behind it:
+`docs/research/NODE_POSITION_FROM_MESHCORE.md:56` — "| **Present when the node has no GNSS** | **yes** — it is whatever is in prefs".
+On a node with no receiver it is a preference — restored from flash at boot,
+settable over `CMD_SET_ADVERT_LATLON` by any client, and range-checked to
+±90/±180 and nothing else. Waiving `NoFix` on *that* would put a number somebody
+typed on the wrist as the wearer's own position, under a confirmation that only
+ever said where the node is. That is the failure this whole readout exists to
+refuse, arriving through the gate this decision opens.
+
+One honest discriminator exists, and it is a proof of absence rather than a
+guess. `RESP_CODE_CUSTOM_VARS` publishes a `gps` key **only when a receiver was
+detected**:
+`docs/research/NODE_POSITION_FROM_MESHCORE.md:165` — "| no `gps` key | `gps_detected == false` — no receiver answered at boot".
+So the waiver requires that the node published a `gps` key at all. **Its value is
+deliberately not read**: `gps:0` and `gps:1` are both "possibly a fix, still
+indistinguishable", and separating them would invent a confidence the wire does
+not carry. With no key the confirmation still holds — the node is on the body —
+but `own` is not filled from it, and the readout is the second state of decision
+7 rather than a distance.
+
+That costs one command, `CMD_GET_CUSTOM_VARS` (40), once per session beside the
+handshake this feature already reads. No rail, no task, no queue, and nothing
+new on the wire between sessions.
+
 **4. It is entered on the watch's own screen, and offered by capability.**
 OD-26's channel, unchanged; no second consent path is invented, and nothing here
 licenses skipping the confirmation. The control appears only where `own` has no
@@ -163,6 +188,17 @@ confirmation anyway. A threshold that is true almost always is not a threshold.
 The age is rendered instead, through the caveat this repository already has for
 exactly this — `nav_caveat_node_unverified`, "node fix unverified, heard %s ago"
 — and **no second age field is added to `NavState`**.
+
+**That caveat's gate widens, because as written it cannot reach this case.** The
+sentence is right; the branch it sits in asks about the wrong slot:
+`apps/src/navigation.cpp:283` — "  } else if (usable(state.target) && !target_states_a_fix(state.target)) {".
+On the split arrangement a confirmed `own` arrives long before any target does —
+that is the whole point of the arrangement — so the age this decision promises to
+render would never be drawn at all. The gate becomes *the slot a node filled that
+states no fix*: a confirmed `own` first, then `target` as today. Own first for the
+reason the block's own comment already gives, that the wearer's sentence is the
+one they can act on. One condition changes; the string, its argument and the
+ordering rule do not, and no second age field appears.
 
 **What `own.availability` reads, because the ladder asks it first.** The status
 ladder tests availability before anything else —
