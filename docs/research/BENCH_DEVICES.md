@@ -3,8 +3,8 @@
 > **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
 > development host.
 > Every value below came from `esptool flash-id` and `udevadm`; nothing here is
-> inferred from a product name — **except "Two GNSS modules"**, a section
-> recorded from marketplace listings on 2026-09-02 and marked as such.
+> inferred from a product name — **except** the listing rows of "Two GNSS
+> modules", whose read-off row is evidence, and all of the 2026-09-05 section.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
@@ -276,6 +276,33 @@ stops it.** The read-off named the Waveshare pads these would wire to
 not 5 V tolerant, so the unmeasured TX idle voltage above — and, on the GT-U12,
 the unexplained path that keeps it running with `VCC` off — is what stands
 between here and a wire.
+
+## Magnetometer modules and vibration motors, delivered 2026-09-05 — NOT READ OFF
+
+The owner ordered the two magnetometer candidate modules
+[OD-17](OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not)
+names — CJMCU-9911 (AK09911C) and GY-271 (QMC5883L) — together with an
+assortment of vibration motors for the Waveshare. **They arrived on
+2026-09-05.** That is owner-reported in the working session of that day and is
+not a measurement of anything: nothing has been powered, probed or read off
+since.
+
+**What is on the bench is a delivery, not a part number.** Neither module has
+been examined; both are `UNKNOWN` in the sense
+[AGENTS.md](../../AGENTS.md) means until somebody reads the markings off the
+silicon, exactly as the GNSS modules above were `UNKNOWN` between 2026-09-02 and
+2026-09-04. A seller's listing is not a hardware fact, and this section records
+no listing values at all, because none were captured. The vibration motors are a
+batch rather than a chosen part: which one is fitted is itself an open question,
+and it is downstream of the magnetometer.
+
+**Arrival retires "the parts have not arrived" and retires nothing else.**
+[H16](OPEN_QUESTIONS.md) — the four ohmmeter readings that say what pull-up each
+module fits and whether the CJMCU-9911's `RST` pad reaches the die — was waiting
+on delivery and is now waiting on an ohmmeter. Every electrical number in
+[MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is still a datasheet quote,
+every test in it is still `NOT EXECUTED — HARDWARE REQUIRED`, and no
+magnetometer is fitted to any board.
 
 ## What this does not say
 
