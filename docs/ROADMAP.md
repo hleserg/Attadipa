@@ -98,12 +98,19 @@ Written 2026-08-24, after an independent cold read of the repository.
 > to `own`; it is the case that rule exists to refuse, because a pocket is still
 > a different body and no transform is known —
 > `docs/research/NODE_POSITION_FROM_MESHCORE.md:443` — "position, and a detached node reports a place the wearer is not. Any consumer".
-> Which leaves the harder question, and it is the Waveshare's rather than the
+> Which left the harder question, and it was the Waveshare's rather than the
 > slice's: **what may ever fill `own` on that wrist, which has no receiver.**
-> The `OwnPosition` payload in the direction prompt is a proposal about exactly
-> that, and it is a proposal against this rule rather than a detail underneath
-> it — an owner decision overriding an accepted contract, not a detail #450 can
-> settle on its own. The other board does not have the question: the T-Watch
+> **It was answered on 2026-09-06 and it is no longer open.** The owner took
+> the first of three priced options: a companion the wearer has *explicitly
+> confirmed is on their body* may fill `own`, and without that confirmation its
+> coordinate stays `target` — [OWNER_DECISIONS](research/OWNER_DECISIONS.md)
+> OD-28. So the `OwnPosition` payload in the direction prompt is the mechanism
+> for a decision that has been made, rather than a proposal against a rule; what
+> it now owes is an ADR, because the word carrying the whole decision is
+> *confirmed* and a confirmation that is right and then stale is how the refused
+> failure arrives looking like a success. The two options not taken were
+> soldering a receiver to the traced Waveshare pads, and dropping the distance
+> altogether. The other board never had the question: the T-Watch
 > fills `own` from a receiver on its own body, and what holds that off is
 > neither hardware nor a rule but a default waiting for a caller —
 > `firmware/main/Kconfig.projbuild:173` — "        bring-up slice, so listening to it is opt-in until something above".

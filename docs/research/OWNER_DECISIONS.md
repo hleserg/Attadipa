@@ -1740,3 +1740,75 @@ machine-readable markers and field names kept in English. The owner's own
 specification documents and files under `docs/ideas/` remain verbatim in
 Russian. This is not a product-localisation decision; `l10n/` and ADR-0010
 govern device strings.
+
+---
+
+## OD-27 — A bench capture that carries no position and no identity may be committed
+
+**Decided:** 2026-09-06, by the owner, in conversation.
+
+**What he decided:** the rule that bench logs live under `~/attadipa-bench/` and
+are never committed is a rule about what a log **carries**, not about where it
+was made. A capture that carries neither the owner's real position nor per-unit
+identity may be a repository artefact. He was asked about one specific case — a
+power capture, current and voltage against time — and granted it.
+
+**Why the rule reads that way.** It was never a blanket ban and its own
+statements say so:
+`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:16` — "Bench logs stay under `~/attadipa-bench/i427/` and are never committed: they" — continuing *"carry the owner's real position, and `hleserg/Attadipa` is public"*. Position
+and identity are the reasons. A power log has neither, so the reason does not
+reach it. Recording that here stops it being re-litigated as a convention
+somebody adopted rather than a decision somebody made.
+
+**What it obliges:** anything committed under this is checked field by field
+first, not assumed clean by category. What stays out is unchanged — NMEA and
+any fix, chip ids, `UBX-SEC-UNIQID`, the trailing serial fields of module and
+product strings, and the MeshCore node's BLE address.
+
+**What it does not open:** factory backups, vendor datasheets and GNSS captures
+stay out. They are excluded for reasons this decision does not touch — licence
+in the first two cases, position in the third — and it grants nothing about
+them. It also grants nothing retroactively: a log already written is committed
+only after the same field-by-field check.
+
+---
+
+## OD-28 — A companion the wearer has confirmed is on their body may fill `own`
+
+**Decided:** 2026-09-06, by the owner, after three priced options.
+
+**What he decided:** option A of three. A MeshCore companion that the wearer has
+**explicitly confirmed is on their body** may supply the watch's own position.
+The confirmation is carried by the `validity` field of the `OwnPosition` payload
+in his own direction prompt. Without it the companion's coordinate stays
+`target`, exactly as today.
+
+**What prompted it:** the Waveshare has no receiver, so `own` has no local
+source, and without `own` there is no distance and no bearing — `NODE / 742 m /
+↗ NE` cannot be computed at all. The two alternatives were priced and not
+taken: soldering a GNSS module to the Waveshare's traced pads, which makes the
+wrist a GPS watch and is what [ROADMAP](../ROADMAP.md)'s direction block exists
+to refuse; and dropping the distance entirely, which fails his own Definition
+of Done.
+
+**What it changes:** the body rule stops being purely mechanical.
+`core/src/position.cpp:89` — "SensorBody body_of(PositionSource source)" — maps
+`PositionSource::NodeGnss` to a node body by construction, and §4.2 of
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md) reads as absolute.
+This decision adds a state above them in which the refusal is lifted. It does
+**not** delete the rule: an unconfirmed node coordinate is still `target`, and
+refusal stays the default.
+
+**The price he was told, and what it therefore obliges.** A confirmation that is
+wrong, or right and then stale, draws "you are here" over a place the wearer is
+not — the exact failure the rule existed to refuse, delivered by a screen that
+looks no different. So the mechanism is architectural and owes an ADR before any
+code: where the confirmation is entered, where it is stored, **when it expires**,
+and what the readout does once it has. Reusing
+[OD-26](#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen)'s
+channel — a finger on the watch's own screen — is the obvious candidate and is
+not decided here; what is decided is that a second consent channel is not
+invented for it.
+
+**What it does not decide:** which of the three upstream paths carries a
+*remote* node's coordinate. That stays open.

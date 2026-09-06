@@ -444,6 +444,19 @@ position, and a detached node reports a place the wearer is not. Any consumer
 that wants "where am I" rather than "where is my node" must ask a different
 question, and the first consumer in §6 deliberately asks the second.
 
+**One exception exists and it is owner-decided, not architectural.** On
+2026-09-06 the owner decided that a companion the wearer has **explicitly
+confirmed is on their body** may fill `own` —
+[OWNER_DECISIONS](OWNER_DECISIONS.md) OD-28 — because the Waveshare has no
+receiver and without `own` there is no distance to compute at all. That does not
+weaken the paragraph above: the refusal is still the default, an unconfirmed
+node coordinate is still `target`, and the word doing the work is *confirmed*.
+The rucksack, the windowsill and the wall are unchanged, and so is the failure
+they stand for — what OD-28 adds is a state, and what it therefore owes is an
+expiry, because a confirmation that was true this morning is exactly how that
+failure arrives looking like a success. None of it is built: the decision names
+an ADR as its next artefact and no code implements it yet.
+
 ## 5. Correlation, timeouts and cadence
 
 For the **directly connected** node — path A, and path B's `len == 4` "self"
