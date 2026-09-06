@@ -69,22 +69,31 @@ Written 2026-08-24, after an independent cold read of the repository.
 > to walk from and a place to walk to. What arrives over BLE is the connected
 > node's own position, out of `RESP_CODE_SELF_INFO`:
 > `link/src/meshcore_companion.cpp:546` — "        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every"
-> A remote peer's coordinate is parsed nowhere. A contact record is a public key
-> and a name and nothing else —
-> `core/include/attadipa/core/mesh_service.h:27` — "struct MeshPeer {" — so the
-> half of the slice that sounds finished is the half that has no wire.
+> Nothing in **this repository** parses a remote peer's: a contact record is a
+> public key and a name and nothing else —
+> `core/include/attadipa/core/mesh_service.h:27` — "struct MeshPeer {".
+> The protocol is not the gap. A node emits its position in three places and two
+> of them serve a node other than the connected one —
+> [NODE_POSITION_FROM_MESHCORE](research/NODE_POSITION_FROM_MESHCORE.md) §1 — "A MeshCore node emits its position in three places. The existing research" —
+> and what §6 argues against is *starting* with the telemetry path: a hundred
+> times coarser, four gates, a radio round trip. That is a price, not an
+> absence. So what #450 owes on this half is which path to pay for. It is not a
+> wire to invent, and it is certainly not a change to node firmware, which the
+> seam note above forbids in as many words.
 >
-> **And by the direction's own premise, the one coordinate that does arrive is
-> the wrong slot.** A companion on the same body reports *this* body. The
-> firmware spends it as the destination —
-> `firmware/main/waveshare_board.cpp:958` — "  nav.target = meshcore_ble_location();" —
-> which is right while the node is a thing on a desk and wrong the moment it is
-> in the wearer's pocket: `own` and `target` would then be one position, the
-> distance would be rounding noise, and the screen would call that `Ready`.
-> #450 owes two decisions before it owes any code — which slot the companion's
-> own coordinate fills, and what carries a remote node's, which nothing does.
+> **What is not open is which slot the companion's own coordinate fills.** It is
+> `target`, and it is settled by body rather than by preference —
+> `apps/include/attadipa/apps/navigation.h:18` — "// **own** position comes from a receiver on this body, **target** position is".
+> A node in the wearer's pocket is not the case that promotes a node coordinate
+> to `own`; it is the case that rule exists to refuse, because a pocket is still
+> a different body and no transform is known —
+> `docs/research/NODE_POSITION_FROM_MESHCORE.md:443` — "position, and a detached node reports a place the wearer is not. Any consumer".
+> Which leaves the harder question, and it is the one #450 actually owes: **what
+> may ever fill `own` on a board with no receiver.** The `OwnPosition` payload in
+> the direction prompt is a proposal about exactly that, and it is a proposal
+> against this rule rather than a detail underneath it.
 >
-> **Either slot runs into the same rule.** Every position the MeshCore channel
+> **And whatever answers it runs into one more rule.** Every position the MeshCore channel
 > produces states no fix type and therefore classifies `NoFix`:
 > `link/src/meshcore_companion.cpp:564` — "path in this repository can reach `PositionValidity::Valid` from it."
 > And `NoFix` is exactly what an own position may not be —
