@@ -2418,6 +2418,21 @@ ones that heading states.
   six of them, spread over the 3.97 minutes — sit above 150 mA, which is why
   **413 mW, the median, is the figure to quote** and the
   mean sits 1.7 mW above it.
+- **The captures are pinned by hash and are not in the tree.** `.gitignore:57`
+  — "# ...except a bench capture committed as the evidence for a `MEASURED`
+  result." — is the exception S15's five logs are committed under, and this one
+  is not, because bench captures on this machine are held back by an owner
+  constraint rather than by this file's judgement. So the next best thing is
+  here instead: sha256 of the three decoded series, which lets anyone the owner
+  sends them to prove they are the ones these numbers came from.
+  `14d894faf8f1d779ce6e3e36c457e4ebafc610cd4f64fb961e1707627e560f55`
+  is the idle capture, `a28014c1f34a7bef7368da3a54ff68404b306afe3d5557140d966fde17aa6b1a`
+  the zero run, and `7cedcee5d6e6f21a4872ba74135c371a007ffb79aedb7a6f8f30c3d41a684786`
+  the cell-attached one. **Until they are in the tree every figure in this entry
+  is checkable by the owner alone** — and these figures have already moved twice
+  under re-analysis, so that is a real gap and not a formality. Whether the
+  constraint is lifted for a power log, which carries no position and no
+  identity, is the owner's to decide.
 - **Source:** S16 — a FNIRSI FNB-58 inline on the board's USB-C input,
   2026-09-05, logged over its HID interface with
   `baryluk/fnirsi-usb-power-data-logger` at **an `UNKNOWN` revision**: none was
@@ -2465,12 +2480,15 @@ ones that heading states.
   same day — **2026-09-05, beginning 15:23Z, 215 946 samples over 2398.1 s at
   90.0 samples/s**, same meter, same board, cell still attached — read
   **bimodally, 84 mA and 213 mA in bursts**; that run lives only in bench logs,
-  which are not repository artefacts, and it is cited here for one thing only —
-  its 84 mA mode is **1.4 % above this median** (0.8 % above the mean, which is
-  the comparison that reads as "within 1 %" and is the median-for-mean slip this
-  entry already had once). Both are inside the mode's own precision: 84 mA is
-  quoted at two significant figures, so it cannot resolve a one-percent
-  difference at all. That is what turned an inference into a measurement. **Nothing
+  which are not committed (see the hashes below), and it is cited here for one
+  thing only. Its modes, separated at 150 mA and recomputed from that log rather
+  than read off a plot: the low mode is **83.92 mA median over 174 876 samples,
+  p5–p95 81.64–86.76 mA**, and the high mode **212.91 mA over 41 070**. The low
+  mode sits **1.09 mA — 1.3 % — above this entry's 82.83 mA median**, well
+  inside its own p5–p95 spread. That is an agreement at the order of magnitude
+  and it is what turned an inference into a measurement; it is **not**
+  corroboration at one percent, and the earlier "within 1 %" here was both wrong
+  and finer than either number can carry. **Nothing
   measured the charger current**, so that the 213 mA mode was charging is
   *consistent with* the cell being attached and is not established here.
 - **The fourth residual `UNKNOWN` — after the decoder revision, which build was

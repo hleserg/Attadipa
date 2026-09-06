@@ -131,9 +131,11 @@ than resolved by preference. Those findings are in
 with its source, and in
 [`docs/research/VERIFIED_FACTS.md`](docs/research/VERIFIED_FACTS.md).
 
-What is *not* established is anything that requires the physical board:
-measured power draw, real GNSS performance, and whether the interference the
-architecture guards against actually occurs. Those stay in
+What is *not* established is almost anything that requires the physical board:
+real GNSS performance, and whether the interference the architecture guards
+against actually occurs. Power draw has one number and no more — the Waveshare
+at its USB input, idle on one screen with the cell disconnected, 2026-09-05 —
+and no sleep figure, no screen-off figure and no per-rail split. Those stay in
 [`docs/research/OPEN_QUESTIONS.md`](docs/research/OPEN_QUESTIONS.md) until
 somebody measures them. A datasheet number is not a measurement.
 
