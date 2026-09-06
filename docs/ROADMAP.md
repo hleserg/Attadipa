@@ -112,15 +112,19 @@ Written 2026-08-24, after an independent cold read of the repository.
 > wire to invent, and it is certainly not a change to node firmware, which the
 > seam note above forbids in as many words.
 >
-> **What is not open is which slot the companion's own coordinate fills.** It is
-> `target`, and it is settled by body rather than by preference —
+> **The default slot for a companion's own coordinate is `target`,** and it is
+> settled by body rather than by preference —
 > `apps/include/attadipa/apps/navigation.h:19` — "// **own** position comes from a receiver on this body, **target** position is".
-> A node in the wearer's pocket is not the case that promotes a node coordinate
-> to `own`; it is the case that rule exists to refuse, because a pocket is still
-> a different body and no transform is known —
+> A node the wearer has said nothing about — in a rucksack, on a windowsill,
+> bolted to a wall, or in a pocket the watch has no way to know about — is not
+> promoted to `own` by proximity, because a body the device cannot verify is a
+> different body and no transform is known —
 > `docs/research/NODE_POSITION_FROM_MESHCORE.md:443` — "position, and a detached node reports a place the wearer is not. Any consumer".
-> Which left the harder question, and it was the Waveshare's rather than the
-> slice's: **what may ever fill `own` on that wrist, which has no receiver.**
+> **What moved on 2026-09-06 is not that rule but what can lift it.** A pocket
+> is no longer automatically the refused case; an *unconfirmed* one still is,
+> and that remains the default. Which leaves the question this block used to
+> call open, and it was the Waveshare's rather than the slice's: **what may ever
+> fill `own` on that wrist, which has no receiver.**
 > **It was answered on 2026-09-06 and it is no longer open.** The owner took
 > the first of three priced options: a companion the wearer has *explicitly
 > confirmed is on their body* may fill `own`, and without that confirmation its
