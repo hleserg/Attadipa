@@ -1,6 +1,6 @@
 # 0013 — Motion evidence belongs to a physical body
 
-Status: **accepted**
+Status: **accepted** — amended 2026-09-06 by [OD-28](../research/OWNER_DECISIONS.md#od-28--a-companion-the-wearer-has-confirmed-is-on-their-body-may-fill-own), which adds one state in which the `Node` body may fill `own`; the design below is otherwise unchanged, and the ADR that carries the amendment is not written yet
 Date: 2026-08-25
 
 Extends [ADR-0009](0009-heading.md) and [ADR-0011](0011-gnss-integrity.md).

@@ -1844,6 +1844,18 @@ a pointer here. This decision adds a state above all three in which the refusal
 is lifted. It does **not** delete the rule: an unconfirmed node coordinate is
 still `target`, and refusal stays the default.
 
+**Which arm of that mapping, because the word is the same and the bodies are
+not.** The coordinate this decision is about is the MeshCore node's, and it is
+born on the `Node` arm:
+`link/src/node_position_provider.cpp:39` — "out.observation.source = core::PositionSource::NodeGnss;".
+The `Companion` arm named in the same sentence of ADR-0013 is a different thing
+entirely and nothing here touches it —
+`core/include/attadipa/core/position.h:85` — "Companion,      // a phone".
+So the amending ADR reopens `PositionSource::NodeGnss` and `SensorBody::Node`.
+One that matches the word rather than the mapping re-bodies a phone on a
+confirmation flow that was never about phones, and leaves this decision
+unimplemented while the readout still says it is waiting for GPS.
+
 **The price he was told, and what it therefore obliges.** A confirmation that is
 wrong, or right and then stale, draws "you are here" over a place the wearer is
 not — the exact failure the rule existed to refuse, delivered by a screen that
