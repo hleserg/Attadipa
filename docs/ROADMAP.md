@@ -133,11 +133,12 @@ Written 2026-08-24, after an independent cold read of the repository.
 > proposal against a rule; it is how the *coordinate* arrives. **Where the
 > confirmation itself lives is now decided, and it is not this payload's field**
 > — [ADR-0019](adr/0019-confirmed-companion-body.md) puts it on the watch's own
-> screen through OD-26's channel, holds it in RAM against the ADR-0015 session
-> generation, and never persists it. The two things that ADR had to keep apart
-> are the confirmation and the validity, and it did: The word carrying the whole
-> decision is *confirmed*, and a confirmation that is right and then stale is
-> how the refused failure arrives looking like a success. The two options not
+> screen through OD-26's channel, holds it in RAM against the bonded peer and
+> the time that peer was last heard, and never persists it. The two things that
+> ADR had to keep apart are the confirmation and the validity, and it did: the
+> word carrying the whole decision is *confirmed*, and a confirmation that is
+> right and then stale is how the refused failure arrives looking like a
+> success. The two options not
 > taken were
 > soldering a receiver to the traced Waveshare pads, and dropping the distance
 > altogether. **The question was always the split topology's**, and OD-28 says

@@ -83,7 +83,7 @@ the register is not read again afterwards. On this same watch one day earlier
 the bit was found already set, and the register is battery-backed, so a reflash
 is exactly the case where it still is:
 
-- `docs/research/OPEN_QUESTIONS.md:117` — "`REG 0x90` bit 4 was **already set before this firmware wrote it**"
+- `docs/research/OPEN_QUESTIONS.md:118` — "`REG 0x90` bit 4 was **already set before this firmware wrote it**"
 - `docs/research/VERIFIED_FACTS.md:633` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
 
 Settling it needs a read-back of `REG 0x90` around the write, or the bit cleared

@@ -182,26 +182,44 @@ watch cannot tell "reconnected to the node still in your pocket" from
 "reconnected after you left it on a table". It can, and the evidence is the one
 thing this feature has that nothing else does: **the link itself is a continuous
 measurement of the distance between the two devices, and it is running whether
-or not anybody looks at it.** A companion that is genuinely on the wearer's body
-is at arm's length from the watch and stays connected; a companion left behind
-stops being heard the moment the wearer is far enough away, and stays unheard
-for as long as they are gone. The fact of a reconnect does not separate those
-two. **The length of the gap does**, and it is free — the watch already knows
-when it last heard the peer.
+or not anybody looks at it.** The fact of a reconnect does not use it. **The
+length of the gap does**, and it costs the one timestamp decision 5 already
+carries.
 
-**What that buys, stated as a bound rather than a promise.** While the link
-holds, the wearer's confirmation cannot be wrong by more than the radio's reach,
-because being wrong by more than that breaks the link, and a break long enough
-to matter lapses the confirmation. That is not the same as being right. It is a
-bounded error with a number this repository has not measured, and the eight-hour
-backstop and the revoke control exist for the residue inside it.
+**And the rest of this decision is a hypothesis, not a fact.** Reading the gap
+that way assumes two things about radio behaviour that nobody here has measured:
+that a companion carried on the wearer's own body holds the link rather than
+stumbling through them, and that between "an RF stumble" and "the wearer walked
+away" there is a duration that separates the two at all. Both are plausible;
+neither is established, and the second is the load-bearing one, because if those
+two ranges overlap there is no constant to pick and the rule has no window to
+live in. They are recorded as `R4` in
+[OPEN_QUESTIONS](../research/OPEN_QUESTIONS.md), and this ADR is **conditional
+on that measurement**.
 
-**The gap is `UNKNOWN` and this ADR does not invent it.** It has to be longer
-than a supervision timeout and any RF stumble, and shorter than a walk away and
-back — and both ends are properties of this radio, this enclosure and a body in
-between, none of which is measured here. An implementation must read it from one
-named constant and must not ship a number this ADR has not been given.
-`docs/research/` gets the measurement, not this file.
+**What happens if the measurement says there is no window.** The rule degrades
+to "any loss of the peer lapses the confirmation", which is the session-bound
+behaviour this decision replaced — worse to use, and honest. Nothing else in
+this ADR moves: decision 7 enumerates on the confirmation and never on the link,
+so the readout is right under either answer, and the only edit is which bullet
+this list carries. That is why the rest may be implemented before the
+measurement runs and this bullet may not.
+
+**And the value stays `UNKNOWN` even if the window exists.** An implementation
+reads it from one named constant and must not ship a number this ADR has not
+been given. `docs/research/` gets the measurement, not this file.
+
+**What the mechanism buys, stated as a bound rather than a promise, and only
+where the transport is short-range.** While the link holds, the wearer's
+confirmation cannot be wrong by more than the transport's reach, because being
+wrong by more than that breaks the link and a long enough break lapses the
+confirmation. On the BLE link this arrangement actually uses, that reach is
+small enough for the bound to be worth having — but the bound is a property of
+the *transport*, not of this decision, and `core` is deliberately not nailed to
+BLE. On a long-range transport the bound is wide enough to be worthless, and
+what carries the feature there is what carries the residue here anyway: the
+eight-hour backstop, the revoke control, and a readout that never claims the
+position is the wearer's own.
 
 **And a sleep is no longer a rule of its own, which is the second thing the
 gap rule buys.** An earlier draft gave sleep its own bullet, first exempting it
@@ -252,17 +270,31 @@ The second state replaces a sentence that is false on this board today —
 `firmware/main/waveshare_board.cpp:970` — "exactly what would change the answer, and the readout still says" —
 because a watch with no receiver fitted is not waiting for GPS.
 
-**Both states sit in one place in the ladder, and it is not the place a reader
-would first put them.** They go immediately after the `own_ok` branch —
-`apps/src/navigation.cpp:172` — "  } else if (!own_ok) {" —
-and **before** the validity branches —
+**The two states go in two different places, and an earlier draft of this
+decision put them both in one.** They have opposite relationships to the same
+branch:
+`apps/src/navigation.cpp:172` — "  } else if (!own_ok) {".
+
+**The second state goes inside that branch, replacing what it answers.** All
+three of its cases — no confirmation, a confirmation whose coordinate has not
+arrived, a confirmation whose coordinate was the unset pref — leave `own` empty,
+so `!own_ok` is true and this branch fires first. Placed after it the state is
+simply unreachable, and the sentence it was written to remove prints anyway:
+`apps/src/navigation.cpp:173` — "    text.status_code = state.own.fix_type == core::FixType::NoFix".
+So inside the branch, a device with no local provider answers the receiverless
+state where a device with a receiver keeps `NoFix` and `WaitingForGps`. The test
+is the one decision 4 already uses — no local provider — and not which board it
+is.
+
+**The first state goes after that branch**, and **before** the validity
+branches —
 `apps/src/navigation.cpp:176` — "  } else if (state.own.validity == core::PositionValidity::Stale) {".
 Decision 2 is the reason. A confirmed `own` carries `NoFix` at every age, so
 `Stale` and `Degraded` never fire on it, and a state placed after them falls
 through to the target branches — which on the split arrangement are reading an
 empty slot (decision 8) and would answer `NodeUnavailable` or
 `NodePositionUnknown` about the node the wearer has just confirmed is in their
-pocket. Placing them here also makes this decision's `Ready` sentence structural
+pocket. Placing it here also makes this decision's `Ready` sentence structural
 rather than a second rule: `Ready` is the last rung, and a confirmation answers
 before it.
 
@@ -289,6 +321,18 @@ confirmation anyway. A threshold that is true almost always is not a threshold.
 The age is rendered instead, through the caveat this repository already has for
 exactly this — `nav_caveat_node_unverified`, "node fix unverified, heard %s ago"
 — and **no second age field is added to `NavState`**.
+
+**That age is when the coordinate arrived, and nothing else — including after a
+reconnect.** Decision 6 makes reconnects free, and a reconnect re-reads
+`RESP_CODE_SELF_INFO`, so a coordinate the watch had held for forty minutes is
+heard again and the caveat says three seconds. That is not the caveat drifting:
+the string says *heard*, the number is arrival age, and the coordinate genuinely
+did arrive again. What it is not, and never was on this path, is the age of a
+fix — the node states no fix and no fix time, which is the whole reason the
+caveat exists. An implementation must not relabel this age as anything else, and
+must not carry the previous arrival forward to make it look older; the honest
+reading is "this is when we last heard it", and a fresh number after a reconnect
+is that reading working.
 
 **That caveat's gate widens, because as written it cannot reach this case.** The
 sentence is right; the branch it sits in asks about the wrong slot:
@@ -374,6 +418,14 @@ and a provenance that would have to be invented for the answer.
 
 The split arrangement can produce a distance for the first time, and the
 self-contained one is unaffected — it never reaches any of this.
+
+**One bullet of this ADR is conditional on a measurement that has not run.**
+Decision 6 lapses the confirmation on a gap longer than a named constant, and
+that rests on two unmeasured claims about this radio on a body — recorded as
+`R4` in [OPEN_QUESTIONS](../research/OPEN_QUESTIONS.md). Everything else here
+may be implemented before that run; the gap bullet may not, and if the run says
+the two ranges overlap, the rule degrades to lapsing on any loss of the peer and
+nothing else in this ADR changes.
 
 Trust, GNSS power gating and `body_of()` are unchanged, which is the point, and
 it has a price: wrist motion evidence stays neutral against the node's
