@@ -19,6 +19,28 @@ Written 2026-08-24, after an independent cold read of the repository.
 > `NOT OBSERVED`/`UNKNOWN`; it is not permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
+> **Direction, 2026-09-06 — the two halves, and which one is the seam.** Atta-dipa
+> is a companion node that carries GNSS and LoRa and a wearable terminal that
+> carries neither, and the first end-to-end path between them is
+> [#450](https://github.com/hleserg/Attadipa/issues/450): companion coordinates
+> reach the wrist as a distance and a direction relative to the watch body, with
+> no phone and no internet. That reorders the seam above rather than replacing
+> it. The BLE half looks nearer, because two nodes are physically on the bench
+> and have answered over BLE with their model and firmware — but their
+> advertised name is still `UNKNOWN` in
+> [BENCH_DEVICES.md](research/BENCH_DEVICES.md), and whether either advertises
+> the *published Companion service* is the exact condition the seam above is
+> waiting on. Even once that is answered, what the link delivers is a bearing,
+> and a bearing is north-up until the watch knows which way it is pointing.
+> **The heading half is therefore the seam**, and its
+> first step is not code: **H16**, four ohmmeter readings on two bare
+> magnetometer modules, which needs the owner's hands and nothing else. Until
+> that is answered no magnetometer goes on a board, and until one is on a board
+> and reads correctly, the vibration motor is not wired — a motor beside an
+> uncalibrated compass makes two unknowns out of one. ADR-0009 has already
+> decided the entire heading model and no code implements it, so the work after
+> H16 is implementing an accepted decision, not making a new one.
+
 ## Where the project actually is
 
 The engineering base is genuinely strong: a capability model with two layers and
