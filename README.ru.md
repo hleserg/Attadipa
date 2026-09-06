@@ -171,7 +171,7 @@
 | **Часы, провижининг и меш-экран на устройстве** | ✅ `MEASURED` по-английски ([стендовая запись](docs/hardware/CLOCK_2026-08-26.md)); в прошивке до сих пор жёстко зашит `Locale::En`, поэтому русский экран на панели — `NOT EXECUTED` |
 | **Разговаривает с MeshCore-узлом по BLE** — пейринг, соединение, пин узла по публичному ключу, показ пиров, SNR и последнего принятого по LoRa сообщения | ✅ `MEASURED` против Heltec T114 ([стендовая запись](docs/research/MESHCORE_T114_FIRST_CONTACT.md)) |
 | **Отправить сообщение и увидеть ответ на запястье** | 🧪 `NOT OBSERVED` — следующий физический шов |
-| **GNSS на T-Watch S3 Plus** — модуль назвал себя **u-blox MIA-M10Q**, и его NMEA доходит до сервиса позиции | ✅ `MEASURED` в помещении, без фиксации ([стендовый лог](docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md)) |
+| **GNSS на T-Watch S3 Plus** — модуль назвал себя **u-blox MIA-M10Q** ([считано с корпуса](docs/research/HARDWARE_MATRIX.md)), и его NMEA доходит до сервиса позиции | ✅ `MEASURED` в помещении, без фиксации ([стендовый лог](docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md)) |
 | **Фиксация под открытым небом на этом приёмнике** | 🧪 `NOT EXECUTED — HARDWARE REQUIRED` |
 | **Навигация, которая отказывается выдумывать** — азимут, дистанция по большому кругу, устаревание и девять честных состояний выше | ✅ `IMPLEMENTED` и рисуется; дистанция до *удалённого* узла ещё ждёт [#450](https://github.com/hleserg/Attadipa/issues/450) |
 | **Настольный симулятор**, обе геометрии, радио и наличие узла переключаются без пересборки | ✅ `IMPLEMENTED` |
@@ -309,10 +309,14 @@ Discussion и есть вход.
 ESP-IDF **v5.5.5**, C++17, LVGL **v9.5.0**, FreeRTOS.
 
 ```bash
+. $IDF_PATH/export.sh     # without this, idf.py is not on PATH
 cd firmware
 idf.py set-target esp32s3
 idf.py build flash monitor
 ```
+
+Шаг `export.sh`, версии тулчейна и что печатает первая прошивка —
+в [FIRMWARE_BRINGUP](docs/hardware/FIRMWARE_BRINGUP.md).
 
 Под какую плату собран образ — один выбор во время сборки в `firmware/main/`
 (`choice ATTADIPA_BOARD`), и это единственное место в дереве, которому вообще
@@ -324,7 +328,7 @@ idf.py build flash monitor
 ```
 core/          возможности, позиция, время, батарея — без единого регистра
 apps/          экраны и сервисы; со слоем железа не линкуются
-platform/      профили плат — что плата умеет — и порты ESP-IDF и хоста
+platform/      инвентарь железа: чипы, ноги, шины питания, профили плат
 firmware/      композиция под ESP32-S3 — единственное место, знающее плату
 sim/           настольный симулятор LVGL
 l10n/          строки: английский и русский

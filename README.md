@@ -170,7 +170,7 @@ instrument; `IMPLEMENTED` runs and is tested, but not on a board yet;
 | **Clock, provisioning and mesh screens on the device** | ✅ `MEASURED` in English ([bench record](docs/hardware/CLOCK_2026-08-26.md)); the firmware still hard-codes `Locale::En`, so a Russian screen on a panel is `NOT EXECUTED` |
 | **Talks to a MeshCore node over BLE** — pairs, connects, pins one node by its public key, and shows peers, SNR and the last message received over LoRa | ✅ `MEASURED` against a Heltec T114 ([bench record](docs/research/MESHCORE_T114_FIRST_CONTACT.md)) |
 | **Sending a message and seeing the reply on the wrist** | 🧪 `NOT OBSERVED` — the next physical seam |
-| **GNSS on the T-Watch S3 Plus** — the module named itself **u-blox MIA-M10Q**, and its NMEA reaches the position service | ✅ `MEASURED` indoors, no fix ([bench log](docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md)) |
+| **GNSS on the T-Watch S3 Plus** — the module named itself **u-blox MIA-M10Q** ([read off the part](docs/research/HARDWARE_MATRIX.md)), and its NMEA reaches the position service | ✅ `MEASURED` indoors, no fix ([bench log](docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md)) |
 | **An outdoor fix on that receiver** | 🧪 `NOT EXECUTED — HARDWARE REQUIRED` |
 | **Navigation that refuses to invent** — bearing, great-circle distance, staleness and the nine honest states above | ✅ `IMPLEMENTED` and rendering; distance to a *remote* node still needs [#450](https://github.com/hleserg/Attadipa/issues/450) |
 | **Desktop simulator**, both geometries, radio and node presence switchable without a rebuild | ✅ `IMPLEMENTED` |
@@ -310,10 +310,14 @@ looks the way it does:
 ESP-IDF **v5.5.5**, C++17, LVGL **v9.5.0**, FreeRTOS.
 
 ```bash
+. $IDF_PATH/export.sh     # without this, idf.py is not on PATH
 cd firmware
 idf.py set-target esp32s3
 idf.py build flash monitor
 ```
+
+The export step, the toolchain versions and what a first flash prints are in
+[FIRMWARE_BRINGUP](docs/hardware/FIRMWARE_BRINGUP.md).
 
 Which board an image is composed for is one build-time choice in
 `firmware/main/` (`choice ATTADIPA_BOARD`), and that is the only place in the
@@ -325,7 +329,7 @@ profile what the device can do.
 ```
 core/          capabilities, position, time, battery — not one register
 apps/          screens and services; cannot link against the hardware layer
-platform/      board profiles — what a board can do — and the ESP-IDF and host ports
+platform/      the hardware inventory: chips, pins, rails, board profiles
 firmware/      the ESP32-S3 composition — the only place that knows the board
 sim/           the desktop LVGL simulator
 l10n/          strings: English and Russian
