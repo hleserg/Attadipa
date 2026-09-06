@@ -12,34 +12,57 @@ Written 2026-08-24, after an independent cold read of the repository.
 > sleep/wake lifecycle. The diagnosis below records the earlier state; GitHub
 > Issues and pull requests hold live status and select the next device work.
 
-> **Next physical seam after T-168:** repeat the MeshCore Companion bench only
-> when the current node is observably advertising the published Companion
-> service. Prove one corrected Room Server delivery and a causally corresponding
-> reply rendered on the watch. The existing report records these as
-> `NOT OBSERVED`/`UNKNOWN`; it is not permission to change node firmware, add a
+> **Next physical seam after T-168:** prove one corrected Room Server delivery
+> and a causally corresponding reply rendered on the watch. The gate this note
+> used to carry — "only when the current node is observably advertising the
+> published Companion service" — is answered and has been since 2026-08-28:
+> [MESHCORE_T114_FIRST_CONTACT](research/MESHCORE_T114_FIRST_CONTACT.md) §1a —
+> "Both advertise the Companion service and both pair with the same operator" —
+> is `MEASURED`. What is still open is narrower and is
+> [#304](https://github.com/hleserg/Attadipa/issues/304): the firmware connects
+> to whichever advertisement arrives first and does not log the peer's address,
+> so which of the two nodes a given run reached is recovered from that run's own
+> transcript, and whether the service UUID or the name substring is what matched
+> is not recorded at all. The delivery and the reply are the parts that remain
+> `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
 > **Direction, 2026-09-06 — the two halves, and which one is the seam.** Atta-dipa
-> is a companion node that carries GNSS and LoRa and a wearable terminal that
-> carries neither, and the first end-to-end path between them is
+> is a companion node that carries GNSS and LoRa, and a wearable terminal that
+> does not *rely* on either. Which is not the same as a wearable that has
+> neither: the T-Watch S3 Plus has both on the board — its GNSS named itself
+> `MIA-M10Q` on 2026-09-05
+> ([TWATCH_GNSS_READOFF_2026-09-05](research/TWATCH_GNSS_READOFF_2026-09-05.md)),
+> and its radio is an SX1262 — and the Waveshare, the board on the desk, has
+> neither. The product rule is the one
+> [AGENTS.md](../AGENTS.md) already states — "Applications ask what a device can
+> do, not which board it is" — so the slice is written for a wrist with no
+> receiver of its own and is not broken by one that has one.
+>
+> The first end-to-end path between the halves is
 > [#450](https://github.com/hleserg/Attadipa/issues/450): companion coordinates
 > reach the wrist as a distance and a direction relative to the watch body, with
 > no phone and no internet. That reorders the seam above rather than replacing
-> it. The BLE half looks nearer, because two MeshCore nodes have answered over
-> BLE with their model and their firmware version — but their
-> advertised name is still `UNKNOWN` in
-> [BENCH_DEVICES.md](research/BENCH_DEVICES.md), and whether either advertises
-> the *published Companion service* is the exact condition the seam above is
-> waiting on. Even once that is answered, what the link delivers is a bearing,
-> and a bearing is north-up until the watch knows which way it is pointing.
-> **The heading half is therefore the seam**, and its
-> first step is not code: **H16**, four ohmmeter readings on two bare
-> magnetometer modules, which needs the owner's hands and nothing else. Until
-> that is answered no magnetometer goes on a board, and until one is on a board
-> and reads correctly, the vibration motor is not wired — a motor beside an
-> uncalibrated compass makes two unknowns out of one. ADR-0009 has already
-> decided the entire heading model and no code implements it, so the work after
-> H16 is implementing an accepted decision, not making a new one.
+> it.
+>
+> **Neither half is gated on hardware, and the ordering document said otherwise
+> until this paragraph was corrected.** ADR-0009 decided the whole heading model
+> on 2026-08-21 and its Consequences put the no-heading path first — "The
+> Navigator's states are enumerable and testable before any GNSS hardware
+> exists" — so the slice has an accepted, shippable end state that contains no
+> magnetometer: a north-up readout with the bearing marked. That state is not a
+> placeholder for the arrow, it is one of the seven rows ADR-0009 §5 enumerates,
+> and on both boards today it is the normal case rather than the edge one.
+>
+> **What hardware does gate is the arrow, and its first step is H16** — four
+> ohmmeter readings on two bare magnetometer modules, which arrived 2026-09-05
+> ([BENCH_DEVICES](research/BENCH_DEVICES.md)) and have not been read off, so
+> what H16 waits on now is an ohmmeter and a hand. Until it is answered no
+> magnetometer goes on a board, and until one is on a board and reads correctly
+> the vibration motor is not wired — a motor beside an uncalibrated compass
+> makes two unknowns out of one. That gate is a magnetometer gate. It is not a
+> gate on the slice, and reading it as one is what parked this direction on a
+> shipment.
 
 ## Where the project actually is
 
@@ -131,8 +154,10 @@ real ESP32-S3 → Attadipa firmware → BSP → display → input → UI/app
 
 **One board, brought up vertically, before two boards brought up halfway.** The
 board is the **Waveshare ESP32-S3-Touch-AMOLED-2.06**, and this is not a
-preference — it is the only board in the building. The T-Watch S3 Plus is
-`ORDERED`; the Waveshare is on the desk, its eFuses have been read
+preference — it was the only board in the building when this was written. Both
+are on the bench now ([BENCH_DEVICES](research/BENCH_DEVICES.md)) and the order
+still holds: the Waveshare is the one brought up vertically, its eFuses have
+been read
 (`ESP32-S3R8`), its flash has been identified, and its schematic has been
 traced. The abstraction boundaries get their real test on the *second* board,
 which is the honest order: a boundary that has never had a second implementation

@@ -1,11 +1,11 @@
 # Adding a magnetometer to a board that shipped without one
 
 > **Status:** research, 2026-08-22. **Nothing here has touched hardware.** The
-> parts are ordered and have not arrived. Every electrical number is quoted from
-> a manufacturer datasheet or application note identified by revision; every
-> number that would need a board to obtain is marked `UNKNOWN` or `ESTIMATED`.
-> No test in this document has been run: the correct label for all of them is
-> **`NOT EXECUTED — HARDWARE REQUIRED`**.
+> parts arrived 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)) and neither has
+> been read off. Every electrical number is quoted from a manufacturer datasheet
+> or application note identified by revision; every number that would need a
+> board to obtain is marked `UNKNOWN` or `ESTIMATED`. No test in this document
+> has been run: all of them are **`NOT EXECUTED — HARDWARE REQUIRED`**.
 >
 > **Owner decision this document rests on**
 > ([#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22): *two*

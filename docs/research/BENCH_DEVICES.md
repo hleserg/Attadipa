@@ -277,6 +277,33 @@ not 5 V tolerant, so the unmeasured TX idle voltage above — and, on the GT-U12
 the unexplained path that keeps it running with `VCC` off — is what stands
 between here and a wire.
 
+## Magnetometer modules and vibration motors, delivered 2026-09-05 — NOT READ OFF
+
+The owner ordered the two magnetometer candidate modules
+[OD-17](OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not)
+names — CJMCU-9911 (AK09911C) and GY-271 (QMC5883L) — together with an
+assortment of vibration motors for the Waveshare. **They arrived on
+2026-09-05**, which is `MEASURED` only in the sense that boxes are on a bench:
+the owner said so in the working session of that day, and nothing has been
+powered, probed or read off since.
+
+**What is on the bench is a delivery, not a part number.** Neither module has
+been examined; both are `UNKNOWN` in the sense
+[AGENTS.md](../../AGENTS.md) means until somebody reads the markings off the
+silicon, exactly as the GNSS modules above were `UNKNOWN` between 2026-09-02 and
+2026-09-04. A seller's listing is not a hardware fact, and this section records
+no listing values at all, because none were captured. The vibration motors are a
+batch rather than a chosen part: which one is fitted is itself an open question,
+and it is downstream of the magnetometer.
+
+**Arrival retires "the parts have not arrived" and retires nothing else.**
+[H16](OPEN_QUESTIONS.md) — the four ohmmeter readings that say what pull-up each
+module fits and whether the CJMCU-9911's `RST` pad reaches the die — was waiting
+on delivery and is now waiting on an ohmmeter. Every electrical number in
+[MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is still a datasheet quote,
+every test in it is still `NOT EXECUTED — HARDWARE REQUIRED`, and no
+magnetometer is fitted to any board.
+
 ## What this does not say
 
 The USB serial of an ESP32-S3's USB-Serial/JTAG peripheral is derived from the
