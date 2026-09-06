@@ -621,7 +621,9 @@ void test_a_source_that_cannot_know_this_body_never_steers_it() {
   }
 
   // And the two that can, so the refusal above is the source and not something
-  // else about a heading assembled this way.
+  // else about a heading assembled this way. This asserts the whitelist, not a
+  // licence: both of these promise a true-north wrist angle by reporting
+  // `Valid`, and `heading.h` is where a driver reads what that costs it.
   const core::HeadingSource can[] = {core::HeadingSource::Magnetometer,
                                      core::HeadingSource::SensorFusion};
   for (const core::HeadingSource source : can) {

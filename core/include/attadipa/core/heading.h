@@ -58,7 +58,10 @@ enum class HeadingValidity : std::uint8_t {
     Invalid,       // an answer arrived and it cannot be one: saturated, or out of range
     NoMotion,      // a course over ground with nothing moving. ADR-0009 §4, a designed state
     Stale,         // there was a believable angle and it is too old to act on
-    Uncalibrated,  // there is a number and no reason to believe it. Drawn, marked
+    Uncalibrated,  // there is a number and no reason to believe it. ADR-0009 §5
+                   // row 7 draws it marked, beside a calibration entry point —
+                   // a renderer nothing here builds yet, so today `can_orient()`
+                   // refuses it and the face falls back to north-up unmarked
     Valid,
 };
 
@@ -136,6 +139,19 @@ struct Heading {
 // heading say 'magnetic north, declination unknown'?", whose answer is "either
 // the model gains the distinction or the Navigator must not label the arrow" —
 // and it is Q10's amending ADR that closes it, not this header.
+//
+// The same rule binds `SensorFusion`, and it binds harder there, because the
+// IMU on the shipping board invites the mistake. `SensorFusion` here means
+// fusion *aided by a magnetometer*, already corrected — which is the source
+// ADR-0009 §2 lists, "a magnetometer, or fusion". Six-axis accelerometer and
+// gyroscope fusion is not a third source, and this repository refused it by
+// name rather than deferring it:
+// `core/src/capability_registry.cpp:98` — "Accelerometer+gyroscope fusion is not a third: without a"
+// — yaw is unobservable without a magnetometer and a gyro integrated alone
+// drifts without bound, so the filter would not approximate a compass:
+// `docs/upstream/research-integration.md:401` — "not be an approximation of a compass — it would be a confidently drawn arrow".
+// The QMI8658 on the Waveshare is exactly a six-axis part, so a driver written
+// for it must not report `SensorFusion` with `Valid` either.
 //
 // What this header can do is refuse to let the whitelist above quietly answer
 // it. A driver that cannot correct to true north **must not report `Valid`**,
