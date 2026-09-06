@@ -17,11 +17,17 @@ struct NavFaceConfig {
 
 // The navigation readout: how far the node is, and which way.
 //
-// North-up, always. There is no magnetometer on either board, so the ring does
-// not turn with the wrist and the needle is a bearing rather than a heading.
-// Saying so is the face's job — a needle that looked like it tracked the watch
-// would be read as one, and the arrow would be wrong by however far the wearer
-// happened to be turned.
+// North-up unless the watch knows which way it is turned, which on both boards
+// today it does not: no magnetometer is fitted to either. In that state the
+// ring does not turn with the wrist and the needle is a bearing rather than a
+// heading. Saying so is the face's job — a needle that looked like it tracked
+// the watch would be read as one, and the arrow would be wrong by however far
+// the wearer happened to be turned.
+//
+// With `NavText::has_arrow` the readout is head-up instead: the needle points
+// where to walk relative to the case and the `N` marker travels to where north
+// is. The two always move together, because the marker is the sentence that
+// says which of the two the ring is.
 //
 // It draws a needle only when `NavText::has_bearing` is set, and a distance
 // only when `has_distance` is. Neither is inferred from the strings.

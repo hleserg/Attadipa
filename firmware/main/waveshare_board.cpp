@@ -779,7 +779,7 @@ void refresh_clock(lv_timer_t *timer) {
 // down. All three `clear()` calls are idempotent, so calling them all is
 // cheaper than asking which face was up -- but they are not all harmless.
 // `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
-// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:281` — "    lv_obj_clean(screen_);"
+// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:322` — "    lv_obj_clean(screen_);"
 // and empties the shared screen. So this leaves the panel with nothing on it,
 // and **every caller must draw the incoming page before it returns**.
 void show_page(Page next) {
