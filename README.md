@@ -120,7 +120,8 @@ The interesting part of Atta-dipa is that "the watch" is not always one device.
 <p align="center">
   <img src="pics/two-watches-one-codebase.gif" width="620"
        alt="The same navigation screen on a 410×502 panel and a 240×240 panel, changing state together">
-  <br><sub>One set of application code, two very different panels: 410 × 502 and 240 × 240.</sub>
+  <br><sub>One set of application code on two very different panels — 410 × 502 and
+  240 × 240 — both rendered by the simulator.</sub>
 </p>
 
 ```
@@ -139,6 +140,12 @@ The interesting part of Atta-dipa is that "the watch" is not always one device.
                                             the coordinate crosses a link,
                                             and the watch says so
 ```
+
+That is the arrangement, not the state of the firmware. **On hardware today
+only the Waveshare runs these screens.** The T-Watch image links the same
+`apps/` and `ui/` libraries — one `CMakeLists.txt` links every layer for both
+boards — but its board file still brings the panel up rather than starting the
+Clock: `firmware/main/twatch_board.cpp:415` — "void build_bringup_screen() {".
 
 The difference is not cosmetic. On the self-contained device the receiver is on
 your body, and its coordinate is yours. On the split arrangement the coordinate
@@ -174,6 +181,7 @@ instrument; `IMPLEMENTED` runs and is tested, but not on a board yet;
 | **Haptics** — typed capability descriptors, no driver code yet | 📐 `PLANNED` |
 | **Child Mode** — a separate UX for a six-year-old, not the adult UI with bigger fonts | 📐 `PLANNED` |
 | **Power** — one honest number: **413 mW** at the Waveshare's USB input, idle on one screen, cell disconnected, 2026-09-05. No sleep figure, no screen-off figure, no per-rail split | 🔬 measuring |
+| **The application on the T-Watch S3 Plus** — the image links the same `apps/`, `ui/` and fonts, and its board file starts a panel bring-up instead of the Clock | 🧪 `NOT EXECUTED` — no Atta-dipa screen has run on that board |
 | **The T-Watch's sub-GHz radio** — five candidate parts, and only some of them do LoRa at all. Nobody has read the marking off the chip | ❓ `UNKNOWN` ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 
 The rows that say `MEASURED` link the bench record that produced them.
