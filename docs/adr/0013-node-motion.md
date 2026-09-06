@@ -1,6 +1,6 @@
 # 0013 — Motion evidence belongs to a physical body
 
-Status: **accepted**
+Status: **accepted** — amended 2026-09-06 by [OD-28](../research/OWNER_DECISIONS.md#od-28--a-companion-the-wearer-has-confirmed-is-on-their-body-may-fill-own): the Decision's mapping of node GNSS to `SensorBody::Node` gains one exempt state, a companion the wearer has confirmed is on their body. Nothing else below changes, the ADR carrying the amendment is unwritten, and what that state means for an application is decided there rather than here
 Date: 2026-08-25
 
 Extends [ADR-0009](0009-heading.md) and [ADR-0011](0011-gnss-integrity.md).

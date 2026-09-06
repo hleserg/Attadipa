@@ -30,21 +30,42 @@ Written 2026-08-24, after an independent cold read of the repository.
 > The delivery and the reply are the parts that remain `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
-> **Direction, 2026-09-06 — the two halves, and what gates each.** Atta-dipa
-> is a companion node that carries GNSS and LoRa, and a wearable terminal that
-> does not *rely* on either. Which is not the same as a wearable that has
-> neither: the T-Watch S3 Plus has both on the board — its GNSS named itself
-> `MIA-M10Q` on 2026-09-05
-> ([TWATCH_GNSS_READOFF_2026-09-05](research/TWATCH_GNSS_READOFF_2026-09-05.md)),
-> and its radio is a sub-GHz one whose part number the order listing gives as
-> SX1262 and nobody has read off the chip, so only "sub-GHz" is load-bearing here
-> ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "not a marking read off the part, so `RadioChip::Unknown` does not move and").
-> The Waveshare has neither
-> ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "| GNSS | yes — **two possible modules** | **absent** |").
-> The product rule is the one
+> **Direction, 2026-09-06 — two topologies, not one board with a spare.** The
+> owner settled this on 2026-09-06 and it is the frame every paragraph below
+> reads in. Atta-dipa is a companion that carries GNSS and LoRa, and a wearable
+> terminal on the wrist. **How many devices that is depends on the board, and
+> both answers are the product:**
+>
+> - **T-Watch S3 Plus — one device, not two.** The owner's product statement:
+>   watch and companion are meant to be the same unit here, so whatever this
+>   board provides, it provides on the same body. **What is verified is the
+>   receiver half, and that is the half #442 needs.** Its GNSS named itself
+>   `MIA-M10Q` on 2026-09-05
+>   ([TWATCH_GNSS_READOFF_2026-09-05](research/TWATCH_GNSS_READOFF_2026-09-05.md)),
+>   so `own` comes from a receiver on this body — the body rule satisfied rather
+>   than bent, with no owner decision and no confirmation involved.
+>   **The radio half is not verified and this block does not assert it.** Nobody
+>   has read the marking off the chip, five parts are possible and only some of
+>   them do LoRa at all
+>   ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "not a marking read off the part, so `RadioChip::Unknown` does not move and"),
+>   which is the precise failure [ADR-0003](adr/0003-radio-not-lora.md) is
+>   accepted to prevent — "A T-Watch fitted with a CC1101 would have advertised mesh messaging, offered the".
+>   So "self-contained" here says `own` needs no companion, and says **nothing**
+>   about this board carrying mesh.
+> - **Waveshare AMOLED 2.06 — two nodes, split.** The wrist, and a companion
+>   somewhere else. The board has neither receiver nor radio
+>   ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) — "| GNSS | yes — **two possible modules** | **absent** |")
+>   and is not meant to: the split is the point. This is the topology where
+>   `own` has no local source, and the whole of OD-28 exists for it alone.
+>
+> **A T-Watch navigation page is therefore not scope creep and not a "GPS
+> watch".** It is the self-contained topology doing what it is for. An earlier
+> revision of this block called it out of scope; that was wrong, it read the
+> two boards as one product with a spare, and the correction is the owner's.
+> What makes both topologies one codebase is the rule
 > [AGENTS.md](../AGENTS.md) already states — "Applications ask what a device can
-> do, not which board it is" — so the slice is written for a wrist with no
-> receiver of its own and is not broken by one that has one.
+> do, not which board it is": whether `own` has a local source is a capability
+> question, not a board question, and the Navigator is already written that way.
 >
 > The first end-to-end path between the halves is
 > [#450](https://github.com/hleserg/Attadipa/issues/450): companion coordinates
@@ -91,27 +112,43 @@ Written 2026-08-24, after an independent cold read of the repository.
 > wire to invent, and it is certainly not a change to node firmware, which the
 > seam note above forbids in as many words.
 >
-> **What is not open is which slot the companion's own coordinate fills.** It is
-> `target`, and it is settled by body rather than by preference —
+> **The default slot for a companion's own coordinate is `target`,** and it is
+> settled by body rather than by preference —
 > `apps/include/attadipa/apps/navigation.h:19` — "// **own** position comes from a receiver on this body, **target** position is".
-> A node in the wearer's pocket is not the case that promotes a node coordinate
-> to `own`; it is the case that rule exists to refuse, because a pocket is still
-> a different body and no transform is known —
+> A node the wearer has said nothing about — in a rucksack, on a windowsill,
+> bolted to a wall, or in a pocket the watch has no way to know about — is not
+> promoted to `own` by proximity, because a body the device cannot verify is a
+> different body and no transform is known —
 > `docs/research/NODE_POSITION_FROM_MESHCORE.md:443` — "position, and a detached node reports a place the wearer is not. Any consumer".
-> Which leaves the harder question, and it is the Waveshare's rather than the
-> slice's: **what may ever fill `own` on that wrist, which has no receiver.**
-> The `OwnPosition` payload in the direction prompt is a proposal about exactly
-> that, and it is a proposal against this rule rather than a detail underneath
-> it — an owner decision overriding an accepted contract, not a detail #450 can
-> settle on its own. The other board does not have the question: the T-Watch
-> fills `own` from a receiver on its own body, and what holds that off is
-> neither hardware nor a rule but a default waiting for a caller —
-> `firmware/main/Kconfig.projbuild:173` — "        bring-up slice, so listening to it is opt-in until something above".
-> That does not make it the competing task. A wrist drawing "you are here" from
-> its own receiver is the GPS-watch reading this direction exists to refuse, and
-> this block says at its head that the slice is written for the wrist with no
-> receiver on purpose. The Waveshare wins because the T-Watch's page is out of
-> scope, not because it is dearer.
+> **What moved on 2026-09-06 is not that rule but what can lift it.** A pocket
+> is no longer automatically the refused case; an *unconfirmed* one still is,
+> and that remains the default. Which leaves the question this block used to
+> call open, and it was the Waveshare's rather than the slice's: **what may ever
+> fill `own` on that wrist, which has no receiver.**
+> **It was answered on 2026-09-06 and it is no longer open.** The owner took
+> the first of three priced options: a companion the wearer has *explicitly
+> confirmed is on their body* may fill `own`, and without that confirmation its
+> coordinate stays `target` — [OWNER_DECISIONS](research/OWNER_DECISIONS.md)
+> OD-28. So the `OwnPosition` payload in the direction prompt is no longer a
+> proposal against a rule; it is how the *coordinate* arrives. **Where the
+> confirmation itself lives is not decided and is not this payload's field** —
+> OD-28 leaves it to the ADR it orders, and the two things the ADR must not
+> conflate are the confirmation and the validity. The word carrying the whole
+> decision is *confirmed*, and a confirmation that is right and then stale is
+> how the refused failure arrives looking like a success. The two options not
+> taken were
+> soldering a receiver to the traced Waveshare pads, and dropping the distance
+> altogether. **The question was always the split topology's**, and OD-28 says
+> so in as many words: the self-contained one never had it, because there the
+> receiver is on the same body and the rule is satisfied rather than lifted.
+> What holds `own` off on the T-Watch is neither hardware nor a rule but a
+> default waiting for a caller —
+> `firmware/main/Kconfig.projbuild:173` — "        bring-up slice, so listening to it is opt-in until something above" —
+> and [#442](https://github.com/hleserg/Attadipa/issues/442) is the task that
+> supplies one. So the two are not a choice: **#450 is the split topology's
+> vertical slice and #442 is the self-contained one's**, they close different
+> devices, and neither is scope creep against the other. Which runs first is a
+> sequencing call about hands and bench time, not about product scope.
 >
 > **And whatever answers it runs into one more rule.** Every position the MeshCore channel
 > produces states no fix type and therefore classifies `NoFix`:

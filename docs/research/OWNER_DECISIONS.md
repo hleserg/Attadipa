@@ -1740,3 +1740,165 @@ machine-readable markers and field names kept in English. The owner's own
 specification documents and files under `docs/ideas/` remain verbatim in
 Russian. This is not a product-localisation decision; `l10n/` and ADR-0010
 govern device strings.
+
+---
+
+## OD-27 — A bench capture that carries no position and no identity may be committed
+
+**Decided:** 2026-09-06, by the owner, in conversation.
+
+**What he decided:** the rule that bench logs live under `~/attadipa-bench/` and
+are never committed is a rule about what a log **carries**, not about where it
+was made. A capture that carries neither the owner's real position nor per-unit
+identity may be a repository artefact. He was asked about one specific case — a
+power capture, current and voltage against time — and granted it.
+
+**Why the rule reads that way.** It was never a blanket ban and its own
+statements say so:
+`docs/research/GNSS_MODULES_READOFF_2026-09-04.md:16` — "Bench logs stay under `~/attadipa-bench/i427/` and are never committed: they" — continuing *"carry the owner's real position, and `hleserg/Attadipa` is public"*. Position
+and identity are the reasons. A power log has neither, so the reason does not
+reach it.
+
+**This widens an exception that already exists; it does not create the first
+one.** #338 wrote a machine-enforced carve-out on 2026-08-31, three consecutive
+lines of `.gitignore` reading `*.log`, then
+`# ...except a bench capture committed as the evidence for a MEASURED result.`,
+then `!docs/research/*/*.log` — with five captures tracked under
+`docs/research/pedometer-bench-2026-08-28/`. Its condition is *evidence for a
+`MEASURED` result*; this decision's is *carries neither position nor identity*.
+Two conditions, and a capture needs both. What this entry adds is the owner
+having decided the second, which until now was a working convention.
+
+The three rules are quoted rather than cited by line on purpose: `.gitignore` is
+not one of the suffixes `tools/docs/check_docs.py` will resolve a citation into,
+so a line number pointing at it is checked by nothing at all and would rot in
+silence the first time somebody inserted a line above it — with the entry then
+calling `*.log` the comment and the comment the negation, and the checker still
+exiting `0`.
+
+**What it obliges, including a path.** The `.gitignore` rule is written about
+the **path**, and `*` does not cross a `/`, so `!docs/research/*/*.log` reaches
+exactly one directory below `docs/research/`. A capture written as
+`docs/research/power_2026-09-06.log` is refused by `git add` and skipped in
+silence by `git add -A`; it goes in a subdirectory —
+`docs/research/power-bench-2026-09-06/*.log` — or it is not committed at all.
+Beyond the path, anything committed under this is checked field by field, not
+assumed clean by category. What stays out is unchanged — NMEA and any fix, chip
+ids, `UBX-SEC-UNIQID`, the trailing serial fields of module and product strings,
+and the MeshCore node's BLE address.
+
+**What it does not open:** factory backups, vendor datasheets and GNSS captures
+stay out. They are excluded for reasons this decision does not touch — licence
+in the first two cases, position in the third — and it grants nothing about
+them. It also grants nothing retroactively: a log already written is committed
+only after the same field-by-field check.
+
+---
+
+## OD-28 — A companion the wearer has confirmed is on their body may fill `own`
+
+**Decided:** 2026-09-06, by the owner, after three priced options.
+
+**What he decided:** option A of three. A MeshCore companion that the wearer has
+**explicitly confirmed is on their body** may supply the watch's own position.
+Without that confirmation its coordinate stays `target`, exactly as today.
+
+**He decided the permission, not the mechanism, and this entry must not invent
+one.** An earlier revision said the confirmation rides in the `OwnPosition`
+payload's `validity` field. He did not say that, and the field is the wrong
+place twice over. In this tree `validity` is fix quality and deliberately
+nothing else —
+`core/include/attadipa/core/position.h:179` — "How good a position is *as a position*" —
+and nothing above `NoFix` is reachable out of the companion channel at all:
+`link/src/meshcore_companion.cpp:564` — "path in this repository can reach `PositionValidity::Valid` from it."
+So a confirmation carried there either leaves `own_ok` false and computes no
+distance, or lifts `validity` and makes the watch assert a fix for a coordinate
+whose source states none — which is this decision's own named failure, arriving
+through the mechanism the entry would have chosen. Where the confirmation lives
+is the ADR's to decide.
+
+**What prompted it:** the Waveshare has no receiver, so `own` has no local
+source, and without `own` there is no distance and no bearing — `NODE / 742 m /
+↗ NE` cannot be computed at all. The two alternatives were priced and not
+taken: soldering a GNSS module to the Waveshare's traced pads, and dropping the
+distance entirely, which fails his own Definition of Done.
+
+**Which topology this is about, because there are two.** He settled the frame
+in the same conversation: the **T-Watch S3 Plus is one self-contained device**,
+watch and companion on the same board and therefore the same body, while the
+**Waveshare is the split arrangement** — a wrist and a companion that are two
+nodes. This decision is **only** about the split one. On the self-contained
+board `own` comes from a receiver on this body, which satisfies the rule rather
+than lifting it: no confirmation is involved, none is asked for, and nothing
+here licenses one being skipped. Reading OD-28 as a general softening of the
+body rule is the misreading it is written to prevent.
+
+**What it changes, and what it invalidates.** The body rule stops being purely
+mechanical. It lives in an accepted ADR, which is the first thing the amending
+ADR has to reopen: [ADR-0013](../adr/0013-node-motion.md) — "- `PositionSource`
+maps local GNSS to `Watch`, node GNSS to `Node`, companion" — implemented at
+`core/src/position.cpp:89` — "SensorBody body_of(PositionSource source)" — and
+restated in §4.2 of
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md), which now carries
+a pointer here. This decision adds a state above all three in which the refusal
+is lifted. It does **not** delete the rule: an unconfirmed node coordinate is
+still `target`, and refusal stays the default.
+
+**And the sentence that states the rule is in none of those three.** They carry
+the mapping, its implementation and its restatement. The rule itself is a
+comment in the header an implementer opens first, and it stands there
+unqualified:
+`apps/include/attadipa/apps/navigation.h:19` — "// **own** position comes from a receiver on this body, **target** position is".
+ADR-0013 scopes itself out of exactly this kind of decision —
+`docs/adr/0013-node-motion.md:34` — "This is not an application capability and does not add a motion service. It is"
+— so what it contributes is the mapping that makes a node's coordinate a
+different body, not the refusal built on it. The amending ADR owes that header
+its qualification too.
+
+**Which arm of that mapping, because the word is the same and the bodies are
+not.** The coordinate this decision is about is the MeshCore node's, and it is
+born on the `Node` arm:
+`link/src/node_position_provider.cpp:39` — "out.observation.source = core::PositionSource::NodeGnss;".
+The `Companion` arm named in the same sentence of ADR-0013 is a different thing
+entirely and nothing here touches it —
+`core/include/attadipa/core/position.h:85` — "Companion,      // a phone".
+So the amending ADR reopens `PositionSource::NodeGnss` and `SensorBody::Node`.
+One that matches the word rather than the mapping re-bodies a phone on a
+confirmation flow that was never about phones, and leaves this decision
+unimplemented while the readout still says it is waiting for GPS.
+
+**The price he was told, and what it therefore obliges.** A confirmation that is
+wrong, or right and then stale, draws "you are here" over a place the wearer is
+not — the exact failure the rule existed to refuse, delivered by a screen that
+looks no different. So the mechanism is architectural and owes an ADR before any
+code: where the confirmation is entered, where it is stored, **when it expires**,
+what the readout does once it has, and — the one without which none of the rest
+renders — **what validity a confirmed companion's coordinate may carry.** The
+confirmation is necessary and it is not sufficient. Every coordinate off this
+channel is born `NoFix`:
+`link/src/node_position_provider.cpp:38` — "    out.observation.fix_type = core::FixType::Unknown;" — and `NoFix` is the one thing an own position may not be:
+`apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&".
+Build this decision exactly as written and the wearer confirms, the coordinate
+routes to `own`, and the face still says "Waiting for GPS". The other half of
+the answer is §4.1 of
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md), whose amendment
+tops out at `Stale` — which `own_ok` accepts. Deciding that is the ADR's, and
+leaving it unrecorded here is what made the struck `validity` binding look like
+a detail instead of the gate.
+
+**Expiry is a trust event, not only a screen event, and the ADR owes that too.**
+`core/src/trust.cpp:343` — "    // A CHANGE OF BODY IS A DISCONTINUITY, NOT A MEASUREMENT." — and the
+reset below it keys on the body:
+`core/src/trust.cpp:362` — "body_of(observation.source); body != previous_body_".
+If the ADR resolves a confirmed companion to `SensorBody::Watch`, then confirming
+it, walking, and dropping it in a rucksack without revoking leaves
+`previous_body_` unchanged, so no baseline is ever dropped — and the defect that
+comment records returns through a state the documentation calls same-body, with
+no second receiver on the Waveshare to contradict it. Reusing
+[OD-26](#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen)'s
+channel — a finger on the watch's own screen — is the obvious candidate and is
+not decided here; what is decided is that a second consent channel is not
+invented for it.
+
+**What it does not decide:** which of the three upstream paths carries a
+*remote* node's coordinate. That stays open.
