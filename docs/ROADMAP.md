@@ -27,14 +27,15 @@ Written 2026-08-24, after an independent cold read of the repository.
 > `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
-> **Direction, 2026-09-06 — the two halves, and which one is the seam.** Atta-dipa
+> **Direction, 2026-09-06 — the two halves, and what gates each.** Atta-dipa
 > is a companion node that carries GNSS and LoRa, and a wearable terminal that
 > does not *rely* on either. Which is not the same as a wearable that has
 > neither: the T-Watch S3 Plus has both on the board — its GNSS named itself
 > `MIA-M10Q` on 2026-09-05
 > ([TWATCH_GNSS_READOFF_2026-09-05](research/TWATCH_GNSS_READOFF_2026-09-05.md)),
-> and its radio is an SX1262 — and the Waveshare, the board on the desk, has
-> neither. The product rule is the one
+> and its radio is an SX1262 — and the Waveshare has neither
+> ([HARDWARE_MATRIX](research/HARDWARE_MATRIX.md) —
+> "| GNSS | yes — **two possible modules** | **absent** |"). The product rule is the one
 > [AGENTS.md](../AGENTS.md) already states — "Applications ask what a device can
 > do, not which board it is" — so the slice is written for a wrist with no
 > receiver of its own and is not broken by one that has one.
@@ -45,14 +46,17 @@ Written 2026-08-24, after an independent cold read of the repository.
 > no phone and no internet. That reorders the seam above rather than replacing
 > it.
 >
-> **Neither half is gated on hardware, and the ordering document said otherwise
-> until this paragraph was corrected.** ADR-0009 decided the whole heading model
-> on 2026-08-21 and its Consequences put the no-heading path first — "The
-> Navigator's states are enumerable and testable before any GNSS hardware
-> exists" — so the slice has an accepted, shippable end state that contains no
-> magnetometer: a north-up readout with the bearing marked. That state is not a
-> placeholder for the arrow, it is one of the seven rows ADR-0009 §5 enumerates,
-> and on both boards today it is the normal case rather than the edge one.
+> **Neither half's first shippable state is gated on hardware.** ADR-0009
+> decided the whole heading model on 2026-08-21 and its Consequences put the
+> no-heading path first — "The Navigator's states are enumerable and testable
+> before any GNSS hardware exists" — so the slice has an accepted end state that
+> contains no magnetometer: a north-up readout with the bearing marked. That
+> state is not a placeholder for the arrow, it is one of the seven rows
+> ADR-0009 §5 enumerates. Neither board draws it today, and the reason is the
+> other coordinate: `refresh_nav()` reads own position from the pads of a board
+> that has no receiver, so the Waveshare answers `Unprovisioned` and the face
+> says "Waiting for GPS" instead. It reaches the north-up state the moment its
+> own position arrives from the companion, which is what #450 builds.
 >
 > **What hardware does gate is the arrow, and its first step is H16** — four
 > ohmmeter readings on two bare magnetometer modules, which arrived 2026-09-05

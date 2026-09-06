@@ -283,9 +283,9 @@ The owner ordered the two magnetometer candidate modules
 [OD-17](OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not)
 names — CJMCU-9911 (AK09911C) and GY-271 (QMC5883L) — together with an
 assortment of vibration motors for the Waveshare. **They arrived on
-2026-09-05**, which is `MEASURED` only in the sense that boxes are on a bench:
-the owner said so in the working session of that day, and nothing has been
-powered, probed or read off since.
+2026-09-05.** That is owner-reported in the working session of that day and is
+not a measurement of anything: nothing has been powered, probed or read off
+since.
 
 **What is on the bench is a delivery, not a part number.** Neither module has
 been examined; both are `UNKNOWN` in the sense
