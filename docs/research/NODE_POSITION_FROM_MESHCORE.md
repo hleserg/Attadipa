@@ -444,11 +444,15 @@ position, and a detached node reports a place the wearer is not. Any consumer
 that wants "where am I" rather than "where is my node" must ask a different
 question, and the first consumer in §6 deliberately asks the second.
 
-**One exception exists and it is owner-decided, not architectural.** On
-2026-09-06 the owner decided that a companion the wearer has **explicitly
-confirmed is on their body** may fill `own` —
-[OWNER_DECISIONS](OWNER_DECISIONS.md) OD-28 — because the Waveshare has no
-receiver and without `own` there is no distance to compute at all. That does not
+**One exception exists, it is owner-decided rather than architectural, and it
+belongs to one topology of two.** On 2026-09-06 the owner decided that a
+companion the wearer has **explicitly confirmed is on their body** may fill
+`own` — [OWNER_DECISIONS](OWNER_DECISIONS.md) OD-28 — because on the *split*
+arrangement, a wrist and a companion as two nodes, `own` has no local source and
+without it there is no distance to compute at all. The self-contained
+arrangement, where watch and companion sit on one board, never reaches this
+paragraph: its receiver is on the same body and the rule above is satisfied, not
+lifted. That does not
 weaken the paragraph above: the refusal is still the default, an unconfirmed
 node coordinate is still `target`, and the word doing the work is *confirmed*.
 The rucksack, the windowsill and the wall are unchanged, and so is the failure

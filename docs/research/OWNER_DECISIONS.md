@@ -1757,13 +1757,27 @@ power capture, current and voltage against time — and granted it.
 statements say so:
 `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:16` — "Bench logs stay under `~/attadipa-bench/i427/` and are never committed: they" — continuing *"carry the owner's real position, and `hleserg/Attadipa` is public"*. Position
 and identity are the reasons. A power log has neither, so the reason does not
-reach it. Recording that here stops it being re-litigated as a convention
-somebody adopted rather than a decision somebody made.
+reach it.
 
-**What it obliges:** anything committed under this is checked field by field
-first, not assumed clean by category. What stays out is unchanged — NMEA and
-any fix, chip ids, `UBX-SEC-UNIQID`, the trailing serial fields of module and
-product strings, and the MeshCore node's BLE address.
+**This widens an exception that already exists; it does not create the first
+one.** #338 wrote a machine-enforced carve-out on 2026-08-31 —
+`.gitignore:57` — "# ...except a bench capture committed as the evidence for a MEASURED result." — sitting between `*.log` at `:56` and `!docs/research/*/*.log` at
+`:58`, with five captures tracked under
+`docs/research/pedometer-bench-2026-08-28/`. Its condition is *evidence for a
+`MEASURED` result*; this decision's is *carries neither position nor identity*.
+Two conditions, and a capture needs both. What this entry adds is the owner
+having decided the second, which until now was a working convention.
+
+**What it obliges, including a path.** The `.gitignore` rule is written about
+the **path**, and `*` does not cross a `/`, so `!docs/research/*/*.log` reaches
+exactly one directory below `docs/research/`. A capture written as
+`docs/research/power_2026-09-06.log` is refused by `git add` and skipped in
+silence by `git add -A`; it goes in a subdirectory —
+`docs/research/power-bench-2026-09-06/*.log` — or it is not committed at all.
+Beyond the path, anything committed under this is checked field by field, not
+assumed clean by category. What stays out is unchanged — NMEA and any fix, chip
+ids, `UBX-SEC-UNIQID`, the trailing serial fields of module and product strings,
+and the MeshCore node's BLE address.
 
 **What it does not open:** factory backups, vendor datasheets and GNSS captures
 stay out. They are excluded for reasons this decision does not touch — licence
@@ -1779,32 +1793,65 @@ only after the same field-by-field check.
 
 **What he decided:** option A of three. A MeshCore companion that the wearer has
 **explicitly confirmed is on their body** may supply the watch's own position.
-The confirmation is carried by the `validity` field of the `OwnPosition` payload
-in his own direction prompt. Without it the companion's coordinate stays
-`target`, exactly as today.
+Without that confirmation its coordinate stays `target`, exactly as today.
+
+**He decided the permission, not the mechanism, and this entry must not invent
+one.** An earlier revision said the confirmation rides in the `OwnPosition`
+payload's `validity` field. He did not say that, and the field is the wrong
+place twice over. In this tree `validity` is fix quality and deliberately
+nothing else —
+`core/include/attadipa/core/position.h:179` — "How good a position is *as a position*" —
+and nothing above `NoFix` is reachable out of the companion channel at all:
+`link/src/meshcore_companion.cpp:564` — "path in this repository can reach `PositionValidity::Valid` from it."
+So a confirmation carried there either leaves `own_ok` false and computes no
+distance, or lifts `validity` and makes the watch assert a fix for a coordinate
+whose source states none — which is this decision's own named failure, arriving
+through the mechanism the entry would have chosen. Where the confirmation lives
+is the ADR's to decide.
 
 **What prompted it:** the Waveshare has no receiver, so `own` has no local
 source, and without `own` there is no distance and no bearing — `NODE / 742 m /
 ↗ NE` cannot be computed at all. The two alternatives were priced and not
-taken: soldering a GNSS module to the Waveshare's traced pads, which makes the
-wrist a GPS watch and is what [ROADMAP](../ROADMAP.md)'s direction block exists
-to refuse; and dropping the distance entirely, which fails his own Definition
-of Done.
+taken: soldering a GNSS module to the Waveshare's traced pads, and dropping the
+distance entirely, which fails his own Definition of Done.
 
-**What it changes:** the body rule stops being purely mechanical.
-`core/src/position.cpp:89` — "SensorBody body_of(PositionSource source)" — maps
-`PositionSource::NodeGnss` to a node body by construction, and §4.2 of
-[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md) reads as absolute.
-This decision adds a state above them in which the refusal is lifted. It does
-**not** delete the rule: an unconfirmed node coordinate is still `target`, and
-refusal stays the default.
+**Which topology this is about, because there are two.** He settled the frame
+in the same conversation: the **T-Watch S3 Plus is one self-contained device**,
+watch and companion on the same board and therefore the same body, while the
+**Waveshare is the split arrangement** — a wrist and a companion that are two
+nodes. This decision is **only** about the split one. On the self-contained
+board `own` comes from a receiver on this body, which satisfies the rule rather
+than lifting it: no confirmation is involved, none is asked for, and nothing
+here licenses one being skipped. Reading OD-28 as a general softening of the
+body rule is the misreading it is written to prevent.
+
+**What it changes, and what it invalidates.** The body rule stops being purely
+mechanical. It lives in an accepted ADR, which is the first thing the amending
+ADR has to reopen: [ADR-0013](../adr/0013-node-motion.md) — "- `PositionSource`
+maps local GNSS to `Watch`, node GNSS to `Node`, companion" — implemented at
+`core/src/position.cpp:89` — "SensorBody body_of(PositionSource source)" — and
+restated in §4.2 of
+[NODE_POSITION_FROM_MESHCORE](NODE_POSITION_FROM_MESHCORE.md), which now carries
+a pointer here. This decision adds a state above all three in which the refusal
+is lifted. It does **not** delete the rule: an unconfirmed node coordinate is
+still `target`, and refusal stays the default.
 
 **The price he was told, and what it therefore obliges.** A confirmation that is
 wrong, or right and then stale, draws "you are here" over a place the wearer is
 not — the exact failure the rule existed to refuse, delivered by a screen that
 looks no different. So the mechanism is architectural and owes an ADR before any
 code: where the confirmation is entered, where it is stored, **when it expires**,
-and what the readout does once it has. Reusing
+and what the readout does once it has.
+
+**Expiry is a trust event, not only a screen event, and the ADR owes that too.**
+`core/src/trust.cpp:343` — "    // A CHANGE OF BODY IS A DISCONTINUITY, NOT A MEASUREMENT." — and the
+reset below it keys on the body:
+`core/src/trust.cpp:362` — "body_of(observation.source); body != previous_body_".
+If the ADR resolves a confirmed companion to `SensorBody::Watch`, then confirming
+it, walking, and dropping it in a rucksack without revoking leaves
+`previous_body_` unchanged, so no baseline is ever dropped — and the defect that
+comment records returns through a state the documentation calls same-body, with
+no second receiver on the Waveshare to contradict it. Reusing
 [OD-26](#od-26--owner-consent-for-provisioning-is-a-finger-on-the-watchs-own-screen)'s
 channel — a finger on the watch's own screen — is the obvious candidate and is
 not decided here; what is decided is that a second consent channel is not
