@@ -137,6 +137,31 @@ bool stage_nav_scenario(const char *name) {
     g_state.heading.validity = core::HeadingValidity::Uncalibrated;
     g_state.heading.centideg = 18000;
     g_state.heading.confidence = 90;
+  } else if (std::strcmp(name, "compass-node") == 0) {
+    // ADR-0009 §3, and the most dangerous input this screen can be given: a
+    // heading that is true, fresh and confident about a body that is not this
+    // one. The node it came from really is facing south. Turning the needle
+    // with it would draw the most plausible-looking wrong arrow the device can
+    // produce, so the screen to check is that it draws none.
+    g_state.own = own;
+    g_state.target = node;
+    g_state.heading.source = core::HeadingSource::RemoteSensor;
+    g_state.heading.frame = core::ReferenceFrame::NodeBody;
+    g_state.heading.validity = core::HeadingValidity::Valid;
+    g_state.heading.centideg = 18000;
+    g_state.heading.confidence = 100;
+  } else if (std::strcmp(name, "compass-stale") == 0) {
+    // An angle that was believable and is too old to act on. Distinct from
+    // `compass-unusable` in what it says about the sensor -- that one has no
+    // reason to be believed at all -- and identical in what it may do, which
+    // is nothing.
+    g_state.own = own;
+    g_state.target = node;
+    g_state.heading.source = core::HeadingSource::Magnetometer;
+    g_state.heading.frame = core::ReferenceFrame::WatchBody;
+    g_state.heading.validity = core::HeadingValidity::Stale;
+    g_state.heading.centideg = 9000;
+    g_state.heading.confidence = 80;
   } else if (std::strcmp(name, "far") == 0) {
     node.position.value = core::Position{900000000, 10000000};
     g_state.own = own;
@@ -146,7 +171,8 @@ bool stage_nav_scenario(const char *name) {
                  "unknown --nav-state \"%s\"; one of: ready waiting no-fix "
                  "own-stale own-degraded receiver-silent node-unavailable "
                  "node-unknown node-stale arrived far head-up head-up-east "
-                 "head-up-south head-up-west compass-unusable\n",
+                 "head-up-south head-up-west compass-unusable compass-node "
+                 "compass-stale\n",
                  name);
     return false;
   }

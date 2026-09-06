@@ -195,33 +195,42 @@ void NavFace::point_needle(const apps::NavText &text) {
   const std::int32_t centre_y = lv_obj_get_y(ring_) + lv_obj_get_height(ring_) / 2;
   const double radius = lv_obj_get_width(ring_) / 2.0;
 
-  // Inside the ring's top edge, not above it: above it the marker collided
-  // with the title on the 240x240 panel, where every row is close to its
-  // neighbour. That inset is also the marker's orbit — its centre rides five
-  // twelfths of the ring's height out from the ring's centre — so the rotated
-  // placement below passes through exactly the old point at heading 0 and the
-  // north-up screen is pixel-for-pixel what it was.
-  const double marker_orbit = lv_obj_get_height(ring_) * 5.0 / 12.0 -
-                              lv_obj_get_height(north_) / 2.0;
-  // North-up: the marker sits at the top, the ring is a rose read against a
-  // map. Head-up: the ring has turned with the wrist, so the marker travels to
-  // where north actually is. It has to move. A marker pinned to the top beside
-  // a needle that turns with the wrist makes the ring and the needle two
-  // answers to one question, and nothing on the screen says which to follow.
+  // North-up: the marker sits inside the ring's top edge, not above it — above
+  // it, it collided with the title on the 240x240 panel, where every row is
+  // close to its neighbour. Head-up: the ring has turned with the wrist, so the
+  // marker travels to where north actually is. It has to move. A marker pinned
+  // to the top beside a needle that turns with the wrist makes the ring and the
+  // needle two answers to one question, and nothing on the screen says which to
+  // follow.
   //
-  // The negation is on a `double`, not on the centidegrees: `%` promotes them
-  // to `unsigned`, where unary minus is a wrap to about 4.29 billion rather
-  // than a turn anticlockwise.
-  const double marker_radians =
-      text.has_arrow
-          ? -static_cast<double>(text.heading_centideg % 36000U) * kPi / 18000.0
-          : 0.0;
-  lv_obj_set_pos(
-      north_,
-      static_cast<std::int32_t>(centre_x + std::sin(marker_radians) * marker_orbit -
-                                lv_obj_get_width(north_) / 2.0),
-      static_cast<std::int32_t>(centre_y - std::cos(marker_radians) * marker_orbit -
-                                lv_obj_get_height(north_) / 2.0));
+  // THE NORTH-UP BRANCH IS THE EXPRESSION THIS USED TO BE, CHARACTER FOR
+  // CHARACTER, and that is the whole reason there are two branches. The rotated
+  // form below is real arithmetic that passes through the same point — but only
+  // in real arithmetic. `centre_y` and the two half-extents are integer
+  // divisions and the rotated form truncates a `double` instead, so on an odd
+  // ring height or an odd label width the two disagree by a pixel. Writing the
+  // old expression out is a guarantee; a screenshot comparison would only ever
+  // have been a measurement of today's two label widths.
+  if (!text.has_arrow) {
+    lv_obj_set_pos(north_, centre_x - lv_obj_get_width(north_) / 2,
+                   lv_obj_get_y(ring_) + lv_obj_get_height(ring_) / 12);
+  } else {
+    // Its centre rides five twelfths of the ring's height out from the ring's
+    // centre, which is the same inset the branch above sets.
+    const double marker_orbit = lv_obj_get_height(ring_) * 5.0 / 12.0 -
+                                lv_obj_get_height(north_) / 2.0;
+    // The negation is on a `double`, not on the centidegrees: `%` promotes them
+    // to `unsigned`, where unary minus is a wrap to about 4.29 billion rather
+    // than a turn anticlockwise.
+    const double marker_radians =
+        -static_cast<double>(text.heading_centideg % 36000U) * kPi / 18000.0;
+    lv_obj_set_pos(
+        north_,
+        static_cast<std::int32_t>(centre_x + std::sin(marker_radians) * marker_orbit -
+                                  lv_obj_get_width(north_) / 2.0),
+        static_cast<std::int32_t>(centre_y - std::cos(marker_radians) * marker_orbit -
+                                  lv_obj_get_height(north_) / 2.0));
+  }
   lv_obj_set_pos(hub_, centre_x - lv_obj_get_width(hub_) / 2,
                  centre_y - lv_obj_get_height(hub_) / 2);
 

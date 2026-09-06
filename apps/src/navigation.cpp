@@ -310,10 +310,16 @@ const AppManifest &navigation_manifest() {
   // oversight: with no heading the bearing is stated against true north on a
   // north-up readout, so the application is useful with no magnetometer. With
   // one it turns the same bearing into an arrow relative to the wrist, which is
-  // more useful and is not a different application.
+  // more useful and is not a different application. That is the definition of
+  // `enhanced_by` — "Better with, fine without. Never a reason to hide an
+  // application" — and `launcher_entry()` does not consult it, so declaring it
+  // changes no launcher row. What it changes is that the declaration is now
+  // true: before this the manifest said the application wanted nothing it did
+  // not require, and it does.
   static constexpr core::Capability required[] = {core::Capability::Position};
-  static const AppManifest manifest{"navigation", required, 1,
-                                    nullptr,      0,        core::Millis{1000}};
+  static constexpr core::Capability enhanced_by[] = {core::Capability::Heading};
+  static const AppManifest manifest{"navigation", required,    1,
+                                    enhanced_by,  1,           core::Millis{1000}};
   return manifest;
 }
 

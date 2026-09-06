@@ -71,7 +71,12 @@ enum class HeadingValidity : std::uint8_t {
 // asserts it stays that way. Copying that here would ship two fields that no
 // producer can fill. `age_at_source_ms` arrives with the first producer that
 // states when it sampled — the same rule 3 `location_service.h` states for
-// positions, and equally true of an angle that crossed a radio link.
+// positions, and equally true of an angle that crossed a radio link. The
+// arrival age is absent for the same reason and not a different one: no
+// producer exists to stamp it, nothing reads it, and freshness is already
+// expressed where a consumer acts on it — `HeadingValidity::Stale`, which the
+// producer sets and `can_orient()` refuses. It arrives with that producer, next
+// to the readout that shows it.
 struct Heading {
     // 0 .. 35999, clockwise from **true** north. Integer, not float: a tenth of
     // a degree is finer than any magnetometer this device will carry, and a
@@ -85,9 +90,6 @@ struct Heading {
     // ADR-0009 §6: the number is always carried, because Diagnostics needs it,
     // and it is the renderer that decides what to do with a low one.
     std::uint8_t    confidence = 0;
-
-    // How long ago this angle reached this device.
-    std::uint32_t   age_at_us_ms = 0;
 
     HeadingValidity validity = HeadingValidity::Invalid;
 };
@@ -103,10 +105,21 @@ struct Heading {
 //   * the validity is `Valid`. `Uncalibrated` has a number and no reason to
 //     believe it, and `Stale` had one;
 //   * the confidence clears the caller's floor. ADR-0009 §6 leaves that
-//     threshold to the renderer rather than fixing it here.
+//     threshold to the renderer rather than fixing it here;
+//   * the source is stated. This one is not in the ADR's list, and it is here
+//     because `WatchBody` is the *default* frame — ADR-0009 §2 lists it first
+//     and this enum keeps that order — so a producer that fills the validity
+//     and the confidence and forgets the frame gets the one frame an arrow may
+//     use, silently. `HeadingSource::Unknown` is the default that catches that,
+//     and refusing on it is safe to add to an accepted ADR because it only ever
+//     narrows: the ADR enumerates when an arrow *may* be drawn, and a fourth
+//     condition can refuse a heading it allowed but can never allow one it
+//     refused. A frame that says "nobody stated one" would be the direct fix
+//     and it is an amendment to argue in the ADR, not here.
 constexpr bool can_orient(const Heading& heading, std::uint8_t min_confidence)
 {
     return heading.frame == ReferenceFrame::WatchBody &&
+           heading.source != HeadingSource::Unknown &&
            heading.validity == HeadingValidity::Valid &&
            heading.confidence >= min_confidence;
 }

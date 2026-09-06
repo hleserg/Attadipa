@@ -589,6 +589,32 @@ void test_the_default_heading_says_it_knows_nothing() {
   CHECK(core::to_string(core::HeadingValidity::Invalid) != nullptr);
 }
 
+// The default frame is `WatchBody` -- ADR-0009 §2 lists it first and this enum
+// keeps that order -- so a producer that fills everything a reader looks at and
+// leaves the frame alone gets the one frame an arrow may use. The default
+// source is what refuses it. Half a struct is not a heading.
+void test_a_half_filled_heading_does_not_steer_anybody() {
+  core::Heading heading;
+  heading.centideg = 9000;
+  heading.validity = core::HeadingValidity::Valid;
+  heading.confidence = 100;
+  CHECK(heading.frame == core::ReferenceFrame::WatchBody);
+  CHECK(!core::can_orient(heading, 40));
+
+  apps::NavState state;
+  state.own = own_fix(kHere);
+  state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
+  state.heading = heading;
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.has_bearing);
+  CHECK(!text.has_arrow);
+
+  // And the same struct with its source stated does steer, so the refusal is
+  // the missing field and not something else about this heading.
+  heading.source = core::HeadingSource::Magnetometer;
+  CHECK(core::can_orient(heading, 40));
+}
+
 int main() {
   test_a_watch_that_knows_nothing_says_so();
   test_a_receiver_that_answered_no_is_not_a_receiver_still_starting();
@@ -617,6 +643,7 @@ int main() {
   test_a_disturbed_compass_falls_back_to_north_up();
   test_a_heading_with_nowhere_to_go_draws_no_arrow();
   test_the_default_heading_says_it_knows_nothing();
+  test_a_half_filled_heading_does_not_steer_anybody();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);
