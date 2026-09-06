@@ -65,18 +65,33 @@ Written 2026-08-24, after an independent cold read of the repository.
 > receiver and not the page:
 > `firmware/main/local_gnss.h:50` — "call `local_gnss_location()` at all yet — it has no navigation page — so the".
 >
-> **And the coordinate the Waveshare is missing is its own, not the target's.**
-> In the two-device shape the companion is on the same body, so what it supplies
-> over BLE is *both*: a remote node's coordinate to walk to, and this body's own
-> coordinate to walk from. Nothing carries the second one today. Every position
-> the MeshCore channel produces states no fix type and therefore classifies
-> `NoFix`:
+> **And the link carries one coordinate, not two.** The readout needs a place
+> to walk from and a place to walk to. What arrives over BLE is the connected
+> node's own position, out of `RESP_CODE_SELF_INFO`:
+> `link/src/meshcore_companion.cpp:546` — "        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every"
+> A remote peer's coordinate is parsed nowhere. A contact record is a public key
+> and a name and nothing else —
+> `core/include/attadipa/core/mesh_service.h:27` — "struct MeshPeer {" — so the
+> half of the slice that sounds finished is the half that has no wire.
+>
+> **And by the direction's own premise, the one coordinate that does arrive is
+> the wrong slot.** A companion on the same body reports *this* body. The
+> firmware spends it as the destination —
+> `firmware/main/waveshare_board.cpp:958` — "  nav.target = meshcore_ble_location();" —
+> which is right while the node is a thing on a desk and wrong the moment it is
+> in the wearer's pocket: `own` and `target` would then be one position, the
+> distance would be rounding noise, and the screen would call that `Ready`.
+> #450 owes two decisions before it owes any code — which slot the companion's
+> own coordinate fills, and what carries a remote node's, which nothing does.
+>
+> **Either slot runs into the same rule.** Every position the MeshCore channel
+> produces states no fix type and therefore classifies `NoFix`:
 > `link/src/meshcore_companion.cpp:564` — "path in this repository can reach `PositionValidity::Valid` from it."
 > And `NoFix` is exactly what an own position may not be —
 > `apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&" — on
-> purpose. So the `validity` field in #450's
-> `OwnPosition` payload is the point of the payload, not a detail of it, and
-> BLE alone does not unblock the Waveshare.
+> purpose. So the `validity` field in #450's `OwnPosition` payload is the point
+> of the payload, not a detail of it, and BLE alone does not unblock the
+> Waveshare.
 >
 > **What hardware does gate is the arrow, and its first step is H16** — four
 > ohmmeter readings on two bare magnetometer modules, which arrived 2026-09-05

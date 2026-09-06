@@ -3,8 +3,8 @@
 > **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
 > development host.
 > Every value below came from `esptool flash-id` and `udevadm`; nothing here is
-> inferred from a product name — **except the two delivery sections**, 2026-09-02
-> and 2026-09-05, each of which records a delivery, not a part, and says so.
+> inferred from a product name — **except** the listing rows of "Two GNSS
+> modules", whose read-off row is evidence, and all of the 2026-09-05 section.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
