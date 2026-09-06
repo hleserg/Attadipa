@@ -18,10 +18,10 @@ proposal and the reasoning, so the next person does not have to re-derive it.
 > Open-source ESP32-S3 smartwatch firmware platform / OS with LoRa MeshCore,
 > offline GNSS navigation, LVGL UI and FreeRTOS.
 
-It is a keyword list, and one of the keywords is a claim the project refuses.
-`README.md` says in as many words that Atta-dipa **is not** a Linux-like OS, so
-"/ OS" in the description contradicts the front page and sets an expectation the
-repository then spends a paragraph walking back.
+It is a keyword list, and one of the keywords is a claim the project does not
+make. This is an ESP-IDF application on FreeRTOS; `README.md` calls it a
+**platform** in its first line and nowhere calls it an operating system. "/ OS"
+therefore promises a visitor something the front page does not deliver.
 
 **Proposed** (159 characters, well inside GitHub's 350):
 
@@ -55,7 +55,7 @@ is a swap list, not an addition list.
 | `embedded` | `embedded-systems` is the topic with the followers; `embedded` is a near-empty alias |
 | `wearable-tech` | same relationship to `wearable` |
 | `open-source` | every public repository is; it selects nobody |
-| `smartwatch-os` | the README explicitly denies being an OS. A topic that contradicts the front page costs trust from exactly the reader who checks |
+| `smartwatch-os` | the project is a firmware platform on FreeRTOS, not an OS, and the README says platform. A topic that promises more than the front page costs trust from exactly the reader who checks |
 
 **Add five, and why:**
 

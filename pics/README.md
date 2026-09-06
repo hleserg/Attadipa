@@ -53,7 +53,7 @@ the canon they disagree with.
 
 The files below are **rendered by the desktop simulator**, captured 2026-09-07
 from `build-sim/sim/attadipa_sim` at the commit that added them, and stitched
-into GIFs with `ffmpeg` (a global palette, no dithering). They are pictures of
+into GIFs with `ffmpeg` (one global palette per file). They are pictures of
 the application code, not of a board: **nothing here is evidence about
 hardware**, and none of them may be cited as `MEASURED`. The physical evidence
 in the README is [`../docs/hardware/CLOCK_2026-08-26.png`](../docs/hardware/CLOCK_2026-08-26.md)

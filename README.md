@@ -12,7 +12,8 @@
 
 <p align="center">
   <b>A watch that will not show you what it does not know.</b><br>
-  An open ESP32-S3 smartwatch platform for LoRa mesh and offline navigation —<br>
+  Independent by design: an open ESP32-S3 smartwatch platform<br>
+  for LoRa mesh and offline navigation —<br>
   no phone, no cloud, no subscription.
 </p>
 
@@ -90,9 +91,10 @@ Receiver silent                               Node position stale
 ```
 
 Plus three caveats a good day can still carry: *"node fix unverified, heard N
-ago"*, *"heading uncalibrated"*, *"beyond 1000 km"*.
+ago"*, *"no receiver on this device"*, *"no position source is set up"*. And
+past a thousand kilometres the distance stops pretending to a metre: `> 1000 km`.
 
-No `0 m`. No `(0, 0)`. No arrow pointing somewhere plausible. The animation
+No `0 m` standing in for *unknown*. No `(0, 0)`. No arrow pointing somewhere plausible. The animation
 above is exactly that, live: when there is nothing to say, the needle
 disappears, the numbers become a dash, and an amber line names the specific
 thing the watch does not know.
@@ -208,17 +210,19 @@ cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON && cmake --build build-sim
 Then it gets interesting:
 
 ```bash
---board t-watch-s3-plus          the other geometry, 240 × 240
---nav --nav-state node-unknown   the screen when there is nothing to say
---node                           a paired, reachable node
---child                          Child Mode
---locale ru                      and L toggles it while running
---no-bring-up                    leave every part of the hardware untouched
+S=./build-sim/sim/attadipa_sim
+$S --nav --nav-state node-unknown   # the screen when there is nothing to say
+$S --nav --nav-state ready --node   # and the same screen with an answer
+$S --clock --board t-watch-s3-plus  # the other geometry, 240 × 240
+$S --clock --locale ru              # and L toggles it while running
+$S --clock --no-bring-up            # leave every part of the hardware untouched
 ```
 
-None of those need a rebuild — that is the point of them, and it is why one
-simulator binary covers both boards. Start with `--nav-state node-unknown`: it
-is the fastest way to see what makes this project different from the others.
+`--nav` takes the whole panel, so it does not combine with `--clock`. None of
+these need a rebuild — that is the point of them, and it is why one simulator
+binary covers both boards. Run the first two back to back: the difference
+between them is the fastest way to see what makes this project different from
+the others.
 
 Then drive the interface from another terminal — tap it, screenshot it, run a
 scripted journey:
@@ -248,7 +252,8 @@ The project needs very different hands, and most of them need no board at all.
 | **Tooling** | the simulator, `watch_control.py`, CI |
 
 **The easiest way to start.** Build the simulator (the two commands above), run
-`--nav-state node-unknown` and `--nav-state ready`, and look at the difference.
+`--nav --nav-state node-unknown` and `--nav --nav-state ready --node`, and look
+at the difference.
 Then open a [Discussion](https://github.com/hleserg/Attadipa/discussions) and
 say what you saw and what you would change. There are no `good first issue`
 labels right now — a Discussion is the front door.
@@ -284,7 +289,8 @@ looks the way it does:
   what the device can *do*; what is soldered to it is a separate layer they
   cannot reach.
 - **[ADR-0004](docs/adr/0004-capability-sources.md)** — a capability may be
-  answered by this board or by a companion, and the screen says which.
+  answered by this board or by a device beside it. The layers that dispatch know
+  which; the application deliberately never learns it.
 - **[ADR-0013](docs/adr/0013-node-motion.md)** — a node's coordinate does not
   silently become your position.
 - **[ADR-0016](docs/adr/0016-one-power-owner.md)** — every rail has exactly one
