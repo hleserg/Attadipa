@@ -25,9 +25,13 @@
 // One exception, and it is a routing decision taken above this header rather
 // than a blending done inside it: a companion the wearer has explicitly
 // confirmed is on their body may fill `own`. It still carries `NoFix` at every
-// age and is judged by arrival age, as a target is. `docs/adr/0019-confirmed-companion-body.md`
-// decides where that confirmation is entered, where it lives, when it lapses,
-// and what this readout says while it holds.
+// age — a confirmation is a statement about a body, not about a fix — so the
+// `NoFix` conjunct of `own_ok` is waived while it holds, and its age is
+// rendered in a caveat rather than thresholded, because it arrives once per
+// session and a threshold would be true almost always.
+// `docs/adr/0019-confirmed-companion-body.md` decides where that confirmation
+// is entered, where it lives, when it lapses, and what this readout says while
+// it holds.
 
 namespace attadipa::apps {
 
