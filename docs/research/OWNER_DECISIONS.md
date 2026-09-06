@@ -1844,6 +1844,17 @@ a pointer here. This decision adds a state above all three in which the refusal
 is lifted. It does **not** delete the rule: an unconfirmed node coordinate is
 still `target`, and refusal stays the default.
 
+**And the sentence that states the rule is in none of those three.** They carry
+the mapping, its implementation and its restatement. The rule itself is a
+comment in the header an implementer opens first, and it stands there
+unqualified:
+`apps/include/attadipa/apps/navigation.h:19` — "// **own** position comes from a receiver on this body, **target** position is".
+ADR-0013 scopes itself out of exactly this kind of decision —
+`docs/adr/0013-node-motion.md:34` — "This is not an application capability and does not add a motion service. It is"
+— so what it contributes is the mapping that makes a node's coordinate a
+different body, not the refusal built on it. The amending ADR owes that header
+its qualification too.
+
 **Which arm of that mapping, because the word is the same and the bodies are
 not.** The coordinate this decision is about is the MeshCore node's, and it is
 born on the `Node` arm:

@@ -47,7 +47,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0010](0010-localization.md) | English and Russian from the first screen | **accepted** |
 | [0011](0011-gnss-integrity.md) | GNSS integrity: the receiver's own defences, and a trust state with reasons | **accepted** |
 | [0012](0012-project-name-attadipa.md) | Project name is Attadipa | **accepted** |
-| [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** |
+| [0013](0013-node-motion.md) | Motion evidence belongs to a physical body | **accepted** — one exempt state carved out by OD-28, its ADR unwritten |
 | [0014](0014-time-source-and-synchronization.md) | Time source, trust and synchronization | **accepted** |
 | [0015](0015-transport-session-ownership.md) | A transport session has one owner, a generation, and no lifecycle queue | **accepted** |
 | [0016](0016-one-power-owner.md) | Power, PMU rails and sleep have one owner, and consumers hold leases | **accepted** |
