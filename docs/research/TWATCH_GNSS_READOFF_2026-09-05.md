@@ -298,3 +298,6 @@ UBX-NAV-SIG      26 signals, 0 with authStatus = Authenticated
   inherits the layout hazard found on the bench modules: field counts differ
   between sentence types and between vendors, so a parser must decide layout per
   sentence type from field count and never infer one sentence's from another's.
+- The bench log that follows this one — the same module read by the product
+  path rather than by the bridge — is
+  [TWATCH_GNSS_LOCAL_BENCH_2026-09-06](TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md).
