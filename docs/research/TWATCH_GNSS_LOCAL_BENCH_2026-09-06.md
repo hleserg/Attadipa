@@ -10,12 +10,23 @@ The capture is from the bench watch on 2026-09-06, indoors, on the desk, with no
 sky, on USB power. The build is `CONFIG_ATTADIPA_GNSS_LOCAL=y` with `_RX=41` and
 `_BAUD=38400`, and `CONFIG_ATTADIPA_GNSS_BRIDGE=n`. The raw capture is
 `~/attadipa-bench/i442/twatch_gnsslocal_boot_2026-09-06.log`, kept off this
-repository with the other bench logs. Its 73 lines are 6 + 64 + 3: the six that
-carry a result, transcribed whole below; sixty-four of the main task's `alive`
-heartbeat; and three from the panel bring-up. The capture was started after the
-reset that followed flashing, so the boot banner is not in it and the first line
-begins mid-word inside an `esp_image` line, with the first `twatch:` line run
-onto the end of it — which is why that fragment is not a seventy-fourth line.
+repository with the other bench logs.
+
+**It is not a complete record of the boot, and its own first line says so.** That
+line begins mid-word inside a bootloader `esp_image` line at `I (142)` and ends
+`sizeI (10954) twatch:` — output resumes 10.8 s later, run onto the same line.
+Everything the console emitted between those two stamps went to a
+USB-Serial/JTAG endpoint no host was draining yet and is gone, which is why the
+file holds no `attadipa:` boot banner and none of ESP-IDF's own startup lines:
+`attadipa:` occurs 64 times and all 64 are `alive`. What survives is 73 lines
+running from `I (10954)` to `I (80384)` — 6 tagged `gnss` or `board-power`, 64
+of the main task's heartbeat, and 3 tagged `twatch`.
+
+**What §1 transcribes is a rule rather than a selection**, so that it stays
+checkable against a log nobody else can open: every line tagged `gnss` or
+`board-power`, plus every `W` and every `E` line, whole. What is left out is the
+heartbeat and the panel bring-up. Every claim below about the absence of a line
+is a claim about that surviving window and not about the boot before it.
 
 ## 1. The lines — MEASURED
 
@@ -28,7 +39,10 @@ I (17434) gnss: avail ready src Unknown fix Unknown validity NoFix position none
 I (18434) gnss: avail ready src LocalGnss fix NoFix validity NoFix position none
 ```
 
-No `W` and no `E` line appears anywhere in the 73.
+No `W` and no `E` line appears anywhere in the 73, which is why the rule above
+transcribes six lines and not eight. The PMU writes at `I (16384)` are inside
+that window, so what §2 draws from their silence is drawn from a window that
+covers them.
 
 ## 2. What that proves
 
