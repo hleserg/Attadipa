@@ -106,20 +106,33 @@ struct Heading {
 //     believe it, and `Stale` had one;
 //   * the confidence clears the caller's floor. ADR-0009 §6 leaves that
 //     threshold to the renderer rather than fixing it here;
-//   * the source is stated. This one is not in the ADR's list, and it is here
-//     because `WatchBody` is the *default* frame — ADR-0009 §2 lists it first
-//     and this enum keeps that order — so a producer that fills the validity
-//     and the confidence and forgets the frame gets the one frame an arrow may
-//     use, silently. `HeadingSource::Unknown` is the default that catches that,
-//     and refusing on it is safe to add to an accepted ADR because it only ever
-//     narrows: the ADR enumerates when an arrow *may* be drawn, and a fourth
-//     condition can refuse a heading it allowed but can never allow one it
-//     refused. A frame that says "nobody stated one" would be the direct fix
-//     and it is an amendment to argue in the ADR, not here.
+//   * the source is one that can measure *this* case's orientation, which is
+//     `Magnetometer` or `SensorFusion` and nothing else.
+//
+// The fourth condition is not in the ADR's list of three, and it is the one
+// that carries the ADR's own assertion. `WatchBody` is the *default* frame —
+// ADR-0009 §2 lists it first and this enum keeps that order — and `frame` is
+// the single field a driver has no local evidence for: it states which body the
+// driver is bolted to. A course-over-ground producer, or a node's compass
+// arriving over the link, sets a real source, sets a real confidence, sets
+// `Valid`, and leaves the one field it cannot know — and gets the one frame an
+// arrow may use. ADR-0009's Testable clause is written against exactly that:
+// "no configuration of inputs causes a wrist-relative arrow to be drawn from a
+// `NodeBody` or `CourseOverGround` source." Naming the two sources that can
+// produce a `WatchBody` heading is that assertion, in the one place every
+// caller passes through.
+//
+// Testing the *source* rather than the frame is deliberate. Refusing an unset
+// frame needs a `ReferenceFrame::Unknown` the ADR does not have, and that is an
+// amendment to argue there. A whitelist of sources needs nothing: it only ever
+// narrows, and the ADR enumerates when an arrow *may* be drawn, so a further
+// condition can refuse a heading the ADR allowed and can never allow one it
+// refused.
 constexpr bool can_orient(const Heading& heading, std::uint8_t min_confidence)
 {
     return heading.frame == ReferenceFrame::WatchBody &&
-           heading.source != HeadingSource::Unknown &&
+           (heading.source == HeadingSource::Magnetometer ||
+            heading.source == HeadingSource::SensorFusion) &&
            heading.validity == HeadingValidity::Valid &&
            heading.confidence >= min_confidence;
 }

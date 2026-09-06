@@ -589,30 +589,50 @@ void test_the_default_heading_says_it_knows_nothing() {
   CHECK(core::to_string(core::HeadingValidity::Invalid) != nullptr);
 }
 
-// The default frame is `WatchBody` -- ADR-0009 §2 lists it first and this enum
-// keeps that order -- so a producer that fills everything a reader looks at and
-// leaves the frame alone gets the one frame an arrow may use. The default
-// source is what refuses it. Half a struct is not a heading.
-void test_a_half_filled_heading_does_not_steer_anybody() {
-  core::Heading heading;
-  heading.centideg = 9000;
-  heading.validity = core::HeadingValidity::Valid;
-  heading.confidence = 100;
-  CHECK(heading.frame == core::ReferenceFrame::WatchBody);
-  CHECK(!core::can_orient(heading, 40));
+// ADR-0009's Testable assertion, at the one place every caller passes through:
+// "no configuration of inputs causes a wrist-relative arrow to be drawn from a
+// `NodeBody` or `CourseOverGround` source."
+//
+// `WatchBody` is the default frame and `frame` is the one field a driver has no
+// local evidence for -- it states which body the driver is bolted to. So the
+// dangerous producer is not the one that fills nothing; it is the one that
+// fills everything it *can* measure and leaves that one alone. Each source
+// below is a real producer that would do exactly that.
+void test_a_source_that_cannot_know_this_body_never_steers_it() {
+  const core::HeadingSource cannot[] = {core::HeadingSource::Unknown,
+                                        core::HeadingSource::GnssCourseOverGround,
+                                        core::HeadingSource::RemoteSensor};
+  for (const core::HeadingSource source : cannot) {
+    core::Heading heading;  // frame deliberately never assigned
+    heading.source = source;
+    heading.centideg = 9000;
+    heading.validity = core::HeadingValidity::Valid;
+    heading.confidence = 100;
+    CHECK(heading.frame == core::ReferenceFrame::WatchBody);
+    CHECK(!core::can_orient(heading, 40));
 
-  apps::NavState state;
-  state.own = own_fix(kHere);
-  state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
-  state.heading = heading;
-  const apps::NavText text = apps::format_navigation(state);
-  CHECK(text.has_bearing);
-  CHECK(!text.has_arrow);
+    apps::NavState state;
+    state.own = own_fix(kHere);
+    state.target = node_coordinate(core::Position{5100000, 10160000}, 3000);
+    state.heading = heading;
+    const apps::NavText text = apps::format_navigation(state);
+    CHECK(text.has_bearing);
+    CHECK(!text.has_arrow);
+  }
 
-  // And the same struct with its source stated does steer, so the refusal is
-  // the missing field and not something else about this heading.
-  heading.source = core::HeadingSource::Magnetometer;
-  CHECK(core::can_orient(heading, 40));
+  // And the two that can, so the refusal above is the source and not something
+  // else about a heading assembled this way.
+  const core::HeadingSource can[] = {core::HeadingSource::Magnetometer,
+                                     core::HeadingSource::SensorFusion};
+  for (const core::HeadingSource source : can) {
+    core::Heading heading;
+    heading.source = source;
+    heading.frame = core::ReferenceFrame::WatchBody;
+    heading.centideg = 9000;
+    heading.validity = core::HeadingValidity::Valid;
+    heading.confidence = 100;
+    CHECK(core::can_orient(heading, 40));
+  }
 }
 
 int main() {
@@ -643,7 +663,7 @@ int main() {
   test_a_disturbed_compass_falls_back_to_north_up();
   test_a_heading_with_nowhere_to_go_draws_no_arrow();
   test_the_default_heading_says_it_knows_nothing();
-  test_a_half_filled_heading_does_not_steer_anybody();
+  test_a_source_that_cannot_know_this_body_never_steers_it();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);
