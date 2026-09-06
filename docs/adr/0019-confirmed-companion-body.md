@@ -126,9 +126,9 @@ local provider — `Availability::Unprovisioned` — which is a fact about this
 device's configuration and not about which board it is. The self-contained watch
 never shows it because its receiver answers.
 
-**And only where there is a session to name.** Decision 5 holds the confirmation
-against a transport session generation, so a device with no live node session has
-nothing to confirm and nothing to hold it against — a T-Watch built with
+**And only where there is a peer to name.** Decision 5 holds the confirmation
+against a bonded peer, so a device with no node connected has nothing to confirm
+and nothing to hold it against — a T-Watch built with
 `CONFIG_ATTADIPA_GNSS_LOCAL=n` is `Unprovisioned` too, and must not be offered a
 control that would ask the wearer to vouch for a companion that is not there.
 The precondition is both halves: `own` is `Unprovisioned` **and** a node session
@@ -381,12 +381,13 @@ coordinate, so a lapse cannot be triggered by "the watch moved and the node did
 not". That is a real detector this ADR chooses not to have. Building it would
 mean changing the mapping, which is the alternative rejected first.
 
-A reconnect costs the wearer a tap. If the bench shows reconnects are frequent
-on a real outing, the fix is a measurement and a revised generation rule, not a
-persisted confirmation. **Whether a sleep is one of those reconnects is the open
-measurement decision 6 names**, and it is the one thing here that could make the
-feature unusable rather than merely inconvenient, so it is worth running before
-any of this is implemented rather than after.
+A reconnect costs the wearer nothing; a gap longer than the separation bound
+costs a tap, and the bound is the number decision 6 leaves `UNKNOWN`. That is
+where this feature is still exposed: set it too short and a wearer walking past
+a wall re-confirms all day, set it too long and a node on a table keeps
+answering for a body that left. The measurement decision 6 names is what settles
+it, and it is worth running before any of this is implemented rather than
+after.
 
 Two new `NavStatus` values need English and Russian strings, and the readout on
 a receiverless board stops claiming it is waiting for GPS. `NavState` gains one
