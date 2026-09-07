@@ -420,7 +420,12 @@ The slice, at its smallest:
 3. handle `PUSH_CODE_NEW_ADVERT` (0x8A) as a contact frame that needs no round
    trip — the record is inline;
 4. read bytes 136–143 of the contact frame the session already parses, under
-   §9.1's rules, and publish it as the target position.
+   §9.1's rules, and publish it as the target position;
+5. handle `PUSH_CODE_CONTACT_DELETED` (0x8F) for the target key and discard the
+   retained coordinate. Decision 7 refuses ageing it and §12.1 tests it, so this
+   is part of the slice and not a later refinement;
+6. handle `PUSH_CODE_CONTACTS_FULL` (0x90) and surface it, because a target that
+   never appears is otherwise indistinguishable from one that does not exist.
 
 **Implementation note that will otherwise be found late:** `RESP_CODE_CONTACT`
 (3) is *also* the contact-iteration frame, and `accept_contact` populates a peer
@@ -434,8 +439,10 @@ an iteration is in progress, which the session already tracks.
 | Rule | Why |
 |---|---|
 | The coordinate is admitted **only** from a contact frame whose full 32-byte key equals the selected target key | §7 |
-| A `0x80` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | `0x80` is `[0x80][pub_key×32]` (§7). The dispatcher owns no shared bound — `link/src/meshcore_companion.cpp:482` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects only an empty or over-long frame, and **every** arm after it checks its own length. An arm that inherits a guard it does not have reads 32 bytes off the end of a one-byte frame |
+| A `0x80` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | `0x80` is `[0x80][pub_key×32]` (§7). The dispatcher owns no shared bound — `link/src/meshcore_companion.cpp:482` — "size > kMeshCoreFrameBytes" — rejects only an empty or over-long frame, and **no** arm after it inherits a bound — each one that reads a fixed-size field carries its own check. An arm that inherits a guard it does not have reads 32 bytes off the end of a one-byte frame |
 | A `0x8A` shorter than **148 bytes** is refused and counted malformed, in the new arm's **own** guard | It is §3.1's contact layout under a different opcode, and the coordinate is at its far end, bytes 136–143. The 148-byte guard that exists today is one `case` arm and covers `RESP_CODE_CONTACT` alone — `link/src/meshcore_companion.cpp:587` — "        if (size < 148) { ++malformed_frames_; return false; }". A new opcode does not inherit it |
+| A `0x8F` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | It carries `0x80`'s `[opcode][pub_key×32]` shape and is compared against the target key the same way, so it over-reads a one-byte frame by the same 32 bytes. Nothing handles `0x8F` today — it falls to the dispatcher's catch-all — `link/src/meshcore_companion.cpp:774` — "    default:" — so it is a new arm on exactly `0x80`'s footing, inheriting exactly as little |
+| A `0x90` carries nothing past its opcode, and the arm reads nothing past it | `PUSH_CODE_CONTACTS_FULL` is a bare notification. The rule is written down so the arm is implemented that way rather than reaching for a payload that is not there; the dispatcher's own `size == 0` rejection is the only bound it needs |
 | Exactly `(0, 0)` is **refused** and the target slot stays empty | `populateContactFromAdvert` `memset`s the record and writes the coordinate only under `hasLatLon()`, so a contact that has never shared one reads exactly `(0,0)`. ADR-0019 already refuses the same value for `own`, for the same reason, one slot over |
 | `\|raw_lat\| > 90 000 000` or `\|raw_lon\| > 180 000 000` ⇒ the coordinate is refused, **checked on the raw `int32` before any scaling** | The wire is degrees × 10⁶ (§3.1), so ±90° is 90 000 000 and ±180° is 180 000 000 — a bound of 900 000 would refuse everything outside 0.9° of the equator and 1.8° of Greenwich, silently, because an absent coordinate is deliberately not an error. `AdvertDataParser` range-checks nothing and `CMD_ADD_UPDATE_CONTACT` range-checks nothing. `raw × 10` overflows `int32` above 214 748 364, and `core/include/attadipa/core/position.h:55` — "constexpr bool in_range(Position p)" — cannot save a value that already overflowed |
 | Scaling is exact integer arithmetic: `latitude_e7 = raw_e6 × 10` | `Position` is `e7`, the wire is `e6`, the ratio is 10. No floating point, no rounding decision to get wrong |
@@ -445,6 +452,9 @@ an iteration is in progress, which the session already tracks.
 | A target coordinate older than `target_stale_after` reads `NodePositionStale`, and the resync **does not re-stamp arrival** unless the bytes changed | §5.3. Re-stamping an unchanged coordinate would manufacture the freshness the whole document says does not exist |
 | An unchanged coordinate read twice is evidence **against** a live fix | `NODE_POSITION_FROM_MESHCORE.md` §6.1, unchanged |
 | `ERR_CODE_NOT_FOUND` to `CMD_GET_CONTACT_BY_KEY` ⇒ the target is not on this companion. `Availability::Ready`, coordinate absent, `NavStatus::NodePositionUnknown` — **not** an error and not `Failed` | The node answered correctly. Nothing is broken |
+| The answer to `CMD_GET_CONTACT_BY_KEY`, `RESP_CODE_CONTACT` or `RESP_CODE_ERR` alike, is attributed to **that** command by the sequence this session already stamps, and is **never charged to the messaging operation** | A `RESP_CODE_ERR` is two bytes and carries nothing saying which command it answers, so attribution here is by order and not by content: each asynchronous claimant stamps `tx_seq_` as it sends — `link/src/meshcore_companion.cpp:619` — "                custom_vars_seq_ = tx_seq_;" — and the error goes to the oldest claimant still owed one — `link/src/meshcore_companion.cpp:764` — "custom_vars_seq_ < op_seq_". That ladder has exactly **two** claimants today, and everything that does not enter it falls to the send — `link/src/meshcore_companion.cpp:768` — "        if (send_busy()) {". A third claimant left outside it fails a message the node **accepted**: `send_busy()` stays true through `awaiting_confirm_`, where what is outstanding is a radio round trip rather than a response, and the arm's own comment records this exact defect being found and fixed once already for opcode 40 |
+| `ERR_CODE_UNSUPPORTED_CMD` (1) to `CMD_GET_CONTACT_BY_KEY` ⇒ the read did not happen: `Availability::Ready`, coordinate absent, `NavStatus::NodePositionUnknown`, no malformed-frame count, no retry — and **no conclusion about the node's firmware** | It is *not* proof the node is too old. A defined command whose frame fails the node's own guard returns the same code — `docs/research/MESHCORE_COMPANION_PROTOCOL.md:519` — "`ERR_CODE_UNSUPPORTED_CMD` (1)," — so a bug in our own frame and an old node are the same two bytes on the wire. Reporting "your node is too old" from it would state as fact the one thing this error cannot establish |
+| A `RESP_CODE_ERR` attributed to any **other** command leaves the target coordinate untouched | The clearing rules above are rules about opcode 30's answer, not about the code. A `CMD_SEND_LOGIN` failure — which the same arm's comment says arrives "here and nowhere else" — must not discard a coordinate it knows nothing about |
 | `PUSH_CODE_CONTACT_DELETED` (0x8F) for the target key ⇒ the retained coordinate is **discarded**, not aged | The record it came from is gone. Ageing it would present a coordinate whose provenance no longer exists |
 | The 16-peer retention caps **enumeration**, not the read, and `peers_truncated` must reach the operator as a statement about the list they choose from | `kRetainedPeers = 16` against `MAX_CONTACTS=350` on the T114 build. A target beyond the sixteenth is still readable by key — `accept_contact` copies key and name out of the frame *before* the cap is consulted, and the cap then decides storage alone — so what goes missing is the target's appearance in a list, not its coordinate |
 
@@ -553,14 +563,15 @@ owns is above these: the `size < 148` guard drops a short contact frame before
 any consumer sees it, and `tests/test_meshcore_companion.cpp` already covers
 that case, so a short-frame test in the consumer would go green without the
 shipping path reaching it. **That holds for that one opcode and no other.** The
-guard is a single `case` arm, the two arms §9 adds inherit nothing from it, and
+guard is a single `case` arm, the four arms §9 adds inherit nothing from it, and
 so their length rules are tested here rather than assumed:
 
 - `{0x80}` alone and `{0x8A}` alone ⇒ counted malformed; no key compared, no
   command sent, no coordinate read. These tests build frames as exact-sized
   stack arrays — `tests/test_meshcore_companion.cpp:546` — "    const std::uint8_t short_contact[] = {3};" — so an arm that trusts its length over-reads that array by 32 bytes and by 143;
 - one byte short of each bound ⇒ still refused; exactly at it ⇒ accepted;
-
+- `{0x8F}` alone ⇒ counted malformed, with no key compared and **no coordinate
+  discarded** — a short delete must not become a delete;
 - a contact frame whose coordinate is exactly `(0, 0)` ⇒ refused, slot empty;
 - ±90 / ±180 ×10⁶ **accepted at the boundary**; one LSB beyond ⇒ refused;
 - `INT32_MIN` and `INT32_MAX` in either field ⇒ refused **before** scaling, and
@@ -580,6 +591,15 @@ Lifecycle:
 - `0x8A` for the target ⇒ the coordinate is taken inline and **no** round trip;
 - `ERR_CODE_NOT_FOUND` ⇒ `Ready`, no coordinate, `NodePositionUnknown`, no
   malformed-frame count;
+- `ERR_CODE_NOT_FOUND` for the targeted read arriving **while a mesh message is
+  in `awaiting_confirm_`** ⇒ the read reports `NodePositionUnknown` and the
+  message stays outstanding: `MeshDelivery::Failed` is **not** set and the
+  confirmation that lands afterwards is still counted. Without this test the
+  slice reintroduces, for opcode 30, the defect the `RESP_CODE_ERR` arm's
+  comment records having been fixed for opcode 40;
+- `ERR_CODE_UNSUPPORTED_CMD` for the targeted read ⇒ `Ready`, no coordinate, no
+  malformed-frame count, no retry, and nothing recorded about the node's
+  firmware version;
 - `PUSH_CODE_CONTACT_DELETED` for the target ⇒ the retained coordinate is
   discarded, not aged;
 - `PUSH_CODE_CONTACTS_FULL` ⇒ surfaced, and the target may simply never appear;

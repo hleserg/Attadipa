@@ -172,12 +172,19 @@ button, and nothing on this path says whether a receiver is on.
 
 **Easier.** The slice is small and adds no parser: one `0x80` handler, one
 command, and sixteen bytes of a frame whose `RESP_CODE_CONTACT` arm already
-length-checks it. **The two arms it does add carry their own guard**, because the
+length-checks it. **The four arms it adds — `0x80`, `0x8A`, `0x8F` and `0x90` —
+each carry their own guard**, because the
 dispatcher owns no shared one — `link/src/meshcore_companion.cpp:482` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
-only an empty or over-long frame and every arm after it checks its own length.
-`REMOTE_TARGET_POSITION_FROM_MESHCORE.md` §9.1 states both bounds, 33 bytes and
-148, and §12.1 tests them. It costs no
-airtime, needs no timer, no queue and no request table, and it is testable on the
+only an empty or over-long frame, and nothing after it inherits a bound: an arm
+that reads a fixed-size field checks its own length, the one arm with no
+fixed-size field at all passes the length through instead —
+`link/src/meshcore_companion.cpp:628` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
+that reads nothing past the opcode checks nothing.
+`REMOTE_TARGET_POSITION_FROM_MESHCORE.md` §9.1 states all four bounds and §12.1
+tests them. It costs no
+airtime, needs no timer, no queue and no *mesh* request table — what it does add
+is a third claimant to the `RESP_CODE_ERR` attribution this file already keeps by
+hand, which §9.1 makes a rule of — and it is testable on the
 host with no node at all. The target's identity is exact, so the failure mode
 that would matter most — an arrow pointing at the wrong person — is closed by
 construction rather than by a probability argument.
