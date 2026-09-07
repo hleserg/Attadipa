@@ -17,6 +17,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <vector>
 
@@ -272,6 +273,70 @@ void the_layout_uses_the_whole_panel(const platform::BoardProfile &board) {
 // The count is taken from a build onto an empty screen rather than written
 // down, because the number is the layout's business and this is not a test of
 // how many widgets the layout has.
+// The first row that belongs to something other than the message. On the tall
+// panel that is the sender line under it, on the small one the measurements --
+// 240 px draws no sender line at all and spends its last rows on those. Both
+// sit one clear line below the message, so a message that grew by even a single
+// row lands in this band.
+std::uint32_t below_message(bool big) { return big ? 424 : 192; }
+
+// A message longer than its row is ellipsised, not run through what is under it.
+//
+// `LV_LABEL_LONG_DOT` puts the dots in only where the height is FIXED, and the
+// height this label was first given was content -- so a message longer than the
+// fixture's grew downwards over the measurement row and the sender line, and a
+// screenshot was the only thing that caught it. Nothing below the message's own
+// line may depend on how long the message is, and that is what this asserts:
+// two frames differing in the message alone, compared from the first row the
+// message does not own.
+void a_long_message_stays_on_its_line(const platform::BoardProfile &board) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus status = linked();
+  face.build(lv_screen_active(), config_for(board),
+             apps::format_mesh(status, l10n::Locale::En));
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> before = *g_frame;
+
+  // Every byte the link can carry, which is what `MeshText::message` now holds
+  // -- the buffer no longer truncates, so the face is the only thing standing
+  // between a full-length message and the rows beneath it.
+  std::memset(status.last_message.data(), 'M', status.last_message.size() - 1);
+  status.last_message[status.last_message.size() - 1] = '\0';
+  face.update(apps::format_mesh(status, l10n::Locale::En));
+  lv_refr_now(display);
+
+  const std::size_t from =
+      static_cast<std::size_t>(below_message(big)) * w * 2;
+  int moved = 0;
+  for (std::size_t at = from; at < before.size(); ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++moved;
+    }
+  }
+  check(moved == 0, "a full-length message moves nothing under its line",
+        __LINE__);
+  if (moved != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed below y=%u\n", w,
+                 board.display.height_px, moved, below_message(big));
+  }
+
+  // And the counter-check: the message row itself DID change, or the comparison
+  // above was made between two identical frames and proves nothing.
+  int drew = 0;
+  for (std::size_t at = 0; at < from; ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++drew;
+    }
+  }
+  check(drew > 0, "the longer message is drawn somewhere", __LINE__);
+
+  face.clear();
+}
+
 void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
   lv_display_t *display = open_panel(board);
   lv_obj_t *screen = lv_screen_active();
@@ -345,6 +410,7 @@ int main() {
     an_unnamed_node_draws_no_link(*board);
     a_linked_node_draws_one(*board);
     the_layout_uses_the_whole_panel(*board);
+    a_long_message_stays_on_its_line(*board);
     a_build_owns_the_screen_it_is_given(*board);
     an_unchanged_readout_is_not_redrawn(*board);
   }

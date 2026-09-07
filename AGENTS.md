@@ -97,6 +97,7 @@ not enter the queue automatically.
 - Firmware and board work: `firmware/AGENTS.md`
 - GitHub automation: `.github/AGENTS.md`
 - Hardware and upstream research: `docs/research/AGENTS.md`
+- UI, screens and the design system: `ui/AGENTS.md`
 
 Repository artefacts are English. Owner-facing chat is Russian; public issue
 and PR text is English first and Russian second. `README.md` and `README.ru.md`
