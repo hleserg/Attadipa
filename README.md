@@ -180,7 +180,7 @@ instrument; `IMPLEMENTED` runs and is tested, but not on a board yet;
 | **Compass / heading** — the API exists and the screen turns the needle, so far only from simulator fixtures. Neither board ships a magnetometer; two modules are on the bench awaiting a retrofit | 🧪 [`MAGNETOMETER_RETROFIT`](docs/research/MAGNETOMETER_RETROFIT.md) |
 | **Haptics** — typed capability descriptors, no driver code yet | 📐 `PLANNED` |
 | **Child Mode** — a separate UX for a six-year-old, not the adult UI with bigger fonts | 📐 `PLANNED` |
-| **Power** — one honest number: **413 mW** at the Waveshare's USB input, idle on one screen, cell disconnected, 2026-09-05. No sleep figure, no screen-off figure, no per-rail split | 🔬 measuring |
+| **Power** — one honest number: **413 mW** at the Waveshare's USB input, screen on at minimum brightness, idle on the provisioning screen, cell disconnected, 2026-09-05. No sleep figure, no screen-off figure, no per-rail split | 🔬 measuring |
 | **The application on the T-Watch S3 Plus** — the image links the same `apps/`, `ui/` and fonts, and its board file starts a panel bring-up instead of the Clock | 🧪 `NOT EXECUTED` — no Atta-dipa screen has run on that board |
 | **The T-Watch's sub-GHz radio** — five candidate parts, and only some of them do LoRa at all. Nobody has read the marking off the chip | ❓ `UNKNOWN` ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 
@@ -222,7 +222,7 @@ Then it gets interesting:
 S=./build-sim/sim/attadipa_sim
 $S --nav --nav-state node-unknown   # the screen when there is nothing to say
 $S --nav --nav-state ready --node   # and the same screen with an answer
-$S --clock --board t-watch-s3-plus  # the other geometry, 240 × 240
+$S --clock --board waveshare-amoled-206  # the other geometry, 410 × 502
 $S --clock --locale ru              # and L toggles it while running
 $S --clock --no-bring-up            # leave every part of the hardware untouched
 ```
