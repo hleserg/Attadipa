@@ -133,8 +133,8 @@ and nothing to hold it against — a T-Watch built with
 control that would ask the wearer to vouch for a companion that is not there.
 The precondition is both halves: `own` is `Unprovisioned` **and** a node session
 is live. That conjunction gates the control and nothing else — decision 7's
-second state is the broader fact that this board has no receiver fitted, true
-whether or not a session is live, and the two are deliberately not one test.
+second state is the broader fact that nothing is bound to fill `own` on this
+device, true whether or not a session is live, and the two are deliberately not one test.
 
 **And the control branches on the confirmation, never on the readout.** Once a
 confirmation is live the same screen offers revoking it, per decision 6's first
@@ -251,8 +251,8 @@ never on the link.
 
 **7. The readout gains two sentences, and `Ready` goes out of reach while a
 confirmation holds.** `NavStatus` gains one state for an `own` filled by a
-confirmed companion, and one for a device with no receiver of its own and no
-usable `own` coordinate — which is one state covering three arrivals: no
+confirmed companion, and one for a device with **no position source bound** and
+no usable `own` coordinate — which is one state covering three arrivals: no
 confirmation was given, a confirmation was given and its coordinate has not
 arrived, and a confirmation was given and its coordinate was the unset pref
 decision 3 refuses. All three are the same sentence to a wearer, and splitting
@@ -268,7 +268,30 @@ by a receiver, and the line must keep saying so.
 
 The second state replaces a sentence that is false on this board today —
 `firmware/main/waveshare_board.cpp:970` — "exactly what would change the answer, and the readout still says" —
-because a watch with no receiver fitted is not waiting for GPS.
+because a watch with nothing bound to fill `own` is not waiting for a fix from a
+receiver it does not have bound.
+
+**And it says "nothing is bound", not "no receiver is fitted", because that is
+what its test supports.** An earlier draft of this decision wrote the state as a
+statement about hardware and then gave it `Unprovisioned` as its test, which is
+the repository's word for the opposite fact —
+`core/include/attadipa/core/availability.h:18` — "    Unprovisioned,  // a supported provider would give it; none is bound".
+`Unsupported` is the terminal one, and the Waveshare is deliberately not it. The
+readout already draws that line three lines above where this state lands, and
+says why —
+`apps/src/navigation.cpp:275` — "    // reader there is no receiver sends them to buy hardware they already own.".
+A T-Watch whose receiver is fitted and whose `local_gnss_start()` failed is
+`Unprovisioned` all boot; telling its wearer the watch has no receiver is a lie
+about a part that named itself over `UBX-MON-VER`.
+
+**One frame, one sentence.** The status now carries what
+`nav_caveat_no_provider` says —
+`l10n/strings.toml:632` — "no position source is set up" —
+so that caveat must **not** also fire underneath it. The caveat block keeps
+`NavCaveatNoReceiver` for `Unsupported`, which the status does not speak for,
+and drops `NavCaveatNoProvider` in the frames this state owns. No new string is
+added and none is retired; one of them moves from the caveat line to the status
+line, where it is the whole answer rather than a footnote to a false one.
 
 **The two states go in two different places, and an earlier draft of this
 decision put them both in one.** They have opposite relationships to the same
@@ -281,10 +304,10 @@ arrived, a confirmation whose coordinate was the unset pref — leave `own` empt
 so `!own_ok` is true and this branch fires first. Placed after it the state is
 simply unreachable, and the sentence it was written to remove prints anyway:
 `apps/src/navigation.cpp:173` — "    text.status_code = state.own.fix_type == core::FixType::NoFix".
-So inside the branch, a device with no local provider answers the receiverless
-state where a device with a receiver keeps `NoFix` and `WaitingForGps`. The test
-is the one decision 4 already uses — no local provider — and not which board it
-is.
+So inside the branch, a device with no local provider bound answers the second
+state where a device whose provider is bound keeps `NoFix` and `WaitingForGps`.
+The test is the one decision 4 already uses — `Unprovisioned` — and not which
+board it is, and not what is soldered to it.
 
 **The first state goes after that branch**, and **before** the validity
 branches —
@@ -433,8 +456,10 @@ coordinate, so a lapse cannot be triggered by "the watch moved and the node did
 not". That is a real detector this ADR chooses not to have. Building it would
 mean changing the mapping, which is the alternative rejected first.
 
-A reconnect costs the wearer nothing; a gap longer than the separation bound
-costs a tap, and the bound is the number decision 6 leaves `UNKNOWN`. That is
+A reconnect costs the wearer nothing **if `R4` comes back with a window**, and
+a gap longer than the separation bound then costs a tap. Until that run, the
+shipping behaviour is the fallback decision 6 names — any loss of the peer
+lapses the confirmation — so a reconnect costs a tap today. That is
 where this feature is still exposed: set it too short and a wearer walking past
 a wall re-confirms all day, set it too long and a node on a table keeps
 answering for a body that left. The measurement decision 6 names is what settles
@@ -442,7 +467,7 @@ it, and it is worth running before any of this is implemented rather than
 after.
 
 Two new `NavStatus` values need English and Russian strings, and the readout on
-a receiverless board stops claiming it is waiting for GPS. `NavState` gains one
+a board with nothing bound to fill `own` stops claiming it is waiting for GPS. `NavState` gains one
 field for the confirmation and **no** second age bound.
 
 Nothing here supplies `target` on the split arrangement. The vertical slice
