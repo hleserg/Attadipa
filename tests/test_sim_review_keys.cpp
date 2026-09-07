@@ -1,5 +1,8 @@
+#include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <string>
 #include <vector>
@@ -11,7 +14,9 @@
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_inventory.h"
+#include "attadipa/apps/navigation.h"
 #include "attadipa/ui/color.h"
+#include "attadipa/ui/nav_face.h"
 
 #include "boot_screen.h"
 #include "clock_screen.h"
@@ -237,10 +242,17 @@ std::string layout() {
 // everything — so a screen that gained one still ends with every row the other
 // theme had, byte for byte, and a theme that moved a label or reformatted a
 // distance does not.
+//
+// THE LEADING ';' IS KEPT ON PURPOSE and is the whole guarantee. `ends_with()`
+// is a raw byte suffix, so without a row boundary in front of it the match can
+// land inside a number: day's title at `x = 5` and night's at `x = 15` makes
+// "5,10,60,19|NAVIGATION;…" a suffix of "15,10,60,19|NAVIGATION;…", and a theme
+// that moved the first row passes. With the separator the comparison can only
+// begin where a row does.
 std::string rows(const std::string &described) {
   const std::size_t screen_box = described.find(';');
   return screen_box == std::string::npos ? described
-                                         : described.substr(screen_box + 1);
+                                         : described.substr(screen_box);
 }
 
 bool ends_with(const std::string &whole, const std::string &tail) {
@@ -279,10 +291,18 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
   // `ui/lvgl/nav_face.cpp` now draws the meadow and its scrim under `Night` and
   // nothing at all under `Day`, the way the clock already did — the assertions
   // below are the ones `the_clock_follows_the_theme_key` makes for the same
-  // reason, and its comment is the longer version of this one. Two consequences
-  // follow, and both are asserted rather than assumed: the corner pixel is
-  // painted art on `Night` and no longer the page role, and the two themes are
-  // two pictures on **both** boards whatever the palette does.
+  // reason, and its comment is the longer version of this one.
+  //
+  // WHETHER THE CORNER IS ART DEPENDS ON THE PANEL, and an earlier version of
+  // this comment claimed it was art on both. The meadow is 410x502 and covers
+  // rather than fits, so on a panel at least that size the corner is painted.
+  // On a smaller one the cover scale is an integer 1/256th: 240x240 takes
+  // `max(240*256/410, 240*256/502) = 149`, which draws `410*149 >> 8 = 238` px
+  // into 240 and leaves column 0 and column 239 at bare page colour. So the
+  // corner is the night page role on the T-Watch and is not on the Waveshare,
+  // and the assertion below says exactly that — which keeps the *palette* the
+  // subject of this test on the small panel, where `night != day` alone would
+  // be satisfied by the two backdrop children whatever the roles resolved to.
   //
   // What survives unchanged is the guarantee this test was written for, in a
   // stronger form than `==` could state it: night's rows *end with* every row
@@ -293,6 +313,10 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
   press('T');
   const std::vector<std::uint8_t> night = pixels();
   CHECK(night != day);
+  const bool art_reaches_the_corner =
+      board.display.width_px >= 410 && board.display.height_px >= 502;
+  CHECK((corner(night) == page_colour(ui::Theme::Night, board)) !=
+        art_reaches_the_corner);
   const std::string night_layout = layout();
   CHECK(night_layout != day_layout);
   CHECK(ends_with(rows(night_layout), rows(day_layout)));
@@ -328,6 +352,246 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
 
   l10n::set_locale(l10n::Locale::En);
   panel.close();
+}
+
+// --------------------------------------------------------------------------
+// The trail itself, which is what #459 is and what nothing above asserts.
+//
+// `nav_follows_the_theme_key` compares night against day, so anything the two
+// themes draw identically is invisible to it — and the trail is drawn
+// identically in both. Every one of these passes that test: no dots at all,
+// `trail_dots()` returning zero, the unhide loop mis-bounded, the sine and the
+// cosine swapped so the run is plausible everywhere and correct only at the
+// four cardinals, and `head` and `tail` transposed so the run brightens toward
+// the wearer and the watch quietly points backwards.
+
+struct Blob {
+  std::int32_t cx = 0;
+  std::int32_t cy = 0;
+  std::int32_t size = 0;
+};
+
+// A square, visible child that the flex layout does not place. On this screen
+// that is the trail plus the hub, and nothing else: the backdrop is 410x502
+// scaled and the scrim is half the panel, so neither is square; every text row
+// is a label; and the ring is square but *is* laid out, which is what lets it
+// be found without asking the face for a pointer it does not hand out.
+std::vector<Blob> circles_on_the_dial(bool laid_out) {
+  std::vector<Blob> found;
+  lv_obj_t *screen = lv_screen_active();
+  const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
+  for (std::int32_t i = 0; i < children; ++i) {
+    lv_obj_t *child = lv_obj_get_child(screen, i);
+    if (lv_obj_check_type(child, &lv_label_class) ||
+        lv_obj_check_type(child, &lv_image_class)) {
+      continue;
+    }
+    if (lv_obj_has_flag(child, LV_OBJ_FLAG_HIDDEN)) {
+      continue;
+    }
+    if (lv_obj_has_flag(child, LV_OBJ_FLAG_IGNORE_LAYOUT) == laid_out) {
+      continue;
+    }
+    const std::int32_t w = lv_obj_get_width(child);
+    const std::int32_t h = lv_obj_get_height(child);
+    if (w != h) {
+      continue;
+    }
+    found.push_back(Blob{lv_obj_get_x(child) + w / 2,
+                         lv_obj_get_y(child) + h / 2, w});
+  }
+  return found;
+}
+
+// The bearing off the screen rather than out of the fixture, so that changing
+// the scenario cannot leave this test asserting an angle nothing draws. It is
+// the only label whose first three bytes are digits: the distance reads
+// "2.1 km" and every other row is words.
+bool bearing_on_screen(double &degrees) {
+  lv_obj_t *screen = lv_screen_active();
+  const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
+  for (std::int32_t i = 0; i < children; ++i) {
+    lv_obj_t *child = lv_obj_get_child(screen, i);
+    if (!lv_obj_check_type(child, &lv_label_class)) {
+      continue;
+    }
+    const char *text = lv_label_get_text(child);
+    if (text == nullptr || std::strlen(text) < 3) {
+      continue;
+    }
+    if (std::isdigit(static_cast<unsigned char>(text[0])) &&
+        std::isdigit(static_cast<unsigned char>(text[1])) &&
+        std::isdigit(static_cast<unsigned char>(text[2]))) {
+      degrees = (text[0] - '0') * 100.0 + (text[1] - '0') * 10.0 + (text[2] - '0');
+      return true;
+    }
+  }
+  return false;
+}
+
+void the_trail_points_where_the_readout_says(const platform::BoardProfile &board) {
+  std::printf("navigation trail on %s (%u x %u)\n", board.id,
+              board.display.width_px, board.display.height_px);
+
+  Panel panel;
+  panel.open(board);
+  l10n::set_locale(l10n::Locale::En);
+  l10n::set_locale_changed_handler(attadipa::sim::rebuild_nav_screen);
+
+  // `ready` is north-up — nothing on either board orients a bearing, so
+  // `has_arrow` is false and the drawn angle *is* the bearing on the screen.
+  // That is what lets the label be the expected value rather than a constant
+  // copied out of the fixture.
+  CHECK(attadipa::sim::stage_nav_scenario("ready"));
+  attadipa::sim::build_nav_screen(board, ui::Theme::Night);
+  run_frames(2);
+
+  const std::vector<Blob> ring = circles_on_the_dial(true);
+  CHECK(ring.size() == 1);
+  if (ring.size() != 1) {
+    return;
+  }
+  const Blob centre = ring.front();
+
+  std::vector<Blob> dots = circles_on_the_dial(false);
+  // The hub is the one at the ring's centre; everything else is the trail.
+  std::vector<Blob> trail;
+  int hubs = 0;
+  for (const Blob &blob : dots) {
+    if (blob.cx == centre.cx && blob.cy == centre.cy) {
+      ++hubs;
+    } else {
+      trail.push_back(blob);
+    }
+  }
+  CHECK(hubs == 1);
+
+  // The same split `NavFace::trail_dots()` makes, restated here because a test
+  // that asked the face how many it drew would agree with it by construction.
+  // 320 is the header's threshold — `ui/lvgl/include/attadipa/ui/nav_face.h` —
+  // "unsigned trail_dots() const { return config_.width_px >= 320 ? kTrailDots : 4; }".
+  const std::size_t expected = board.display.width_px >= 320 ? 7u : 4u;
+  CHECK(trail.size() == expected);
+
+  double bearing = 0.0;
+  CHECK(bearing_on_screen(bearing));
+
+  // Screen y grows downward and a bearing grows clockwise from north, so the
+  // unit vector along the trail is (sin, -cos). Swapping the pair is the defect
+  // `point_trail()`'s own comment names, and it survives at 000 and 090 and 180
+  // and 270 — which is why `ready`'s 057 is the scenario to assert on.
+  const double radians = bearing * 3.14159265358979323846 / 180.0;
+  const double ux = std::sin(radians);
+  const double uy = -std::cos(radians);
+
+  double nearest = 1e9;
+  double furthest = 0.0;
+  std::int32_t size_at_nearest = 0;
+  std::int32_t size_at_furthest = 0;
+  for (const Blob &dot : trail) {
+    const double dx = dot.cx - centre.cx;
+    const double dy = dot.cy - centre.cy;
+    const double along = dx * ux + dy * uy;
+    // Perpendicular distance to the ray, which says "on the line" without
+    // depending on how far out the dot is: an angular tolerance that a 47-px
+    // head can pass is one a 17-px tail cannot.
+    const double across = std::fabs(dx * uy - dy * ux);
+    CHECK(across <= 2.0);
+    // And on the right side of the wearer, which is what a 180-degree flip
+    // would break while leaving every dot exactly on the line.
+    CHECK(along > 0.0);
+    if (along < nearest) {
+      nearest = along;
+      size_at_nearest = dot.size;
+    }
+    if (along > furthest) {
+      furthest = along;
+      size_at_furthest = dot.size;
+    }
+  }
+  // The run reaches outward and grows as it goes. Transposing `head` and `tail`
+  // leaves every dot on the line and every one of them on the correct side; the
+  // only thing that changes is which end is bright, and the watch then points
+  // at the wearer.
+  CHECK(furthest > nearest);
+  CHECK(size_at_furthest > size_at_nearest);
+
+  // Nothing to point at, nothing pointed: `no-fix` has no bearing, and the
+  // trail and the hub both go. A readout that kept drawing the last direction
+  // under a dash is the exact failure this project exists to refuse.
+  CHECK(attadipa::sim::stage_nav_scenario("no-fix"));
+  attadipa::sim::build_nav_screen(board, ui::Theme::Night);
+  run_frames(2);
+  CHECK(circles_on_the_dial(false).empty());
+  double no_bearing = 0.0;
+  CHECK(!bearing_on_screen(no_bearing));
+}
+
+// The device does not rebuild this face every tick. It builds once and calls
+// `update()` — `firmware/main/waveshare_board.cpp:975` —
+// "    state.nav_face.update(text);" — and the simulator only ever builds, so
+// the trail's hide-and-show path has never had a caller any test could reach.
+// It is the path that decides whether a watch that loses its bearing and gets
+// it back draws the trail again, which is not a decoration: a run that came
+// back one dot short, or not at all, would look like a working watch.
+//
+// This drives a face of the test's own, on its own panel, for the reason
+// `Panel::close` gives about the boot screen: `NavFace::build()` cleans the
+// screen, so two faces must never share one.
+void the_trail_comes_back_after_it_goes(const platform::BoardProfile &board) {
+  Panel panel;
+  panel.open(board);
+  l10n::set_locale(l10n::Locale::En);
+  l10n::set_locale_changed_handler(nullptr);
+
+  const ui::NavFaceConfig config{
+      board.display.width_px,
+      board.display.height_px,
+      ui::Theme::Night,
+      board.display.technology == platform::PanelTechnology::Amoled
+          ? ui::PixelCost::PerPixel
+          : ui::PixelCost::Fixed,
+      ui::Metrics::for_dpi(board.display.dpi()),
+  };
+
+  // Deliberately nowhere, the way every position test in this repository
+  // states its coordinates.
+  apps::NavState pointing;
+  pointing.own.availability = core::Availability::Ready;
+  pointing.own.has_position = true;
+  pointing.own.position.value = {5100000, 10000000};
+  pointing.own.validity = core::PositionValidity::Valid;
+  pointing.own.fix_type = core::FixType::ThreeD;
+  pointing.own.source = core::PositionSource::LocalGnss;
+  pointing.own.receiver = core::ReceiverPresence::Running;
+  pointing.target.availability = core::Availability::Ready;
+  pointing.target.has_position = true;
+  pointing.target.position.value = {5110000, 10020000};
+  pointing.target.validity = core::PositionValidity::NoFix;
+  pointing.target.source = core::PositionSource::NodeGnss;
+
+  apps::NavState blind = pointing;
+  blind.own.fix_type = core::FixType::NoFix;
+  blind.own.validity = core::PositionValidity::NoFix;
+
+  const std::size_t expected = board.display.width_px >= 320 ? 7u : 4u;
+
+  ui::NavFace face;
+  face.build(lv_screen_active(), config, apps::format_navigation(pointing));
+  run_frames(2);
+  CHECK(circles_on_the_dial(false).size() == expected + 1);  // the trail and the hub
+
+  // It goes.
+  face.update(apps::format_navigation(blind));
+  run_frames(2);
+  CHECK(circles_on_the_dial(false).empty());
+
+  // And it all comes back. One dot short here is the off-by-one in the unhide
+  // loop, which the build path cannot see because `build()` creates the first
+  // `trail_dots()` visible in the first place.
+  face.update(apps::format_navigation(pointing));
+  run_frames(2);
+  CHECK(circles_on_the_dial(false).size() == expected + 1);
 }
 
 // --------------------------------------------------------------------------
@@ -394,12 +658,15 @@ void the_clock_follows_the_theme_key(const platform::BoardProfile &board) {
 
   // Night is a different picture here, and deliberately more than a palette:
   // `ui/lvgl/clock_face.cpp` draws a meadow image and four fireflies under the
-  // numerals for `Theme::Night` and nothing at all for `Theme::Day`. So the
-  // assertion the navigation readout can make — same geometry, same words —
-  // is false for this screen by design, and asserting it here would be
-  // asserting the wrong thing loudly. What `T` has to prove is that the screen
-  // on the panel followed it, and that a second press puts back exactly what
-  // was there.
+  // numerals for `Theme::Night` and nothing at all for `Theme::Day`. So `==` on
+  // the layout is false for this screen by design, and asserting it here would
+  // be asserting the wrong thing loudly. The navigation readout no longer makes
+  // that assertion either — it draws the same meadow now — and states the
+  // weaker true one, that night's rows end with day's; this screen could say
+  // the same and does not, because the fireflies are interleaved among the
+  // numerals rather than added ahead of them. What `T` has to prove here is
+  // that the screen on the panel followed it, and that a second press puts back
+  // exactly what was there.
   press('T');
   const std::vector<std::uint8_t> night = pixels();
   CHECK(night != day);
@@ -486,6 +753,8 @@ int main() {
   // and the 410x502 AMOLED are two different answers to the same keypress.
   for (std::uint8_t i = 0; i < count; ++i) {
     nav_follows_the_theme_key(profiles[i]);
+    the_trail_points_where_the_readout_says(profiles[i]);
+    the_trail_comes_back_after_it_goes(profiles[i]);
     boot_screen_still_follows_the_theme_key(profiles[i]);
     the_clock_follows_the_theme_key(profiles[i]);
     the_test_pattern_ignores_the_theme_key(profiles[i]);

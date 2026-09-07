@@ -88,6 +88,12 @@ private:
   // for nothing.
   bool          trail_drawn_ = false;
   std::uint16_t trail_centideg_ = 0;
+  // The ring's centre when the trail was last placed. It is part of the cache
+  // key and not bookkeeping: the dots are positioned from absolute screen
+  // coordinates, so a ring that moved under a relaid-out row above it leaves
+  // them behind at an unchanged bearing.
+  std::int32_t  trail_centre_x_ = 0;
+  std::int32_t  trail_centre_y_ = 0;
   bool built_ = false;
 };
 

@@ -26,10 +26,6 @@ void bare(lv_obj_t *object) {
   lv_obj_remove_flag(object, LV_OBJ_FLAG_CLICKABLE);
 }
 
-// Whether the status is one the reader has to act on. `Ready` is not, and
-// neither is a stale node coordinate that still has a usable answer beside it —
-// those are ordinary, and colouring them as alarms teaches people to ignore the
-// colour.
 void glowing_dot(lv_obj_t *object, std::int32_t size, lv_color_t colour,
                  lv_opa_t opacity, std::int32_t glow) {
   bare(object);
@@ -43,6 +39,10 @@ void glowing_dot(lv_obj_t *object, std::int32_t size, lv_color_t colour,
   lv_obj_add_flag(object, LV_OBJ_FLAG_IGNORE_LAYOUT);
 }
 
+// Whether the status is one the reader has to act on. `Ready` is not, and
+// neither is a stale node coordinate that still has a usable answer beside it —
+// those are ordinary, and colouring them as alarms teaches people to ignore the
+// colour.
 bool is_alarm(apps::NavStatus status) {
   return status != apps::NavStatus::Ready &&
          status != apps::NavStatus::NodePositionStale;
@@ -201,6 +201,16 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   // "Not an opinion and not a review note: WCAG 2.1 relative luminance", and
   // the ratio in that table is the role at full strength. The size and the
   // letter spacing are what make it quiet.
+  //
+  // That ratio is a floor here, not a measurement of this pixel. It is the role
+  // against `BackgroundPrimary`, and on `Night` the title sits above the scrim
+  // on the meadow rather than on the page colour. The art is darker than the
+  // page everywhere the title crosses it -- which is why fading the title was
+  // what looked wrong -- so the drawn contrast is at or above the tabulated
+  // number, and the table is cited as the bound it is. Measuring the composite
+  // would mean measuring an image, which is a different instrument than the one
+  // `DESIGN_SYSTEM.md` holds; `clock_face.cpp` puts its date label on the same
+  // art on the same argument.
 
   // The ring is the frame of reference made visible. It never turns; what moves
   // is the "N", which sits at its top while the face is north-up and at the
@@ -398,10 +408,16 @@ void NavFace::point_trail(const apps::NavText &text) {
   const std::uint16_t drawn_centideg =
       text.has_arrow ? text.arrow_centideg : text.bearing_centideg;
   // Moving seven objects invalidates seven areas, and the readout re-formats
-  // every tick whether or not the bearing moved. The ring, though, is placed by
-  // the flex column and may have moved under a relaid-out row above it, so the
-  // cache is checked only after the ring-following objects are placed.
-  if (trail_drawn_ && trail_centideg_ == drawn_centideg) {
+  // every tick whether or not the bearing moved. The bearing is not the whole
+  // key, though. The marker and the hub above this line follow the ring by
+  // construction; the dots below it are placed from absolute coordinates, so a
+  // ring that moved at an unchanged bearing would leave the trail behind while
+  // everything else on the dial followed. Nothing moves the ring today -- the
+  // only row above it is a one-line title at `LV_SIZE_CONTENT` -- which is
+  // exactly why the centre belongs in the key rather than in a comment saying
+  // it cannot happen.
+  if (trail_drawn_ && trail_centideg_ == drawn_centideg &&
+      trail_centre_x_ == centre_x && trail_centre_y_ == centre_y) {
     return;
   }
 
@@ -438,6 +454,8 @@ void NavFace::point_trail(const apps::NavText &text) {
   }
   trail_drawn_ = true;
   trail_centideg_ = drawn_centideg;
+  trail_centre_x_ = centre_x;
+  trail_centre_y_ = centre_y;
 }
 
 void NavFace::update(const apps::NavText &text) {
