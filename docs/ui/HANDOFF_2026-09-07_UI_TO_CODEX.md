@@ -26,9 +26,13 @@ item — it does not need to be talked into it. Two things make that land cleanl
 - Say what the *screen* needs, not which C++ to write. The boundary in
   `AGENTS.md` — applications ask what a device can do, not which board it is —
   is what keeps a design request from turning into a board patch.
-- One issue per change, with the acceptance stated. The queue's WIP limit is
-  four open pull requests, so a request that arrives as one finite issue gets
-  picked up and a request that arrives as a programme waits.
+- One issue per change, with the acceptance stated. The queue has a bounded
+  width, so a request that arrives as one finite issue gets picked up and a
+  request that arrives as a programme waits. The width is a repository setting
+  and not a constant — `docs/automation/RECOVERY.md:121` — "The width is the
+  repository variable" — so read it rather than trusting this line:
+  `gh variable get ATTADIPA_WIP_LIMIT`, which was **four** on 2026-09-07 and
+  is **two** wherever the variable is unset.
 
 The two agents work in **separate git worktrees** on the same machine and share
 one repository-wide writer lease. Neither can edit while the other holds it, so
