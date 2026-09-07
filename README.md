@@ -4,296 +4,367 @@
        width="820">
 </p>
 
-**English** · [Русский](README.ru.md) · [Project page](https://hleserg.github.io/Attadipa/)
-
-# Atta-dipa
-
-A wearable firmware platform for ESP32-S3 smartwatches — mesh messaging,
-offline navigation, and a UI that is meant to be genuinely pleasant to use.
-
 <p align="center">
-  <img src="pics/first-boot-waveshare.gif"
-       alt="Atta-dipa completing its first physical boot on the Waveshare ESP32-S3 smartwatch"
-       width="400">
-  <br>
-  <sub>First physical boot on the Waveshare ESP32-S3 Touch AMOLED 2.06.</sub>
+  <b>English</b> · <a href="README.ru.md">Русский</a> · <a href="https://hleserg.github.io/Attadipa/">Project page</a>
 </p>
 
-> **Status: early implementation.** The host-testable layers exist and are
-> tested — the hardware inventory, the capability registry, the transport, the
-> GNSS trust evaluator, the design-token system, and the desktop simulator.
-> One target board is now on the owner's desk and has been read over
-> its own USB port, which is the first evidence in this repository that came
-> from silicon rather than from a document. **Atta-dipa now boots on it from
-> flash, drives its AMOLED and touch controller, owns the required PMU rails,
-> reads the RTC, and exposes the live UI over USB for screenshots and input.**
-> Power lifecycle, timing and GNSS remain unexercised.
-> [Issues](https://github.com/hleserg/Attadipa/issues) and
-> [pull requests](https://github.com/hleserg/Attadipa/pulls) show live work.
+<h1 align="center">Atta-dipa</h1>
 
-### What exists today
+<p align="center">
+  <b>A watch that will not show you what it does not know.</b><br>
+  Independent by design — an open ESP32-S3 smartwatch platform<br>
+  for LoRa mesh and offline navigation:<br>
+  no phone, no cloud, no subscription.
+</p>
 
-| | |
+<p align="center">
+  <a href="https://github.com/hleserg/Attadipa/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hleserg/Attadipa/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/hleserg/Attadipa/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/hleserg/Attadipa/actions/workflows/codeql.yml/badge.svg"></a>
+  <img alt="ESP-IDF v5.5.5" src="https://img.shields.io/badge/ESP--IDF-v5.5.5-e7352c">
+  <img alt="LVGL v9.5.0" src="https://img.shields.io/badge/LVGL-v9.5.0-4c9a2a">
+  <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
+  <a href="https://github.com/hleserg/Attadipa/discussions"><img alt="Discussions" src="https://img.shields.io/badge/discussions-open-8a2be2"></a>
+</p>
+
+<table align="center">
+<tr>
+<td align="center" width="50%">
+  <img src="pics/clock-night.gif" width="300"
+       alt="The Atta-dipa clock face — a night meadow, fireflies pulsing, large white numerals reading 22:13">
+  <br><sub>The clock face. Original art, and the fireflies are alive.</sub>
+</td>
+<td align="center" width="50%">
+  <img src="pics/nav-honest-states.gif" width="300"
+       alt="The Atta-dipa navigation screen cycling through states: a distance and bearing, then stale, node unavailable, and node position unknown">
+  <br><sub>Navigation. Watch what happens when the data runs out.</sub>
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <sub>Both captured from the desktop simulator, which renders the same
+  application code the watch runs. And the same code on the hardware:</sub>
+</p>
+
+<table align="center">
+<tr>
+<td align="center" width="50%">
+  <img src="docs/hardware/CLOCK_2026-08-26.png" width="240"
+       alt="The Atta-dipa clock face photographed off the physical Waveshare framebuffer, reading 04:34">
+  <br><sub><b>On the physical watch.</b> Pulled from the live framebuffer over
+  Atta-dipa's own debug channel — <a href="docs/hardware/CLOCK_2026-08-26.md">bench
+  record</a>. The paw and <code>7777</code> are a layout placeholder, not a step count.</sub>
+</td>
+<td align="center" width="50%">
+  <img src="pics/first-boot-waveshare.gif" width="240"
+       alt="Atta-dipa completing its first physical boot on the Waveshare ESP32-S3 smartwatch">
+  <br><sub><b>First boot from flash</b> on the Waveshare ESP32-S3 Touch AMOLED 2.06.</sub>
+</td>
+</tr>
+</table>
+
+<p align="center">
+  <a href="#run-it-on-your-desk"><b>Run it in two minutes</b></a> ·
+  <a href="#what-works-today"><b>What works today</b></a> ·
+  <a href="#help-build-it"><b>Help build it</b></a> ·
+  <a href="https://github.com/hleserg/Attadipa/discussions"><b>Open a Discussion</b></a>
+</p>
+
+---
+
+## The watch tells you when it does not know
+
+Lose signal, and the usual gadget shows you the last thing it managed to learn
+and says nothing about it. The needle points somewhere. The distance reads
+`0 m`. It looks like an answer without being one.
+
+Not here. A position in Atta-dipa carries its source, its age and its
+confidence, and carries them all the way to the pixel. The navigation screen
+has **nine** states, and exactly one of them is an answer:
+
+```
+Ready                ← the only one that is an answer
+
+Waiting for GPS      Own position stale       Node unavailable
+No fix               Own position degraded    Node position unknown
+Receiver silent                               Node position stale
+```
+
+Plus three caveats a good day can still carry: *"node fix unverified, heard N
+ago"*, *"no receiver on this device"*, *"no position source is set up"*. And
+past a thousand kilometres the distance stops pretending to a metre: `> 1000 km`.
+
+No `0 m` standing in for *unknown*. No `(0, 0)`. No arrow pointing somewhere plausible. The animation
+above is exactly that, live: when there is nothing to say, the needle
+disappears, the numbers become a dash, and an amber line names the specific
+thing the watch does not know.
+
+## What it is
+
+**A wearable computer for places with no cellular network** — and a second
+device in your pocket or pack when the watch itself lacks the hardware.
+
+- **LoRa messaging** over [MeshCore](https://github.com/meshcore-dev/MeshCore),
+  staying an upstream client rather than forking away from it.
+- **Navigation without maps** — bearing, great-circle distance, and an honest
+  state. Not routes, not tracks, not "you have arrived".
+- **An interface worth looking at**, because a watch that is unpleasant to read
+  is a watch nobody wears. Twelve colour roles, day and night, WCAG contrast
+  arithmetic, and CI that rejects a raw hex value in screen code.
+- **Everything local.** No account, no cloud, no mandatory handset.
+
+## One name, two devices
+
+The interesting part of Atta-dipa is that "the watch" is not always one device.
+
+<p align="center">
+  <img src="pics/two-watches-one-codebase.gif" width="620"
+       alt="The same navigation screen on a 410×502 panel and a 240×240 panel, changing state together">
+  <br><sub>One set of application code on two very different panels — 410 × 502 and
+  240 × 240 — both rendered by the simulator.</sub>
+</p>
+
+```
+  SELF-CONTAINED                        SPLIT
+  one device                            two devices
+
+  T-Watch S3 Plus                       Waveshare AMOLED 2.06
+  ├── 240×240 display, touch            ├── 410×502 AMOLED, touch
+  ├── GNSS  (MIA-M10Q or LS550G) ✔      └── BLE ──┐   no radio, no receiver
+  ├── sub-GHz radio  (part UNKNOWN)                │        on this board
+  └── Atta-dipa                                    ▼
+                                        Companion node
+                                        ├── GNSS
+      the wearer and the receiver       └── LoRa / MeshCore
+      are on the same body
+                                            the coordinate crosses a link,
+                                            and the watch says so
+```
+
+That is the arrangement, not the state of the firmware. **On hardware today
+only the Waveshare runs these screens.** The T-Watch image links the same
+`apps/` and `ui/` libraries — one `CMakeLists.txt` links every layer for both
+boards — but its board file still brings the panel up rather than starting the
+Clock: `firmware/main/twatch_board.cpp:415` — "void build_bringup_screen() {".
+
+The difference is not cosmetic. On the self-contained device the receiver is on
+your body, and its coordinate is yours. On the split arrangement the coordinate
+comes from a device that **might be lying on a table** — so the watch is not
+allowed to quietly present it as your own. That is where the extra states on the
+screen come from, and [ADR-0013](docs/adr/0013-node-motion.md).
+
+Applications know about neither arrangement. They ask
+`availability(Capability::Position)` — what the device can *do*, never what is
+soldered to it — and they cannot even link against the hardware layer: asking a
+chip a question from `apps/` is a build error, not a review comment.
+
+## What works today
+
+Status words mean what they say here. `MEASURED` came off hardware or an
+instrument; `IMPLEMENTED` runs and is tested, but not on a board yet;
+`PLANNED` is a design with no code.
+
+| | State |
 |---|---|
-| **Builds and is tested on a host** | the host suite runs under GCC and Clang, under `-Werror` and under ASan+UBSan; simulator tests are enabled when SDL2 is available. Compile-fail checks guard the hardware-header, translation-table and receiver-capability boundaries |
-| **Can be looked at while it runs** | the interface can be screenshotted and driven from another process — tap, swipe, press a supported button, take another picture — against both the simulator and the physical Waveshare over USB |
-| **Runs two geometries from one binary** | 240 × 240 and 410 × 502, selected at run time, fitting any of the five candidate T-Watch radios and a present-or-absent node without a rebuild |
-| **Draws through design tokens** | twelve colour roles across day and night themes with WCAG contrast arithmetic, plus a CI check that refuses a raw hex value or a pixel count back into screen code |
-| **Renders every character it claims to** | four generated Montserrat subsets covering all 181 codepoints of the charset; an undrawable codepoint **fails the run** rather than printing a warning |
-| **Has one board on the desk** | a Waveshare ESP32-S3 Touch AMOLED 2.06 running Atta-dipa from flash: chip revision v0.2, physical flash `0xC8 0x4019` (32 MB) behind a deliberate 16 MB build ceiling, 8 MB octal PSRAM, CO5300 AMOLED, FT3168 touch, AXP2101 rails and PCF85063 RTC |
-| **Hardware evidence has a narrow boundary** | boot, flash/PSRAM, both firmware variants, display colour/orientation, physical touch, PMU rail ownership, RTC retention and the USB screenshot/input endpoint are measured. Power lifecycle, GNSS and interference are not |
-| **Runs its own engineering queue** | work arrives as a GitHub issue, an agent opens a branch and a draft pull request, and a second agent reviews it independently. The workflows, their security model and their cost controls are in [`docs/automation/`](docs/automation/CLAUDE_AUTOMATION.md) |
+| **Boots from flash on a real watch** — AMOLED, capacitive touch, AXP2101 power rails, PCF85063 RTC, and a full [sleep/wake lifecycle](docs/hardware/SLEEP_WAKE_2026-08-26.md) | ✅ `MEASURED` on the Waveshare AMOLED 2.06 |
+| **Clock, provisioning and mesh screens on the device** | ✅ `MEASURED` in English ([bench record](docs/hardware/CLOCK_2026-08-26.md)); the firmware still hard-codes `Locale::En`, so a Russian screen on a panel is `NOT EXECUTED` |
+| **Talks to a MeshCore node over BLE** — pairs, connects, pins one node by its public key, and shows peers, SNR and the last message received over LoRa | ✅ `MEASURED` against a Heltec T114 ([bench record](docs/research/MESHCORE_T114_FIRST_CONTACT.md)) |
+| **Sending a message and seeing the reply on the wrist** | 🧪 `NOT OBSERVED` — the next physical seam |
+| **GNSS on the T-Watch S3 Plus** — the module named itself **u-blox MIA-M10Q** ([read off the part](docs/research/HARDWARE_MATRIX.md)), and its NMEA reaches the position service | ✅ `MEASURED` indoors, no fix ([bench log](docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md)) |
+| **An outdoor fix on that receiver** | 🧪 `NOT EXECUTED — HARDWARE REQUIRED` |
+| **Navigation that refuses to invent** — bearing, great-circle distance, staleness and the nine honest states above | ✅ `IMPLEMENTED` and rendering; distance to a *remote* node still needs [#450](https://github.com/hleserg/Attadipa/issues/450) |
+| **Desktop simulator**, both geometries, radio and node presence switchable without a rebuild | ✅ `IMPLEMENTED` |
+| **Screenshot and drive the live UI from another process** — taps, buttons, scripted journeys | ✅ `MEASURED` on the physical watch for capture, remote tap and the physical touch/BOOT/PWR paths ([bench record](docs/hardware/WATCH_CONTROL_2026-08-25.md)); swipes and scripted journeys so far only on the simulator |
+| **Design tokens** — twelve colour roles, day and night, with WCAG contrast arithmetic and a CI check that rejects a raw hex value in screen code | ✅ `IMPLEMENTED` |
+| **Fonts that cannot silently fail** — seven Nunito Sans subsets covering exactly the 177 codepoints of the charset; an undrawable character fails the build | ✅ `IMPLEMENTED` |
+| **Compass / heading** — the API exists and the screen turns the needle, so far only from simulator fixtures. Neither board ships a magnetometer; two modules are on the bench awaiting a retrofit | 🧪 [`MAGNETOMETER_RETROFIT`](docs/research/MAGNETOMETER_RETROFIT.md) |
+| **Haptics** — typed capability descriptors, no driver code yet | 📐 `PLANNED` |
+| **Child Mode** — a separate UX for a six-year-old, not the adult UI with bigger fonts | 📐 `PLANNED` |
+| **Power** — one honest number: **413 mW** at the Waveshare's USB input, screen on at minimum brightness, idle on the provisioning screen, cell disconnected, 2026-09-05. No sleep figure, no screen-off figure, no per-rail split | 🔬 measuring |
+| **The application on the T-Watch S3 Plus** — the image links the same `apps/`, `ui/` and fonts, and its board file starts a panel bring-up instead of the Clock | 🧪 `NOT EXECUTED` — no Atta-dipa screen has run on that board |
+| **The T-Watch's sub-GHz radio** — five candidate parts, and only some of them do LoRa at all. Nobody has read the marking off the chip | ❓ `UNKNOWN` ([ADR-0003](docs/adr/0003-radio-not-lora.md)) |
 
-**What is next, and it is deliberately narrow.** That last row is the one that
-sets the direction: the architecture, the tests and the simulator now reach the
-physical device. The next product step is a real Clock, followed by sleep/wake.
-[`docs/ROADMAP.md`](docs/ROADMAP.md) is the whole
-plan and the reasoning behind it.
+The rows that say `MEASURED` link the bench record that produced them.
+[`VERIFIED_FACTS.md`](docs/research/VERIFIED_FACTS.md) is the ledger, and
+[`OPEN_QUESTIONS.md`](docs/research/OPEN_QUESTIONS.md) is the list of things
+nobody has established yet.
 
-Atta-dipa is not a Linux-like OS. It is a single embedded
-firmware/application platform on top of ESP32-S3 and ESP-IDF/FreeRTOS,
-designed to support several watch models from one codebase.
+## Right now
 
-> **Have an idea for a watch app?**
-> [Start a Discussion](https://github.com/hleserg/Attadipa/discussions) — that
-> is the front door, and it is open to everybody. Issues are the engineering
-> queue and are limited to collaborators; a maintainer moves an idea across when
-> it is ready to be built. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Live work as of 2026-09-07. [Issues](https://github.com/hleserg/Attadipa/issues)
+and [pull requests](https://github.com/hleserg/Attadipa/pulls) are the real-time
+picture.
 
-## What it is meant to be
+- **A companion's position on your wrist as a direction** — the vertical slice
+  in [#450](https://github.com/hleserg/Attadipa/issues/450): magnetometer,
+  heading, BLE payload, navigation service, screen.
+- **The T-Watch GNSS** answers over UART at 38400 and names itself; the next
+  step is an outdoor fix ([#442](https://github.com/hleserg/Attadipa/issues/442)).
+- **Magnetometer retrofit** — two modules on the bench, waiting on an unpowered
+  ohmmeter check that decides whether the reset pad needs a wire of its own.
+- **Power** — there is a first measured number, and it is the only one.
+- **Sending into the mesh** — receive is proven, the reply has not been seen.
 
-- **Independent of your phone.** Mesh messaging, navigation, and time work with
-  no companion app and no internet. A phone is an optional companion, never the
-  brain of the watch. Where a capability needs hardware a particular watch does
-  not have, it comes from a **Atta-dipa node** — a dedicated box built for this,
-  not a handset — and the interface says which situation it is in rather than
-  pretending.
-- **Mesh-native.** Long-range LoRa messaging built on
-  [MeshCore](https://github.com/meshcore-dev/MeshCore), staying compatible with
-  upstream rather than forking away from it.
-- **Navigation that admits what it knows.** Position and heading are reported
-  with their source and confidence. The watch does not draw a confident arrow
-  when it is not confident.
-- **Beautiful, not "engineering demo".** Design is part of Definition of Done —
-  a design-token system, day/night themes, considered motion, meaningful
-  haptics.
-- **A real Child Mode.** A separate UX designed for a six-year-old — not the
-  adult UI with bigger fonts. Large targets, recognisable icons, little
-  reading, SOS, direction to a parent.
-- **Long battery life as a feature**, tracked with real telemetry rather than
-  claimed.
-- **Desktop simulator as a first-class target**, so UI work does not wait on
-  hardware.
+## Run it on your desk
+
+You do not need a board. The simulator is a first-class development target
+rather than a toy: the same application code, the same screens, both geometries.
+
+```bash
+sudo apt install libsdl2-dev            # the one system package this needs
+cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON && cmake --build build-sim -j
+./build-sim/sim/attadipa_sim --clock --theme night
+```
+
+Then it gets interesting:
+
+```bash
+S=./build-sim/sim/attadipa_sim
+$S --nav --nav-state node-unknown   # the screen when there is nothing to say
+$S --nav --nav-state ready --node   # and the same screen with an answer
+$S --clock --board waveshare-amoled-206  # the other geometry, 410 × 502
+$S --clock --locale ru              # and L toggles it while running
+$S --clock --no-bring-up            # leave every part of the hardware untouched
+```
+
+`--nav` takes the whole panel, so it does not combine with `--clock`. None of
+these need a rebuild — that is the point of them, and it is why one simulator
+binary covers both boards. Run the first two back to back: the difference
+between them is the fastest way to see what makes this project different from
+the others.
+
+Then drive the interface from another terminal — tap it, screenshot it, run a
+scripted journey:
+
+```bash
+./build-sim/sim/attadipa_sim --clock --debug-socket /tmp/attadipa-sim.sock &
+python3 tools/watch_control.py info
+python3 tools/watch_control.py screenshot --output /tmp/watch.png
+```
+
+The same tool drives the physical watch over USB —
+[`WATCH_CONTROL.md`](docs/testing/WATCH_CONTROL.md).
+
+## Help build it
+
+The project needs very different hands, and most of them need no board at all.
+
+| Lane | What there is to do |
+|---|---|
+| **UI / LVGL** | watch faces, navigation UX, motion, two very different screen geometries |
+| **GNSS / navigation** | NMEA and UBX, fix quality, staleness, the honest-state ladder |
+| **LoRa / MeshCore** | transport, pairing, upstream compatibility, getting a message delivered |
+| **Power** | measurements, sleep, the AXP2101 rail budget — with real instruments |
+| **Hardware** | reading schematics, the magnetometer retrofit, reading the marking off the T-Watch radio |
+| **Localisation** | the Russian strings exist; carry `Locale::Ru` through to the panel |
+| **Documentation** | ADRs, bench reports, this page |
+| **Tooling** | the simulator, `watch_control.py`, CI |
+
+**The easiest way to start.** Build the simulator (the two commands above), run
+`--nav --nav-state node-unknown` and `--nav --nav-state ready --node`, and look
+at the difference.
+Then open a [Discussion](https://github.com/hleserg/Attadipa/discussions) and
+say what you saw and what you would change. There are no `good first issue`
+labels right now — a Discussion is the front door.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## Target hardware
 
 | Board | Role | Radio / GNSS on board |
 |---|---|---|
-| LilyGO T-Watch S3 Plus | first target — the full product | LoRa + GNSS |
-| Waveshare ESP32-S3 Touch AMOLED 2.06 | second target | **neither** |
-| Atta-dipa node | separate device — LoRa, GNSS, ESP32 | provides both, over a link |
-| Desktop simulator | first-class development target | simulated, including the node |
+| LilyGO T-Watch S3 Plus | self-contained target | GNSS present — the bench unit's module named itself **MIA-M10Q**, and the product ships that *or* a Quectel LS550G, which needs a different rail ([matrix](docs/research/HARDWARE_MATRIX.md)); radio part **UNKNOWN** |
+| Waveshare ESP32-S3 Touch AMOLED 2.06 | split target — the wearable half | **neither**, by design |
+| Companion node | separate device — LoRa, GNSS, an ESP32 | provides both, over a link |
+| Desktop simulator | first-class development target | simulated, node included |
 
-The second board has no sub-GHz radio and no GNSS receiver. That is not an
-oversight in the plan — it is the reason the capability layer exists. Nor does
-it make that board a lesser device: a **Atta-dipa node** is a separate box
-carrying LoRa, GNSS and an ESP32, and a watch attached to one runs the same
-applications a watch with its own radio runs. Mesh and navigation are
-unavailable there *without a node*, and the interface says which of those two
-situations it is in — "this watch has no radio" and "your node is out of range"
-are different sentences with different things the user can do about them.
-
-That is the point where the capability layer stops being decorative. An
-application asks for a position; whether it came from a receiver on the board,
-from a node over a link, or from nowhere at all is the location service's
-business and never the application's. It is also why capabilities here are not
-booleans fixed at boot: one can appear and disappear while an application is
-open, and every application has to survive that. See
-[ADR-0004](docs/adr/0004-capability-sources.md).
+The Waveshare board having neither radio nor receiver is not an oversight in the
+plan. It is the reason the capability layer exists, and it is what keeps this
+from being a firmware for one PCB.
 
 Presence is not the whole story either. Both boards have haptics, and they are
-not the same haptics: one has a driver chip with a waveform library, the other
-has a motor on a transistor. A capability that is merely present or absent
-cannot express that, which is why it is a typed descriptor here rather than a
-boolean. What each board actually carries
-is in [`docs/research/HARDWARE_MATRIX.md`](docs/research/HARDWARE_MATRIX.md).
+**not** the same: one is a PWM motor, the other a DRV2605L with an effect
+library. A capability is a *what* and a *how well*, not a checkbox.
 
-Both boards have been surveyed component by component, down to the pin map and
-the power rails. The T-Watch is sourced from the vendor hardware document, the
-vendor board header and **both published schematics, read sheet by sheet**. The
-Waveshare board is sourced from the vendor README and its board-support package;
-its schematic has also been read, by text extraction — which recovers part
-numbers and nets reliably and pin adjacency only sometimes, so the rows that
-still need the sheets read visually say so. Where the schematic and the vendor document disagree — and on the
-T-Watch power rails they do — the disagreement is recorded as a conflict rather
-than resolved by preference. Those findings are in
-[`docs/research/HARDWARE_MATRIX.md`](docs/research/HARDWARE_MATRIX.md), each
-with its source, and in
-[`docs/research/VERIFIED_FACTS.md`](docs/research/VERIFIED_FACTS.md).
+## Decisions worth knowing about
 
-What is *not* established is almost anything that requires the physical board:
-real GNSS performance, and whether the interference the architecture guards
-against actually occurs. Power draw has one number and no more — the Waveshare
-at its USB input, idle on one screen with the cell disconnected, 2026-09-05 —
-and no sleep figure, no screen-off figure and no per-rail split. Those stay in
-[`docs/research/OPEN_QUESTIONS.md`](docs/research/OPEN_QUESTIONS.md) until
-somebody measures them. A datasheet number is not a measurement.
+The whole set is in [`docs/adr/`](docs/adr/). Five of them explain why the code
+looks the way it does:
 
-## Design ideas worth knowing about
+- **[ADR-0003](docs/adr/0003-radio-not-lora.md)** — do not call the T-Watch
+  radio LoRa until somebody reads the marking. Five candidate parts, and some of
+  them cannot do LoRa.
+- **[ADR-0007](docs/adr/0007-two-capability-layers.md)** — applications ask
+  what the device can *do*; what is soldered to it is a separate layer they
+  cannot reach.
+- **[ADR-0004](docs/adr/0004-capability-sources.md)** — a capability may be
+  answered by this board or by a device beside it. The layers that dispatch know
+  which; the application deliberately never learns it.
+- **[ADR-0013](docs/adr/0013-node-motion.md)** — a node's coordinate does not
+  silently become your position.
+- **[ADR-0016](docs/adr/0016-one-power-owner.md)** — every rail has exactly one
+  owner, and no gating without measurements.
 
-**Capability-driven, in two layers.** Applications ask what the device can
-*do* — `availability(Capability::Position)` — and never what is on it. They do
-not learn which GPIO powers the GNSS module, which SPI the radio sits on, or
-whether there is a GNSS module at all: an Atta-dipa node supplies one over a link,
-and the answer is the same shape either way. The hardware inventory is a
-separate layer that lives below the service boundary and is not linked into
-applications, so asking a chip a question is a build error rather than a review
-comment. Board differences stay inside the BSP; differences that are not the
-board's arrive through a provider registry, because no BSP can know at build
-time what will be plugged in later.
+## Building the firmware
 
-**Hardware coordination.** In a watch, subsystems interfere *physically*: the
-vibration motor disturbs the magnetometer, radio transmission disturbs GNSS
-acquisition. A central coordinator grants sensitive measurements quiet windows
-and schedules non-critical activity around them, so that no application has to
-know which two subsystems must not run at once.
+ESP-IDF **v5.5.5**, C++17, LVGL **v9.5.0**, FreeRTOS.
 
-The specification's own example of that is a compass reading and a buzz, and it
-is worth saying plainly that **this particular pair cannot occur on either
-target board** — neither has a magnetometer. The coordinator's real first job
-here is more mundane and more certain: five devices sharing one I2C bus, power
-rails feeding two things at once, and three radios in one antenna environment.
-Which combinations actually interfere is a question for measurement, tracked in
-[`docs/hardware/INTERFERENCE_MATRIX.md`](docs/hardware/INTERFERENCE_MATRIX.md).
-
-**Reuse before writing.** Mature open-source work is preferred over new code,
-with the decision and its reasoning recorded in
-[`docs/research/REUSE_LEDGER.md`](docs/research/REUSE_LEDGER.md).
-
-## Repository
-
-```
-platform/                      the hardware inventory — chips, pins, rails, board profiles
-core/                          services, and the capability registry that owns the mapping
-link/                          transport framing, the frame queue, the session state machine
-debug/                         the development-time debug channel: screenshots out, input in
-l10n/                          the string catalogue and the code generated from it
-ui/                            design tokens: roles, spacing, contrast — no LVGL, no board
-ui/assets/                     source art, the generated LVGL masks, and the one lookup
-assets/fonts/                  the generated Montserrat subsets, with their provenance
-apps/                          applications; links core and cannot reach platform
-sim/                           the desktop simulator, and its LVGL configuration
-firmware/                      the ESP-IDF project: the device build, its config and partitions
-tests/                         host tests, including three where a fixture must fail to build
-tests/replay/                  the deterministic navigation rig, and its recorded traces
-tools/                         the font subsetter, the image pipeline, and the checks CI runs
-tools/watch_control.py         drive the screen and photograph it — see docs/testing/WATCH_CONTROL.md
-tools/flash/                   the partition-ceiling check, the RAM loader, the flash backup
-tests/ui/scenarios/            journeys through the interface, as data rather than as code
-cmake/                         the pinned LVGL dependency
-
-docs/master-prompt-final.md    product specification (source of truth)
-docs/research/                 verified facts, owner decisions, open questions, deps, reuse ledger
-docs/node/                     the Atta-dipa node — mostly what is *not* known about it
-docs/hardware/                 interference matrix, board notes
-docs/architecture/             architecture, resource budget
-docs/adr/                      architecture decision records
-docs/testing/                  host test plans, and the hardware-in-the-loop plans
-docs/ui/                       the design system, and the owner's design references
-pics/                          brand assets — banner, icon, favicon
-AGENTS.md                      short repository-wide working agreement
-docs/ROADMAP.md                durable product direction
-```
-
-`apps/` not being able to reach `platform/` is enforced by the link line rather
-than by review, and there is a test that fails if somebody removes it —
-[ADR-0007](docs/adr/0007-two-capability-layers.md) §5.
-
-The specification documents are written in Russian; code, comments, and the
-rest of the documentation are in English.
-
-## Building
-
-The host build needs nothing but a C++17 compiler and CMake:
-
-```sh
-cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
-```
-
-The simulator is opt-in, because it is the only part that needs SDL2 and a
-network fetch of LVGL:
-
-```sh
-sudo apt install libsdl2-dev          # or your platform's equivalent
-cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON
-cmake --build build-sim
-./build-sim/sim/attadipa_sim --board waveshare-amoled-206
-```
-
-```
---board <id>      t-watch-s3-plus (240x240) | waveshare-amoled-206 (410x502)
---radio <chip>    fit any of the five candidate T-Watch radios
---node            present a paired, reachable Atta-dipa node
---no-bring-up     leave every part untouched, to see the unavailable states
---screenshot <p>  write the screen to a PNG
---frames <n>      render n frames and exit; with SDL_VIDEODRIVER=dummy, headless
-```
-
-None of those need a rebuild. That is the point of them: the simulator has to
-be able to present a configuration it was not compiled for, which is also why
-this project has no per-board binaries.
-
-LVGL is pinned at v9.5.0 and fetched by CMake at the commit; the build refuses
-to continue if the version it finds is not the version that was chosen. To
-build offline against a tree you already have, pass
-`-DATTADIPA_LVGL_SOURCE_DIR=/path/to/lvgl`.
-
-### The device build
-
-Separate from the host build on purpose: the root `CMakeLists.txt` is
-host-native so that the simulator and the tests keep working on a machine with
-no toolchain. The ESP-IDF project lives in `firmware/` and is pinned at **ESP-IDF
-v5.5.5** — see [`docs/research/DEPENDENCIES.md`](docs/research/DEPENDENCIES.md)
-for why that version and not a newer one.
-
-```sh
-. $IDF_PATH/export.sh
+```bash
+. $IDF_PATH/export.sh     # without this, idf.py is not on PATH
 cd firmware
 idf.py set-target esp32s3
-idf.py build
+idf.py build flash monitor
 ```
 
-It targets one board, the Waveshare ESP32-S3-Touch-AMOLED-2.06. It boots, prints
-what the silicon says it is, links the same host libraries, drives the CO5300
-AMOLED and FT3168 touch controller through LVGL, owns the required AXP2101 rails,
-reads the PCF85063 RTC, and exposes its live UI through the debug protocol.
+The export step, the toolchain versions and what a first flash prints are in
+[FIRMWARE_BRINGUP](docs/hardware/FIRMWARE_BRINGUP.md).
 
-There is a second variant that runs entirely from RAM and writes nothing to the
-flash at all, which is the route to prefer for anything experimental —
-[`docs/hardware/FIRMWARE_BRINGUP.md`](docs/hardware/FIRMWARE_BRINGUP.md) is the
-procedure, including what a good boot looks like and what to do when it is not
-one.
+Which board an image is composed for is one build-time choice in
+`firmware/main/` (`choice ATTADIPA_BOARD`), and that is the only place in the
+tree allowed to know which board it is — everything above it asks the board
+profile what the device can do.
 
-## Contributing
+## Where things live
 
-Early days — the architecture is still being established, so the most useful
-contributions right now are hardware facts with primary sources: schematics,
-datasheets, and board-revision differences. If you own either target board,
-[`docs/research/OPEN_QUESTIONS.md`](docs/research/OPEN_QUESTIONS.md) is a list
-of things worth knowing.
+```
+core/          capabilities, position, time, battery — not one register
+apps/          screens and services; cannot link against the hardware layer
+platform/      the hardware inventory: chips, pins, rails, board profiles
+firmware/      the ESP32-S3 composition — the only place that knows the board
+sim/           the desktop LVGL simulator
+l10n/          strings: English and Russian
+docs/adr/      architecture decisions
+docs/research/ verified facts, owner decisions, open questions
+tools/         watch_control.py, the font generator, the documentation checks
+```
+
+## How the project is built
+
+The discipline here is unusual, and you can see it in the code. A hardware fact
+is not used until it is traced to a datasheet, a schematic for the named board
+revision, vendor source, or a reproducible bench result; otherwise it is written
+`UNKNOWN` together with the experiment that would settle it. A test that has not
+run on hardware is never a `PASS` — it is `NOT EXECUTED — HARDWARE REQUIRED`. A
+citation in a document carries the text of the line it points at, and CI checks
+that it still does.
+
+Some of the routine — issue intake, review, the writer gate — is done by agents
+in GitHub Actions. That is tooling maintenance rather than the product; the
+rules are in [`AGENTS.md`](AGENTS.md) and [`docs/automation/`](docs/automation/).
 
 ## License
 
-Atta-dipa is distributed under the GNU General Public License v3.0 or later
-(`GPL-3.0-or-later`) — see [LICENSE](LICENSE). The project remains open source:
-you may use, study, modify, and redistribute it under those terms. Distributed
-modifications and derivative works must comply with the GPL, including its
-source-availability requirements.
+GPL-3.0-or-later — [`LICENSE`](LICENSE). Copyright and contribution
+provenance are in [`COPYRIGHT.md`](COPYRIGHT.md); contributions use the
+[DCO 1.1](DCO), with no CLA and no copyright assignment. Third-party components
+keep their own licences, each recorded in
+[`DEPENDENCIES.md`](docs/research/DEPENDENCIES.md) before anything depends on
+it.
 
-Copyright ownership and contribution provenance are documented in
-[COPYRIGHT.md](COPYRIGHT.md); future contributions use the lightweight
-[Developer Certificate of Origin 1.1](DCO), without copyright assignment or a
-CLA.
+---
 
-Third-party components keep their own licenses; each one is recorded in
-`docs/research/DEPENDENCIES.md` with its license before anything depends on it.
+<p align="center">
+  <sub><i>Attadīpa</i> is Pali for "relying on oneself", "having oneself as an
+  island and a refuge": <a href="docs/brand/naming.md">about the name</a>.<br>
+  Lumar, the firefly on the banner, makes its own light.</sub>
+</p>
