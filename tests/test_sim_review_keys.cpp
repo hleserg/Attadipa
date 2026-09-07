@@ -449,6 +449,7 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
   const std::vector<Blob> ring = circles_on_the_dial(true);
   CHECK(ring.size() == 1);
   if (ring.size() != 1) {
+    panel.close();
     return;
   }
   const Blob centre = ring.front();
@@ -525,6 +526,7 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
   CHECK(circles_on_the_dial(false).empty());
   double no_bearing = 0.0;
   CHECK(!bearing_on_screen(no_bearing));
+  panel.close();
 }
 
 // The device does not rebuild this face every tick. It builds once and calls
@@ -538,6 +540,163 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
 // This drives a face of the test's own, on its own panel, for the reason
 // `Panel::close` gives about the boot screen: `NavFace::build()` cleans the
 // screen, so two faces must never share one.
+// The north marker is the one label excluded from the column layout, so it is
+// found by that rather than by its text -- which is localised, and a test that
+// matched on "N" would pass for the wrong reason in English and fail in
+// Russian.
+lv_obj_t *north_marker() {
+  lv_obj_t *screen = lv_screen_active();
+  const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
+  for (std::int32_t i = 0; i < children; ++i) {
+    lv_obj_t *child = lv_obj_get_child(screen, i);
+    if (lv_obj_check_type(child, &lv_label_class) &&
+        lv_obj_has_flag(child, LV_OBJ_FLAG_IGNORE_LAYOUT)) {
+      return child;
+    }
+  }
+  return nullptr;
+}
+
+// HEAD-UP IS HALF OF THIS SCREEN AND IT WAS THE UNTESTED HALF. When the watch
+// knows which way the wrist is turned, the ring turns with it: the trail draws
+// the wrist-relative angle and the marker travels to where north actually is.
+// Neither is what the readout prints -- the printed bearing stays true north --
+// so every assertion the north-up test makes passes unchanged if the code
+// forgets the distinction and draws the true bearing in a turned frame. That
+// failure is silent, it looks like a working watch, and it walks the wearer off
+// by however far they are turned. `apps::NavText` splits the two angles into
+// two fields to make it impossible; nothing checked that the split was used.
+void the_ring_turns_with_the_wrist(const platform::BoardProfile &board) {
+  Panel panel;
+  panel.open(board);
+  l10n::set_locale(l10n::Locale::En);
+  l10n::set_locale_changed_handler(nullptr);
+
+  const ui::NavFaceConfig config{
+      board.display.width_px,
+      board.display.height_px,
+      ui::Theme::Night,
+      board.display.technology == platform::PanelTechnology::Amoled
+          ? ui::PixelCost::PerPixel
+          : ui::PixelCost::Fixed,
+      ui::Metrics::for_dpi(board.display.dpi()),
+  };
+
+  apps::NavState turned;
+  turned.own.availability = core::Availability::Ready;
+  turned.own.has_position = true;
+  turned.own.position.value = {5100000, 10000000};
+  turned.own.validity = core::PositionValidity::Valid;
+  turned.own.fix_type = core::FixType::ThreeD;
+  turned.own.source = core::PositionSource::LocalGnss;
+  turned.own.receiver = core::ReceiverPresence::Running;
+  turned.target.availability = core::Availability::Ready;
+  turned.target.has_position = true;
+  turned.target.position.value = {5110000, 10020000};
+  turned.target.validity = core::PositionValidity::NoFix;
+  turned.target.source = core::PositionSource::NodeGnss;
+  // The `head-up` fixture's own heading -- `sim/nav_screen.cpp:112` --
+  // "    g_state.heading.source = core::HeadingSource::Magnetometer;"
+  turned.heading.source = core::HeadingSource::Magnetometer;
+  turned.heading.frame = core::ReferenceFrame::WatchBody;
+  turned.heading.validity = core::HeadingValidity::Valid;
+  turned.heading.confidence = 90;
+  // 90 degrees, and NOT the fixture's 180. At 180 the marker's angle and its
+  // negation are the same direction, so a placement that turned the wrong way
+  // would land on the same pixels and this test would pass against a compass
+  // that ran backwards. A quarter turn is the cheapest heading that is
+  // degenerate under neither the sign nor the axis.
+  turned.heading.centideg = 9000;
+
+  const apps::NavText text = apps::format_navigation(turned);
+  CHECK(text.has_arrow);
+  CHECK(text.has_bearing);
+  // If these two agreed there would be nothing to tell apart, and the whole
+  // test would pass against a face that ignored the wrist.
+  CHECK(text.arrow_centideg != text.bearing_centideg);
+
+  ui::NavFace face;
+  face.build(lv_screen_active(), config, text);
+  run_frames(2);
+
+  const std::vector<Blob> ring = circles_on_the_dial(true);
+  CHECK(ring.size() == 1);
+  lv_obj_t *marker = north_marker();
+  CHECK(marker != nullptr);
+  if (ring.size() != 1 || marker == nullptr) {
+    panel.close();
+    return;
+  }
+  const Blob centre = ring.front();
+
+  // The trail follows the WRIST-RELATIVE angle. Read the printed bearing off
+  // the screen too, and require the dots not to lie along it: at this heading
+  // the two are far apart, so a face that drew the true bearing would fail the
+  // first check, and a face that drew a constant would fail the second.
+  double printed = 0.0;
+  CHECK(bearing_on_screen(printed));
+  const double arrow_rad = text.arrow_centideg * 3.14159265358979323846 / 18000.0;
+  const double ux = std::sin(arrow_rad);
+  const double uy = -std::cos(arrow_rad);
+
+  std::vector<Blob> dots;
+  for (const Blob &b : circles_on_the_dial(false)) {
+    if (std::abs(b.cx - centre.cx) > 2 || std::abs(b.cy - centre.cy) > 2) {
+      dots.push_back(b);
+    }
+  }
+  CHECK(!dots.empty());
+  for (const Blob &d : dots) {
+    const double dx = d.cx - centre.cx;
+    const double dy = d.cy - centre.cy;
+    CHECK(std::fabs(dx * uy - dy * ux) <= 2.0);
+    CHECK(dx * ux + dy * uy > 0.0);
+  }
+
+  // The marker travels to where north is: half the ring's height out from the
+  // ring's centre, less half its own, at minus the heading. Within a pixel,
+  // because the placement truncates a `double` and this recomputes it.
+  const double orbit = centre.size / 2.0 - lv_obj_get_height(marker) / 2.0;
+  const double marker_rad = -static_cast<double>(text.heading_centideg % 36000U) *
+                            3.14159265358979323846 / 18000.0;
+  const double want_cx = centre.cx + std::sin(marker_rad) * orbit;
+  const double want_cy = centre.cy - std::cos(marker_rad) * orbit;
+  const double got_cx = lv_obj_get_x(marker) + lv_obj_get_width(marker) / 2.0;
+  const double got_cy = lv_obj_get_y(marker) + lv_obj_get_height(marker) / 2.0;
+  CHECK(std::fabs(got_cx - want_cx) <= 1.0);
+  CHECK(std::fabs(got_cy - want_cy) <= 1.0);
+
+  // AND IT STAYS ON THE RING. A marker that orbited at the full radius would
+  // hang half outside the hairline at east and west and be clipped at the
+  // panel edge on the square board; both checks above would still pass.
+  CHECK(lv_obj_get_x(marker) >= centre.cx - centre.size / 2);
+  CHECK(lv_obj_get_x(marker) + lv_obj_get_width(marker) <= centre.cx + centre.size / 2);
+  CHECK(lv_obj_get_y(marker) >= centre.cy - centre.size / 2);
+  CHECK(lv_obj_get_y(marker) + lv_obj_get_height(marker) <= centre.cy + centre.size / 2);
+
+  // The two branches meet at heading 0, which is the claim the north-up branch
+  // is written out character for character to guarantee. In real arithmetic the
+  // orbit form lands exactly on the north-up position; the code divides
+  // integers on one side and truncates a `double` on the other, so a pixel of
+  // disagreement is the documented cost and two is a bug.
+  apps::NavState straight = turned;
+  straight.heading.centideg = 0;
+  const apps::NavText ahead = apps::format_navigation(straight);
+  CHECK(ahead.has_arrow);
+  face.update(ahead);
+  run_frames(2);
+  lv_obj_t *at_zero = north_marker();
+  CHECK(at_zero != nullptr);
+  if (at_zero != nullptr) {
+    const std::int32_t north_up_x = centre.cx - lv_obj_get_width(at_zero) / 2;
+    const std::int32_t north_up_y = centre.cy - centre.size / 2;
+    CHECK(std::abs(lv_obj_get_x(at_zero) - north_up_x) <= 1);
+    CHECK(std::abs(lv_obj_get_y(at_zero) - north_up_y) <= 1);
+  }
+
+  panel.close();
+}
+
 void the_trail_comes_back_after_it_goes(const platform::BoardProfile &board) {
   Panel panel;
   panel.open(board);
@@ -592,6 +751,7 @@ void the_trail_comes_back_after_it_goes(const platform::BoardProfile &board) {
   face.update(apps::format_navigation(pointing));
   run_frames(2);
   CHECK(circles_on_the_dial(false).size() == expected + 1);
+  panel.close();
 }
 
 // --------------------------------------------------------------------------
@@ -755,6 +915,7 @@ int main() {
     nav_follows_the_theme_key(profiles[i]);
     the_trail_points_where_the_readout_says(profiles[i]);
     the_trail_comes_back_after_it_goes(profiles[i]);
+    the_ring_turns_with_the_wrist(profiles[i]);
     boot_screen_still_follows_the_theme_key(profiles[i]);
     the_clock_follows_the_theme_key(profiles[i]);
     the_test_pattern_ignores_the_theme_key(profiles[i]);

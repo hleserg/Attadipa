@@ -67,14 +67,26 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
       resolved(ColorRole::Navigation, config.theme, config.pixel_cost);
   const lv_color_t border =
       resolved(ColorRole::BorderSubtle, config.theme, config.pixel_cost);
-  // THE TRAIL CHANGES ROLE WITH THE THEME, AND NOT FOR DECORATION. Night is a
-  // painted meadow and the trail is the mascot's own glow over it. Day is a
-  // near-ivory ground, where that honey is a pale mark on a pale field, so the
-  // trail goes back to the navigation teal that the day palette is measured
-  // against -- `docs/ui/DESIGN_SYSTEM.md:124` --
+  // THE TRAIL CHANGES ROLE WITH THE GROUND UNDER IT, AND NOT FOR DECORATION.
+  // The trail is the mascot's own glow, and a glow needs something dark to be a
+  // glow on. The day palette on a fixed-cost panel is a near-ivory ground where
+  // that honey is a pale mark on a pale field -- `tests/test_ui_tokens.cpp:266`
+  // -- "    CHECK(!legible_as_graphic(ColorRole::AccentGlow, Theme::Day));" --
+  // so there the trail goes back to the navigation teal the day palette is
+  // measured against -- `docs/ui/DESIGN_SYSTEM.md:124` --
   // "Not an opinion and not a review note: WCAG 2.1 relative luminance".
+  //
+  // THE TEST ABOVE IS ABOUT ONE COLUMN, WHICH IS WHY THIS IS NOT A THEME TEST.
+  // An emissive panel pays for lit pixels, so OD-16 gives its day column the
+  // dark ground -- `ui/src/color.cpp:58` --
+  // "    {ColorRole::BackgroundPrimary, ColorKind::Background, kWarmIvory, kInkOlive, kInkOlive}," --
+  // and keeps `AccentGlow` at honey there deliberately. Branching on the theme
+  // name alone dropped the glow on the one day screen that had a dark field to
+  // glow on. It is the ground that decides, so ask for the ground.
+  const bool dark_ground =
+      config.theme == Theme::Night || config.pixel_cost == PixelCost::PerPixel;
   const lv_color_t trail_colour =
-      config.theme == Theme::Night
+      dark_ground
           ? resolved(ColorRole::AccentGlow, config.theme, config.pixel_cost)
           : accent;
 
@@ -190,9 +202,16 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   lv_label_set_text(title_, text.title);
   lv_obj_set_style_text_font(title_, body_font, LV_PART_MAIN);
   // Teal, as it has always been, and the reason is now stronger than habit:
-  // the caveat line under the numbers is the only warm thing on this screen,
+  // the status line under the numbers is the only warm thing on this screen,
   // because it is the one line that says what the watch does not know. A honey
   // title puts a second warm line above it and makes the reader choose.
+  //
+  // The STATUS row, not the caveat under it. `caveat_` is `TextMuted` from
+  // build and stays there; `status_` is the row `update()` recolours to
+  // `Warning`, and only when `is_alarm()`. Naming the wrong row here is not a
+  // typo -- these four lines are the recorded reason this title is teal, and a
+  // reader who checks the reason against the code finds a sage-green line and
+  // concludes the constraint is void.
   lv_obj_set_style_text_color(title_, accent, LV_PART_MAIN);
   lv_obj_set_style_text_letter_space(title_, m.px(Dp{3}), LV_PART_MAIN);
   // No opacity on it. Making it recessive by fading it looked right over the

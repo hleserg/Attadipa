@@ -73,7 +73,7 @@ Regenerate the two navigation files with
 boards, writes both GIFs and prints the SHA-256 to paste into the table above.
 It is a script rather than an `ffmpeg` line for one reason: the screen is a
 painted meadow, median-cut allocates its palette by pixel count, and the amber
-caveat is a few hundred pixels in a hundred thousand — so an ordinary adaptive
+status row is a few hundred pixels in a hundred thousand — so an ordinary adaptive
 palette folds the one line that says what the watch does not know into the
 foliage. The script reserves the readout's colours and then asserts the amber
 survived, so a regeneration that loses it fails instead of shipping. Regenerate

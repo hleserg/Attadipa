@@ -8,7 +8,7 @@ Writes `pics/nav-honest-states.gif` and `pics/two-watches-one-codebase.gif`,
 then prints the SHA-256 of each so `pics/README.md` can be brought up to date.
 
 This exists because one step of it is not guessable. The screen is a painted
-meadow, median-cut allocates its palette by pixel count, and the amber caveat
+meadow, median-cut allocates its palette by pixel count, and the amber status
 line is a few hundred pixels out of a hundred thousand -- so a plain adaptive
 palette folds it into the foliage, and the animation loses the one line that
 says what the watch does not know. Reserving the readout's colours is the whole
@@ -35,12 +35,16 @@ PICS = ROOT / "pics"
 # of not having one.
 STATES = ["ready", "node-stale", "node-unavailable",
           "node-unknown", "no-fix", "waiting"]
-# Frames 2..5 are the ones whose caveat line is drawn in the alarm colour.
+# Frames 2..5 are the ones whose status line is drawn in the alarm colour. It
+# is the STATUS row that turns warm and never the caveat under it: `caveat_` is
+# `TextMuted` from build, and `NavFace::update()` recolours `status_` alone.
+# Naming the wrong row here would send the next person looking for amber in a
+# line that is sage green in all six frames.
 FIRST_AMBER_FRAME = 2
 HOLD_MS = 1600
 
 # What the readout is made of: ivory numerals, the honey trail, the muted
-# status line, the navigation teal, and the amber caveat. Sampled off the
+# caveat line, the navigation teal, and the amber status row. Sampled off the
 # renders, not off the token table -- these are the composited values.
 UI = [(255, 246, 232), (255, 200, 87), (167, 180, 156),
       (111, 183, 181), (255, 138, 64)]
@@ -85,7 +89,7 @@ def save(frames, path: pathlib.Path) -> None:
         pixels = np.array(written.convert("RGB")).reshape(-1, 3).astype(int)
         if i >= FIRST_AMBER_FRAME and (np.abs(pixels - np.array(AMBER)).sum(1) < 20).sum() == 0:
             lost.append(i)
-    assert not lost, f"{path.name}: the caveat colour was quantised away in frames {lost}"
+    assert not lost, f"{path.name}: the alarm colour was quantised away in frames {lost}"
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     print(f"{path.relative_to(ROOT)}  {written.n_frames} frames  {digest}")
 
