@@ -25,10 +25,31 @@ physical millimetres still depend on the monitor. Values and outcomes are sample
 data, and nothing connects to a watch, writes a credential or changes a clock.
 
 The only downloaded runtime input is the project's already-pinned Nunito Sans
-font. The page has no framework, package installation, external request, storage
+font. The page has no framework, package installation, external request
 or service requirement once the font is present. Its licence is already in
 `assets/fonts/`. Query parameters `size=small`, `theme=day` and `locale=en` select
 a repeatable review configuration.
+
+### Agree a design in the browser
+
+Each card has a decision (not reviewed / approved / changes requested) and a
+comment. Feedback belongs to the displayed card, geometry, theme, language,
+child/adult setting, page and state; time fields and passkey steps are distinct.
+Changing a variant does not carry its approval into another variant. The review
+namespace must change when the design is revised. The example values are not a
+separate approval scope; the export includes screen text captured at the edit.
+
+Only review metadata uses browser `localStorage`. It survives reloading on the
+same origin and browser profile; private browsing, clearing site data or moving
+to another port can remove or hide it. A storage failure is shown visibly and
+the in-memory notes remain downloadable. Use one review tab: simultaneous edits
+to the same variant are last-write-wins, with no shared reviewer accounts.
+
+**Download review** exports the decisions, comments, variant identifiers and
+screen text to `attadipa-design-review.txt`. Attach that file in the design
+conversation to hand it to Codex/Claude. The page does not send feedback to an
+agent or GitHub automatically. Approval here is design feedback, not acceptance
+of an implementation on the watch.
 
 ## What the existing interface says
 
@@ -166,7 +187,9 @@ The review page has one runnable browser check in
 selects and buttons, checks every exposed scenario across geometry/theme/locale,
 checks target rectangles and content overflow, then walks date clamping, UTC
 rollover, save, forget cancellation, digit wrapping and the pending/late-response
-boundary. It is evidence about the prototype, not the production caller.
+boundary. It also checks review persistence, variant isolation, plain-text
+handling, export contents and a storage-failure path without keeping its test
+notes. It is evidence about the prototype, not the production caller.
 
 With Chromium and `agent-browser` available:
 

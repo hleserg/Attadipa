@@ -35,14 +35,16 @@
       font-family: Nunito, system-ui, sans-serif;
     }
     button,
-    select {
+    select,
+    textarea {
       font: inherit;
     }
     button {
       cursor: pointer;
     }
     button:focus-visible,
-    select:focus-visible {
+    select:focus-visible,
+    textarea:focus-visible {
       outline: 3px solid var(--teal);
       outline-offset: 3px;
     }
@@ -130,6 +132,62 @@
       margin-left: auto;
       font-size: 12px;
       color: var(--cocoa);
+    }
+    .review-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      border-block: 1px solid var(--sage);
+      padding: 16px 0;
+      margin-bottom: 28px;
+    }
+    .review-bar p {
+      flex: 1 1 300px;
+      font-size: 14px;
+      margin: 0;
+    }
+    #export-review {
+      background: var(--ink);
+      color: var(--ivory);
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      min-height: 44px;
+    }
+    #export-review:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .review-panel {
+      border-top: 1px solid var(--sage);
+      padding-top: 16px;
+      display: grid;
+      gap: 8px;
+    }
+    .review-panel label {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .review-panel select,
+    .review-panel textarea {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px;
+      color: var(--ink);
+      border: 1px solid var(--sage);
+      border-radius: 10px;
+      background: transparent;
+    }
+    .review-panel textarea {
+      resize: vertical;
+      min-height: 90px;
+    }
+    .review-context {
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      margin: 0;
     }
     .gallery {
       display: grid;
@@ -989,13 +1047,18 @@
         >Interactive concept · sample data · 1 CSS pixel = 1 display pixel</span
       >
     </div>
+    <div class="review-bar">
+      <p id="review-notice" role="status"></p>
+      <button id="export-review" disabled></button>
+    </div>
     <div id="gallery" class="gallery"></div>
   </main>
   <footer>
     Design prototype, not firmware. All values and outcomes are simulated; no
-    watch, radio or storage is accessed. Use the controls inside each screen.
-    State selectors belong to this review page, not the product. The 240 px
-    layout is composed separately, never scaled.<br /><a
+    watch, radio or device storage is accessed. Review notes are stored only in
+    this browser, not sent to an agent. Export them to share. Use the controls
+    inside each screen. State selectors belong to this review page, not the
+    product. The 240 px layout is composed separately, never scaled.<br /><a
       href="../DESIGN_DIRECTION_2026-09-07.md"
       >Design decisions and implementation handoff</a
     >
@@ -1021,6 +1084,8 @@
         km: "km",
         fresh: "Node position · 3 s ago",
         stale: "Last position · 2 min ago",
+        freshAge: "3 s",
+        staleAge: "2 min",
         nofix: "Finding your position",
         outdoors: "Move into open sky.",
         unknown: "No node position",
@@ -1117,6 +1182,8 @@
         km: "км",
         fresh: "Позиция узла · 3 с назад",
         stale: "Последняя позиция · 2 мин",
+        freshAge: "3 с",
+        staleAge: "2 мин",
         nofix: "Ищем вашу позицию",
         outdoors: "Выйдите под открытое небо.",
         unknown: "Нет позиции узла",
@@ -1260,19 +1327,158 @@
     const views = Object.fromEntries(
       cards.map((c) => [c.id, { page: c.id, state: c.states[0] }]),
     );
+    const initialTime = [7, 9, 2026, 10, 9, 180];
     const wizards = Object.fromEntries(
       cards.map((c) => [
         c.id,
         {
           step: 0,
-          values: [7, 9, 2026, 10, 9, 180],
+          values: [...initialTime],
           digit: 0,
           code: [0, 0, 0, 0, 0, 0],
           saved: false,
+          passkeyReturn: { page: "setup", state: "menu" },
         },
       ]),
     );
     const savedClocks = {};
+    // Bump the namespace when the design changes: approval must not carry forward.
+    const reviewPrefix = "attadipa-study-01-review-v1/";
+    const reviews = new Map();
+    let reviewStorageFailed = false;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key.startsWith(reviewPrefix)) continue;
+        const entry = JSON.parse(localStorage.getItem(key));
+        if (
+          !entry ||
+          !["pending", "approved", "changes"].includes(entry.status) ||
+          !["context", "note", "preview"].every(
+            (field) => typeof entry[field] === "string",
+          )
+        ) {
+          throw new Error("Invalid stored review");
+        }
+        reviews.set(key, entry);
+      }
+    } catch {
+      reviewStorageFailed = true;
+    }
+    const reviewCopy = () =>
+      document.querySelector("#locale").value === "ru"
+        ? {
+            status: "Решение по этому варианту",
+            note: "Что изменить?",
+            pending: "Ещё не согласовано",
+            approved: "Согласовано",
+            changes: "Нужны изменения",
+            scope: "Только показанный вариант",
+            export: "Скачать замечания",
+            notice:
+              "Решения и заметки сохраняются в этом браузере. Скачайте файл, чтобы передать их мне и Claude.",
+            failed:
+              "Не удалось сохранить заметки в браузере. Скачайте файл до закрытия страницы — иначе новые правки потеряются.",
+          }
+        : {
+            status: "Decision on this variant",
+            note: "What should change?",
+            pending: "Not reviewed",
+            approved: "Approved",
+            changes: "Changes requested",
+            scope: "Only the displayed variant",
+            export: "Download review",
+            notice:
+              "Decisions and notes stay in this browser. Download the file to share them with Codex and Claude.",
+            failed:
+              "Browser storage failed. Download before closing this page or new notes will be lost.",
+          };
+    function reviewContext(id) {
+      const view = views[id],
+        wizard = wizards[id];
+      return [
+        id,
+        ...["size", "theme", "locale"].map(
+          (key) => document.querySelector(`#${key}`).value,
+        ),
+        document.querySelector("#child").checked ? "child" : "adult",
+        view.page,
+        view.state,
+        view.page !== "setup"
+          ? ""
+          : view.state === "time"
+            ? `field-${wizard.step + 1}`
+            : view.state === "passkey"
+              ? `digit-${wizard.digit + 1}`
+              : view.state === "done"
+                ? wizard.saved
+                  ? "time-saved"
+                  : "code-saved"
+                : "",
+      ]
+        .filter(Boolean)
+        .join(" / ");
+    }
+    function renderReview(id) {
+      const copy = reviewCopy(),
+        panel = document.querySelector(`#review-${id}`);
+      const context = reviewContext(id),
+        key = reviewPrefix + context;
+      const entry = reviews.get(key);
+      panel.dataset.key = key;
+      panel.querySelector(".review-context").textContent =
+        `${copy.scope}: ${context}`;
+      panel.querySelector(".review-status-label").textContent = copy.status;
+      panel.querySelector(".review-note-label").textContent = copy.note;
+      panel
+        .querySelectorAll("option")
+        .forEach((option) => (option.textContent = copy[option.value]));
+      panel.querySelector("select").value = entry?.status || "pending";
+      panel.querySelector("textarea").value = entry?.note || "";
+    }
+    function renderReviewNotice() {
+      const copy = reviewCopy();
+      const count = [...reviews.values()].filter(
+        (entry) => entry.note.trim() || entry.status !== "pending",
+      ).length;
+      document.querySelector("#review-notice").textContent =
+        copy[reviewStorageFailed ? "failed" : "notice"];
+      const button = document.querySelector("#export-review");
+      button.textContent = `${copy.export} · ${count}`;
+      button.disabled = count === 0;
+    }
+    function saveReview(event) {
+      const panel = event.target.closest(".review-panel");
+      if (!panel) return;
+      const id = panel.id.replace("review-", "");
+      const entry = {
+        context: reviewContext(id),
+        status: panel.querySelector("select").value,
+        note: panel.querySelector("textarea").value,
+        preview: document.querySelector(`#screen-${id}`).innerText,
+      };
+      reviews.set(panel.dataset.key, entry);
+      try {
+        // One key per variant avoids overwriting another tab's unrelated notes.
+        localStorage.setItem(panel.dataset.key, JSON.stringify(entry));
+      } catch {
+        reviewStorageFailed = true;
+      }
+      renderReviewNotice();
+    }
+    function exportReview() {
+      // ponytail: a local review file; add shared accounts only for multi-user review.
+      return [
+        "ATTADIPA — DESIGN STUDY 01 / REVIEW V1",
+        "Only the listed variants are reviewed. Not firmware acceptance.",
+        ...[...reviews.values()]
+          .filter((entry) => entry.note.trim() || entry.status !== "pending")
+          .map(
+            (entry) =>
+              `\n${entry.context}\nDecision: ${entry.status}\n\n${entry.note}\n\nScreen text when reviewed:\n${entry.preview}`,
+          ),
+      ].join("\n");
+    }
     const fields = ["day", "month", "year", "hour", "minute", "zone"];
     const pad = (n) => String(n).padStart(2, "0");
     const offsetText = (n) =>
@@ -1341,7 +1547,7 @@
       const rows = navDetails
         ? [
             [t("heading"), t("northup")],
-            [t("age"), state === "stale" ? "2 min" : "3 s"],
+            [t("age"), t(state === "stale" ? "staleAge" : "freshAge")],
             [t("fix"), t("unconfirmed")],
           ]
         : [
@@ -1408,6 +1614,7 @@
       else if (view.page === "message")
         screen.innerHTML = `<div class="content details"><h3 class="title">${t("readTitle")}</h3><div class="sub">${t("sender")}</div><div class="message-body" tabindex="0">${t("longMessage")}</div><div class="actions">${action(t("back"), "mesh")}</div></div>`;
       else screen.innerHTML = setup(view, wizards[id]);
+      renderReview(id);
       if (focused)
         (
           screen.querySelector(`[data-action="${focused}"]`) ||
@@ -1422,6 +1629,7 @@
           document.querySelector("#size").value === "small",
         );
       cards.forEach((c) => renderCard(c.id));
+      renderReviewNotice();
     }
     function go(id, page, state = "ready") {
       views[id] = { page, state };
@@ -1462,11 +1670,13 @@
         if (command === "passkey") {
           wizard.digit = 0;
           wizard.saved = false;
+          wizard.passkeyReturn = { ...v };
         }
         return go(id, "setup", command);
       }
       if (command === "time") {
         wizard.step = 0;
+        wizard.values = [...(savedClocks[id] || initialTime)];
         return go(id, "setup", "time");
       }
       if (command === "edit-time") {
@@ -1492,7 +1702,8 @@
         wizard.code[wizard.digit] =
           (wizard.code[wizard.digit] + (command === "plus-code" ? 1 : 9)) % 10;
       if (command === "previous-code") {
-        if (wizard.digit === 0) return go(id, "setup", "node");
+        if (wizard.digit === 0)
+          return go(id, wizard.passkeyReturn.page, wizard.passkeyReturn.state);
         wizard.digit--;
       }
       if (command === "next-code") {
@@ -1517,7 +1728,7 @@
     document.querySelector("#gallery").innerHTML = cards
       .map(
         (c, i) =>
-          `<article><div class="card-heading"><h2><span class="index">0${i + 1}</span>${c.title}</h2><select class="state-control" aria-label="${c.title} scenario" data-card="${c.id}">${c.states.map((s) => `<option>${s}</option>`).join("")}</select></div><div class="frame"><section class="screen" id="screen-${c.id}" aria-label="${c.title} prototype"></section></div><p class="caption">${c.note}</p></article>`,
+          `<article><div class="card-heading"><h2><span class="index">0${i + 1}</span>${c.title}</h2><select class="state-control" aria-label="${c.title} scenario" data-card="${c.id}">${c.states.map((s) => `<option>${s}</option>`).join("")}</select></div><div class="frame"><section class="screen" id="screen-${c.id}" aria-label="${c.title} prototype"></section></div><p class="caption">${c.note}</p><div class="review-panel" id="review-${c.id}"><p class="review-context"></p><label class="review-status-label" for="decision-${c.id}"></label><select id="decision-${c.id}"><option value="pending"></option><option value="approved"></option><option value="changes"></option></select><label class="review-note-label" for="note-${c.id}"></label><textarea id="note-${c.id}" maxlength="10000"></textarea></div></article>`,
       )
       .join("");
     document.querySelector("#gallery").addEventListener("click", (event) => {
@@ -1535,8 +1746,23 @@
         wizard.step = 0;
         wizard.digit = 0;
         wizard.saved = event.target.value === "done";
+        wizard.passkeyReturn = { page: "setup", state: "menu" };
         go(id, id, event.target.value);
       }
+      if (event.target.matches(".review-panel select")) saveReview(event);
+    });
+    document.querySelector("#gallery").addEventListener("input", (event) => {
+      if (event.target.matches(".review-panel textarea")) saveReview(event);
+    });
+    document.querySelector("#export-review").addEventListener("click", () => {
+      const url = URL.createObjectURL(
+        new Blob([exportReview()], { type: "text/plain;charset=utf-8" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "attadipa-design-review.txt";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
     document
       .querySelectorAll(".toolbar select,.toolbar input")
