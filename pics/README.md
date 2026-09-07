@@ -52,21 +52,33 @@ the canon they disagree with.
 ## Captures, not brand assets
 
 The files below are **rendered by the desktop simulator**, captured 2026-09-07
-from `build-sim/sim/attadipa_sim` at the commit that added them, and stitched
-into GIFs with `ffmpeg` (one global palette per file). They are pictures of
-the application code, not of a board: **nothing here is evidence about
-hardware**, and none of them may be cited as `MEASURED`. The physical evidence
+from `build-sim/sim/attadipa_sim` at the commit that added them. `clock-night.gif`
+was stitched with `ffmpeg` on one global palette; the two navigation files are
+built by [`../tools/pics/make_nav_gifs.py`](../tools/pics/make_nav_gifs.py),
+which reserves the readout's five colours before quantising — see the note under
+the table. They are pictures of the application code, not of a board:
+**nothing here is evidence about hardware**, and none of them may be cited as
+`MEASURED`. The physical evidence
 in the README is [`../docs/hardware/CLOCK_2026-08-26.png`](../docs/hardware/CLOCK_2026-08-26.md)
 and `first-boot-waveshare.gif`, both taken off the Waveshare.
 
 | File | What it shows | SHA-256 | Used by |
 |---|---|---|---|
-| `nav-honest-states.gif` | GIF, the navigation readout stepping through `ready`, `node-stale`, `node-unavailable`, `node-unknown`, `no-fix`, `waiting` | `63862dff2644137795b0b1022b7b73ed5b83ed36957cc2d9facdc46069ae5d31` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
+| `nav-honest-states.gif` | GIF, the navigation readout stepping through `ready`, `node-stale`, `node-unavailable`, `node-unknown`, `no-fix`, `waiting` | `f8a597a26bdb63c631dbf8aa56de7cdded1986854c70e4ceaf211f25861477d8` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
 | `clock-night.gif` | GIF, the Clock in the night theme, 10 s at 4 fps — the fireflies pulse and the minute turns over | `97ed8058a93e4aee373a7c6c8e539077db844936530345c1c6597e4f28c861fb` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
-| `two-watches-one-codebase.gif` | GIF, the same six states side by side on both panels, composited from two captures onto a plain ground | `c31edbc50ee911821d41802fa0bf50b3e7f3573e9c833b244e441c653a68ea1d` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
+| `two-watches-one-codebase.gif` | GIF, the same six states side by side on both panels, composited from two captures onto a plain ground | `39a46096b17e36e0268fb36648a1cff4f6f590165e140405468dfde2f78dc574` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
 
-Regenerate any of them by running the simulator with the flags the README
-documents and re-encoding; the frames are not kept.
+Regenerate the two navigation files with
+`python3 tools/pics/make_nav_gifs.py`, which renders the six states on both
+boards, writes both GIFs and prints the SHA-256 to paste into the table above.
+It is a script rather than an `ffmpeg` line for one reason: the screen is a
+painted meadow, median-cut allocates its palette by pixel count, and the amber
+caveat is a few hundred pixels in a hundred thousand — so an ordinary adaptive
+palette folds the one line that says what the watch does not know into the
+foliage. The script reserves the readout's colours and then asserts the amber
+survived, so a regeneration that loses it fails instead of shipping. Regenerate
+`clock-night.gif` by running the simulator with the flags the README documents
+and re-encoding; its frames are not kept.
 
 `first-boot-waveshare.gif` predates this table: it is a **physical** capture of
 the Waveshare's first boot from flash, and it is the one moving image here that
