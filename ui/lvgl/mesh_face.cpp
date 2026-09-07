@@ -327,6 +327,19 @@ void MeshFace::lay_out(const apps::MeshText &text) {
       show(msg_meta_, text.delivery);
     }
     lv_obj_set_width(msg_meta_, w - margin * 2);
+    // ONE LINE HERE TOO, AND FOR A SHARPER REASON THAN THE MESSAGE HAD.
+    //
+    // `LV_LABEL_LONG_DOT` needs a fixed height or it wraps and grows downward
+    // (the message row two lines up carries the long version of this), and what
+    // this row renders is not a fixture: `sender` is a peer's advertised name
+    // off the link, up to `kMeshPeerNameBytes`, joined here with the delivery
+    // word. A 32-character name plus "не доставлено" does not fit 346 px at
+    // `nunito_sans_14`, so the second line landed on the measurements at y=452
+    // -- six rows of collision chosen by whoever named the node, and invisible
+    // to the simulator, whose fixture name is fifteen characters.
+    lv_obj_set_height(msg_meta_,
+                      lv_font_get_line_height(
+                          lv_obj_get_style_text_font(msg_meta_, LV_PART_MAIN)));
     lv_label_set_long_mode(msg_meta_, LV_LABEL_LONG_DOT);
     if (big) {
       // Under the message, because the message is the one row on this screen

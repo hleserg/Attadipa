@@ -30,8 +30,10 @@ authority this file points at rather than repeats.
   every column — `ui/src/color.cpp:67` — "{ColorRole::Danger, ColorKind::Foreground, std::nullopt," —
   because this palette has no red. Use `Warning` for a refusal.
 - **Contrast decides whether a state may be a word.** The night table measures
-  `success` at 3.54:1 on the raised surface — enough for a graphic, under the
-  4.5:1 a word needs. An accepted state is a ring or a check, not green text.
+  `success` at 3.54:1 on a surface — enough for a graphic, under the
+  4.5:1 a word needs. (Night has no raised layer at all —
+  `docs/ui/DESIGN_SYSTEM.md:143` — "**Night** — there is no raised layer; §3.1 records that gap." —
+  so a night ratio is always a surface or page one.) An accepted state is a ring or a check, not green text.
   And the spacing family is itself unverified at the small size:
   `docs/ui/DESIGN_SYSTEM.md:225` — "**proposed** and none has been checked at 240 × 240."
 - **LVGL's two label traps, both already paid for once.**

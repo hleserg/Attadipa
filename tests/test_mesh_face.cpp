@@ -273,14 +273,41 @@ void the_layout_uses_the_whole_panel(const platform::BoardProfile &board) {
 // The count is taken from a build onto an empty screen rather than written
 // down, because the number is the layout's business and this is not a test of
 // how many widgets the layout has.
-// The first row that belongs to something other than the message. On the tall
-// panel that is the sender line under it, on the small one the measurements --
-// 240 px draws no sender line at all and spends its last rows on those. Both
-// sit one clear line below the message, so a message that grew by even a single
-// row lands in this band.
-std::uint32_t below_message(bool big) { return big ? 424 : 192; }
+void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
+  lv_display_t *display = open_panel(board);
+  lv_obj_t *screen = lv_screen_active();
+  const apps::MeshText text = apps::format_mesh(linked(), l10n::Locale::En);
 
-// A message longer than its row is ellipsised, not run through what is under it.
+  ui::MeshFace alone;
+  alone.build(screen, config_for(board), text);
+  const std::uint32_t mine = lv_obj_get_child_count(screen);
+  alone.clear();
+  CHECK(mine > 0);
+
+  lv_obj_t *leftover = lv_obj_create(screen);
+  lv_obj_add_flag(leftover, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_create(screen);
+  CHECK(lv_obj_get_child_count(screen) == 2);
+
+  ui::MeshFace face;
+  face.build(screen, config_for(board), text);
+  lv_refr_now(display);
+  check(lv_obj_get_child_count(screen) == mine,
+        "the face is the only thing left on the screen it was built onto",
+        __LINE__);
+
+  face.clear();
+}
+
+// The first row that belongs to neither the message nor the sender line under
+// it. On the tall panel the measurements start at y=452 and the meta row sits
+// between; 240 px draws no meta row at all and spends its last rows on the
+// measurements. Taking the band from below the meta row rather than above it is
+// what makes this a guard on *both* air-fed rows: either one growing by a
+// single line lands inside it.
+std::uint32_t below_message(bool big) { return big ? 452 : 192; }
+
+// Text off the air is ellipsised on its own row, not run through what is under it.
 //
 // `LV_LABEL_LONG_DOT` puts the dots in only where the height is FIXED, and the
 // height this label was first given was content -- so a message longer than the
@@ -296,16 +323,27 @@ void a_long_message_stays_on_its_line(const platform::BoardProfile &board) {
   ui::MeshFace face;
 
   core::MeshStatus status = linked();
+  // A sender to start from, so the meta row exists in both frames and the
+  // comparison is about its *length* rather than about it appearing.
+  const char *const kShortName = "Ridge";
+  std::memcpy(status.last_sender.data(), kShortName, std::strlen(kShortName));
   face.build(lv_screen_active(), config_for(board),
              apps::format_mesh(status, l10n::Locale::En));
   lv_refr_now(display);
   const std::vector<std::uint8_t> before = *g_frame;
 
-  // Every byte the link can carry, which is what `MeshText::message` now holds
-  // -- the buffer no longer truncates, so the face is the only thing standing
-  // between a full-length message and the rows beneath it.
+  // BOTH FIELDS AT ONCE, BECAUSE BOTH COME OFF THE LINK AND EITHER CAN GROW.
+  //
+  // `MeshText::message` carries the whole of what arrived -- the buffer no
+  // longer truncates -- and `sender` is a peer's advertised name, up to
+  // `kMeshPeerNameBytes`, which the meta row joins with the delivery word. The
+  // message row was fixed first and the row under it had the identical defect;
+  // filling only one of them would have left the other's growth uncaught, which
+  // is exactly how the second one survived the first fix.
   std::memset(status.last_message.data(), 'M', status.last_message.size() - 1);
   status.last_message[status.last_message.size() - 1] = '\0';
+  std::memset(status.last_sender.data(), 'S', status.last_sender.size() - 1);
+  status.last_sender[status.last_sender.size() - 1] = '\0';
   face.update(apps::format_mesh(status, l10n::Locale::En));
   lv_refr_now(display);
 
@@ -333,32 +371,6 @@ void a_long_message_stays_on_its_line(const platform::BoardProfile &board) {
     }
   }
   check(drew > 0, "the longer message is drawn somewhere", __LINE__);
-
-  face.clear();
-}
-
-void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
-  lv_display_t *display = open_panel(board);
-  lv_obj_t *screen = lv_screen_active();
-  const apps::MeshText text = apps::format_mesh(linked(), l10n::Locale::En);
-
-  ui::MeshFace alone;
-  alone.build(screen, config_for(board), text);
-  const std::uint32_t mine = lv_obj_get_child_count(screen);
-  alone.clear();
-  CHECK(mine > 0);
-
-  lv_obj_t *leftover = lv_obj_create(screen);
-  lv_obj_add_flag(leftover, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_create(screen);
-  CHECK(lv_obj_get_child_count(screen) == 2);
-
-  ui::MeshFace face;
-  face.build(screen, config_for(board), text);
-  lv_refr_now(display);
-  check(lv_obj_get_child_count(screen) == mine,
-        "the face is the only thing left on the screen it was built onto",
-        __LINE__);
 
   face.clear();
 }

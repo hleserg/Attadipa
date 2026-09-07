@@ -32,12 +32,27 @@ over the debug socket rather than read off the source. Three verdict states —
 simulator's provisioner stub and are marked NOT VERIFIED in the issue; they need
 either a better stub or the physical node.
 
-**One owner decision is open and must not be assumed.** The keypad is 14 keys.
-Today's 3 × 5 gives 63 px keys on the Waveshare against a 87 px token; a 4 × 4
-gives 81 px. On the T-Watch neither reaches the 61 px token — 26 px and 35 px —
-so the small panel is a choice between two undersized grids, not a fix. Mockups
-of both exist for every screen; the owner has **not** chosen. Ask, do not infer
-a decision from the fact that the pictures were drawn.
+**One owner decision is open and must not be assumed.** The keypad is 14 keys,
+so a 3-column grid needs 5 rows and a 4-column grid needs 4. What
+`provision_face.cpp` computes today, against a `touch.min.adult` of 87 px on the
+Waveshare and 61 px on the T-Watch:
+
+| | Waveshare 410 × 502 | T-Watch 240 × 240 |
+| --- | --- | --- |
+| 3 × 5 (today) | 115 × **63** px | 68 × **25** px |
+| 4 × 4 | 84 × **81** px | 50 × **33** px |
+
+So the big panel has a real choice — 4 × 4 nearly meets the token — and the
+small one is a choice between two undersized grids rather than a fix. **These
+are the firmware's numbers, taken from the shipping layout and not from
+arithmetic on the side.** The mockups are a different geometry: they add a step
+pip row and a verdict line, so they draw 115 × 59 / 84 × 76 and 68 × 19 /
+50 × 26, and each render prints its own key size. Do not quote one set for the
+other.
+
+Mockups of both arrangements exist for every screen; the owner has **not**
+chosen. Ask, do not infer a decision from the fact that the pictures were
+drawn.
 
 Render them with:
 
@@ -50,9 +65,13 @@ python3 tools/ui/make_mockups.py --font artifacts/ui/NunitoSans.ttf --out artifa
 
 - **Mesh is done.** [#465](https://github.com/hleserg/Attadipa/issues/465)
   closed with [#466](https://github.com/hleserg/Attadipa/pull/466), merged as
-  `53f59261`. The message label's one-line-plus-ellipsis behaviour now has a
-  rendered regression test on both panels; it was written for that merge and
-  lands with this one.
+  `53f59261`. **Both** air-fed rows — the message and the sender line under it —
+  are now bounded to one line with an ellipsis, and one rendered regression test
+  on both panels guards them together. The sender row was the same defect one
+  row down, found in review of this handover: `LV_LABEL_LONG_DOT` with a width
+  and no height, fed by a peer's advertised name of up to 32 bytes, growing over
+  the measurements at y=452. Look for that shape anywhere a label carries text
+  off the link.
 - **The clock and navigation faces are designed and the navigation one was
   accepted by the owner.** Provisioning is the last screen still in its
   prototype shape.

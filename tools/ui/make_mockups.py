@@ -23,8 +23,25 @@ easy to lose in a rewrite:
   every pair carrying a WORD was checked against the measured table in
   `docs/ui/DESIGN_SYSTEM.md:225` -- "**proposed** and none has been checked at
   240 x 240." That table is why an accepted verdict here is a green ring and
-  never a green word: `success` on the raised surface measures 3.54:1, under
-  the 4.5:1 that body text needs, and comfortably over the 3.0:1 a graphic does.
+  never a green word: `success` on a night surface measures 3.54:1, under the
+  4.5:1 that body text needs, and comfortably over the 3.0:1 a graphic does.
+  Night has no raised layer at all -- only the day table has that column.
+
+WHAT THESE PICTURES CHANGE FROM TODAY, SAID OUT LOUD. They are proposals, and a
+proposal that quietly differs from the shipping screen is worse than no picture:
+
+* **The keys are drawn on `BackgroundSurface`.** The face draws them on
+  `BackgroundRaised`, which has no night value, so `color()` returns nullopt and
+  each face's `resolved()` helper turns it into black -- today's night keypad is
+  thirteen black rectangles on the page. Moving the key surface is a design
+  change and #469 decides it; until then these renders show the proposal, not
+  the panel.
+* **The keypad is one row shorter than the face's**, because these add a step
+  pip row above the title and reserve a verdict line. Both are proposals too.
+  Every render prints the key size it actually drew, so a number quoted from
+  these pictures cannot drift from them -- but it is this script's number and
+  not the firmware's, and the two are different geometries. The shipping figure
+  is whatever `provision_face.cpp`'s `key_height` computes for the board.
 
 The screens and both keypad arrangements are the ones #469 proposes. When that
 issue closes this script stays, because the next screen gets the same treatment.
@@ -58,6 +75,26 @@ GRID_A = (3, [["1","2","3"],["4","5","6"],["7","8","9"],
               ["±","0","ERASE"],["CANCEL","OK","OK"]])
 GRID_B = (4, [["1","2","3","ERASE"],["4","5","6","±"],
               ["7","8","9","0"],["CANCEL","OK","OK","OK"]])
+
+
+def key_size(board, grid):
+    """The key box this script draws, in panel pixels. Shared with `html()` so
+    the number printed for a render is the number that render used."""
+    b = BOARDS[board]
+    m, gap, W, H = b["margin"], b["gap"], b["w"], b["h"]
+    lh_title = round(b["f_title"] * 1.2)
+    lh_value = round(b["f_value"] * 1.15)
+    lh_hint = round(b["f_hint"] * 1.2)
+    y_pips = m
+    h_pips = max(3, b["pip"] // 2)
+    y_title = y_pips + h_pips + gap // 2
+    y_value = y_title + lh_title
+    y_msg = y_value + lh_value + gap // 2
+    y_pad = y_msg + lh_hint * b["hint_lines"] + gap
+    cols, rows = grid
+    n_rows = len(rows)
+    return ((W - m * 2 - gap * (cols - 1)) // cols,
+            (H - y_pad - m - gap * (n_rows - 1)) // n_rows)
 
 
 def html(board, state, grid):
@@ -282,6 +319,10 @@ def main() -> int:
                                 "--default-background-color=00000000",
                                 str(f)], check=True, capture_output=True)
                 made.append(png)
+                b = BOARDS[board]
+                print(f"{png.name}: keys {key_size(board, grid)[0]}x"
+                      f"{key_size(board, grid)[1]} px on {b['w']}x{b['h']}",
+                      file=sys.stderr)
 
     for p in made:
         print(p)
