@@ -456,7 +456,7 @@ wake source on this board, this is it.
 **With one open dependency, and it is not small.** The pull-up is only as
 always-on as `+3V3`, and `+3V3` is **H8**. `docs/research/HARDWARE_MATRIX.md:205` — "Do not pick" the convenient reading —
 says so about this exact rail, and the fact index carries the same warning:
-`docs/research/VERIFIED_FACTS.md:1099` — "if the schematic is right". If
+`docs/research/VERIFIED_FACTS.md:1200` — "if the schematic is right". If
 ALDO1 is the rail and #367's power owner ever gates it, R288 dies with it, IO17
 floats or is dragged low, and an armed `GPIO_INTR_LOW_LEVEL` fires immediately
 and forever — the failure this section prices for ALDO3 and touch at §3.4 ("and
@@ -688,7 +688,7 @@ decode logic is fully determined by section 1 and testable on the host, and item
 4 as reworded records only what the drawing shows. The ledger move this list
 used to carry as a fifth item is **done, under #422 and in this report's own
 pull request** —
-`docs/research/REUSE_LEDGER.md:2507` — "now `REJECT` for the" —
+`docs/research/REUSE_LEDGER.md:2508` — "now `REJECT` for the" —
 so it is not scope for anybody lifting this section into an issue, and the
 licence obligation that item named is recorded in the same paragraph.
 Item 3 needs **B1, B2, B4 and

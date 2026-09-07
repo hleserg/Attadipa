@@ -719,3 +719,36 @@ register rather than only in this file.
   in practice. The `_iter_started = false` interaction is read from source; its
   practical cost is unmeasured.
 - And every number in §8.3, none of which is claimed here.
+
+## 10. What #467 decided, and where §6's deferral stands now
+
+§6 deferred "the LPP decoder" and never chose between the two remote paths,
+because the first slice needed neither.
+[#467](https://github.com/hleserg/Attadipa/issues/467) closed that choice on
+2026-09-07: [REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md)
+and [ADR-0020](../adr/0020-remote-target-position-source.md) take **path C**,
+the contact record, for a remote target's coordinate.
+
+Three things it changed about how this document should be read.
+
+- **§1's table understates path C.** It costs *nothing* on the wire and it is
+  ×10⁶, and the coordinate arrives inside `RESP_CODE_CONTACT` — a frame this
+  repository already validates to 148 bytes and reads two fields out of. Path C
+  is not a third option to be costed later; it is the cheapest of the three by a
+  wider margin than path A beat path B by.
+- **§2's conclusion generalises further than it says.** "Path A and path B are
+  equally affected; they read the same two doubles" is true of path C as well —
+  `createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon)`. So
+  **no path is fresher than any other**, and that is what removed freshness from
+  the decision rather than settling it.
+- **§3's decoder is still deferred, and its trigger is now named** rather than
+  open-ended: ADR-0020 decision 8. The specification in §3 does not rot and does
+  not need rewriting; nothing has to be built until that trigger fires.
+
+Nothing in §4, §4.1 or §5 is amended. A remote target's coordinate classifies
+`NoFix` at every age for exactly the reasons given here, `Valid` stays
+unreachable, and `age_at_source_ms` stays `UNKNOWN` — with one addition this
+document could not have made, because it did not read the contact record: the
+**two** timestamps that record carries are not that age either, and one of them
+advances on a text message. **M24–M27** stand as written; **M28–M31** are the
+new ones.

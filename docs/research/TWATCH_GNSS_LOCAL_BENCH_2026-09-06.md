@@ -84,7 +84,7 @@ the bit was found already set, and the register is battery-backed, so a reflash
 is exactly the case where it still is:
 
 - `docs/research/OPEN_QUESTIONS.md:118` — "`REG 0x90` bit 4 was **already set before this firmware wrote it**"
-- `docs/research/VERIFIED_FACTS.md:633` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
+- `docs/research/VERIFIED_FACTS.md:734` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
 
 Settling it needs a read-back of `REG 0x90` around the write, or the bit cleared
 and the module watched going silent — the experiment `VERIFIED_FACTS.md` already
