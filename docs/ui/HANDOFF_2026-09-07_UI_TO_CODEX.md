@@ -32,8 +32,14 @@ item — it does not need to be talked into it. Two things make that land cleanl
 
 The two agents work in **separate git worktrees** on the same machine and share
 one repository-wide writer lease. Neither can edit while the other holds it, so
-hold it only while committing and release immediately. `git pull` before
-assuming a file is what you last saw it as.
+run `.github/scripts/writer-start.sh start REPO ISSUE AGENT_ID` **before you
+branch or edit** — `AGENTS.md:62` — "- Before creating a branch or editing, run" —
+and `writer-start.sh finish ...` immediately after you push. Claiming it at
+commit time instead looks equivalent and is not: `start` is also the
+queue-width admission and the per-issue claim, so a late claim is refused
+*after* the branch and the commit already exist. Check its exit status on its
+own line, never through a pipe, where you read the pipe's status and bypass the
+gate. `git pull` before assuming a file is what you last saw it as.
 
 ## What each agent owns
 
@@ -122,7 +128,8 @@ python3 tools/ui/make_mockups.py --font artifacts/ui/NunitoSans.ttf --out artifa
 ## Process notes that cost a round each to learn
 
 - **One writer lease covers the whole repository, and two agents now share it.**
-  Claim it, push, release immediately — never hold it across CI or review. A
+  `writer-start.sh start` before branching or editing, push, then `finish`
+  immediately — never hold it across CI or review. A
   claim marked `kind=hosted` belongs to a running workflow; do not break it.
 - **A merged status is not an approving review.** Read the `ai-review:blocking`
   label, not the merge box.

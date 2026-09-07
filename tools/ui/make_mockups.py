@@ -114,10 +114,9 @@ def html(board, state, grid):
     msg_h = lh_hint * b["hint_lines"]
     y_pad = y_msg + msg_h + gap
 
+    kw, kh = key_size(board, grid)
     cols, rows = grid
     n_rows = len(rows)
-    kh = (H - y_pad - m - gap * (n_rows - 1)) // n_rows
-    kw = (usable - gap * (cols - 1)) // cols
 
     parts = []
     add = parts.append
@@ -207,8 +206,9 @@ def html(board, state, grid):
 
         # The message slot. One row, two jobs, and now they do not look alike:
         # an instruction is muted text; a refusal is `warning`, which §3.2
-        # measures at 5.08:1 on the page and is the only accent that carries a
-        # word at night.
+        # measures at 5.08:1 on the night page -- the lowest of the four accents
+        # that clear 4.5:1 there, and so a safe floor for a word rather than
+        # only a graphic.
         v = state.get("verdict")
         if v:
             text, tone = v
@@ -320,9 +320,16 @@ def main() -> int:
                                 str(f)], check=True, capture_output=True)
                 made.append(png)
                 b = BOARDS[board]
-                print(f"{png.name}: keys {key_size(board, grid)[0]}x"
-                      f"{key_size(board, grid)[1]} px on {b['w']}x{b['h']}",
-                      file=sys.stderr)
+                if st.get("done"):
+                    # The finished screen draws no keypad. Printing a key size
+                    # for it published a measurement of something not on the
+                    # page.
+                    print(f"{png.name}: no keypad on {b['w']}x{b['h']}",
+                          file=sys.stderr)
+                else:
+                    kw, kh = key_size(board, grid)
+                    print(f"{png.name}: keys {kw}x{kh} px on "
+                          f"{b['w']}x{b['h']}", file=sys.stderr)
 
     for p in made:
         print(p)

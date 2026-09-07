@@ -300,12 +300,14 @@ void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
 }
 
 // The first row that belongs to neither the message nor the sender line under
-// it. On the tall panel the measurements start at y=452 and the meta row sits
-// between; 240 px draws no meta row at all and spends its last rows on the
-// measurements. Taking the band from below the meta row rather than above it is
-// what makes this a guard on *both* air-fed rows: either one growing by a
-// single line lands inside it.
-std::uint32_t below_message(bool big) { return big ? 452 : 192; }
+// it. On the tall panel that is 441: the meta row's top is 424 and its height
+// is one `tiny_font` line, 17. The measurements begin eleven rows lower, at
+// 452, and nothing paints between -- so starting the band at the meta row's own
+// bottom costs nothing and catches an overflowing sender line from its first
+// pixel rather than its twelfth. Starting at 452 left the guard passing on any
+// wrap that stayed inside those eleven rows. 240 px draws no meta row at all
+// and spends its last rows on the measurements.
+std::uint32_t below_message(bool big) { return big ? 441 : 192; }
 
 // Text off the air is ellipsised on its own row, not run through what is under it.
 //

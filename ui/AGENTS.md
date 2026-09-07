@@ -66,8 +66,12 @@ open to redesign.
 that already cost a round — they are worth knowing before you touch a label, and
 none of them says a screen must stay as it is. `docs/ui/DESIGN_SYSTEM.md` is a
 document this directory owns: the measured contrast ratios are evidence and hold
-until re-measured, but the palette, the type scale, the spacing family and the
-component shapes are design, and the UI agent revises them the same way it
-revises a screen. Record what changed and why, so the next reader knows which
-numbers were measured and which were chosen. A screen's behaviour is decided in
-its issue.
+until re-measured. **The palette is not this directory's to revise**: the
+owner answered it on issue #57 and it lives where an owner-only decision lives —
+`docs/research/OWNER_DECISIONS.md:1008` — "## OD-15 — A7 and A8: the canonical palette wins" — so a
+change to a colour value is proposed there, not made here, and
+`tests/test_ui_tokens.cpp:192` — "    CHECK(undefined_in_day == 1);" holds its
+shape meanwhile. The type scale, the spacing family and the component shapes
+**are** design, and the UI agent revises them the same way it revises a screen.
+Record what changed and why, so the next reader knows which numbers were
+measured and which were chosen. A screen's behaviour is decided in its issue.
