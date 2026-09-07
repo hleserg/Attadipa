@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -404,9 +405,15 @@ std::vector<Blob> circles_on_the_dial(bool laid_out) {
 }
 
 // The bearing off the screen rather than out of the fixture, so that changing
-// the scenario cannot leave this test asserting an angle nothing draws. It is
-// the only label whose first three bytes are digits: the distance reads
-// "2.1 km" and every other row is words.
+// the scenario cannot leave this test asserting an angle nothing draws.
+//
+// THREE DIGITS ARE NOT ENOUGH TO NAME IT, and the degree sign is what makes
+// this safe to reuse. `apps::format_navigation` prints anything under a
+// kilometre as `"%u m"` -- `apps/src/navigation.cpp:53` --
+// "  if (metres < 1000) {" -- so a target a few hundred metres away puts
+// "249 m" in the distance row, `distance_` is created before `bearing_`, and a
+// scan for three leading digits returns the distance while reading exactly like
+// a bearing. The bearing is the only row that follows its digits with U+00B0.
 bool bearing_on_screen(double &degrees) {
   lv_obj_t *screen = lv_screen_active();
   const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
@@ -421,7 +428,8 @@ bool bearing_on_screen(double &degrees) {
     }
     if (std::isdigit(static_cast<unsigned char>(text[0])) &&
         std::isdigit(static_cast<unsigned char>(text[1])) &&
-        std::isdigit(static_cast<unsigned char>(text[2]))) {
+        std::isdigit(static_cast<unsigned char>(text[2])) &&
+        std::strncmp(text + 3, "°", 2) == 0) {
       degrees = (text[0] - '0') * 100.0 + (text[1] - '0') * 10.0 + (text[2] - '0');
       return true;
     }
@@ -629,12 +637,28 @@ void the_ring_turns_with_the_wrist(const platform::BoardProfile &board) {
   }
   const Blob centre = ring.front();
 
-  // The trail follows the WRIST-RELATIVE angle. Read the printed bearing off
-  // the screen too, and require the dots not to lie along it: at this heading
-  // the two are far apart, so a face that drew the true bearing would fail the
-  // first check, and a face that drew a constant would fail the second.
+  // The trail follows the WRIST-RELATIVE angle, and the printed bearing is read
+  // off the screen so the test can require the dots NOT to lie along it. Both
+  // halves are needed and neither implies the other: the first says the trail
+  // follows something, the second says that something is not the true north the
+  // readout prints. A face that ignored the wrist satisfies the first against
+  // `bearing_centideg` and fails only the second.
   double printed = 0.0;
   CHECK(bearing_on_screen(printed));
+  // AND IT IS THE BEARING, not whatever else on this screen begins with three
+  // digits. Without this the checks below are satisfied by any value that is
+  // merely not the trail's angle -- the distance included -- so the one thing
+  // that would notice `bearing_on_screen` reading the wrong row is a direct
+  // comparison against the angle the readout was given. The readout prints TRUE
+  // north while the trail draws the wrist-relative angle: that is head-up, and
+  // this is the line that says so.
+  const double true_bearing = text.bearing_centideg / 100.0;
+  const double bearing_error = std::fabs(printed - true_bearing);
+  CHECK(std::fmin(bearing_error, 360.0 - bearing_error) <= 1.0);
+
+  const double printed_rad = printed * 3.14159265358979323846 / 180.0;
+  const double px = std::sin(printed_rad);
+  const double py = -std::cos(printed_rad);
   const double arrow_rad = text.arrow_centideg * 3.14159265358979323846 / 18000.0;
   const double ux = std::sin(arrow_rad);
   const double uy = -std::cos(arrow_rad);
@@ -652,6 +676,15 @@ void the_ring_turns_with_the_wrist(const platform::BoardProfile &board) {
     CHECK(std::fabs(dx * uy - dy * ux) <= 2.0);
     CHECK(dx * ux + dy * uy > 0.0);
   }
+  // And not along the printed one, measured on the dot furthest out, where a
+  // quarter turn of wrist is tens of pixels and no tolerance argument is needed.
+  const Blob &far_dot = *std::max_element(
+      dots.begin(), dots.end(), [&](const Blob &a, const Blob &b) {
+        return std::hypot(a.cx - centre.cx, a.cy - centre.cy) <
+               std::hypot(b.cx - centre.cx, b.cy - centre.cy);
+      });
+  CHECK(std::fabs((far_dot.cx - centre.cx) * py -
+                  (far_dot.cy - centre.cy) * px) > 2.0);
 
   // The marker travels to where north is: half the ring's height out from the
   // ring's centre, less half its own, at minus the heading. Within a pixel,
@@ -694,6 +727,14 @@ void the_ring_turns_with_the_wrist(const platform::BoardProfile &board) {
     CHECK(std::abs(lv_obj_get_y(at_zero) - north_up_y) <= 1);
   }
 
+  // BEFORE THE FACE GOES. `ui/lvgl/include/attadipa/ui/nav_face.h:73` --
+  // "  // and reads the stops at every draw. A local would be read after it died."
+  // -- is the reason the gradient is a member and not a local, and a `NavFace`
+  // on the stack recreates that one level up: the screen, the scrim on it and
+  // the style holding `&face.scrim_grad_` all outlive this frame, while every
+  // later test pumps `lv_timer_handler()`. `clear()` deletes the objects that
+  // hold the pointer, so it has to run while the face is still alive.
+  face.clear();
   panel.close();
 }
 
@@ -751,6 +792,9 @@ void the_trail_comes_back_after_it_goes(const platform::BoardProfile &board) {
   face.update(apps::format_navigation(pointing));
   run_frames(2);
   CHECK(circles_on_the_dial(false).size() == expected + 1);
+  // The gradient outlives the frame otherwise; the reason is written out in
+  // `the_ring_turns_with_the_wrist`.
+  face.clear();
   panel.close();
 }
 
