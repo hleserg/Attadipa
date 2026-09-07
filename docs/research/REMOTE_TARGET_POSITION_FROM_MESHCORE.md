@@ -434,8 +434,10 @@ an iteration is in progress, which the session already tracks.
 | Rule | Why |
 |---|---|
 | The coordinate is admitted **only** from a contact frame whose full 32-byte key equals the selected target key | §7 |
+| A `0x80` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | `0x80` is `[0x80][pub_key×32]` (§7). The dispatcher owns no shared bound — `link/src/meshcore_companion.cpp:482` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects only an empty or over-long frame, and **every** arm after it checks its own length. An arm that inherits a guard it does not have reads 32 bytes off the end of a one-byte frame |
+| A `0x8A` shorter than **148 bytes** is refused and counted malformed, in the new arm's **own** guard | It is §3.1's contact layout under a different opcode, and the coordinate is at its far end, bytes 136–143. The 148-byte guard that exists today is one `case` arm and covers `RESP_CODE_CONTACT` alone — `link/src/meshcore_companion.cpp:587` — "        if (size < 148) { ++malformed_frames_; return false; }". A new opcode does not inherit it |
 | Exactly `(0, 0)` is **refused** and the target slot stays empty | `populateContactFromAdvert` `memset`s the record and writes the coordinate only under `hasLatLon()`, so a contact that has never shared one reads exactly `(0,0)`. ADR-0019 already refuses the same value for `own`, for the same reason, one slot over |
-| `\|raw_lat\| > 90 000 000` or `\|raw_lon\| > 180 000 000` ⇒ the coordinate is refused, **checked on the raw `int32` before any scaling** | The wire is degrees × 10⁶ (`:174`), so ±90° is 90 000 000 and ±180° is 180 000 000 — a bound of 900 000 would refuse everything outside 0.9° of the equator and 1.8° of Greenwich, silently, because an absent coordinate is deliberately not an error. `AdvertDataParser` range-checks nothing and `CMD_ADD_UPDATE_CONTACT` range-checks nothing. `raw × 10` overflows `int32` above 214 748 364, and `core/include/attadipa/core/position.h:55` — "constexpr bool in_range(Position p)" — cannot save a value that already overflowed |
+| `\|raw_lat\| > 90 000 000` or `\|raw_lon\| > 180 000 000` ⇒ the coordinate is refused, **checked on the raw `int32` before any scaling** | The wire is degrees × 10⁶ (§3.1), so ±90° is 90 000 000 and ±180° is 180 000 000 — a bound of 900 000 would refuse everything outside 0.9° of the equator and 1.8° of Greenwich, silently, because an absent coordinate is deliberately not an error. `AdvertDataParser` range-checks nothing and `CMD_ADD_UPDATE_CONTACT` range-checks nothing. `raw × 10` overflows `int32` above 214 748 364, and `core/include/attadipa/core/position.h:55` — "constexpr bool in_range(Position p)" — cannot save a value that already overflowed |
 | Scaling is exact integer arithmetic: `latitude_e7 = raw_e6 × 10` | `Position` is `e7`, the wire is `e6`, the ratio is 10. No floating point, no rounding decision to get wrong |
 | `fix_type` is `FixType::Unknown`, `source` is `PositionSource::NodeGnss`, every optional stays empty, `PositionValidity` is `NoFix` at every age | §6, and it is exactly what the path-A provider already does |
 | `age_at_source_ms` is meaningless and the published `Timed` carries `Validity::Unknown`; **a consumer reads `validity` before either age** | §6 |
@@ -546,10 +548,18 @@ bytes are read.
 
 ### 12.1 Host and replay, runnable now
 
-Frame level, and **above** the length check the companion already owns — the
-`size < 148` guard drops a short contact frame before any consumer sees it, and
-`tests/test_meshcore_companion.cpp` already covers that case, so a short-frame
-test in the consumer would go green without the shipping path reaching it:
+Frame level. For `RESP_CODE_CONTACT` the length check the companion already
+owns is above these: the `size < 148` guard drops a short contact frame before
+any consumer sees it, and `tests/test_meshcore_companion.cpp` already covers
+that case, so a short-frame test in the consumer would go green without the
+shipping path reaching it. **That holds for that one opcode and no other.** The
+guard is a single `case` arm, the two arms §9 adds inherit nothing from it, and
+so their length rules are tested here rather than assumed:
+
+- `{0x80}` alone and `{0x8A}` alone ⇒ counted malformed; no key compared, no
+  command sent, no coordinate read. These tests build frames as exact-sized
+  stack arrays — `tests/test_meshcore_companion.cpp:546` — "    const std::uint8_t short_contact[] = {3};" — so an arm that trusts its length over-reads that array by 32 bytes and by 143;
+- one byte short of each bound ⇒ still refused; exactly at it ⇒ accepted;
 
 - a contact frame whose coordinate is exactly `(0, 0)` ⇒ refused, slot empty;
 - ±90 / ±180 ×10⁶ **accepted at the boundary**; one LSB beyond ⇒ refused;
