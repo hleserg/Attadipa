@@ -85,6 +85,29 @@ private:
   lv_obj_t *label_[3]{};
 
   bool built_ = false;
+
+  // The readout the widgets are already showing, and whether they are showing
+  // one at all.
+  //
+  // `refresh_mesh()` calls `update()` twice a second with a struct that is
+  // almost always identical, and running the layout for it re-measured and
+  // re-aligned forty widgets, invalidating the panel each time, to arrive at
+  // the pixels that were already there. `NavFace` keeps the same kind of guard
+  // over its trail (`ui/lvgl/nav_face.cpp:445` —
+  // "    if (trail_drawn_ && trail_centideg_ == drawn_centideg &&").
+  //
+  // The flag answers a different question from the struct. "Unchanged" and
+  // "never drawn" are not the same state, and a zeroed `shown_` conflates
+  // them: any readout that happened to compare equal to a default `MeshText`
+  // would be skipped on the first paint and leave the screen blank. No
+  // `format_mesh()` result is that today -- it always fills `title` -- which is
+  // exactly why the guard must not depend on it continuing to be true.
+  //
+  // `memcmp` over a struct with padding can only ever answer "different" where
+  // it should have said "same". That costs one repaint and can never leave a
+  // stale reading on the panel, which is the direction this has to err in.
+  apps::MeshText shown_{};
+  bool shown_valid_ = false;
 };
 
 } // namespace attadipa::ui

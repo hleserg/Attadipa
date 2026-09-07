@@ -59,10 +59,6 @@ std::int32_t tracking_wide(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 2
 
 std::int32_t tracking_tight(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 4; }
 
-void place(lv_obj_t *object, std::int32_t x, std::int32_t y) {
-  lv_obj_align(object, LV_ALIGN_TOP_LEFT, x, y);
-}
-
 // The colour a state is spoken in.
 //
 // `Danger` is `std::nullopt` in every column of the token table -- there is no
@@ -95,6 +91,17 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   clear();
   screen_ = screen;
   config_ = config;
+
+  // Whatever was on this screen is not part of this face.
+  //
+  // `clear()` above cleans the screen this face was holding, which on a first
+  // build is none, and page turning hands every face the same
+  // `lv_screen_active()` without deleting anything on it -- so arriving here
+  // from the entry screen left the provisioning keypad parented underneath,
+  // invisible under the new paint and still CLICKABLE, eating the tap that
+  // turns the page. Every other face cleans what it is given for the same
+  // reason (`ui/lvgl/provision_face.cpp:59` — "  lv_obj_clean(screen);").
+  lv_obj_clean(screen_);
 
   // The screen object outlives every face and carries the last one's styles
   // into the next -- NavFace leaves it a flex column, and a flex parent ignores
@@ -203,6 +210,11 @@ void MeshFace::update(const apps::MeshText &text) {
   if (!built_) {
     return;
   }
+  if (shown_valid_ && std::memcmp(&shown_, &text, sizeof(text)) == 0) {
+    return;
+  }
+  shown_ = text;
+  shown_valid_ = true;
   lay_out(text);
   paint_channel(text);
 }
@@ -221,7 +233,7 @@ void MeshFace::lay_out(const apps::MeshText &text) {
   const auto w = static_cast<std::int32_t>(config_.width_px);
 
   show(title_, text.title);
-  place(title_, big ? 32 : 20, big ? 24 : 12);
+  lv_obj_align(title_, LV_ALIGN_TOP_LEFT, big ? 32 : 20, big ? 24 : 12);
 
   show(state_, text.state);
   lv_obj_set_style_text_color(
@@ -237,38 +249,42 @@ void MeshFace::lay_out(const apps::MeshText &text) {
   lv_obj_set_style_text_align(way_out_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
   if (linked) {
-    place(state_, 0, big ? 196 : 84);
+    lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, big ? 196 : 84);
     // 240 px spends the row under the state word on the node key, which is the
     // identity. Drawing the note there too put one on top of the other.
     if (big) {
       show(note_, text.note);
-      place(note_, 0, 236);
+      // Under the state word, by the width of the gap rather than by a row
+      // number: `state_` is the largest type on the screen and the only thing
+      // above this.
+      lv_obj_align_to(note_, state_, LV_ALIGN_OUT_BOTTOM_MID, 0,
+                      config_.metrics.px(dp_of(Space::Xs)));
     } else {
       hide(note_);
     }
 
     show(node_key_, text.node_key);
     show(node_name_, text.node_name);
-    place(node_key_, margin, big ? 284 : 112);
-    place(node_name_, margin, big ? 312 : 132);
+    lv_obj_align(node_name_, LV_ALIGN_TOP_LEFT, margin, big ? 312 : 132);
     if (!big) {
       // 240 px has room for the key or the name, not both, and the key is the
       // identity -- the two bench nodes had interchangeable names.
       hide(node_name_);
       lv_obj_set_width(node_key_, w);
       lv_obj_set_style_text_align(node_key_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-      place(node_key_, 0, 112);
     } else {
       lv_obj_set_width(node_key_, LV_SIZE_CONTENT);
       lv_obj_set_style_text_align(node_key_, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     }
+    lv_obj_align(node_key_, LV_ALIGN_TOP_LEFT, big ? margin : 0,
+                 big ? 284 : 112);
     hide(pinned_);
     hide(answered_);
     hide(way_out_);
 
     lv_obj_remove_flag(rule_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_size(rule_, w - margin * 2, config_.metrics.px(Dp{1}));
-    place(rule_, margin, big ? 352 : 136);
+    lv_obj_align(rule_, LV_ALIGN_TOP_LEFT, margin, big ? 352 : 136);
 
     show(msg_heading_, text.message_heading);
     lv_obj_set_style_text_color(
@@ -280,18 +296,27 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_style_text_opa(msg_, text.live ? LV_OPA_COVER : LV_OPA_60,
                               LV_PART_MAIN);
     lv_obj_set_width(msg_, w - margin * 2);
+    // ONE LINE, AND AN ELLIPSIS FOR THE REST.
+    //
+    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;
+    // with the height left at content the label grew downwards instead, and a
+    // message longer than the fixture's ran straight through the row beneath
+    // it. The composition reserves one line for the message on both panels, so
+    // one line is what it is given -- and that is what makes it safe for
+    // `apps::MeshText::message` to carry the whole of what arrived rather than
+    // as much of it as a buffer had room for.
+    lv_obj_set_height(msg_, lv_font_get_line_height(
+                                lv_obj_get_style_text_font(msg_, LV_PART_MAIN)));
     lv_label_set_long_mode(msg_, LV_LABEL_LONG_DOT);
 
-    if (big) {
-      place(msg_heading_, margin, 368);
-      place(msg_, margin, 394);
-    } else {
+    if (!big) {
       lv_obj_set_style_text_align(msg_heading_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
       lv_obj_set_width(msg_heading_, w);
       lv_obj_set_style_text_align(msg_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-      place(msg_heading_, 0, 148);
-      place(msg_, margin, 168);
     }
+    lv_obj_align(msg_heading_, LV_ALIGN_TOP_LEFT, big ? margin : 0,
+                 big ? 368 : 148);
+    lv_obj_align(msg_, LV_ALIGN_TOP_LEFT, margin, big ? 394 : 168);
 
     // Sender and delivery share a line: on their own neither is evidence of
     // anything, and together they are the whole story of one message.
@@ -304,7 +329,10 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_width(msg_meta_, w - margin * 2);
     lv_label_set_long_mode(msg_meta_, LV_LABEL_LONG_DOT);
     if (big) {
-      place(msg_meta_, margin, 426);
+      // Under the message, because the message is the one row on this screen
+      // whose height is not the layout's to choose.
+      lv_obj_align_to(msg_meta_, msg_, LV_ALIGN_OUT_BOTTOM_LEFT, 0,
+                      config_.metrics.px(dp_of(Space::Xs)));
     } else {
       hide(msg_meta_);  // 240 px spends its last rows on the measurements
     }
@@ -318,13 +346,13 @@ void MeshFace::lay_out(const apps::MeshText &text) {
       show(label_[i], labels[i]);
       lv_obj_set_style_text_opa(value_[i], text.live ? LV_OPA_COVER : LV_OPA_50,
                                 LV_PART_MAIN);
-      place(value_[i], column[i], big ? 452 : 192);
-      place(label_[i], column[i], big ? 478 : 214);
+      lv_obj_align(value_[i], LV_ALIGN_TOP_LEFT, column[i], big ? 452 : 192);
+      lv_obj_align(label_[i], LV_ALIGN_TOP_LEFT, column[i], big ? 478 : 214);
     }
   } else {
-    place(state_, 0, big ? 262 : 132);
+    lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, big ? 262 : 132);
     show(note_, text.note);
-    place(note_, 0, big ? 304 : 162);
+    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, big ? 304 : 162);
 
     hide(node_key_);
     hide(node_name_);
@@ -343,14 +371,14 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_width(answered_, w);
     lv_obj_set_style_text_align(pinned_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(answered_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    place(pinned_, 0, big ? 350 : 162);
-    place(answered_, 0, big ? 376 : 184);
+    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, big ? 350 : 162);
+    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, big ? 376 : 184);
     if (!big && text.pinned[0] != '\0') {
       hide(note_);  // the two key lines say it, and 240 px has room for one
     }
 
     show(way_out_, text.way_out);
-    place(way_out_, 0, big ? 444 : 210);
+    lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, big ? 444 : 210);
   }
 }
 
@@ -377,10 +405,10 @@ void MeshFace::paint_channel(const apps::MeshText &text) {
   const std::int32_t side = r * 18 / 10;
   lv_obj_set_size(watch_, side, side);
   lv_obj_set_style_radius(watch_, r * 55 / 100, LV_PART_MAIN);
-  place(watch_, x0 - side / 2, cy - side / 2);
+  lv_obj_align(watch_, LV_ALIGN_TOP_LEFT, x0 - side / 2, cy - side / 2);
   const std::int32_t dot = r * 44 / 100;
   lv_obj_set_size(watch_dot_, dot, dot);
-  place(watch_dot_, x0 - dot / 2, cy - dot / 2);
+  lv_obj_align(watch_dot_, LV_ALIGN_TOP_LEFT, x0 - dot / 2, cy - dot / 2);
 
   if (alone) {
     for (lv_obj_t *rung : rung_) {
@@ -414,13 +442,15 @@ void MeshFace::paint_channel(const apps::MeshText &text) {
                             : lit                                ? LV_OPA_COVER
                                                                  : LV_OPA_20,
                             LV_PART_MAIN);
-    place(rung, x0 + r * 13 / 10 + static_cast<std::int32_t>(i) * step + step * 18 / 100,
-          cy - thickness / 2);
+    lv_obj_align(rung, LV_ALIGN_TOP_LEFT,
+                 x0 + r * 13 / 10 +
+                     static_cast<std::int32_t>(i) * step + step * 18 / 100,
+                 cy - thickness / 2);
   }
 
   lv_obj_remove_flag(socket_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_size(socket_, r * 2, r * 2);
-  place(socket_, x1 - r, cy - r);
+  lv_obj_align(socket_, LV_ALIGN_TOP_LEFT, x1 - r, cy - r);
   const bool full = text.link == apps::MeshLink::Linked;
   lv_obj_set_style_bg_color(socket_, colour, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(socket_, full ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
@@ -445,7 +475,7 @@ void MeshFace::paint_channel(const apps::MeshText &text) {
     lv_obj_set_size(halo_, halo, halo);
     lv_obj_set_style_border_color(halo_, colour, LV_PART_MAIN);
     lv_obj_set_style_border_opa(halo_, LV_OPA_30, LV_PART_MAIN);
-    place(halo_, x1 - halo / 2, cy - halo / 2);
+    lv_obj_align(halo_, LV_ALIGN_TOP_LEFT, x1 - halo / 2, cy - halo / 2);
   } else {
     hide(halo_);
   }
@@ -455,7 +485,7 @@ void MeshFace::paint_channel(const apps::MeshText &text) {
     const std::int32_t size = r * 116 / 100;
     lv_obj_set_size(intruder_, size, size);
     lv_obj_set_style_bg_color(intruder_, colour, LV_PART_MAIN);
-    place(intruder_, x1 - size / 2, cy + r * 205 / 100 - size / 2);
+    lv_obj_align(intruder_, LV_ALIGN_TOP_LEFT, x1 - size / 2, cy + r * 205 / 100 - size / 2);
   } else {
     hide(intruder_);
   }
@@ -491,6 +521,7 @@ void MeshFace::clear() {
     label_[i] = nullptr;
   }
   built_ = false;
+  shown_valid_ = false;
 }
 
 } // namespace attadipa::ui

@@ -58,9 +58,20 @@ struct MeshText {
     char answered[40] = "";
 
     char message_heading[24] = "";
-    char message[72]         = "";
+    // The whole of what came over the link, not as much of it as an earlier
+    // guess had room for. `core::MeshStatus::last_message` carries
+    // `kMeshTextBytes`, and a smaller buffer here threw the tail away before
+    // anything had asked whether it fits -- silently, because `put()` is
+    // `snprintf`, and at a byte rather than at a character, so a cut landing
+    // between the two bytes of a Cyrillic code point put half a character on
+    // the panel. What does not fit is now ellipsised where it is drawn, by the
+    // face, which is the layer that knows how wide the panel is.
+    char message[core::kMeshTextBytes + 1] = "";
     char sender[40]          = "";
-    char delivery[24]        = "";
+    // 32 rather than 24 because `не отправлено` and `не доставлено` are 25
+    // bytes each and lost their last character -- and `MeshDelivery::None` is
+    // the default, so the truncated word was the one a watch showed first.
+    char delivery[32]        = "";
 
     char snr[12]         = "";
     char snr_label[16]   = "";

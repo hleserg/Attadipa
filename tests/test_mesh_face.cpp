@@ -44,7 +44,15 @@ void check(bool condition, const char *what, int line) {
 std::vector<std::vector<std::uint8_t>> g_buffers;
 std::vector<std::uint8_t> *g_frame = nullptr;
 
+// How many times the panel has been handed pixels. LVGL calls this once per
+// rendered area and not at all when nothing was invalidated, which is what
+// makes it the evidence for "the face did not repaint" -- an assertion about
+// the frame buffer could not tell a screen that was redrawn identically from
+// one that was left alone, and it is the redrawing that costs.
+int g_flushes = 0;
+
 void flush_cb(lv_display_t *display, const lv_area_t *, std::uint8_t *) {
+  ++g_flushes;
   lv_display_flush_ready(display);
 }
 
@@ -252,6 +260,75 @@ void the_layout_uses_the_whole_panel(const platform::BoardProfile &board) {
   face.clear();
 }
 
+// THE SCREEN A FACE IS GIVEN BELONGS TO THAT FACE.
+//
+// Page turning hands every face the same `lv_screen_active()` and deletes
+// nothing, so arriving at the mesh screen from the entry screen left the
+// provisioning keypad still parented to it: invisible under the new paint,
+// still `LV_OBJ_FLAG_CLICKABLE`, and swallowing the tap that turns the page.
+// `MeshFace::clear()` cleans the screen the face is holding, which on a first
+// build is none at all, so it never reached this.
+//
+// The count is taken from a build onto an empty screen rather than written
+// down, because the number is the layout's business and this is not a test of
+// how many widgets the layout has.
+void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
+  lv_display_t *display = open_panel(board);
+  lv_obj_t *screen = lv_screen_active();
+  const apps::MeshText text = apps::format_mesh(linked(), l10n::Locale::En);
+
+  ui::MeshFace alone;
+  alone.build(screen, config_for(board), text);
+  const std::uint32_t mine = lv_obj_get_child_count(screen);
+  alone.clear();
+  CHECK(mine > 0);
+
+  lv_obj_t *leftover = lv_obj_create(screen);
+  lv_obj_add_flag(leftover, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_create(screen);
+  CHECK(lv_obj_get_child_count(screen) == 2);
+
+  ui::MeshFace face;
+  face.build(screen, config_for(board), text);
+  lv_refr_now(display);
+  check(lv_obj_get_child_count(screen) == mine,
+        "the face is the only thing left on the screen it was built onto",
+        __LINE__);
+
+  face.clear();
+}
+
+// The same readout twice does not reach the panel.
+//
+// `refresh_mesh()` calls `update()` at 2 Hz with a struct that changes only
+// when something on the mesh does, and the face laid out and repainted forty
+// widgets for every one of those ticks. The counter-check is not optional: a
+// face that had stopped drawing altogether would pass the first assertion.
+void an_unchanged_readout_is_not_redrawn(const platform::BoardProfile &board) {
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+  const apps::MeshText text = apps::format_mesh(linked(), l10n::Locale::En);
+  face.build(lv_screen_active(), config_for(board), text);
+  lv_refr_now(display);
+
+  g_flushes = 0;
+  face.update(text);
+  lv_refr_now(display);
+  check(g_flushes == 0, "an identical readout does not repaint the panel",
+        __LINE__);
+
+  // A field that is drawn, and a value that is not a fixture's: the signal to
+  // noise ratio moves on its own between two readouts that are otherwise the
+  // same, which is the change this guard has to let through.
+  apps::MeshText moved = text;
+  std::snprintf(moved.snr, sizeof(moved.snr), "9.75");
+  face.update(moved);
+  lv_refr_now(display);
+  check(g_flushes > 0, "a changed readout does repaint the panel", __LINE__);
+
+  face.clear();
+}
+
 } // namespace
 
 int main() {
@@ -268,6 +345,8 @@ int main() {
     an_unnamed_node_draws_no_link(*board);
     a_linked_node_draws_one(*board);
     the_layout_uses_the_whole_panel(*board);
+    a_build_owns_the_screen_it_is_given(*board);
+    an_unchanged_readout_is_not_redrawn(*board);
   }
 
   if (failures != 0) {

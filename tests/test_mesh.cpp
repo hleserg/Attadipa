@@ -222,6 +222,83 @@ void both_locales_are_answered() {
   CHECK(std::strcmp(en.way_out, ru.way_out) != 0);
 }
 
+// EVERY FIELD, EVERY STATE, NEVER CUT OFF.
+//
+// `put()` is `snprintf`, which truncates in silence, at a byte, and returns a
+// length nobody was reading -- so a Russian word one byte over its buffer came
+// back a character short and looked like a translation, and a cut landing
+// inside a two-byte code point put half a character on the panel. Two fields
+// were doing it and neither was in a fixture: the default delivery word, which
+// is what a watch shows before it has sent anything, and any message longer
+// than the four letters `linked_status()` puts there.
+//
+// So this asserts no expected string at all. A truncated `snprintf` always
+// fills its buffer exactly, so `strlen == sizeof - 1` is the signature of the
+// defect whatever the catalogue happens to say today, and the sweep walks
+// every state the formatter can reach rather than the handful somebody thought
+// to write down. Sizing a buffer by looking at the strings is the mistake this
+// replaces, not the fix for it.
+#define MESH_TEXT_FIELDS(X)                                                    \
+  X(title) X(state) X(note) X(way_out) X(node_key) X(node_name) X(pinned)      \
+  X(answered) X(message_heading) X(message) X(sender) X(delivery) X(snr)       \
+  X(snr_label) X(peers) X(peers_label) X(mtu) X(mtu_label)
+
+void no_field_is_ever_cut_short() {
+  const l10n::Locale locales[] = {l10n::Locale::En, l10n::Locale::Ru};
+  int swept = 0;
+  for (int a = 0; a <= static_cast<int>(core::Availability::Ready); ++a) {
+    for (int t = 0; t <= static_cast<int>(core::TransportPhase::Faulted); ++t) {
+      for (int d = 0; d <= static_cast<int>(core::MeshDelivery::Failed); ++d) {
+        for (int refused = 0; refused < 2; ++refused) {
+          for (l10n::Locale locale : locales) {
+            core::MeshStatus status = linked_status();
+            status.availability = static_cast<core::Availability>(a);
+            status.transport = static_cast<core::TransportPhase>(t);
+            status.delivery = static_cast<core::MeshDelivery>(d);
+            status.has_pinned = refused != 0;
+            status.has_refused = refused != 0;
+            status.pinned_id = key(0x11223344U);
+            status.refused_id = key(0x55667788U);
+            // The longest name and sender either side can carry, because a
+            // buffer that fits the fixture's "Ridge" proves nothing about the
+            // 32 bytes `core::MeshStatus` is willing to hold.
+            for (std::size_t i = 0; i < core::kMeshPeerNameBytes; ++i) {
+              status.node_name[i] = 'N';
+              status.last_sender[i] = 'S';
+            }
+            const apps::MeshText text = apps::format_mesh(status, locale);
+            ++swept;
+#define CHECK_NOT_TRUNCATED(field)                                             \
+  if (std::strlen(text.field) == sizeof(text.field) - 1) {                     \
+    std::fprintf(stderr,                                                       \
+                 "FAIL line %d: %s filled its %zu-byte buffer: \"%s\"\n",      \
+                 __LINE__, #field, sizeof(text.field), text.field);            \
+    ++failures;                                                                \
+  }
+            MESH_TEXT_FIELDS(CHECK_NOT_TRUNCATED)
+#undef CHECK_NOT_TRUNCATED
+          }
+        }
+      }
+    }
+  }
+  CHECK(swept == 7 * 6 * 5 * 2 * 2);
+}
+
+// And the message itself arrives whole. The sweep above cannot make this claim:
+// a message that exactly fills its buffer is indistinguishable from one that
+// was cut to fit, which is why the longest one is asserted against what went in
+// rather than against its length.
+void the_longest_message_arrives_whole() {
+  core::MeshStatus status = linked_status();
+  for (std::size_t i = 0; i < core::kMeshTextBytes; ++i) {
+    status.last_message[i] = static_cast<char>('a' + (i % 26));
+  }
+  const apps::MeshText text = apps::format_mesh(status, l10n::Locale::En);
+  CHECK(std::strlen(text.message) == core::kMeshTextBytes);
+  CHECK(std::strcmp(text.message, status.last_message.data()) == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -235,6 +312,8 @@ int main() {
   a_key_prefix_is_eight_hex_characters();
   reaching_lights_part_of_the_channel();
   both_locales_are_answered();
+  no_field_is_ever_cut_short();
+  the_longest_message_arrives_whole();
 
   if (failures != 0) {
     std::fprintf(stderr, "%d check(s) failed\n", failures);
