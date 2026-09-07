@@ -632,6 +632,10 @@ void the_ring_turns_with_the_wrist(const platform::BoardProfile &board) {
   lv_obj_t *marker = north_marker();
   CHECK(marker != nullptr);
   if (ring.size() != 1 || marker == nullptr) {
+    // The face is already built here, so this path owes the same `clear()` the
+    // end of the function does. An early return is where a leak like this
+    // survives a review: it runs only when something else has already failed.
+    face.clear();
     panel.close();
     return;
   }

@@ -370,14 +370,21 @@ void NavFace::point_trail(const apps::NavText &text) {
   // trail two answers to one question, and nothing on the screen says which to
   // follow.
   //
-  // THE NORTH-UP BRANCH IS THE EXPRESSION THIS USED TO BE, CHARACTER FOR
-  // CHARACTER, and that is the whole reason there are two branches. The rotated
-  // form below is real arithmetic that passes through the same point — but only
-  // in real arithmetic. `centre_y` and the two half-extents are integer
-  // divisions and the rotated form truncates a `double` instead, so on an odd
-  // ring height or an odd label width the two disagree by a pixel. Writing the
-  // old expression out is a guarantee; a screenshot comparison would only ever
-  // have been a measurement of today's two label widths.
+  // THE TWO BRANCHES MEET AT HEADING ZERO, and that is the whole reason there
+  // are two of them rather than one rotation. The rotated form is real
+  // arithmetic that passes through the same point — but only in real
+  // arithmetic. `centre_y` and the two half-extents are integer divisions and
+  // the rotated form truncates a `double` instead, so on an odd ring height or
+  // an odd label width the two disagree by a pixel. Writing the north-up
+  // placement out as a division rather than a rotation is what keeps that
+  // disagreement to one pixel; `the_ring_turns_with_the_wrist` asserts it.
+  //
+  // This is NOT the expression this branch had before. That one sat a twelfth
+  // of the ring's height inside the top edge, which put the marker at 0.69 of
+  // the radius and the head of the trail at 0.66, so at a due-north bearing the
+  // letter was a smudge inside a glow. The inset changed; what did not is that
+  // both branches place the marker at the same point when the wrist is
+  // straight.
   if (!text.has_arrow) {
     lv_obj_set_pos(north_, centre_x - lv_obj_get_width(north_) / 2,
                    lv_obj_get_y(ring_));

@@ -24,7 +24,6 @@ import subprocess
 import sys
 import tempfile
 
-import numpy as np
 from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -86,8 +85,14 @@ def save(frames, path: pathlib.Path) -> None:
     lost = []
     for i in range(written.n_frames):
         written.seek(i)
-        pixels = np.array(written.convert("RGB")).reshape(-1, 3).astype(int)
-        if i >= FIRST_AMBER_FRAME and (np.abs(pixels - np.array(AMBER)).sum(1) < 20).sum() == 0:
+        # `getcolors` over a palette image is exact and cheap -- a GIF frame has
+        # at most 256 distinct colours, so this is a scan of the palette rather
+        # than of a third of a million pixels. It also keeps the only dependency
+        # here to Pillow, which the simulator's own tooling already needs.
+        present = written.convert("RGB").getcolors(1 << 16) or []
+        near = any(sum(abs(c[j] - AMBER[j]) for j in range(3)) < 20
+                   for _, c in present)
+        if i >= FIRST_AMBER_FRAME and not near:
             lost.append(i)
     assert not lost, f"{path.name}: the alarm colour was quantised away in frames {lost}"
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
