@@ -95,8 +95,8 @@ ago"*, *"no receiver on this device"*, *"no position source is set up"*. And
 past a thousand kilometres the distance stops pretending to a metre: `> 1000 km`.
 
 No `0 m` standing in for *unknown*. No `(0, 0)`. No arrow pointing somewhere plausible. The animation
-above is exactly that, live: when there is nothing to say, the needle
-disappears, the numbers become a dash, and an amber line names the specific
+above is exactly that, live: when there is nothing to say, the trail of light
+goes out, the numbers become a dash, and an amber line names the specific
 thing the watch does not know.
 
 ## What it is
@@ -177,7 +177,7 @@ instrument; `IMPLEMENTED` runs and is tested, but not on a board yet;
 | **Screenshot and drive the live UI from another process** — taps, buttons, scripted journeys | ✅ `MEASURED` on the physical watch for capture, remote tap and the physical touch/BOOT/PWR paths ([bench record](docs/hardware/WATCH_CONTROL_2026-08-25.md)); swipes and scripted journeys so far only on the simulator |
 | **Design tokens** — twelve colour roles, day and night, with WCAG contrast arithmetic and a CI check that rejects a raw hex value in screen code | ✅ `IMPLEMENTED` |
 | **Fonts that cannot silently fail** — seven Nunito Sans subsets covering exactly the 177 codepoints of the charset; an undrawable character fails the build | ✅ `IMPLEMENTED` |
-| **Compass / heading** — the API exists and the screen turns the needle, so far only from simulator fixtures. Neither board ships a magnetometer; two modules are on the bench awaiting a retrofit | 🧪 [`MAGNETOMETER_RETROFIT`](docs/research/MAGNETOMETER_RETROFIT.md) |
+| **Compass / heading** — the API exists and the screen turns the trail, so far only from simulator fixtures. Neither board ships a magnetometer; two modules are on the bench awaiting a retrofit | 🧪 [`MAGNETOMETER_RETROFIT`](docs/research/MAGNETOMETER_RETROFIT.md) |
 | **Haptics** — typed capability descriptors, no driver code yet | 📐 `PLANNED` |
 | **Child Mode** — a separate UX for a six-year-old, not the adult UI with bigger fonts | 📐 `PLANNED` |
 | **Power** — one honest number: **413 mW** at the Waveshare's USB input, screen on at minimum brightness, idle on the provisioning screen, cell disconnected, 2026-09-05. No sleep figure, no screen-off figure, no per-rail split | 🔬 measuring |

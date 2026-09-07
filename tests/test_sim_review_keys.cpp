@@ -231,6 +231,23 @@ std::string layout() {
   return out;
 }
 
+// Everything `describe()` wrote about the screen's children, with the screen's
+// own box dropped. A theme that adds a backdrop adds it as the *first* children
+// — LVGL draws siblings in creation order and a background has to be under
+// everything — so a screen that gained one still ends with every row the other
+// theme had, byte for byte, and a theme that moved a label or reformatted a
+// distance does not.
+std::string rows(const std::string &described) {
+  const std::size_t screen_box = described.find(';');
+  return screen_box == std::string::npos ? described
+                                         : described.substr(screen_box + 1);
+}
+
+bool ends_with(const std::string &whole, const std::string &tail) {
+  return whole.size() >= tail.size() &&
+         whole.compare(whole.size() - tail.size(), tail.size(), tail) == 0;
+}
+
 // --------------------------------------------------------------------------
 // The navigation readout, which is what #432 is about.
 
@@ -251,28 +268,34 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
   const std::string day_layout = layout();
   CHECK(corner(day) == page_colour(ui::Theme::Day, board));
 
-  // Whether the two themes are two pictures on **this** panel.
+  // NIGHT ON THIS SCREEN IS MORE THAN A PALETTE, AND THAT IS NEW.
   //
-  // On an emissive panel they are not, and that is a decision rather than an
-  // accident: OD-16's `day_emissive` column reuses the night colours for every
-  // background and every text role, so day and night differ only in
-  // `AccentPrimary` — which this readout does not use. `ui/src/color.cpp` says
-  // so where the column is declared. The consequence is worth stating out loud
-  // because it is what a reviewer sees: on the Waveshare, `T` on `--nav`
-  // repaints the same colours, and a screenshot pair proves nothing there.
-  // This test therefore asserts the case it is in rather than accepting
-  // whichever it gets, so that a palette that grows a difference, or loses
-  // one, fails here instead of quietly changing what `T` means.
-  const bool two_pictures = page_colour(ui::Theme::Day, board) !=
-                            page_colour(ui::Theme::Night, board);
+  // It used to be exactly a palette, and on an emissive panel not even that:
+  // OD-16's `day_emissive` column reuses the night colours for every background
+  // and every text role, so the two differed only in `AccentPrimary`, which the
+  // readout did not use. This test carried a `two_pictures` flag for it, and
+  // asserted `corner()` and an identical layout on both sides.
+  //
+  // `ui/lvgl/nav_face.cpp` now draws the meadow and its scrim under `Night` and
+  // nothing at all under `Day`, the way the clock already did — the assertions
+  // below are the ones `the_clock_follows_the_theme_key` makes for the same
+  // reason, and its comment is the longer version of this one. Two consequences
+  // follow, and both are asserted rather than assumed: the corner pixel is
+  // painted art on `Night` and no longer the page role, and the two themes are
+  // two pictures on **both** boards whatever the palette does.
+  //
+  // What survives unchanged is the guarantee this test was written for, in a
+  // stronger form than `==` could state it: night's rows *end with* every row
+  // day had, so the backdrop is added ahead of them and not one label moved,
+  // resized or reworded underneath.
 
   // 1. `T` switches the readout to night.
   press('T');
   const std::vector<std::uint8_t> night = pixels();
-  CHECK(corner(night) == page_colour(ui::Theme::Night, board));
-  CHECK((night != day) == two_pictures);
-  // and switches nothing else: same geometry, same words.
-  CHECK(layout() == day_layout);
+  CHECK(night != day);
+  const std::string night_layout = layout();
+  CHECK(night_layout != day_layout);
+  CHECK(ends_with(rows(night_layout), rows(day_layout)));
 
   // 2. A second `T` puts it back, pixel for pixel. This is what catches a
   //    one-way switch, which is the shape a half-fix takes.
@@ -291,14 +314,14 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
 
   press('T');
   CHECK(l10n::locale() == l10n::Locale::Ru);
-  CHECK(corner(pixels()) == page_colour(ui::Theme::Night, board));
-  CHECK(layout() == russian_day);
+  CHECK(ends_with(rows(layout()), rows(russian_day)));
 
   press('L');
   CHECK(l10n::locale() == l10n::Locale::En);
-  // The language came back and the theme did not follow it home.
-  CHECK(corner(pixels()) == page_colour(ui::Theme::Night, board));
-  CHECK(layout() == day_layout);
+  // The language came back and the theme did not follow it home: still night,
+  // so still the backdrop, and the English rows underneath it.
+  CHECK(layout() != day_layout);
+  CHECK(ends_with(rows(layout()), rows(day_layout)));
 
   press('T');
   CHECK(pixels() == day);
