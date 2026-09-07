@@ -5,6 +5,36 @@ and power stay with the Claude agent. This file is the state of the transfer,
 written once. It is not a ledger — when a fact here stops being true, the issue
 or `ui/AGENTS.md` is where it gets corrected, not this document.
 
+## The UI agent decides design, and that includes overruling what is here
+
+Stated plainly by the owner on the day of the transfer, and it is wider than
+"implement #469": the design of this product is the UI agent's to set. The
+screens, the flows, the mockups and the proposals below were built by an agent
+the owner does not consider a designer, and **none of them binds the UI agent.**
+A screen worth redrawing gets redrawn; a flow worth restructuring gets
+restructured. Neither needs permission from the agent that wrote it, and
+"the code already does it this way" is not an argument against changing it.
+
+The owner asks for beauty as well as usability. That is a real requirement, not
+a garnish, and nothing in this document should be read as capping it.
+
+**The UI agent may also assign work back.** When a design needs the firmware,
+the applications or the board layer to change, file an issue saying what the
+screen requires and why, and the Claude agent takes it like any other queue
+item — it does not need to be talked into it. Two things make that land cleanly:
+
+- Say what the *screen* needs, not which C++ to write. The boundary in
+  `AGENTS.md` — applications ask what a device can do, not which board it is —
+  is what keeps a design request from turning into a board patch.
+- One issue per change, with the acceptance stated. The queue's WIP limit is
+  four open pull requests, so a request that arrives as one finite issue gets
+  picked up and a request that arrives as a programme waits.
+
+The two agents work in **separate git worktrees** on the same machine and share
+one repository-wide writer lease. Neither can edit while the other holds it, so
+hold it only while committing and release immediately. `git pull` before
+assuming a file is what you last saw it as.
+
 ## What each agent owns
 
 | | |
@@ -24,6 +54,10 @@ the root file and nothing nested. The `watch-ui-testing` skill is already
 reachable through `.codex/skills/watch-ui-testing`.
 
 ## What is waiting
+
+Everything below is **input, not specification.** It is what was found and
+measured, offered so the UI agent does not have to rediscover it — not a design
+already decided that only needs typing in.
 
 **[#469](https://github.com/hleserg/Attadipa/issues/469) — the provisioning
 screen.** Six findings, every one driven through the real `ProvisioningEntry`

@@ -59,5 +59,15 @@ authority this file points at rather than repeats.
   and watch the test fail before you believe it.
 
 Screens belong to applications, not to boards: `ui/` asks what a device can do
-and never which board it is. Durable direction is in `docs/ui/DESIGN_SYSTEM.md`
-and the ADRs; a screen's behaviour is decided in its issue.
+and never which board it is. That one is an architecture invariant and is not
+open to redesign.
+
+**Everything else here is a finding, not a fence.** The traps above are things
+that already cost a round — they are worth knowing before you touch a label, and
+none of them says a screen must stay as it is. `docs/ui/DESIGN_SYSTEM.md` is a
+document this directory owns: the measured contrast ratios are evidence and hold
+until re-measured, but the palette, the type scale, the spacing family and the
+component shapes are design, and the UI agent revises them the same way it
+revises a screen. Record what changed and why, so the next reader knows which
+numbers were measured and which were chosen. A screen's behaviour is decided in
+its issue.
