@@ -65,8 +65,6 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
       resolved(ColorRole::TextMuted, config.theme, config.pixel_cost);
   const lv_color_t accent =
       resolved(ColorRole::Navigation, config.theme, config.pixel_cost);
-  const lv_color_t warm =
-      resolved(ColorRole::AccentPrimary, config.theme, config.pixel_cost);
   const lv_color_t border =
       resolved(ColorRole::BorderSubtle, config.theme, config.pixel_cost);
   // THE TRAIL CHANGES ROLE WITH THE THEME, AND NOT FOR DECORATION. Night is a
@@ -191,7 +189,11 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   bare(title_);
   lv_label_set_text(title_, text.title);
   lv_obj_set_style_text_font(title_, body_font, LV_PART_MAIN);
-  lv_obj_set_style_text_color(title_, warm, LV_PART_MAIN);
+  // Teal, as it has always been, and the reason is now stronger than habit:
+  // the caveat line under the numbers is the only warm thing on this screen,
+  // because it is the one line that says what the watch does not know. A honey
+  // title puts a second warm line above it and makes the reader choose.
+  lv_obj_set_style_text_color(title_, accent, LV_PART_MAIN);
   lv_obj_set_style_text_letter_space(title_, m.px(Dp{3}), LV_PART_MAIN);
   // No opacity on it. Making it recessive by fading it looked right over the
   // meadow and put a measured contrast ratio out of date everywhere else —
@@ -246,17 +248,20 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   // THE MARKER IS CREATED AFTER THE TRAIL, WHICH IS THE WHOLE POINT. LVGL draws
   // siblings in creation order, so this letter is the last thing over the ring
   // and the trail cannot cover it. It carries its own backdrop for the same
-  // reason: at a due-north bearing the head of the trail arrives underneath it
-  // in both frames — the marker sits at minus the heading and the trail at the
-  // bearing minus it, so the two are apart by exactly the true bearing — and a
-  // glowing dot behind a small grey letter leaves neither readable.
+  // reason: at a due-north bearing the head of the trail arrives directly under
+  // it in both frames — the marker sits at minus the heading and the trail at
+  // the bearing minus it, so the two are apart by exactly the true bearing. The
+  // marker rides the ring and the head stops at 0.66 of the radius, so what
+  // arrives is the head's glow rather than the head, and a small grey letter
+  // inside a glow is still not a letter.
   //
-  // The backdrop is the page colour at half strength, and half is the whole
-  // point: the meadow inside the ring is darker than the page, so an opaque
-  // page-coloured disc was a grey pill sitting in the dial at every angle. At
-  // half it is a soft shadow under the letter on the meadow, nothing at all on
-  // the flat day ground, and still enough to take the glow off the head of the
-  // trail on the one bearing where the two arrive together.
+  // The backdrop is the page colour at half strength, and every part of that
+  // was measured on the 240x240 panel rather than chosen. Opaque, it is a grey
+  // pill sitting in the dial at every angle -- the meadow inside the ring is
+  // darker than the page. Absent, the letter's lower half disappears into the
+  // head's glow at a due-north bearing and reads as a smudge. At half it is a
+  // soft shadow under the letter on the meadow, nothing at all on the flat day
+  // ground, and still enough to hold the letter out of the glow.
   north_ = lv_label_create(screen);
   bare(north_);
   lv_label_set_text(north_, text.north);
@@ -346,11 +351,16 @@ void NavFace::point_trail(const apps::NavText &text) {
   // have been a measurement of today's two label widths.
   if (!text.has_arrow) {
     lv_obj_set_pos(north_, centre_x - lv_obj_get_width(north_) / 2,
-                   lv_obj_get_y(ring_) + lv_obj_get_height(ring_) / 12);
+                   lv_obj_get_y(ring_));
   } else {
-    // Its centre rides five twelfths of the ring's height out from the ring's
-    // centre, which is the same inset the branch above sets.
-    const double marker_orbit = lv_obj_get_height(ring_) * 5.0 / 12.0 -
+    // Its centre rides half the ring's height out from the ring's centre, less
+    // half its own, which is the same inset the branch above sets: the letter
+    // sits just inside the hairline rather than a twelfth of the way in. That
+    // twelfth put the marker at 0.69 of the radius and the head of the trail at
+    // 0.66, so at a due-north bearing the two arrived on the same pixels and
+    // the letter was a smudge inside a glow. On the 240x240 ring that is the
+    // difference between a marker and no marker.
+    const double marker_orbit = lv_obj_get_height(ring_) / 2.0 -
                                 lv_obj_get_height(north_) / 2.0;
     // The negation is on a `double`, not on the centidegrees: `%` promotes them
     // to `unsigned`, where unary minus is a wrap to about 4.29 billion rather
@@ -407,11 +417,13 @@ void NavFace::point_trail(const apps::NavText &text) {
   // it. The needle cleared the marker by stopping at 0.62 of the radius; a dot
   // is wider than a line was, and at `--nav-state far`, whose bearing is due
   // north, the head covered the "С" outright — on 240x240 it erased it. Pulling
-  // the head in far enough to clear the marker's box costs every other angle a
-  // stub of a trail, because the obstacle is one small box at one angle and not
-  // an annulus. So the marker is drawn over the trail instead, on a backdrop of
-  // its own; see `build()`. These two fractions are the needle's, kept because
-  // they are what was composed against both panels.
+  // the head in far enough to clear the marker costs every other angle a stub
+  // of a trail, because the obstacle is one small box at one angle and not an
+  // annulus. So the marker moved out to the ring instead, and is drawn over the
+  // trail on a backdrop of its own for the glow that still reaches it; see
+  // `build()`. The tail is the needle's, unchanged. The head is not: the needle
+  // stopped at 0.62 to keep clear of a marker that sat at 0.69, and the marker
+  // is no longer there.
   const double head = radius * 0.66;
   const double tail = radius * 0.24;
   const double span = static_cast<double>(trail_dots() - 1);
