@@ -408,9 +408,9 @@ std::vector<Blob> circles_on_the_dial(bool laid_out) {
 // the scenario cannot leave this test asserting an angle nothing draws.
 //
 // THREE DIGITS ARE NOT ENOUGH TO NAME IT, and the degree sign is what makes
-// this safe to reuse. `apps::format_navigation` prints anything under a
-// kilometre as `"%u m"` -- `apps/src/navigation.cpp:53` --
-// "  if (metres < 1000) {" -- so a target a few hundred metres away puts
+// this safe to reuse. `apps::format_navigation` formats anything under a
+// kilometre in metres -- `apps/src/navigation.cpp:54` --
+// "  if (metres < 1000U) {" -- so a target a few hundred metres away puts
 // "249 m" in the distance row, `distance_` is created before `bearing_`, and a
 // scan for three leading digits returns the distance while reading exactly like
 // a bearing. The bearing is the only row that follows its digits with U+00B0.
