@@ -317,6 +317,107 @@ reader ends up citing the one that was not updated.
   since 2026-08-22, which recorded the layout as established from the reader and
   the size tables but not from the writer.
 
+### A contact record carries a remote node's coordinate at bytes 136–143, scaled ×10⁶
+
+- **Claim:** `RESP_CODE_CONTACT` (3) and `PUSH_CODE_NEW_ADVERT` (0x8A) are the
+  same 148-byte frame: code, 32-byte public key, type, flags, `out_path_len`, 64
+  bytes of path, 32 bytes of name, then `uint32 last_advert_timestamp`,
+  `int32 gps_lat`, `int32 gps_lon` and `uint32 lastmod`. The two coordinates are
+  degrees ×10⁶ written with `memcpy`, so in the node's native byte order — a
+  hundred times finer than the `LPP_GPS` record on the telemetry path.
+- **Source:** upstream `examples/companion_radio/MyMesh.cpp`,
+  `MyMesh::writeContactRespFrame`, against `ContactInfo` in
+  `src/helpers/ContactInfo.h`.
+- **Checked:** 2026-09-07, at both `d92964352441e53b93e8667b802e04f6e072b39e`
+  and `0679dbeffc504d562d2f09eb072fdc223f8ffc2a` — both files byte-identical
+  between them.
+- **Independently corroborated:** `meshcore.js@9e76c51`'s `onContactResponse`
+  reads the same ten fields in the same order, naming the last three `advLat`,
+  `advLon`, `lastMod`; and this repository already requires all 148 bytes before
+  it will read one —
+  `link/src/meshcore_companion.cpp:587` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+  reading the key at 1 and the name at 100 and discarding 132–147.
+- **Not verified:** no contact frame has been read off a physical node.
+  `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### An advert without a coordinate advances a contact's timestamps and leaves the old coordinate
+
+- **Claim:** `BaseChatMesh::onAdvertRecv` writes `gps_lat`/`gps_lon` **only**
+  under `if (parser.hasLatLon())`, then writes `last_advert_timestamp` and
+  `lastmod` unconditionally. A node that shared a coordinate and then stopped
+  leaves the stale pair in place under two fresh timestamps. **Neither timestamp
+  is a coordinate age**, and there are two further reasons: `lastmod` is also
+  written on a plain text message, a signed message and a path update, and the
+  two fields are on different clocks — upstream labels them
+  `// by THEIR clock` and `// by OUR clock` in `ContactInfo`.
+- **Source:** upstream `src/helpers/BaseChatMesh.cpp`, `onAdvertRecv` and
+  `onPeerDataRecv`/`onContactPathRecv`; `src/helpers/ContactInfo.h`.
+- **Checked:** 2026-09-07, identical at the pin and at `0679dbe`.
+- **Consequence:** [ADR-0020](../adr/0020-remote-target-position-source.md)
+  decision 4 forbids either field from reaching `age_at_source_ms`.
+- **Not verified on hardware** — the capture that would confirm it is experiment
+  4 of [REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md)
+  §12.3. `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### `PUSH_CODE_NEW_ADVERT` is the frame for a contact the node did *not* store
+
+- **Claim:** `is_new` in `BaseChatMesh::onAdvertRecv` is declared `false` and
+  never assigned `true` on the path that stores a contact. The three calls
+  passing a literal `true` are the early returns where the contact is refused a
+  slot — manual-add, the hop limit, or a full table. So `0x8A` (148 bytes, with
+  the coordinate) announces a contact that is **not** in `contacts[]`, and
+  `0x80` (33 bytes, a bare key) announces every stored one, **including one just
+  created**. With stock defaults — `manual_add_contacts` is 0 and
+  `shouldAutoAddContactType` then returns `true` unconditionally — a client that
+  waits for `0x8A` to bring it a coordinate waits forever.
+- **Source:** upstream `src/helpers/BaseChatMesh.cpp` and
+  `examples/companion_radio/MyMesh.cpp`, `MyMesh::onDiscoveredContact`.
+- **Checked:** 2026-09-07, identical at the pin and at `0679dbe`.
+- **Independently corroborated:** `meshcore.js@9e76c51`'s own constants annotate
+  `Advert: 0x80` as *when companion is set to auto add contacts* and
+  `NewAdvert: 0x8A` as *when companion is set to manually add contacts*.
+- **Not verified on hardware.** It is experiment 1 of
+  [REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md)
+  §12.3. `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### A companion node has no periodic advert at all
+
+- **Claim:** `advert_interval` and `flood_advert_interval` are commented out of
+  the companion's `NodePrefs` structure — they exist for `simple_repeater` and
+  `simple_room_server`, which schedule timers from them, and the companion role
+  schedules none. `MyMesh::advert()` has exactly three callers, all a key press
+  or a double press in one of the three UI tasks, and it sends `sendZeroHop`.
+  The only other transmit is `CMD_SEND_SELF_ADVERT` (7) from the node's own
+  client. So a companion's advert cadence is a person pressing a button.
+- **Source:** upstream `examples/companion_radio/NodePrefs.h`,
+  `examples/companion_radio/MyMesh.cpp`, and `ui-new`, `ui-tiny`, `ui-orig`
+  `UITask.cpp`.
+- **Checked:** 2026-09-07, at `0679dbe`; `NodePrefs.h` and `MyMesh.cpp` are
+  identical at the pin.
+- **Scope:** **vanilla only.** It is not asserted about the V4.3's fork, whose
+  source is not published (M28) and whose release notes describe its own advert
+  controls.
+- **Not verified on hardware.** Filed as **M29**.
+
+### `CMD_ADD_UPDATE_CONTACT` lets any client write a contact's coordinate
+
+- **Claim:** `MyMesh::updateContactFromFrame` copies `last_advert_timestamp`,
+  `gps_lat` and `gps_lon` out of the client's frame into the contact, and
+  `MyMesh` then sets `lastmod` and schedules a persist. Any BLE client of a
+  companion can therefore write any coordinate against any public key, and
+  nothing in the record marks the result as client-written rather than
+  advert-derived. The advert signature and the replay gate protect adverts; they
+  do not protect this field.
+- **Source:** upstream `examples/companion_radio/MyMesh.cpp`,
+  `updateContactFromFrame` and the `CMD_ADD_UPDATE_CONTACT` branch.
+- **Checked:** 2026-09-07, identical at the pin and at `0679dbe`.
+- **Independently corroborated:** `meshcore.js@9e76c51` exposes the write as
+  `sendCommandAddUpdateContact(..., lastAdvert, advLat, advLon)`.
+- **Consequence:** a contact coordinate is authenticated as *what our companion
+  holds for that key*, not as *what that node signed*, and
+  [ADR-0020](../adr/0020-remote-target-position-source.md) is written to the
+  weaker claim. In-practice behaviour of other clients is **M31**.
+
 ### A wrong MeshCore node's bond evicts the pinned node's
 
 - **Claim:** with a passkey armed, a MeshCore node that this watch is *not*
@@ -846,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:1957`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2058`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1932,7 +2033,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:829`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:930`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.

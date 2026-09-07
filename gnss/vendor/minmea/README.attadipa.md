@@ -5,7 +5,7 @@ from [kosma/minmea](https://github.com/kosma/minmea) at commit
 `2dd2cd11a359de5583e68053182d5bbf29725934`. Nothing in Attadipa edits them, and
 nothing should.
 
-`docs/research/REUSE_LEDGER.md:529` — "**Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at"
+`docs/research/REUSE_LEDGER.md:530` — "**Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at"
 
 That decision chose this library *because* keeping it byte-identical means the
 known open bug arrives as a version bump rather than as a merge.
