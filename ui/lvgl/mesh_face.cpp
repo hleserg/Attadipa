@@ -1,0 +1,477 @@
+#include "attadipa/ui/mesh_face.h"
+
+#include <cstring>
+
+#include "attadipa/ui/tokens.h"
+#include "attadipa_fonts.h"
+
+namespace attadipa::ui {
+namespace {
+
+lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost) {
+  const auto value = color(role, theme, pixel_cost);
+  return value ? lv_color_hex(value->packed()) : lv_color_black();
+}
+
+void bare(lv_obj_t *object) {
+  lv_obj_remove_style_all(object);
+  lv_obj_remove_flag(object, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(object, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(object, LV_OBJ_FLAG_IGNORE_LAYOUT);
+}
+
+lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, lv_color_t colour) {
+  lv_obj_t *object = lv_label_create(parent);
+  bare(object);
+  lv_obj_set_style_text_font(object, font, LV_PART_MAIN);
+  lv_obj_set_style_text_color(object, colour, LV_PART_MAIN);
+  return object;
+}
+
+// Empty means "not there", so it means "not drawn". This is the whole of the
+// honest-state rule as it reaches the pixels: `apps::MeshText` leaves a field
+// empty rather than inventing a placeholder, and every field goes through here.
+void show(lv_obj_t *object, const char *text) {
+  if (text == nullptr || text[0] == '\0') {
+    lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(object, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text(object, text);
+}
+
+void hide(lv_obj_t *object) { lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN); }
+
+void place(lv_obj_t *object, std::int32_t x, std::int32_t y) {
+  lv_obj_align(object, LV_ALIGN_TOP_LEFT, x, y);
+}
+
+// The colour a state is spoken in.
+//
+// `Danger` is `std::nullopt` in every column of the token table -- there is no
+// red in either owner palette and inventing one is a visual-identity decision
+// that is not this face's to take (`ui/src/color.cpp:67` —
+// "    {ColorRole::Danger, ColorKind::Foreground, std::nullopt, std::nullopt, std::nullopt},").
+// So a severed link is Warning, which is the strongest thing the palette says.
+ColorRole role_for(apps::MeshLink link) {
+  switch (link) {
+  case apps::MeshLink::Linked:
+    return ColorRole::Success;
+  case apps::MeshLink::Reaching:
+    return ColorRole::AccentPrimary;
+  case apps::MeshLink::Broken:
+  case apps::MeshLink::TurnedAway:
+    return ColorRole::Warning;
+  case apps::MeshLink::NoNode:
+  case apps::MeshLink::NoRadio:
+  case apps::MeshLink::Silent:
+  case apps::MeshLink::Resting:
+    return ColorRole::TextMuted;
+  }
+  return ColorRole::TextMuted;
+}
+
+} // namespace
+
+void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
+                     const apps::MeshText &text) {
+  clear();
+  screen_ = screen;
+  config_ = config;
+
+  // The screen object outlives every face and carries the last one's styles
+  // into the next -- NavFace leaves it a flex column, and a flex parent ignores
+  // every absolute alignment below it.
+  lv_obj_remove_style_all(screen_);
+  lv_obj_remove_flag(screen_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(
+      screen_, resolved(ColorRole::BackgroundPrimary, config.theme, config.pixel_cost),
+      LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, LV_PART_MAIN);
+
+  const bool big = large();
+  const lv_color_t muted =
+      resolved(ColorRole::TextMuted, config.theme, config.pixel_cost);
+  const lv_color_t primary =
+      resolved(ColorRole::TextPrimary, config.theme, config.pixel_cost);
+  const lv_color_t accent =
+      resolved(ColorRole::AccentPrimary, config.theme, config.pixel_cost);
+
+  const lv_font_t *state_font =
+      big ? &attadipa_nunito_sans_28 : &attadipa_nunito_sans_20;
+  const lv_font_t *body_font =
+      big ? &attadipa_nunito_sans_20 : &attadipa_nunito_sans_16;
+  const lv_font_t *small_font =
+      big ? &attadipa_nunito_sans_16 : &attadipa_nunito_sans_14;
+  const lv_font_t *tiny_font = &attadipa_nunito_sans_14;
+
+  // The screen's own text font, not decoration: `lv_obj_remove_style_all()`
+  // above took the inherited one with it, and what is left is LVGL's built-in
+  // default, which has no Cyrillic in it at all. Every other face sets this for
+  // the same reason -- `ui/lvgl/nav_face.cpp:113` —
+  // "  lv_obj_set_style_text_font(screen, body_font, LV_PART_MAIN);".
+  lv_obj_set_style_text_font(screen_, body_font, LV_PART_MAIN);
+
+  title_ = label(screen_, tiny_font, muted);
+  lv_obj_set_style_text_letter_space(title_, big ? 4 : 3, LV_PART_MAIN);
+
+  watch_ = lv_obj_create(screen_);
+  bare(watch_);
+  lv_obj_set_style_bg_opa(watch_, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_color(watch_, primary, LV_PART_MAIN);
+  lv_obj_set_style_border_width(watch_, big ? 3 : 2, LV_PART_MAIN);
+  lv_obj_set_style_border_opa(watch_, LV_OPA_COVER, LV_PART_MAIN);
+
+  watch_dot_ = lv_obj_create(screen_);
+  bare(watch_dot_);
+  lv_obj_set_style_radius(watch_dot_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(watch_dot_, primary, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(watch_dot_, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(watch_dot_, 0, LV_PART_MAIN);
+
+  for (lv_obj_t *&rung : rung_) {
+    rung = lv_obj_create(screen_);
+    bare(rung);
+    lv_obj_set_style_border_width(rung, 0, LV_PART_MAIN);
+  }
+
+  halo_ = lv_obj_create(screen_);
+  bare(halo_);
+  lv_obj_set_style_radius(halo_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(halo_, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(halo_, 2, LV_PART_MAIN);
+
+  socket_ = lv_obj_create(screen_);
+  bare(socket_);
+  lv_obj_set_style_radius(socket_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+
+  intruder_ = lv_obj_create(screen_);
+  bare(intruder_);
+  lv_obj_set_style_radius(intruder_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+  lv_obj_set_style_border_width(intruder_, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(intruder_, LV_OPA_COVER, LV_PART_MAIN);
+
+  state_ = label(screen_, state_font, muted);
+  lv_obj_set_style_text_letter_space(state_, big ? 2 : 1, LV_PART_MAIN);
+  note_ = label(screen_, small_font, muted);
+  way_out_ = label(screen_, small_font, accent);
+  node_key_ = label(screen_, body_font, muted);
+  node_name_ = label(screen_, small_font, primary);
+  pinned_ = label(screen_, small_font, muted);
+  answered_ = label(screen_, small_font,
+                    resolved(ColorRole::Warning, config.theme, config.pixel_cost));
+
+  rule_ = lv_obj_create(screen_);
+  bare(rule_);
+  lv_obj_set_style_border_width(rule_, 0, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(rule_, muted, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(rule_, LV_OPA_20, LV_PART_MAIN);
+
+  msg_heading_ = label(screen_, tiny_font, muted);
+  lv_obj_set_style_text_letter_space(msg_heading_, 2, LV_PART_MAIN);
+  msg_ = label(screen_, body_font, primary);
+  msg_meta_ = label(screen_, tiny_font, muted);
+  for (int i = 0; i < 3; ++i) {
+    value_[i] = label(screen_, body_font, primary);
+    label_[i] = label(screen_, tiny_font, muted);
+    lv_obj_set_style_text_letter_space(label_[i], 1, LV_PART_MAIN);
+  }
+
+  built_ = true;
+  update(text);
+}
+
+void MeshFace::update(const apps::MeshText &text) {
+  if (!built_) {
+    return;
+  }
+  lay_out(text);
+  paint_channel(text);
+}
+
+// Where everything goes, and whether it goes anywhere at all.
+//
+// Two compositions, not one scaled: with a link the glyph shares the panel with
+// what came over it, and without one the glyph moves down into the space the
+// message block would have used. That space is deliberately left empty --
+// filling it with an empty heading and a row of zeroes is what the screen used
+// to do, and it is what made a watch with no radio look like a watch with a bad
+// signal.
+void MeshFace::lay_out(const apps::MeshText &text) {
+  const bool big = large();
+  const bool linked = text.has_message;
+  const auto w = static_cast<std::int32_t>(config_.width_px);
+
+  show(title_, text.title);
+  place(title_, big ? 32 : 20, big ? 24 : 12);
+
+  show(state_, text.state);
+  lv_obj_set_style_text_color(
+      state_, resolved(role_for(text.link), config_.theme, config_.pixel_cost),
+      LV_PART_MAIN);
+  lv_obj_set_width(state_, w);
+  lv_obj_set_style_text_align(state_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+  const std::int32_t margin = big ? 32 : 20;
+  lv_obj_set_width(note_, w);
+  lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_set_width(way_out_, w);
+  lv_obj_set_style_text_align(way_out_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+  if (linked) {
+    place(state_, 0, big ? 196 : 84);
+    // 240 px spends the row under the state word on the node key, which is the
+    // identity. Drawing the note there too put one on top of the other.
+    if (big) {
+      show(note_, text.note);
+      place(note_, 0, 236);
+    } else {
+      hide(note_);
+    }
+
+    show(node_key_, text.node_key);
+    show(node_name_, text.node_name);
+    place(node_key_, margin, big ? 284 : 112);
+    place(node_name_, margin, big ? 312 : 132);
+    if (!big) {
+      // 240 px has room for the key or the name, not both, and the key is the
+      // identity -- the two bench nodes had interchangeable names.
+      hide(node_name_);
+      lv_obj_set_width(node_key_, w);
+      lv_obj_set_style_text_align(node_key_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+      place(node_key_, 0, 112);
+    } else {
+      lv_obj_set_width(node_key_, LV_SIZE_CONTENT);
+      lv_obj_set_style_text_align(node_key_, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+    }
+    hide(pinned_);
+    hide(answered_);
+    hide(way_out_);
+
+    lv_obj_remove_flag(rule_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(rule_, w - margin * 2, 1);
+    place(rule_, margin, big ? 352 : 136);
+
+    show(msg_heading_, text.message_heading);
+    lv_obj_set_style_text_color(
+        msg_heading_,
+        resolved(text.live ? ColorRole::TextMuted : ColorRole::AccentPrimary,
+                 config_.theme, config_.pixel_cost),
+        LV_PART_MAIN);
+    show(msg_, text.message);
+    lv_obj_set_style_text_opa(msg_, text.live ? LV_OPA_COVER : LV_OPA_60,
+                              LV_PART_MAIN);
+    lv_obj_set_width(msg_, w - margin * 2);
+    lv_label_set_long_mode(msg_, LV_LABEL_LONG_DOT);
+
+    if (big) {
+      place(msg_heading_, margin, 368);
+      place(msg_, margin, 394);
+    } else {
+      lv_obj_set_style_text_align(msg_heading_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+      lv_obj_set_width(msg_heading_, w);
+      lv_obj_set_style_text_align(msg_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+      place(msg_heading_, 0, 148);
+      place(msg_, margin, 168);
+    }
+
+    // Sender and delivery share a line: on their own neither is evidence of
+    // anything, and together they are the whole story of one message.
+    if (text.sender[0] != '\0') {
+      lv_label_set_text_fmt(msg_meta_, "%s  ·  %s", text.sender, text.delivery);
+      lv_obj_remove_flag(msg_meta_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      show(msg_meta_, text.delivery);
+    }
+    lv_obj_set_width(msg_meta_, w - margin * 2);
+    lv_label_set_long_mode(msg_meta_, LV_LABEL_LONG_DOT);
+    if (big) {
+      place(msg_meta_, margin, 426);
+    } else {
+      hide(msg_meta_);  // 240 px spends its last rows on the measurements
+    }
+
+    const std::int32_t column[3] = {big ? 32 : 22, big ? 155 : 98,
+                                    big ? 268 : 174};
+    const char *values[3] = {text.snr, text.peers, text.mtu};
+    const char *labels[3] = {text.snr_label, text.peers_label, text.mtu_label};
+    for (int i = 0; i < 3; ++i) {
+      show(value_[i], values[i]);
+      show(label_[i], labels[i]);
+      lv_obj_set_style_text_opa(value_[i], text.live ? LV_OPA_COVER : LV_OPA_50,
+                                LV_PART_MAIN);
+      place(value_[i], column[i], big ? 452 : 192);
+      place(label_[i], column[i], big ? 478 : 214);
+    }
+  } else {
+    place(state_, 0, big ? 262 : 132);
+    show(note_, text.note);
+    place(note_, 0, big ? 304 : 162);
+
+    hide(node_key_);
+    hide(node_name_);
+    hide(rule_);
+    hide(msg_heading_);
+    hide(msg_);
+    hide(msg_meta_);
+    for (int i = 0; i < 3; ++i) {
+      hide(value_[i]);
+      hide(label_[i]);
+    }
+
+    show(pinned_, text.pinned);
+    show(answered_, text.answered);
+    lv_obj_set_width(pinned_, w);
+    lv_obj_set_width(answered_, w);
+    lv_obj_set_style_text_align(pinned_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_align(answered_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    place(pinned_, 0, big ? 350 : 162);
+    place(answered_, 0, big ? 376 : 184);
+    if (!big && text.pinned[0] != '\0') {
+      hide(note_);  // the two key lines say it, and 240 px has room for one
+    }
+
+    show(way_out_, text.way_out);
+    place(way_out_, 0, big ? 444 : 210);
+  }
+}
+
+// The glyph. Everything here is derived from the panel and from `text.link`;
+// nothing is derived from a string, so a translation cannot move a pixel.
+void MeshFace::paint_channel(const apps::MeshText &text) {
+  const bool big = large();
+  const bool linked = text.has_message;
+  const auto cx = static_cast<std::int32_t>(config_.width_px) / 2;
+  const std::int32_t cy = linked ? (big ? 128 : 58) : (big ? 176 : 78);
+  const std::int32_t r = linked ? (big ? 26 : 15) : (big ? 30 : 18);
+  const std::int32_t span = big ? 250 : 150;
+  const lv_color_t colour =
+      resolved(role_for(text.link), config_.theme, config_.pixel_cost);
+  const lv_color_t muted =
+      resolved(ColorRole::TextMuted, config_.theme, config_.pixel_cost);
+
+  // A watch with nothing to reach is not sitting at the left end of a link that
+  // is not drawn -- it is on its own, in the middle.
+  const bool alone = text.link == apps::MeshLink::NoNode;
+  const std::int32_t x0 = alone ? cx : cx - span / 2;
+  const std::int32_t x1 = cx + span / 2;
+
+  const std::int32_t side = r * 18 / 10;
+  lv_obj_set_size(watch_, side, side);
+  lv_obj_set_style_radius(watch_, r * 55 / 100, LV_PART_MAIN);
+  place(watch_, x0 - side / 2, cy - side / 2);
+  const std::int32_t dot = r * 44 / 100;
+  lv_obj_set_size(watch_dot_, dot, dot);
+  place(watch_dot_, x0 - dot / 2, cy - dot / 2);
+
+  if (alone) {
+    for (lv_obj_t *rung : rung_) {
+      hide(rung);
+    }
+    hide(socket_);
+    hide(halo_);
+    hide(intruder_);
+    return;
+  }
+
+  const std::int32_t thickness = big ? 5 : 4;
+  const std::int32_t gap = span - r * 26 / 10;
+  const std::int32_t step = gap / apps::kChannelRungs;
+  for (unsigned i = 0; i < apps::kChannelRungs; ++i) {
+    lv_obj_t *rung = rung_[i];
+    // THE GAP IS THE MESSAGE. A severed link is not a dim link: the middle
+    // segment is not drawn at all, so "broken" reads at arm's length and
+    // without colour, which is the one state a wearer has to act on.
+    if (text.link == apps::MeshLink::Broken && i == apps::kChannelRungs / 2) {
+      hide(rung);
+      continue;
+    }
+    const bool lit = i < text.rungs_lit;
+    lv_obj_remove_flag(rung, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_size(rung, step * 64 / 100, thickness);
+    lv_obj_set_style_radius(rung, thickness / 2, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(rung, lit ? colour : muted, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(rung,
+                            text.link == apps::MeshLink::Resting ? LV_OPA_30
+                            : lit                                ? LV_OPA_COVER
+                                                                 : LV_OPA_20,
+                            LV_PART_MAIN);
+    place(rung, x0 + r * 13 / 10 + static_cast<std::int32_t>(i) * step + step * 18 / 100,
+          cy - thickness / 2);
+  }
+
+  lv_obj_remove_flag(socket_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_size(socket_, r * 2, r * 2);
+  place(socket_, x1 - r, cy - r);
+  const bool full = text.link == apps::MeshLink::Linked;
+  lv_obj_set_style_bg_color(socket_, colour, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(socket_, full ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(socket_, full ? 0 : (big ? 3 : 2), LV_PART_MAIN);
+  lv_obj_set_style_border_color(socket_, colour, LV_PART_MAIN);
+  // An empty socket that is *waiting* and one that is *not coming* are drawn at
+  // different strengths: the wearer of a watch that is reaching should be able
+  // to tell it apart from one that has nothing to reach for.
+  lv_obj_set_style_border_opa(
+      socket_,
+      (text.link == apps::MeshLink::NoRadio ||
+       text.link == apps::MeshLink::TurnedAway ||
+       text.link == apps::MeshLink::Resting)
+          ? LV_OPA_40
+          : LV_OPA_COVER,
+      LV_PART_MAIN);
+
+  if (full) {
+    lv_obj_remove_flag(halo_, LV_OBJ_FLAG_HIDDEN);
+    const std::int32_t halo = r * 31 / 10;
+    lv_obj_set_size(halo_, halo, halo);
+    lv_obj_set_style_border_color(halo_, colour, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(halo_, LV_OPA_30, LV_PART_MAIN);
+    place(halo_, x1 - halo / 2, cy - halo / 2);
+  } else {
+    hide(halo_);
+  }
+
+  if (text.link == apps::MeshLink::TurnedAway) {
+    lv_obj_remove_flag(intruder_, LV_OBJ_FLAG_HIDDEN);
+    const std::int32_t size = r * 116 / 100;
+    lv_obj_set_size(intruder_, size, size);
+    lv_obj_set_style_bg_color(intruder_, colour, LV_PART_MAIN);
+    place(intruder_, x1 - size / 2, cy + r * 205 / 100 - size / 2);
+  } else {
+    hide(intruder_);
+  }
+}
+
+void MeshFace::clear() {
+  if (screen_ != nullptr) {
+    lv_obj_clean(screen_);
+  }
+  screen_ = nullptr;
+  title_ = nullptr;
+  watch_ = nullptr;
+  watch_dot_ = nullptr;
+  for (lv_obj_t *&rung : rung_) {
+    rung = nullptr;
+  }
+  socket_ = nullptr;
+  halo_ = nullptr;
+  intruder_ = nullptr;
+  state_ = nullptr;
+  note_ = nullptr;
+  way_out_ = nullptr;
+  node_key_ = nullptr;
+  node_name_ = nullptr;
+  pinned_ = nullptr;
+  answered_ = nullptr;
+  rule_ = nullptr;
+  msg_heading_ = nullptr;
+  msg_ = nullptr;
+  msg_meta_ = nullptr;
+  for (int i = 0; i < 3; ++i) {
+    value_[i] = nullptr;
+    label_[i] = nullptr;
+  }
+  built_ = false;
+}
+
+} // namespace attadipa::ui

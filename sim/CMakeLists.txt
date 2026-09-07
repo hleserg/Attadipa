@@ -20,6 +20,7 @@ add_library(attadipa_sim_screens
     clock_screen.cpp
     diagnostic_screen.cpp
     labels.cpp
+    mesh_screen.cpp
     nav_screen.cpp
     review_keys.cpp
 )

@@ -663,3 +663,148 @@ ru = "З"
 [nav_cardinal_nw]
 en = "NW"
 ru = "СЗ"
+
+# --- The mesh screen -------------------------------------------------------
+#
+# The state words are what the link *is*, not what the transport enumerator is
+# called. `TransportPhase::Attached` is a true statement about a peripheral and
+# a useless one on a wrist: the radio being powered with nobody on it is
+# "silent", and that is the word that tells a wearer whether to keep walking or
+# to go and fix something. The mapping lives in `apps/src/mesh.cpp`.
+
+[mesh_title]
+en = "MESH"
+ru = "МЕШ"
+
+[mesh_state_no_node]
+en = "NO NODE"
+ru = "НЕТ УЗЛА"
+
+[mesh_state_no_radio]
+en = "NO RADIO"
+ru = "НЕТ РАДИО"
+
+[mesh_state_silent]
+en = "SILENT"
+ru = "ТИШИНА"
+
+[mesh_state_reaching]
+en = "REACHING"
+ru = "СВЯЗЫВАЕТСЯ"
+
+[mesh_state_linked]
+en = "LINKED"
+ru = "НА СВЯЗИ"
+
+[mesh_state_resting]
+en = "RESTING"
+ru = "СПИТ"
+
+[mesh_state_broken]
+en = "BROKEN"
+ru = "СЛОМАНО"
+
+[mesh_state_turned_away]
+en = "TURNED AWAY"
+ru = "ЧУЖОЙ УЗЕЛ"
+
+[mesh_note_no_node]
+en = "no node is named yet"
+ru = "узел ещё не назначен"
+
+[mesh_note_no_radio]
+en = "this watch has no mesh radio"
+ru = "в этих часах нет меш-радио"
+
+[mesh_note_silent]
+en = "the radio is up, nobody is talking"
+ru = "радио включено, никто не отвечает"
+
+[mesh_note_reaching]
+en = "handshaking"
+ru = "устанавливает связь"
+
+[mesh_note_resting]
+en = "quiesced for sleep"
+ru = "усыплено намеренно"
+
+[mesh_note_broken]
+en = "needs a reset, not a retry"
+ru = "нужен сброс, а не повтор"
+
+[mesh_note_turned_away]
+en = "another node answered"
+ru = "ответил другой узел"
+
+# The way out of a state the wearer can actually leave. Both routes are the
+# same long press on the clock, which is what reaches the entry screen's node
+# field -- `firmware/main/waveshare_board.cpp:1033` — "  show_page(Page::Entry);".
+# Both are one line at 14 px on a 240 px panel, which is what caps them at
+# about thirty characters. The first Russian pair ran to thirty-five, wrapped,
+# and put its second line below the bottom of the T-Watch display.
+[mesh_way_out_name_node]
+en = "hold the clock to name one"
+ru = "назначить: зажмите циферблат"
+
+[mesh_way_out_change_node]
+en = "hold the clock to change it"
+ru = "сменить: зажмите циферблат"
+
+[mesh_pinned]
+en = "pinned %s"
+ru = "закреплён %s"
+
+[mesh_answered]
+en = "answered %s"
+ru = "ответил %s"
+
+# "MESSAGE" is what is arriving now; "LAST KNOWN" is the same three fields when
+# the link is deliberately down. There is no age in `core::MeshStatus` to print,
+# so the honest claim is not "3 minutes ago" -- it is that this is the last
+# thing heard rather than the current state of a link that is off.
+[mesh_message_heading]
+en = "MESSAGE"
+ru = "СООБЩЕНИЕ"
+
+[mesh_message_last_known]
+en = "LAST KNOWN"
+ru = "ПОСЛЕДНЕЕ"
+
+[mesh_no_message]
+en = "no message"
+ru = "нет сообщений"
+
+[mesh_label_snr]
+en = "SNR dB"
+ru = "ОСШ дБ"
+
+[mesh_label_peers]
+en = "PEERS"
+ru = "УЗЛЫ"
+
+[mesh_label_mtu]
+en = "MTU"
+ru = "MTU"
+
+# Delivery is the third field of the message block, and it reached the panel as
+# `core::to_string(MeshDelivery)` -- the same defect as the transport phase, one
+# line further down.
+[mesh_delivery_none]
+en = "not sent"
+ru = "не отправлено"
+
+[mesh_delivery_queued]
+en = "queued"
+ru = "в очереди"
+
+[mesh_delivery_accepted]
+en = "accepted"
+ru = "принято"
+
+[mesh_delivery_confirmed]
+en = "delivered"
+ru = "доставлено"
+
+[mesh_delivery_failed]
+en = "failed"
+ru = "не доставлено"

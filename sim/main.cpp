@@ -17,6 +17,7 @@
 #include "clock_screen.h"
 #include "debug_server.h"
 #include "diagnostic_screen.h"
+#include "mesh_screen.h"
 #include "nav_screen.h"
 #include "options.h"
 #include "png_writer.h"
@@ -184,6 +185,12 @@ int main(int argc, char **argv) {
     }
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_nav_screen);
     attadipa::sim::build_nav_screen(options.board, options.theme);
+  } else if (options.mesh_screen) {
+    if (!attadipa::sim::stage_mesh_scenario(options.mesh_state)) {
+      return 2;
+    }
+    l10n::set_locale_changed_handler(attadipa::sim::rebuild_mesh_screen);
+    attadipa::sim::build_mesh_screen_sim(options.board, options.theme);
   } else if (options.clock_screen || options.provision_screen) {
     apps::ClockState state;
     state.time = {
