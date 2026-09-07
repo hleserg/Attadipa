@@ -85,6 +85,15 @@
 // digit, and a long enough run of them would age a live fix past 30 s and show
 // `Stale` for a receiver that is solving perfectly well.
 //
+// The age, and *only* the age. Everything this driver states about the epoch —
+// the `FixType` the three sentences agreed on, the satellite count, the
+// dilution — is adopted on a repeated coordinate like any other sample. That is
+// not a nicety: a receiver losing its fix goes on publishing the coordinate it
+// last solved and downgrades the verdict beside it, so 3D → 2D → `NoFix` at
+// bytes that never move is the ordinary shape of a lost fix on this wire rather
+// than an edge case. Until #470 the whole sample was discarded on the repeat and
+// that downgrade never reached a screen.
+//
 // It is left alone because the measurement says it does not happen here: over
 // the 6.5 MB of bench capture from both modules, exact epoch-to-epoch repeats
 // of the GGA coordinate run at 0–8.1% and **the longest consecutive run is two

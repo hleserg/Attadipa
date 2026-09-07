@@ -72,6 +72,19 @@ void deliver(gnss::NmeaReceiver& receiver, const std::string& line)
     receiver.feed(reinterpret_cast<const std::uint8_t*>(wire.data()), wire.size(), g_now);
 }
 
+// The same, for a sentence this test composes rather than quotes. The checksum
+// is computed because the point of these cases is the *field values*, and a
+// hand-typed `*XX` that drifts one nibble from them turns the case into a test
+// of the checksum path, silently and in the direction that passes.
+void deliver_body(gnss::NmeaReceiver& receiver, const std::string& body)
+{
+    unsigned checksum = 0;
+    for (const unsigned char c : body) checksum ^= c;
+    char tail[8];
+    std::snprintf(tail, sizeof(tail), "*%02X", checksum);
+    deliver(receiver, "$" + body + tail);
+}
+
 core::WallTime utc(std::int64_t year, unsigned month, unsigned day, unsigned hour,
                    unsigned minute, unsigned second)
 {
@@ -716,6 +729,124 @@ void the_readout_stops_saying_waiting_for_gps()
     CHECK(text.status_code != apps::NavStatus::WaitingForGps);
 }
 
+// A LOST FIX AT A COORDINATE THAT DID NOT MOVE, ALL THE WAY TO THE SENTENCE.
+//
+// The shape of a lost fix on this wire is not a silence and not a moved
+// coordinate: the receiver goes on publishing the last position it solved and
+// downgrades the verdict beside it. Three epochs at bytes that never change,
+// GGA quality and GSA mode falling from a 3D solution to nothing, and the
+// question is whether the parser's downgrade survives the two layers above it.
+//
+// It did not. `LocationService::poll()` discarded a sample whose coordinate
+// repeated — a rule written for the node provider, which restates one retained
+// coordinate forever and states no quality at all — and with it went the fix
+// type, so `format_navigation()` printed `Ready` and a distance from a
+// `ThreeD`/`Valid` state the receiver had already disowned (#470). The epochs
+// below are one second apart against a 30 s staleness threshold, so nothing
+// here is the age doing the work.
+void a_downgrade_at_an_unchanged_coordinate_reaches_the_readout()
+{
+    // Every epoch is this coordinate, to the last digit. That is the case, so
+    // it is a constant rather than a parameter: a test that could vary it would
+    // be a test of something else.
+    const std::string kRmc =
+        "GNRMC,135222.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V";
+    const std::string kGgaHead = "GNGGA,135222.00,0030.00004,N,00100.00004,E,";
+    const std::string kGgaTail = ",12,1.58,12.4,M,25.0,M,,";
+
+    gnss::NmeaReceiver receiver;
+    core::LocationService location(receiver);
+
+    // The first RMC. It opens an epoch and closes nothing, and its arrival is
+    // the `observed_at` every assertion below measures the age from.
+    g_now.ms += 1000;
+    deliver_body(receiver, kRmc);
+    const std::uint64_t stated_at = g_now.ms;
+
+    // Give the open epoch its quality, then close it with the next epoch's RMC
+    // — which is the sentence that publishes it. An epoch reaches a consumer
+    // one second after its own, because RMC is the boundary and nothing else
+    // is.
+    const auto publish_epoch = [&](int gga_quality, int gsa_mode) {
+        deliver_body(receiver, kGgaHead + std::to_string(gga_quality) + kGgaTail);
+        deliver_body(receiver, "GNGSA,A," + std::to_string(gsa_mode) +
+                                   ",21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+        g_now.ms += 1000;
+        deliver_body(receiver, kRmc);
+        location.poll();
+    };
+
+    // What the readout says about a state, with a node target due east of the
+    // fixture coordinate so that a distance exists to be withdrawn.
+    const auto readout = [&](const core::LocationState& own) {
+        apps::NavState nav;
+        nav.own = own;
+        nav.target.availability = core::Availability::Ready;
+        nav.target.has_position = true;
+        nav.target.position.value = {5000011, 10001000};
+        nav.target.validity = core::PositionValidity::NoFix;
+        nav.target.source = core::PositionSource::NodeGnss;
+        return apps::format_navigation(nav);
+    };
+
+    // GGA quality 2, GSA mode 3: a differentially-corrected three-dimensional
+    // solution, which is what the readout is entitled to call `Ready`.
+    publish_epoch(2, 3);
+    const core::LocationState solved = location.state(g_now);
+    CHECK(solved.fix_type == core::FixType::ThreeD);
+    CHECK(solved.validity == core::PositionValidity::Valid);
+    CHECK(readout(solved).status_code == apps::NavStatus::Ready);
+    CHECK(readout(solved).has_distance);
+    CHECK(solved.position.age_at_us_ms == 1000);
+
+    // GSA drops to a two-dimensional solution at the same coordinate. Still a
+    // position — `classify()` turns `TwoD` into a caveat rather than a refusal —
+    // so the numbers keep rendering and the *sentence* is what changes.
+    publish_epoch(2, 2);
+    const core::LocationState flat = location.state(g_now);
+    CHECK(flat.fix_type == core::FixType::TwoD);
+    CHECK(flat.validity == core::PositionValidity::Degraded);
+    CHECK(readout(flat).status_code == apps::NavStatus::OwnPositionDegraded);
+    CHECK(readout(flat).has_distance);
+
+    // GGA quality 0 and GSA mode 1: the receiver says it cannot solve. The
+    // coordinate is still on the wire and is still the same bytes, and the
+    // distance drawn from it has to go.
+    publish_epoch(0, 1);
+    const core::LocationState lost = location.state(g_now);
+    CHECK(lost.fix_type == core::FixType::NoFix);
+    CHECK(lost.validity == core::PositionValidity::NoFix);
+    CHECK(readout(lost).status_code == apps::NavStatus::NoFix);
+    CHECK(!readout(lost).has_distance);
+    CHECK(!readout(lost).has_bearing);
+    // `NoFix`, never `WaitingForGps`: a receiver answered and the answer was no.
+    CHECK(readout(lost).status_code != apps::NavStatus::WaitingForGps);
+
+    // AND BACK UP. A downgrade that could not be undone would be the same
+    // defect with the sign flipped — a receiver that reacquires under the same
+    // sky reports the coordinate it never stopped holding.
+    publish_epoch(2, 3);
+    const core::LocationState regained = location.state(g_now);
+    CHECK(regained.fix_type == core::FixType::ThreeD);
+    CHECK(regained.validity == core::PositionValidity::Valid);
+    CHECK(readout(regained).status_code == apps::NavStatus::Ready);
+    CHECK(readout(regained).has_distance);
+
+    // THE AGE WAS NEVER REFRESHED BY ANY OF IT, which is the rule this fix had
+    // to leave standing. Four epochs adopted four verdicts and one coordinate,
+    // and the coordinate kept the stamp of the epoch that first stated it — so
+    // the age is exactly the wall time since that first RMC, not one second.
+    // A restamp on quality would have made a coordinate the receiver stopped
+    // solving for look freshly observed, and the ceiling `nmea_receiver.h`
+    // measures — the longest run of identical coordinates over 6.5 MB of bench
+    // capture is two epochs — is what makes freezing it affordable.
+    CHECK(regained.position.age_at_us_ms == 4000);
+    CHECK(g_now.ms - stated_at == 4000);
+    CHECK(location.age_at_us(g_now).has_value());
+    CHECK(*location.age_at_us(g_now) == core::Millis{regained.position.age_at_us_ms});
+    CHECK(!location.age_at_source(g_now).has_value());
+}
+
 // The driver flushes its UART ring after a gap because ESP-IDF's ring drops the
 // *new* bytes when it fills, so what survives a long silence is the oldest data
 // (`firmware/main/local_gnss.cpp:330` — "// WHAT IS IN THE RING AFTER A GAP IS
@@ -785,6 +916,7 @@ int main()
     a_gga_with_no_hemisphere_keeps_the_rest_of_the_sentence();
     the_chain_ends_in_a_location_state();
     the_readout_stops_saying_waiting_for_gps();
+    a_downgrade_at_an_unchanged_coordinate_reaches_the_readout();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

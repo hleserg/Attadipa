@@ -176,7 +176,12 @@ public:
     //     retained observation -- a new key is a new node, not a moved one;
     //   * a sample carrying the coordinate already held does **not** refresh
     //     either age. An unchanged read is evidence against a live fix, not for
-    //     one, and refreshing on it is how a dead receiver comes to look alive;
+    //     one, and refreshing on it is how a dead receiver comes to look alive.
+    //     **The age is the only thing it does not refresh.** The fix type, the
+    //     satellite count, the dilution and every other thing the sample states
+    //     are adopted from it, because those are the producer's account of *this*
+    //     epoch and freezing them alongside the stamp kept a downgrade the
+    //     receiver had already published off the screen entirely (#470);
     //   * anything else is adopted, stamped `now`.
     //
     // A provider with no sample changes nothing but the availability, which is
