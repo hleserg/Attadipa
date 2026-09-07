@@ -19,7 +19,7 @@ remaining axis goes the same way.
 
 | What | How it was established |
 |---|---|
-| every MeshCore claim | read from a full checkout of `meshcore-dev/MeshCore` at `0679dbeffc504d562d2f09eb072fdc223f8ffc2a`, cloned 2026-09-07. `git rev-list --count d929643..origin/main` is **0** — that commit *is* `origin/main`, and its commit date is **2026-08-24**, not the 2026-09-07 the issue implies |
+| every MeshCore claim | read from a full checkout of `meshcore-dev/MeshCore` at `0679dbeffc504d562d2f09eb072fdc223f8ffc2a`, cloned 2026-09-07, whose commit date is **2026-08-24** — not the 2026-09-07 the issue implies. The pinned `d929643` is a *different* commit; what makes that harmless is the byte-identical diff in the row below, not an identity. (`git rev-list --count d929643..origin/main` being 0 says only that `origin/main` is not ahead of the pin — an ancestor and an equal both answer 0, so it was never evidence of sameness.) |
 | the pin-versus-tip question | `git diff` over all eleven files this report rests on, between `d92964352441e53b93e8667b802e04f6e072b39e` and `0679dbe`: **byte-identical, every one**. §10 lists them |
 | `meshcore.js` and `meshcore_py` | full clones at `9e76c51409c13c3ed0183ee1e9c1b380e671a038` (v1.15.0) and `837ac53e77ad75610ceeb0fde4ae318546a10ab9` (v2.3.9.1), both confirmed as their repository's tip on 2026-09-07 |
 | the `dt267` fork | cloned. **It publishes no source** — §10.2, and it is the sharpest negative result here |
@@ -200,7 +200,7 @@ already settled that the frame fits the link.
 | **New wire work here** | a command builder, `RESP_CODE_SENT` correlation, a `0x8C` handler, a timeout policy, a serialisation lock, **and an LPP decoder for untrusted bytes** | a `0x80` handler, one `CMD_GET_CONTACT_BY_KEY`, and 16 bytes of a frame already parsed |
 | **Gate on the target** | `telemetry_mode_loc` ≠ `TELEM_MODE_DENY` ∧ contact flags ∧ requester's inverse mask ∧ `gps_active` | `advert_loc_policy` = `ADVERT_LOC_SHARE` |
 | **Default state of that gate** | **shut** — `telemetry_mode_loc` is never assigned in the defaults block, so it is `NodePrefs`'s 0 = `TELEM_MODE_DENY`; `gps_enabled` is explicitly 0 | **shut** — `advert_loc_policy` is never assigned either, so it is 0 = `ADVERT_LOC_NONE` and the node's adverts carry no coordinate at all |
-| **Gate on our companion** | the target must be a contact (full-key `lookupContactByPubKey`, else `ERR_CODE_NOT_FOUND`) | the target must be a contact **and** inside this watch's 16-peer retention — `link/include/attadipa/link/meshcore_companion.h:162` — "    static constexpr std::size_t kRetainedPeers = 16;" |
+| **Gate on our companion** | the target must be a contact (full-key `lookupContactByPubKey`, else `ERR_CODE_NOT_FOUND`) | the target must be a contact. The watch's 16-peer retention is **not** a second gate: it caps storage into `peers_` after the frame is already parsed — `link/include/attadipa/link/meshcore_companion.h:162` — "    static constexpr std::size_t kRetainedPeers = 16;" — so it limits enumeration, not delivery |
 | **Radio cost per read** | a request packet and a response packet, plus flood or a direct path | **none** — the advert was sent for its own reasons |
 | **Node-side concurrency** | takes the node's **single global pending slot**: `clearPendingReqs()` zeroes `pending_login`, `pending_status`, `pending_telemetry`, `pending_discovery` and `pending_req` together, and each send sets exactly one | none |
 | **Identity in the answer** | **none.** `0x8C` is `[0x8C][0][tag×4][payload…]`. The legacy `0x8B` carries a 6-byte key prefix and drops the tag | **the full 32-byte public key**, in every contact frame and in the `0x80` push |
@@ -435,7 +435,7 @@ an iteration is in progress, which the session already tracks.
 |---|---|
 | The coordinate is admitted **only** from a contact frame whose full 32-byte key equals the selected target key | §7 |
 | Exactly `(0, 0)` is **refused** and the target slot stays empty | `populateContactFromAdvert` `memset`s the record and writes the coordinate only under `hasLatLon()`, so a contact that has never shared one reads exactly `(0,0)`. ADR-0019 already refuses the same value for `own`, for the same reason, one slot over |
-| `\|raw_lat\| > 900 000` or `\|raw_lon\| > 1 800 000` ⇒ the coordinate is refused, **checked on the raw `int32` before any scaling** | `AdvertDataParser` range-checks nothing and `CMD_ADD_UPDATE_CONTACT` range-checks nothing. `raw × 100` overflows `int32` above 21 474 836, and `core/include/attadipa/core/position.h:55` — "constexpr bool in_range(Position p)" — cannot save a value that already overflowed |
+| `\|raw_lat\| > 90 000 000` or `\|raw_lon\| > 180 000 000` ⇒ the coordinate is refused, **checked on the raw `int32` before any scaling** | The wire is degrees × 10⁶ (`:174`), so ±90° is 90 000 000 and ±180° is 180 000 000 — a bound of 900 000 would refuse everything outside 0.9° of the equator and 1.8° of Greenwich, silently, because an absent coordinate is deliberately not an error. `AdvertDataParser` range-checks nothing and `CMD_ADD_UPDATE_CONTACT` range-checks nothing. `raw × 10` overflows `int32` above 214 748 364, and `core/include/attadipa/core/position.h:55` — "constexpr bool in_range(Position p)" — cannot save a value that already overflowed |
 | Scaling is exact integer arithmetic: `latitude_e7 = raw_e6 × 10` | `Position` is `e7`, the wire is `e6`, the ratio is 10. No floating point, no rounding decision to get wrong |
 | `fix_type` is `FixType::Unknown`, `source` is `PositionSource::NodeGnss`, every optional stays empty, `PositionValidity` is `NoFix` at every age | §6, and it is exactly what the path-A provider already does |
 | `age_at_source_ms` is meaningless and the published `Timed` carries `Validity::Unknown`; **a consumer reads `validity` before either age** | §6 |
@@ -444,7 +444,7 @@ an iteration is in progress, which the session already tracks.
 | An unchanged coordinate read twice is evidence **against** a live fix | `NODE_POSITION_FROM_MESHCORE.md` §6.1, unchanged |
 | `ERR_CODE_NOT_FOUND` to `CMD_GET_CONTACT_BY_KEY` ⇒ the target is not on this companion. `Availability::Ready`, coordinate absent, `NavStatus::NodePositionUnknown` — **not** an error and not `Failed` | The node answered correctly. Nothing is broken |
 | `PUSH_CODE_CONTACT_DELETED` (0x8F) for the target key ⇒ the retained coordinate is **discarded**, not aged | The record it came from is gone. Ageing it would present a coordinate whose provenance no longer exists |
-| The 16-peer retention is a real ceiling and `peers_truncated` must reach the operator | `kRetainedPeers = 16` against `MAX_CONTACTS=350` on the T114 build. A target outside the retained set is invisible, and silently so |
+| The 16-peer retention caps **enumeration**, not the read, and `peers_truncated` must reach the operator as a statement about the list they choose from | `kRetainedPeers = 16` against `MAX_CONTACTS=350` on the T114 build. A target beyond the sixteenth is still readable by key — `accept_contact` copies key and name out of the frame *before* the cap is consulted, and the cap then decides storage alone — so what goes missing is the target's appearance in a list, not its coordinate |
 
 ### 9.2 What would make path B the answer instead
 
@@ -577,8 +577,9 @@ Lifecycle:
   enter `peers_` and does not change `peers_retained` — the §9 implementation
   note, as a test;
 - a targeted answer arriving **during** an iteration is not double-counted;
-- 17 chat contacts ⇒ `peers_truncated`, and a target in the 17th is reported
-  absent rather than silently missing.
+- 17 chat contacts ⇒ `peers_truncated` is set, **and the 17th is still readable
+  by key**: the retention caps the list, not the read, so a test asserting the
+  17th is absent would pin the opposite of what the code does.
 
 Semantics, which are the tests that matter:
 
@@ -681,4 +682,10 @@ Filed as [OPEN_QUESTIONS](OPEN_QUESTIONS.md) **M28–M31**, plus everything in
 - **M30** — whether `bootstrapRTCfromContacts()` plus the replay gate can
   permanently silence a rebooted target against our companion (§5.4);
 - **M31** — how a second client of the same companion (the owner's phone)
-  interacts with a target's contact record in practice, given §2.2.
+  interacts with a target's contact record in practice, given §2.2. **This is
+  also where `PositionSource::NodeGnss` overstates what it knows:** the label
+  says a node's receiver, the bytes are a record another client can write, and
+  ADR-0020 decision 5 publishes them under that label anyway rather than amend
+  ADR-0011 inside this change. `PositionValidity` staying `NoFix` at every age
+  is what keeps the readout honest meanwhile; a source value that says
+  "relayed record, provenance unproven" is the fix, and it is not this ADR's.

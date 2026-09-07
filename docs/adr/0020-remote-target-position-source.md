@@ -79,6 +79,22 @@ provider acquires an opinion. This is the same answer path A already gets —
 `link/src/node_position_provider.cpp:38` — "    out.observation.fix_type = core::FixType::Unknown;" —
 and it is what ADR-0019 decision 2 already relies on.
 
+**And `NodeGnss` overstates this coordinate's provenance, knowingly.** The enum
+says a receiver —
+`core/include/attadipa/core/position.h:84` — "    NodeGnss,       // an Attadipa node's receiver, over the node link" —
+and what path C actually reads is a *third* node's record out of our companion's
+contact table, which §2.2 of the report shows any BLE client of that companion
+can write with `CMD_ADD_UPDATE_CONTACT` and which is then persisted unmarked. So
+the owner's own phone can put a coordinate there and it will publish as though a
+receiver had solved it. This ADR does **not** fix that, and the reason is scope:
+a new source value is an ADR-0011 amendment and a change every consumer of
+`PositionSource` has to answer for, which is a decision of its own and not a
+detail of this one. What is decided here is that the gap is recorded rather than
+carried silently — it is **M31**, and an implementer copying decision 5 is
+copying a known overstatement. Nothing downstream may treat `NodeGnss` as
+evidence of a fix; `PositionValidity` stays `NoFix` at every age, which is the
+property that keeps the readout honest while the source label is imprecise.
+
 **6. The readout will say `NodePositionStale` most of the time, and that is the
 decision rather than a defect to be fixed.** A companion node has no periodic
 advert: `advert_interval` and `flood_advert_interval` are commented out of its
@@ -94,9 +110,10 @@ it is forbidden here so that it has to be argued rather than slipped in.
 
 **7. Four values are refused at the slot**, each because it is not a coordinate:
 exactly `(0, 0)`, which is the never-set field and which ADR-0019 already
-refuses for `own`; a raw latitude outside ±900 000 or longitude outside
-±1 800 000, checked **before** scaling because nothing upstream range-checks
-either; a contact whose type is not `ADV_TYPE_CHAT`; and a contact the node has
+refuses for `own`; a raw latitude outside ±90 000 000 or longitude outside
+±180 000 000 -- the wire is degrees x 10^6, so those are the poles and the
+antimeridian -- checked **before** scaling because nothing upstream
+range-checks either; a contact whose type is not `ADV_TYPE_CHAT`; and a contact the node has
 deleted, whose retained coordinate is discarded rather than aged.
 
 **8. Path B is deferred, not rejected, and its trigger is named.** It becomes
@@ -175,8 +192,16 @@ owner decision — is not decided here and does not block the wire work: a test
 fixture supplies a key, and the first consumer is a diagnostics surface rather
 than a map, for the reason `NODE_POSITION_FROM_MESHCORE.md` §6 already gives.
 
-**A ceiling that is now visible.** This watch retains sixteen peers —
+**A ceiling on enumeration, and only on enumeration.** This watch retains
+sixteen peers —
 `link/include/attadipa/link/meshcore_companion.h:162` — "    static constexpr std::size_t kRetainedPeers = 16;" —
-against a contact table that is 350 on the T114 build. A target outside the
-retained set cannot be read, and the truncation flag the session already sets
-has to reach the operator instead of being a counter nobody renders.
+against a contact table that is 350 on the T114 build. It does **not** gate the
+read: `accept_contact` parses the whole 148-byte frame and copies key and name
+out before the cap is consulted at all, and the cap then decides storage alone —
+`link/src/meshcore_companion.cpp:314` — "    if (peer_count_ < peers_.size()) {". The primary read is
+`CMD_GET_CONTACT_BY_KEY`, which answers with its own frame and never consults
+`peers_`. So a target beyond the sixteenth is readable; what the ceiling limits
+is which targets can be *offered* to choose from, and target selection is the
+one thing this ADR declines to decide. `peers_truncated` still has to reach the
+operator, as a statement about the list they are picking from and not about
+whether a coordinate can arrive.
