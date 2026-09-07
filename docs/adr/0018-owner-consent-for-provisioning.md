@@ -407,7 +407,10 @@ Beyond B and C:
   the implementation, so the sentence and the code changed together.
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
-  `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:813` — "void build_mesh_screen() {" — is
-  full of literal colours. Building the entry screen where the mesh screen was
-  built would silently opt it out of the check.
+  `firmware`. The example this bullet gave was `build_mesh_screen()` in
+  `firmware/main/waveshare_board.cpp`, which was full of literal colours for
+  exactly that reason. #465 moved it to `ui/lvgl/` as well, so it is gone:
+  `ui/lvgl/include/attadipa/ui/mesh_face.h:34` —
+  "// with literal hex and offsets measured for one panel. It could not be drawn on".
+  Building the entry screen where the mesh screen was built would silently opt
+  it out of the check.

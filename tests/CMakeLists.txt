@@ -71,6 +71,11 @@ add_executable(test_clock test_clock.cpp)
 target_link_libraries(test_clock PRIVATE attadipa_apps)
 add_test(NAME clock COMMAND test_clock)
 
+add_executable(test_mesh test_mesh.cpp)
+target_link_libraries(test_mesh PRIVATE attadipa_apps)
+add_test(NAME mesh COMMAND test_mesh)
+set_tests_properties(mesh PROPERTIES LABELS "mesh;design")
+
 add_executable(test_navigation test_navigation.cpp)
 target_link_libraries(test_navigation PRIVATE attadipa_apps)
 add_test(NAME navigation COMMAND test_navigation)
@@ -342,6 +347,14 @@ if(ATTADIPA_BUILD_SIMULATOR)
     # memory, so it needs no window and no SDL video driver -- but it is a
     # simulator test all the same, and only exists in a simulator build,
     # because LVGL is what it drives.
+    # The mesh face renders into memory and counts pixels, so it needs LVGL and
+    # no window -- but LVGL is only configured in a simulator build, which is
+    # what puts it here rather than beside `test_mesh`.
+    add_executable(test_mesh_face test_mesh_face.cpp)
+    target_link_libraries(test_mesh_face PRIVATE attadipa_clock_ui attadipa_platform)
+    add_test(NAME mesh_face COMMAND test_mesh_face)
+    set_tests_properties(mesh_face PROPERTIES LABELS "simulator;mesh;design")
+
     add_executable(test_sim_review_keys test_sim_review_keys.cpp)
     target_link_libraries(test_sim_review_keys PRIVATE attadipa_sim_screens)
     add_test(NAME sim_review_keys COMMAND test_sim_review_keys)

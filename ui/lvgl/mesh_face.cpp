@@ -42,6 +42,23 @@ void show(lv_obj_t *object, const char *text) {
 
 void hide(lv_obj_t *object) { lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN); }
 
+// The two lengths this face draws that are not positions: the weight of an
+// outline, and the tracking under a small capitalised word.
+//
+// Both are pixel counts, and a pixel is a different physical size on each
+// panel -- 314 dpi against 220. Writing `big ? 3 : 2` compensates for that by
+// hand and gets it about right, but it is the arithmetic `Metrics` exists to
+// do, and `tools/ui/check_raw_values.py` cannot see inside a ternary to say so.
+// Integer `Dp` has no way to write 1.5 dp, so the halving is done in pixels
+// after the scaling, which is how `ui/lvgl/provision_face.cpp:110` —
+// "  lv_obj_set_style_text_letter_space(value_, m.px(dp_of(Space::Xs)) / 2,"
+// already writes the same tracking.
+std::int32_t stroke(const Metrics &m) { return m.px(Dp{3}) / 2; }
+
+std::int32_t tracking_wide(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 2; }
+
+std::int32_t tracking_tight(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 4; }
+
 void place(lv_obj_t *object, std::int32_t x, std::int32_t y) {
   lv_obj_align(object, LV_ALIGN_TOP_LEFT, x, y);
 }
@@ -90,6 +107,7 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, LV_PART_MAIN);
 
   const bool big = large();
+  const Metrics &m = config.metrics;
   const lv_color_t muted =
       resolved(ColorRole::TextMuted, config.theme, config.pixel_cost);
   const lv_color_t primary =
@@ -113,13 +131,13 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   lv_obj_set_style_text_font(screen_, body_font, LV_PART_MAIN);
 
   title_ = label(screen_, tiny_font, muted);
-  lv_obj_set_style_text_letter_space(title_, big ? 4 : 3, LV_PART_MAIN);
+  lv_obj_set_style_text_letter_space(title_, tracking_wide(m), LV_PART_MAIN);
 
   watch_ = lv_obj_create(screen_);
   bare(watch_);
   lv_obj_set_style_bg_opa(watch_, LV_OPA_TRANSP, LV_PART_MAIN);
   lv_obj_set_style_border_color(watch_, primary, LV_PART_MAIN);
-  lv_obj_set_style_border_width(watch_, big ? 3 : 2, LV_PART_MAIN);
+  lv_obj_set_style_border_width(watch_, stroke(m), LV_PART_MAIN);
   lv_obj_set_style_border_opa(watch_, LV_OPA_COVER, LV_PART_MAIN);
 
   watch_dot_ = lv_obj_create(screen_);
@@ -139,7 +157,7 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   bare(halo_);
   lv_obj_set_style_radius(halo_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(halo_, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(halo_, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_width(halo_, stroke(m), LV_PART_MAIN);
 
   socket_ = lv_obj_create(screen_);
   bare(socket_);
@@ -152,7 +170,7 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   lv_obj_set_style_bg_opa(intruder_, LV_OPA_COVER, LV_PART_MAIN);
 
   state_ = label(screen_, state_font, muted);
-  lv_obj_set_style_text_letter_space(state_, big ? 2 : 1, LV_PART_MAIN);
+  lv_obj_set_style_text_letter_space(state_, tracking_tight(m), LV_PART_MAIN);
   note_ = label(screen_, small_font, muted);
   way_out_ = label(screen_, small_font, accent);
   node_key_ = label(screen_, body_font, muted);
@@ -168,13 +186,13 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   lv_obj_set_style_bg_opa(rule_, LV_OPA_20, LV_PART_MAIN);
 
   msg_heading_ = label(screen_, tiny_font, muted);
-  lv_obj_set_style_text_letter_space(msg_heading_, 2, LV_PART_MAIN);
+  lv_obj_set_style_text_letter_space(msg_heading_, tracking_tight(m), LV_PART_MAIN);
   msg_ = label(screen_, body_font, primary);
   msg_meta_ = label(screen_, tiny_font, muted);
   for (int i = 0; i < 3; ++i) {
     value_[i] = label(screen_, body_font, primary);
     label_[i] = label(screen_, tiny_font, muted);
-    lv_obj_set_style_text_letter_space(label_[i], 1, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(label_[i], tracking_tight(m), LV_PART_MAIN);
   }
 
   built_ = true;
@@ -249,7 +267,7 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     hide(way_out_);
 
     lv_obj_remove_flag(rule_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_size(rule_, w - margin * 2, 1);
+    lv_obj_set_size(rule_, w - margin * 2, config_.metrics.px(Dp{1}));
     place(rule_, margin, big ? 352 : 136);
 
     show(msg_heading_, text.message_heading);
@@ -406,7 +424,8 @@ void MeshFace::paint_channel(const apps::MeshText &text) {
   const bool full = text.link == apps::MeshLink::Linked;
   lv_obj_set_style_bg_color(socket_, colour, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(socket_, full ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(socket_, full ? 0 : (big ? 3 : 2), LV_PART_MAIN);
+  lv_obj_set_style_border_width(socket_, full ? 0 : stroke(config_.metrics),
+                                LV_PART_MAIN);
   lv_obj_set_style_border_color(socket_, colour, LV_PART_MAIN);
   // An empty socket that is *waiting* and one that is *not coming* are drawn at
   // different strengths: the wearer of a watch that is reaching should be able
