@@ -298,13 +298,11 @@ void ProvisionFace::update() {
       continue;
     }
     lv_obj_remove_flag(keys_[i], LV_OBJ_FLAG_HIDDEN);
-    // On the confirmation the model gives Forget the same word as Next and
-    // the same effect (`apps/src/provisioning.cpp:790` — "        out.forget   = out.next;"),
-    // so both are the acting key there and both have to look like it. Marking
-    // only one would put a second Forget on the screen dressed as the safe
-    // choice.
-    const bool through = kKeys[i] == apps::EntryKey::Next ||
-                         (confirming && kKeys[i] == apps::EntryKey::Forget);
+    // Which key acts is `EntryText::acting`, and the model moves it: on the
+    // confirmation it is neither `Next` nor the key that asked the question.
+    // The face used to name the key here itself, and that sentence went stale
+    // the first time the model moved it.
+    const bool through = kKeys[i] == text.acting;
     const bool destructive = confirming && through;
     const lv_color_t fill = destructive ? danger : (through ? accent : raised);
     lv_obj_set_style_bg_color(keys_[i], fill, LV_PART_MAIN);

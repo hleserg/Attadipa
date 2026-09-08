@@ -676,7 +676,7 @@ void test_the_board_walk_reaches_the_node_and_the_passkey()
     // The node half, reached with no chooser and no simulator flag.
     entry.press(EntryKey::Forget);
     CHECK(entry.field() == EntryField::ForgetConfirm);
-    entry.press(EntryKey::Forget);
+    entry.press(EntryKey::Minus);
     board.forget_worker();
     CHECK(entry.poll());
     CHECK(entry.verdict() == EntryVerdict::NodeForgotten);
@@ -721,6 +721,87 @@ void test_the_clock_draft_stops_where_the_clock_does()
     CHECK(eq(entry.text(Locale::En).utc, ""));
 }
 
+// A watch whose board will not take the time still has a radio, and `All` is
+// the only walk on a product image that reaches it. The clock's receipt says
+// Retry on `Next` -- and a board that refuses one write refuses the retry too,
+// so if Retry were the only key there, one bad RTC would take
+// `set_mesh_passkey` and `forget_mesh_node` out of reach for good and the node
+// would never start scanning.
+void test_a_refused_clock_does_not_end_the_board_walk()
+{
+    for (const ProvisionOutcome answer :
+         {ProvisionOutcome::Rejected, ProvisionOutcome::Failed}) {
+        FakeBoard board;
+        board.pinned       = true;
+        board.clock_answer = answer;
+        ProvisioningEntry entry(board, EntryTask::All);
+        for (int i = 0; i < 7; ++i) { entry.press(EntryKey::Next); }
+        CHECK(entry.field() == EntryField::Receipt);
+        CHECK(board.clocks == 1);
+        CHECK(entry.verdict() != EntryVerdict::TimeSaved);
+
+        // Retry is what `Next` is, and it does retry: the way on cannot be
+        // that key.
+        CHECK(eq(entry.text(Locale::En).next, "Retry"));
+        entry.press(EntryKey::Next);
+        CHECK(board.clocks == 2);
+        CHECK(entry.field() == EntryField::Receipt);
+
+        // The way on is `Plus`, and it reaches the node with the clock's
+        // verdict cleared -- the receipt has been read by then.
+        CHECK(eq(entry.text(Locale::En).plus, "Next"));
+        entry.press(EntryKey::Plus);
+        CHECK(entry.field() == EntryField::Node);
+        CHECK(entry.verdict() == EntryVerdict::None);
+        CHECK(eq(entry.text(Locale::En).node, "5c62d9bc"));
+
+        // And the passkey past it, which is the capability at stake.
+        entry.press(EntryKey::Next);
+        CHECK(entry.field() == EntryField::Passkey);
+        step_passkey(entry, "424242");
+        entry.press(EntryKey::Next);
+        CHECK(board.passkeys == 1 && board.passkey == 424242);
+
+        // The clock was written only by the two presses that asked for it.
+        CHECK(board.clocks == 2);
+    }
+}
+
+// `Plus` is that key on one receipt and no other. A receipt the passkey
+// produced is the end of the walk, and a clock receipt in the narrow clock
+// task has no node behind it at all -- drawing a key there would promise a
+// screen that does not exist.
+void test_the_receipt_way_on_is_drawn_on_no_other_receipt()
+{
+    {
+        FakeBoard board;
+        board.clock_answer = ProvisionOutcome::Rejected;
+        ProvisioningEntry entry(board, EntryTask::LocalTime);
+        for (int i = 0; i < 7; ++i) { entry.press(EntryKey::Next); }
+        CHECK(entry.field() == EntryField::Receipt);
+        CHECK(eq(entry.text(Locale::En).plus, ""));
+        entry.press(EntryKey::Plus);
+        CHECK(entry.field() == EntryField::Receipt);
+    }
+    {
+        FakeBoard board;
+        board.pinned         = true;
+        board.passkey_answer = ProvisionOutcome::Rejected;
+        ProvisioningEntry entry(board, EntryTask::All);
+        for (int i = 0; i < 8; ++i) { entry.press(EntryKey::Next); }
+        CHECK(entry.field() == EntryField::Node);
+        entry.press(EntryKey::Next);
+        step_passkey(entry, "135790");
+        entry.press(EntryKey::Next);
+        CHECK(entry.field() == EntryField::Receipt);
+        CHECK(entry.verdict() == EntryVerdict::PasskeyRefused);
+        CHECK(eq(entry.text(Locale::En).next, "Retry"));
+        CHECK(eq(entry.text(Locale::En).plus, ""));
+        entry.press(EntryKey::Plus);
+        CHECK(entry.field() == EntryField::Receipt);
+    }
+}
+
 // --- the node -------------------------------------------------------------
 
 // THE INVARIANT THE TASK EXISTS FOR, and the only way it can be shown: both
@@ -748,19 +829,24 @@ void test_the_node_task_never_writes_the_clock()
     CHECK(entry.field() == EntryField::Node && board.forgets == 0);
     CHECK(!entry.finished());
 
-    // `Next` is the key between the two that undo, so it does not confirm and
-    // is not even drawn. Pressing it on the confirmation asks the board
-    // nothing and leaves the screen where it was.
+    // Two keys do not confirm and neither is drawn. `Next` is the one between
+    // the two that undo. `Forget` is the one that asked -- and it is the one
+    // that matters, because it is where the finger already is: a second tap of
+    // it is a mis-tap, not an answer, and it must not cost the node.
     entry.press(EntryKey::Forget);
     CHECK(entry.field() == EntryField::ForgetConfirm);
     CHECK(eq(entry.text(Locale::En).next, ""));
     entry.press(EntryKey::Next);
     CHECK(entry.field() == EntryField::ForgetConfirm && board.forgets == 0);
+    CHECK(eq(entry.text(Locale::En).forget, ""));
+    entry.press(EntryKey::Forget);
+    CHECK(entry.field() == EntryField::ForgetConfirm && board.forgets == 0);
 
     // And then the forget, which finishes on the radio's task. The key that
-    // does it is the one that asked the question.
-    CHECK(eq(entry.text(Locale::En).forget, "Forget"));
-    entry.press(EntryKey::Forget);
+    // does it is `Minus`, which the node screen does not draw, so no press
+    // that could have opened this question lands on it.
+    CHECK(eq(entry.text(Locale::En).minus, "Forget"));
+    entry.press(EntryKey::Minus);
     CHECK(board.forgets == 1);
     CHECK(entry.verdict() == EntryVerdict::ForgetPending);
     CHECK(entry.waiting() && entry.field() == EntryField::ForgetConfirm);
@@ -856,7 +942,7 @@ void test_every_forget_ending_gets_its_own_sentence()
         board.pinned = true;
         ProvisioningEntry entry(board, EntryTask::NodePasskey);
         entry.press(EntryKey::Forget);
-        entry.press(EntryKey::Forget);
+        entry.press(EntryKey::Minus);
         CHECK(entry.waiting());
         board.forget_op.complete(board.forget_queued, one.worker);
         CHECK(entry.poll());
@@ -886,7 +972,7 @@ void test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one()
     board.pinned = true;
     ProvisioningEntry entry(board, EntryTask::NodePasskey);
     entry.press(EntryKey::Forget);
-    entry.press(EntryKey::Forget);
+    entry.press(EntryKey::Minus);
     board.forget_op.complete(board.forget_queued,
                              attadipa::firmware::ForgetNodeOutcome::PinOnFlash);
     CHECK(entry.poll());
@@ -1074,6 +1160,8 @@ int main()
     test_the_board_walk_reaches_the_node_and_the_passkey();
     test_the_board_walk_skips_a_node_that_is_not_there();
     test_the_clock_draft_stops_where_the_clock_does();
+    test_a_refused_clock_does_not_end_the_board_walk();
+    test_the_receipt_way_on_is_drawn_on_no_other_receipt();
     test_the_node_task_never_writes_the_clock();
     test_an_unpinned_watch_starts_at_the_passkey();
     test_every_forget_ending_gets_its_own_sentence();

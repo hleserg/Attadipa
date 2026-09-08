@@ -10,16 +10,21 @@
 // keys do to it, and what the board said. A face renders `text()`; neither
 // knows the other.
 //
-// TWO TASKS, ONE AT A TIME (#469).
+// THREE TASKS, ONE AT A TIME (#469).
 //
 // A holder who wants to correct the clock should not have to walk past the
 // node's passkey to do it, and a holder recovering a factory-reset node should
 // not have to retype a date that was already right. `EntryTask` is fixed at
 // construction and picks which sequence of fields this entry walks. It is a
-// runtime discriminator and nothing more -- both tasks are this one class over
-// one `core::Provisioner` -- so "a node task never writes the clock" is a
+// runtime discriminator and nothing more -- all three tasks are this one class
+// over one `core::Provisioner` -- so "a node task never writes the clock" is a
 // property the tests prove about the journey, not one the type system can
 // promise.
+//
+// The third is `All`, both halves in one walk, and it is the only one a board
+// constructs today: it is what the flow was before the split, and it is here
+// until the chooser that makes the two narrow tasks reachable on their own
+// lands. The two narrow ones are the design's shape; `All` is the placeholder.
 //
 // NO TYPED DIGITS.
 //
@@ -40,7 +45,7 @@
 
 namespace attadipa::apps {
 
-// Which of the two things this entry sets. Fixed for the life of the entry.
+// Which of the three things this entry sets. Fixed for the life of the entry.
 enum class EntryTask : std::uint8_t {
     LocalTime,   // Day..Offset, a review, one `set_wall_clock`.
     NodePasskey, // The node, optionally forgetting it, then its passkey.
@@ -64,8 +69,9 @@ enum class EntryField : std::uint8_t {
     TimeReview,     // The draft and the UTC instant it means. Next saves.
     // NodePasskey.
     Node,           // The node this watch is pinned to. Forget asks to drop it.
-    ForgetConfirm,  // Next forgets, Previous keeps, Leave goes back. Nothing
-                    // has reached the board while this is on screen.
+    ForgetConfirm,  // Minus forgets, Previous keeps, Leave goes back; Next
+                    // and Forget are not drawn. Nothing has reached the board
+                    // while this is on screen.
     Passkey,        // Six stepped digits; `step` is the one under the cursor.
     // Both.
     Receipt,        // What the board did. Visible until the holder leaves.
@@ -73,11 +79,14 @@ enum class EntryField : std::uint8_t {
 };
 
 enum class EntryKey : std::uint8_t {
-    Minus,     // The value under the cursor, down.
-    Plus,      // ... and up.
+    Minus,     // The value under the cursor, down. On `ForgetConfirm` it is
+               // the key that forgets -- the one slot no press that could
+               // reach that screen is drawn on.
+    Plus,      // ... and up. On an `All` clock receipt the board refused, it
+               // is the way on to the node, because `Next` is Retry there.
     Previous,  // Back one step; on the receipt, back to the draft.
     Next,      // On one; on the last step, the thing the step was for.
-    Forget,    // Only on `Node`. Opens the confirmation, and confirms on it.
+    Forget,    // Only on `Node`, and only to ask. It does not confirm.
     Leave,     // Out. On `ForgetConfirm` it is Back, not out.
 };
 
@@ -103,7 +112,10 @@ enum class EntryVerdict : std::uint8_t {
     // partial, nothing and failed it is styling, and `forget_outcome()` carries
     // the exact one for the sentence.
     ForgetPending,
-    NodeForgotten,        // Forgotten, or Unpinned: nothing of it is left.
+    NodeForgotten,        // The pin is gone, so the node is not this watch's
+                          // any more. `Unpinned` had no stale bond to clear
+                          // and kept the fresh pairing, so trust outlives the
+                          // pin there; `forget_outcome()` says which it was.
     NodePartlyForgotten,  // PinOnFlash: a restart brings the old pin back.
     NodeNothingToForget,  // Nothing: there was neither a bond nor a pin.
     ForgetKept,           // BondKept or ReplayInhibited: trust stayed. Retry.
@@ -148,6 +160,12 @@ struct EntryText {
     const char* next     = "";
     const char* forget   = "";
     const char* leave    = "";
+
+    // Which of the six does the thing this screen is for, so a face can mark
+    // it without knowing which screen it is on. `Next` almost everywhere; the
+    // confirmation moves it, and a face that named the key itself would say
+    // `Next` on a screen where `Next` is not drawn at all.
+    EntryKey acting = EntryKey::Next;
 
     // Which step of how many. `steps == 0` is a field that is not stepped --
     // the review, the node, the confirmation, the receipt -- and the face
@@ -198,6 +216,7 @@ public:
 
 private:
     void step_value(int direction);
+    void enter_node_half();
     void advance(int direction);
     void save_time();
     void send_passkey();

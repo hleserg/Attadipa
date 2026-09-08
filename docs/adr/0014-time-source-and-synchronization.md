@@ -49,10 +49,10 @@ cannot honestly resume where it left off.
   opcode above exists only in the HIL build. The product's first real input is
   the watch itself: a long press on the clock opens an entry screen for the
   date, the time, the offset and the node passkey
-  (`apps/include/attadipa/apps/provisioning.h:164` — "class ProvisioningEntry {"); a Leave key
+  (`apps/include/attadipa/apps/provisioning.h:182` — "class ProvisioningEntry {"); a Leave key
   goes out at any point, and nothing reaches the board before Next on the
   review step that spells the whole instant out
-  (`apps/include/attadipa/apps/provisioning.h:64` —
+  (`apps/include/attadipa/apps/provisioning.h:69` —
   "TimeReview,     // The draft and the UTC instant it means. Next saves."), so
   a long press made by accident costs one key and not a retyped clock. A board
   that failed that write may have moved the chip (the RTC is written last, and

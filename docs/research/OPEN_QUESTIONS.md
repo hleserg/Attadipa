@@ -393,7 +393,7 @@ is the record of what was true at `144459f` and what changed it:
 - **The timezone could not be kept,** for the same reason, and for the same
   reason it now is: the offset is a field of that screen -- its own step, after
   the five that spell the local instant
-  (`apps/include/attadipa/apps/provisioning.h:63` —
+  (`apps/include/attadipa/apps/provisioning.h:68` —
   "    Day, Month, Year, Hour, Minute, Offset,") -- and goes through the same
   `provision_time()` as the clock. Named rather than numbered on purpose: it
   was "the third field" while the date was one step, and #469 split it into

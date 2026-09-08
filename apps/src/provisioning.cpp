@@ -342,6 +342,19 @@ void ProvisioningEntry::begin_forget()
     field_      = EntryField::Receipt;
 }
 
+// Past the clock's receipt and into the node half of an `All` walk.
+void ProvisioningEntry::enter_node_half()
+{
+    verdict_ = EntryVerdict::None;
+    // Asked here rather than in the constructor: the clock half of this walk
+    // has no business reading the mesh, and by the time it is over the answer
+    // is fresher anyway. A watch pinned to no node has nothing to show or
+    // forget, so it goes where the node task sends it -- straight to the
+    // passkey.
+    has_node_ = sink_.mesh_node(node_);
+    field_    = has_node_ ? EntryField::Node : EntryField::Passkey;
+}
+
 // The receipt's forward key. What it is depends on what the receipt says, and
 // so does where it goes.
 namespace {
@@ -413,17 +426,23 @@ void ProvisioningEntry::press(EntryKey key)
             // tasks. Whatever the clock's verdict was, it has been shown.
             if (task_ == EntryTask::All &&
                 receipt_of_ == EntryField::TimeReview) {
-                verdict_ = EntryVerdict::None;
-                // Asked here rather than in the constructor: the clock half of
-                // this walk has no business reading the mesh, and by the time
-                // it is over the answer is fresher anyway. A watch pinned to
-                // no node has nothing to show or forget, so it goes where the
-                // node task sends it -- straight to the passkey.
-                has_node_ = sink_.mesh_node(node_);
-                field_ = has_node_ ? EntryField::Node : EntryField::Passkey;
+                enter_node_half();
                 return;
             }
             field_ = EntryField::Exit;
+            return;
+        case EntryKey::Plus:
+            // The same waypoint, for the receipts where `Next` is Retry. A
+            // board that refuses the clock refuses it again on the retry, and
+            // without a second key that receipt is where the walk stops --
+            // taking `set_mesh_passkey` and `forget_mesh_node` out of reach of
+            // a watch whose only fault is an RTC. `Plus` is drawn on no other
+            // receipt, so nothing else answers it.
+            if (task_ == EntryTask::All &&
+                receipt_of_ == EntryField::TimeReview &&
+                retryable(verdict_)) {
+                enter_node_half();
+            }
             return;
         case EntryKey::Previous:
             // Back to the draft that produced this, untouched. Only from a
@@ -444,12 +463,16 @@ void ProvisioningEntry::press(EntryKey key)
 
     if (field_ == EntryField::ForgetConfirm) {
         switch (key) {
-        case EntryKey::Forget:
-            // The only key that forgets, and deliberately not `Next`: the
-            // fixed key order puts `Next` between `Previous` and `Leave`, so
-            // confirming there would seat the destructive key between the two
-            // that undo it. `Forget` is the key that asked the question one
-            // screen back and it sits alone in its own row.
+        case EntryKey::Minus:
+            // The only key that forgets, and deliberately neither of the two
+            // obvious ones. `Next` sits between `Previous` and `Leave` in the
+            // fixed key order, so confirming there would seat the destructive
+            // key between the two that undo it. `Forget` is worse: it is the
+            // key that asked this question, in the same slot with the same
+            // word, so a second tap of one key would answer it -- which is
+            // what a mis-tap is. `Minus` is drawn on neither the node screen
+            // nor this one's other row, so no press that opened the question
+            // can land on it.
             begin_forget();
             return;
         case EntryKey::Previous:  // Keep
@@ -506,9 +529,12 @@ bool ProvisioningEntry::poll()
         switch (outcome) {
         case core::MeshForgetOutcome::Forgotten:
         case core::MeshForgetOutcome::Unpinned:
-            // Nothing of the node is left in either. `Unpinned` is the state
-            // where no stale bond was ever recorded, so the pin was all there
-            // was to drop.
+            // The pin is gone in both, which is what makes the node no longer
+            // this watch's. What is left behind it differs: `Forgotten` clears
+            // the stale bond too, while `Unpinned` had no stale bond to clear
+            // and kept the pairing the watch had made afresh -- trust that
+            // outlives the pin. The receipt's sentence comes from
+            // `forget_outcome()`, which carries which of the two it was.
             verdict_  = EntryVerdict::NodeForgotten;
             has_node_ = false;
             break;
@@ -835,14 +861,18 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
         break;
     case EntryField::ForgetConfirm:
         out.previous = l10n::tr(StringId::ProvisionKeyKeep, locale);
-        // `Next` is left unlabelled on purpose, which is what hides it: it
-        // sits between `Previous` and `Leave` in the fixed key order, and a
-        // screen where a key that destroys has a key that keeps on either side
-        // is a screen that loses a node to a mis-tap. So the row that answers
-        // is Keep and Back, and the one key that forgets is `Forget` -- the
-        // same key that asked the question, alone in the row above.
-        out.forget   = l10n::tr(StringId::ProvisionKeyForget, locale);
-        out.leave    = back;
+        // Two keys are left unlabelled on purpose, which is what hides them.
+        // `Next` sits between `Previous` and `Leave` in the fixed key order,
+        // and a key that destroys with a key that keeps on either side is a
+        // screen that loses a node to a mis-tap. `Forget` is the key that
+        // asked this question: leaving it here would put the same word in the
+        // same slot two screens running, so the second tap of a double tap
+        // would answer it -- which is what a mis-tap is. What forgets is
+        // `Minus`, drawn by neither the node screen nor this screen's other
+        // row, so no press that could open this question can land on it.
+        out.minus  = l10n::tr(StringId::ProvisionKeyForget, locale);
+        out.acting = EntryKey::Minus;
+        out.leave  = back;
         break;
     case EntryField::Passkey:
         out.minus = down;
@@ -856,6 +886,13 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
         if (retryable(verdict_)) {
             out.next = l10n::tr(StringId::ProvisionKeyRetry, locale);
             if (receipt_of_ != EntryField::Exit) { out.previous = back; }
+            // Retry is what `Next` is here, so under `All` the way on to the
+            // node needs a key of its own or there is none at all: see the
+            // matching `Plus` in `press`.
+            if (task_ == EntryTask::All &&
+                receipt_of_ == EntryField::TimeReview) {
+                out.plus = next;
+            }
         } else if (leads_to_passkey(verdict_)) {
             out.next = next;
         } else if (task_ == EntryTask::All &&

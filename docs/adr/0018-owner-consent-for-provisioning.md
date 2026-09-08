@@ -98,7 +98,7 @@ recorded here so that no option is credited with paying them.
    own** — as one field on the entry screen this ADR chose, shown only on a
    pinned watch and placed before the passkey, because a forgotten node's
    *current* passkey is the next thing typed:
-   `apps/include/attadipa/apps/provisioning.h:66` —
+   `apps/include/attadipa/apps/provisioning.h:71` —
    "Node,           // The node this watch is pinned to. Forget asks to drop it.".
    It is not the revocation gesture the decision declines: no listener, no
    mode, the same finger on the same panel (the report's §9), and it arms
