@@ -1,4 +1,4 @@
-# A little light — design study 01
+# A little light — design study 01, revision V2
 
 [Open the interactive study](prototype/index.html). Work and acceptance criteria
 live in [#476](https://github.com/hleserg/Attadipa/issues/476). This is a design
@@ -29,20 +29,27 @@ font. The page has no framework, package installation, external request
 or service requirement once the font is present. Its licence is already in
 `assets/fonts/`. Query parameters `size=small`, `theme=day` and `locale=en` select
 a repeatable review configuration.
+Add `motion=off` for a reproducible still review. The Fireflies checkbox controls
+decorative movement; the operating system's reduced-motion preference overrides it.
 
 ### Agree a design in the browser
 
 Each card has a decision (not reviewed / approved / changes requested) and a
 comment. Feedback belongs to the displayed card, geometry, theme, language,
-child/adult setting, page and state; time fields and passkey steps are distinct.
+page and state, effective motion choice, and child/adult setting on the clock
+only; time fields and passkey steps are distinct.
 Changing a variant does not carry its approval into another variant. The review
 namespace must change when the design is revised. The example values are not a
 separate approval scope; the export includes screen text captured at the edit.
+V2 uses a fresh namespace. V1 notes are retained and exported as **previous
+design** feedback, never silently promoted to approval of V2.
 
 Only review metadata uses browser `localStorage`. It survives reloading on the
 same origin and browser profile; private browsing, clearing site data or moving
 to another port can remove or hide it. A storage failure is shown visibly and
-the in-memory notes remain downloadable. Use one review tab: simultaneous edits
+the in-memory notes remain downloadable. One unreadable record does not prevent
+other records from loading; its raw text is included in the export for recovery,
+and that variant cannot overwrite the unreadable record. Use one review tab: simultaneous edits
 to the same variant are last-write-wins, with no shared reviewer accounts.
 
 **Download review** exports the decisions, comments, variant identifiers and
@@ -62,12 +69,12 @@ The inspected LVGL baseline contains useful work worth retaining: the clock's
 meadow artwork, a north-up navigation display, honest service states and bounded
 Mesh preview rows. The gap is composition and interaction across those features:
 
-| Surface | Observed problem | Design response |
-| --- | --- | --- |
-| Clock | Time is widely spaced; setup is reached through a hidden hold | Compact stable HH:MM, visible time-edit affordance, two large destinations |
-| Navigation | On 240 px, the explanation competes with the coordinate reading | Compass and distance share a row; age remains visible; the fix qualification remains in Details |
-| Mesh | Node key, MTU and signal metrics dominate a technical status sheet | Human-readable node name and message first; measurements and identity behind Details |
-| Setup | Dense universal keypad, UTC mental arithmetic, refusal styled as instruction | Focused local-time task, separate node task, large steppers, explicit review before save |
+| Surface    | Observed problem                                                             | Design response                                                                                 |
+| ---------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Clock      | Time is widely spaced; setup is reached through a hidden hold                | Compact stable HH:MM, visible time-edit affordance, two large destinations                      |
+| Navigation | On 240 px, the explanation competes with the coordinate reading              | Compass and distance share a row; age remains visible; the fix qualification remains in Details |
+| Mesh       | Node key, MTU and signal metrics dominate a technical status sheet           | Human-readable node name and message first; measurements and identity behind Details            |
+| Setup      | Dense universal keypad, UTC mental arithmetic, refusal styled as instruction | Focused local-time task, separate node task, large steppers, explicit review before save        |
 
 The baseline was captured with the existing local `build-sim/sim/attadipa_sim`,
 reporting `sim 0.0.1`; it is not asserted to be a fresh build of this branch.
@@ -80,9 +87,11 @@ were opened, including the rejected value and the undersized 240 px keypad.
 
 The watch has one primary fact: time, distance, message, or the value being
 edited. A luminous detail supports that fact. It does not become a second
-dashboard, a persistent animation or a fictional measurement.
+dashboard or a fictional measurement. V2 adds owner-requested decorative motion
+under the limits below; no information depends on seeing an animation.
 
-Clock keeps the existing meadow artwork. The dial becomes an almost invisible
+The night clock keeps the existing meadow artwork at full opacity, without a
+blur or the V1 28% opacity reduction. The dial becomes an almost invisible
 amber enclosure around stable HH:MM; no seconds badge occupies the field. The
 whole time area is the edit target, and its caption makes that action visible.
 On the small display, decorative elements yield to type and touch areas.
@@ -93,8 +102,8 @@ command to turn 57°. Do not use this static study to replace the implemented
 head-up states or their heading-quality rules. Production must retain those
 states and expose orientation and source qualification explicitly.
 
-Mesh uses a short light path between watch and node as its one illustrative
-element. It does not show a map or imply a radio topology. A message preview has
+Mesh uses a short light path between watch and node as a connection illustration,
+with botanical background art. It does not show a map or imply a radio topology. A message preview has
 an explicit Read action. Long text gets its own scrollable reading surface;
 the Back control remains fixed and available. Stale states retain the last data
 and their age/connection qualification when opening and closing Details.
@@ -110,6 +119,32 @@ browser's luminous path is a visual reference, not a request for a costly blur
 in LVGL. A production implementation should use the existing raster/image and
 token mechanisms and measure the memory/flash cost. Brightness, sunlight
 readability, panel colour and energy use remain hardware questions.
+
+### V2: visible artwork and a little movement
+
+The owner's V1 review requested clearer clock artwork, raster beauty on
+Navigation/Mesh/setup, and a few moving fireflies. Two new botanical studies
+share the same garden: a dark clearing for non-clock night screens, and a
+genuinely sunlit ivory scene for day screens. They are not a washed-out night
+image. All backgrounds are fully opaque, unblurred raster layers, composed with
+quiet centres and detailed edges. Text-dense areas have local reading surfaces;
+the whole background is not covered by a dimming sheet. The original night
+clock raster and the canonical reference sheets are unchanged.
+
+The browser animates three small amber lights in the outer gutters with a
+12-second CSS transform/opacity cycle. Their flight paths stay outside the
+content inset; they neither carry status nor follow a compass target. Movement
+pauses during screen interaction, when a card is offscreen, and when the page is
+hidden. It is absent on failure screens. The review checkbox removes it, and
+`prefers-reduced-motion: reduce` removes it regardless of the checkbox. Day
+lights are softer. The image itself never moves or blurs.
+
+This is a browser motion proposal, not a firmware performance claim. An LVGL
+implementation must re-derive production assets for each geometry and use an
+inexpensive sprite/primitive path, not ship these desktop-resolution PNGs or
+copy CSS blur. Physical frame rate, power and panel response are **UNKNOWN**;
+validation is **NOT EXECUTED — HARDWARE REQUIRED**. The static mode remains a
+complete UI if animation is rejected by the production budget.
 
 ## Setup: change the task, then the pixels
 
@@ -145,10 +180,10 @@ browser's simple success example is not a replacement for that state machine.
 
 ### Touch arithmetic and the cost of this choice
 
-| Display | Editable row | Bottom actions | Minimum used |
-| --- | --- | --- | --- |
-| 240 × 240 | 218 px − 6 px gap = two 106 × 61 px buttons | Two 106 × 61 px buttons | Adult 61 px |
-| 410 × 502 | 362 px − 12 px gap = two 175 × 87 px buttons | Two 175 × 87 px buttons | Adult 87 px |
+| Display   | Editable row                                 | Bottom actions          | Minimum used |
+| --------- | -------------------------------------------- | ----------------------- | ------------ |
+| 240 × 240 | 218 px − 6 px gap = two 106 × 61 px buttons  | Two 106 × 61 px buttons | Adult 61 px  |
+| 410 × 502 | 362 px − 12 px gap = two 175 × 87 px buttons | Two 175 × 87 px buttons | Adult 87 px  |
 
 This meets the existing design-system target **in browser geometry**. It does
 not establish finger accuracy. The price is more actions than a numeric keypad:
@@ -167,12 +202,12 @@ board caller must change, deliver **one coordinated PR** and build both callers.
 Codex owns visual implementation and the rendered review. Claude owns the
 application/firmware work below; production implementation remains outstanding.
 
-| Task for Claude | Acceptance evidence |
-| --- | --- |
-| Separate clock editing from node provisioning; provide a local-time draft and explicit save operation using the existing Provisioner | Real application tests show no write before Save, cancel leaves the old clock unchanged, fixed-offset conversion crosses date boundaries correctly, and node-only entry never calls set_wall_clock |
-| Expose state needed by the face without guessing it: current field, step/total, draft, instruction, verdict, saved summary, pinned-node state | Pending and failure are reachable through the real simulator entry; saved passkey and confirmed link stay distinct; review shows actual submitted values |
-| Wire visible Clock → Navigation/Mesh/setup and consistent Back actions in the composition roots | Real `watch_control.py` tap journeys exercise both panel profiles; input does not fire twice or lose the return state; source/heading degradation is preserved |
-| Provide message reading and qualified Details from the existing formatted data | Long UTF-8 names/messages remain bounded in the preview and readable in full; stale data never becomes Ready on return; refused-node identity and forget outcomes remain distinguishable |
+| Task for Claude                                                                                                                               | Acceptance evidence                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Separate clock editing from node provisioning; provide a local-time draft and explicit save operation using the existing Provisioner          | Real application tests show no write before Save, cancel leaves the old clock unchanged, fixed-offset conversion crosses date boundaries correctly, and node-only entry never calls set_wall_clock |
+| Expose state needed by the face without guessing it: current field, step/total, draft, instruction, verdict, saved summary, pinned-node state | Pending and failure are reachable through the real simulator entry; saved passkey and confirmed link stay distinct; review shows actual submitted values                                           |
+| Wire visible Clock → Navigation/Mesh/setup and consistent Back actions in the composition roots                                               | Real `watch_control.py` tap journeys exercise both panel profiles; input does not fire twice or lose the return state; source/heading degradation is preserved                                     |
+| Provide message reading and qualified Details from the existing formatted data                                                                | Long UTF-8 names/messages remain bounded in the preview and readable in full; stale data never becomes Ready on return; refused-node identity and forget outcomes remain distinguishable           |
 
 Do not port CSS literally or copy the sample data into application defaults.
 Reuse `ClockFace`, `NavFace`, `MeshFace`, `ProvisionFace`, the existing l10n
@@ -188,8 +223,19 @@ selects and buttons, checks every exposed scenario across geometry/theme/locale,
 checks target rectangles and content overflow, then walks date clamping, UTC
 rollover, save, forget cancellation, digit wrapping and the pending/late-response
 boundary. It also checks review persistence, variant isolation, plain-text
-handling, export contents and a storage-failure path without keeping its test
-notes. It is evidence about the prototype, not the production caller.
+handling, the real export button, corrupt-record recovery and a storage-failure
+path without keeping its test notes. V2 additionally requires a loaded Nunito
+font, decodable raster files, localised Mesh details, both success receipts,
+distinct failure art and moving/stopped fireflies. It is evidence about the
+prototype, not the production caller.
+
+V2 passed 1,487 assertions with motion available and 1,483 with system reduced
+motion (the four movement-only assertions are skipped). A separate page reload
+restored a valid note alongside a corrupt record and kept the latter exportable;
+temporary browser test records were removed afterward. A deliberately missing
+font produced the expected failed assertion instead of accepting fallback type.
+Failure and passkey-success screens were also opened on both geometries, and
+two animated frames were compared for the restrained edge-light movement.
 
 With Chromium and `agent-browser` available:
 
@@ -202,13 +248,13 @@ The check returns a `passed` boolean and failure descriptions. A false result
 must be treated as failure even though the browser command itself can exit zero.
 The browser helper is optional review tooling, not a project dependency.
 
-| Evidence | Result and boundary |
-| --- | --- |
-| Browser state/geometry check | Passed; production models are not exercised by this check |
-| Eight native-size gallery captures | Both sizes × both themes × both languages; opened for type, composition, clipping and touch affordances |
-| Interactive journeys | Time editing, node confirmation, message/details/back, pending and late completion checked in the browser |
-| LVGL baseline | Existing Clock, Navigation, Mesh and entry captured and inspected; clock hold and invalid-date rejection driven through the real simulator |
-| Physical display/touch/power | **NOT EXECUTED — HARDWARE REQUIRED**; no connected serial watch was found |
+| Evidence                           | Result and boundary                                                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Browser state/geometry check       | Passed; production models are not exercised by this check                                                                                  |
+| Eight native-size gallery captures | Both sizes × both themes × both languages; opened for type, composition, clipping and touch affordances                                    |
+| Interactive journeys               | Time editing, node confirmation, message/details/back, pending and late completion checked in the browser                                  |
+| LVGL baseline                      | Existing Clock, Navigation, Mesh and entry captured and inspected; clock hold and invalid-date rejection driven through the real simulator |
+| Physical display/touch/power       | **NOT EXECUTED — HARDWARE REQUIRED**; no connected serial watch was found                                                                  |
 
 The two committed review sheets are reading aids, not firmware goldens. The
 complete gallery and state captures are local evidence in `artifacts/ui/476/`.
@@ -246,3 +292,28 @@ checkerboard rather than alpha. It is not used or committed. Final prompt:
 The general wrist-interaction principle—quick, focused tasks with low information
 density—is also supported by [Google's wearable design guidance](https://developer.android.com/design/ui/wear/guides/get-started/design-for-wearables).
 It supplies no hardware measurements for either Attadipa board.
+
+### V2 botanical studies
+
+Generated with the built-in OpenAI image tool on 2026-09-07 and integrated into
+the browser review on 2026-09-08. Both outputs were opened and inspected. They
+are RGB study assets, not transparent sprites or firmware assets. No raster
+post-processing was applied.
+
+| File                                               | Pixels      | File bytes |
+| -------------------------------------------------- | ----------- | ---------- |
+| [glade-night-v2.png](prototype/glade-night-v2.png) | 1122 × 1402 | 1,755,176  |
+| [glade-day-v2.png](prototype/glade-day-v2.png)     | 1122 × 1402 | 2,199,524  |
+
+Both calls used the existing night meadow and canonical visual style board as
+style references, never as edit targets. Final shared prompt:
+
+> Use case: illustration-story. Asset type: portrait raster background for Attadipa wearable UI, one full-bleed image around 1024x1280. Input image 1 is a STYLE reference for botanical shapes and subtle glowing firefly atmosphere, not an edit target. Input image 2 is the canonical brand/palette reference only. Create NEW original background art, no UI, no text, no numbers, no lettering, no frame, no logo, no mascot or insects with visible anatomy. Keep the middle 65% quiet and low contrast for overlaid readable time, compass, messages and forms. Put the beautiful clearly resolved leaves, fern fronds and delicate grasses near the left/right edges and lower quarter, with subtle depth and hand-painted editorial illustration texture. Crisp silhouettes and visible vein detail at the edges, no gaussian blur, no washed-out translucent veil. Natural asymmetry, refined and inviting, not tropical jungle or generic fantasy landscape. No path, map, target dots, dotted lines or connecting trails that could be mistaken for navigation information. One image, not a collage or contact sheet.
+
+Night suffix:
+
+> NIGHT edition: warm deep ink olive #2F3A2E quiet clearing with a very dark olive central field, layered meadow green #6FA07A and sage #A7B49C foliage, a little soft sky teal #6FB7B5 on side leaves, selective amber #FFC857 rim light and four small distant firefly glows near the edges. The leaves should be visibly richer and more beautiful than a flat dark sheet, while the quiet centre remains dark enough for ivory typography. No blue-black, no neon, no excessive bloom, no big bright patch in the centre.
+
+Day suffix:
+
+> DAY edition: luminous warm ivory #FFF6E8 open central field, sunlight through sage #A7B49C and meadow green #6FA07A leaves, restrained soft sky teal #6FB7B5 leaf shadows, hints of warm ochre/amber #FFC857 and orange #FF8A40 at the far edges. A fresh sunlit botanical garden in warm paper tones, NOT a dark picture faded to white, NOT sepia monochrome. Leaf colours remain distinct, detailed and confident near the periphery; the entire central field stays pale warm ivory for dark olive typography. No big dark patch behind the centre, no drawn fireflies needed in daylight.

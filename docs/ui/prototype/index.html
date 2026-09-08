@@ -417,17 +417,143 @@
       justify-content: space-between;
       gap: 0;
     }
-    .clock-art {
+    .scene-art {
       position: absolute;
       inset: 0;
-      background: url("../../../ui/assets/source/backgrounds/clock_meadow_night_410x502.png")
-        center/cover;
-      opacity: 0.28;
-      z-index: -1;
+      background: url("glade-night-v2.png") center/cover;
+      z-index: -2;
+      pointer-events: none;
     }
-    .day .clock-art {
-      opacity: 0.055;
-      mix-blend-mode: multiply;
+    .screen[data-page="clock"].night .scene-art {
+      background-image: url("../../../ui/assets/source/backgrounds/clock_meadow_night_410x502.png");
+    }
+    .day .scene-art {
+      background-image: url("glade-day-v2.png");
+    }
+    /* Local reading surfaces keep the foliage itself crisp and fully visible. */
+    .screen .clock-top,
+    .screen .nav-header,
+    .screen .mesh-top,
+    .screen .step-head,
+    .screen .message,
+    .screen .details dl,
+    .screen .message-body {
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--bg) 90%, transparent);
+      border-radius: 6px;
+    }
+    .screen .nav-reading,
+    .screen .nav-status,
+    .screen .edit-label,
+    .screen .entry .sub,
+    .screen .summary .sub {
+      align-self: center;
+      background: var(--bg);
+      border-radius: 6px;
+      box-shadow: 0 0 0 3px var(--bg);
+    }
+    .screen .digits,
+    .screen .value,
+    .screen .title,
+    .screen .node-name {
+      text-shadow: 0 1px 3px var(--bg);
+    }
+    .screen .nav .dial {
+      background: var(--bg);
+      border-radius: 50%;
+    }
+    .screen.night .clock-top,
+    .screen.night .nav-header,
+    .screen.night .mesh-top,
+    .screen.night .step-head {
+      background: none;
+      box-shadow: none;
+    }
+    .night .clock-top .kicker,
+    .night .nav-header .kicker,
+    .night .mesh-top .kicker,
+    .night .mesh-top .pill,
+    .night .step-head .title {
+      background: var(--bg);
+      box-shadow: 0 0 6px 3px var(--bg);
+      border-radius: 6px;
+    }
+    .fireflies {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .fireflies i {
+      position: absolute;
+      left: 2%;
+      top: 30%;
+      width: 3px;
+      height: 3px;
+      background: var(--amber);
+      border-radius: 50%;
+      box-shadow: 0 0 5px 1px var(--amber);
+      animation: firefly-drift 12s ease-in-out infinite;
+    }
+    .fireflies i:nth-child(2) {
+      left: auto;
+      right: 2%;
+      top: 48%;
+      animation-delay: -4s;
+    }
+    .fireflies i:nth-child(3) {
+      top: 67%;
+      animation-delay: -8s;
+    }
+    .day .fireflies {
+      opacity: 0.5;
+    }
+    .screen:focus-within .fireflies i,
+    .screen[data-visible="false"] .fireflies i,
+    .motion-paused .fireflies i {
+      animation-play-state: paused;
+    }
+    @keyframes firefly-drift {
+      0%,
+      100% {
+        transform: translate(0, 0);
+        opacity: 0.25;
+      }
+      35% {
+        transform: translate(3px, -10px);
+        opacity: 0.8;
+      }
+      70% {
+        transform: translate(-3px, -4px);
+        opacity: 0.4;
+      }
+    }
+    .screen .failure-symbol {
+      width: 76px;
+      height: 76px;
+      color: var(--text);
+      background: var(--surface);
+      border: 2px solid var(--accent);
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+    }
+    .screen .failure-symbol svg {
+      width: 44px;
+      height: 44px;
+    }
+    .screen.small .failure-symbol {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+    }
+    .screen.small .failure-symbol svg {
+      width: 28px;
+      height: 28px;
+    }
+    .screen .failure .sub {
+      background: var(--bg);
+      border-radius: 6px;
     }
     .clock-halo {
       position: absolute;
@@ -918,6 +1044,9 @@
       }
     }
     @media (prefers-reduced-motion: reduce) {
+      .fireflies {
+        display: none;
+      }
       *,
       *:before,
       *:after {
@@ -1009,7 +1138,7 @@
   <header>
     <div class="masthead">
       <div class="wordmark">Attadipa<b>°</b></div>
-      <div class="edition">Design study 01 · September 2026</div>
+      <div class="edition">Design study 01 · V2 · September 2026</div>
     </div>
     <div class="intro">
       <h1>A little light.<br /><em>Always with you.</em></h1>
@@ -1043,6 +1172,11 @@
         </select></label
       >
       <label><input id="child" type="checkbox" /> Child clock</label>
+      <label
+        ><input id="motion" type="checkbox" checked /><span id="motion-label"
+          >Fireflies</span
+        ></label
+      >
       <span class="note"
         >Interactive concept · sample data · 1 CSS pixel = 1 display pixel</span
       >
@@ -1112,6 +1246,7 @@
         age: "Position age",
         peers: "Reported peers",
         snr: "SNR",
+        snrValue: "7.25 dB",
         mtu: "MTU",
         identity: "Node key",
         saved: "Saved",
@@ -1210,6 +1345,7 @@
         age: "Возраст позиции",
         peers: "Известные узлы",
         snr: "ОСШ",
+        snrValue: "7,25 дБ",
         mtu: "MTU",
         identity: "Ключ узла",
         saved: "Сохранено",
@@ -1319,6 +1455,7 @@
           "pending",
           "failed",
           "done",
+          "code-saved",
           "node",
           "forgotten",
         ],
@@ -1343,28 +1480,39 @@
     );
     const savedClocks = {};
     // Bump the namespace when the design changes: approval must not carry forward.
-    const reviewPrefix = "attadipa-study-01-review-v1/";
+    const reviewPrefix = "attadipa-study-01-review-v2/";
     const reviews = new Map();
+    const unreadableReviews = new Map();
     let reviewStorageFailed = false;
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key.startsWith(reviewPrefix)) continue;
-        const entry = JSON.parse(localStorage.getItem(key));
-        if (
-          !entry ||
-          !["pending", "approved", "changes"].includes(entry.status) ||
-          !["context", "note", "preview"].every(
-            (field) => typeof entry[field] === "string",
-          )
-        ) {
-          throw new Error("Invalid stored review");
+    function loadReviews() {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!/^attadipa-study-01-review-v[12]\//.test(key)) continue;
+          const raw = localStorage.getItem(key);
+          try {
+            const entry = JSON.parse(raw);
+            if (
+              !entry ||
+              !["pending", "approved", "changes"].includes(entry.status) ||
+              !["context", "note", "preview"].every(
+                (field) => typeof entry[field] === "string",
+              )
+            ) {
+              throw new Error("Invalid stored review");
+            }
+            reviews.set(key, entry);
+          } catch {
+            unreadableReviews.set(key, raw);
+            reviewStorageFailed = true;
+          }
         }
-        reviews.set(key, entry);
+      } catch {
+        reviewStorageFailed = true;
       }
-    } catch {
-      reviewStorageFailed = true;
     }
+    loadReviews();
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
     const reviewCopy = () =>
       document.querySelector("#locale").value === "ru"
         ? {
@@ -1376,9 +1524,9 @@
             scope: "Только показанный вариант",
             export: "Скачать замечания",
             notice:
-              "Решения и заметки сохраняются в этом браузере. Скачайте файл, чтобы передать их мне и Claude.",
+              "V2 · Заметки сохраняются в этом браузере. Отзывы V1 остались в выгрузке, но не согласуют новый дизайн.",
             failed:
-              "Не удалось сохранить заметки в браузере. Скачайте файл до закрытия страницы — иначе новые правки потеряются.",
+              "Ошибка чтения или сохранения заметок. Скачайте файл до закрытия страницы; повреждённые записи включены как исходный текст и защищены от перезаписи.",
           }
         : {
             status: "Decision on this variant",
@@ -1389,9 +1537,9 @@
             scope: "Only the displayed variant",
             export: "Download review",
             notice:
-              "Decisions and notes stay in this browser. Download the file to share them with Codex and Claude.",
+              "V2 · Notes stay in this browser. V1 feedback remains in the export but does not approve the new design.",
             failed:
-              "Browser storage failed. Download before closing this page or new notes will be lost.",
+              "Browser storage failed to read or save notes. Download before closing; unreadable entries are included as raw text and protected from overwrite.",
           };
     function reviewContext(id) {
       const view = views[id],
@@ -1401,7 +1549,12 @@
         ...["size", "theme", "locale"].map(
           (key) => document.querySelector(`#${key}`).value,
         ),
-        document.querySelector("#child").checked ? "child" : "adult",
+        view.page === "clock"
+          ? document.querySelector("#child").checked
+            ? "child"
+            : "adult"
+          : "",
+        motionEnabled(view) ? "fireflies" : "still",
         view.page,
         view.state,
         view.page !== "setup"
@@ -1435,14 +1588,19 @@
         .forEach((option) => (option.textContent = copy[option.value]));
       panel.querySelector("select").value = entry?.status || "pending";
       panel.querySelector("textarea").value = entry?.note || "";
+      panel
+        .querySelectorAll("select,textarea")
+        .forEach((input) => (input.disabled = unreadableReviews.has(key)));
     }
     function renderReviewNotice() {
       const copy = reviewCopy();
-      const count = [...reviews.values()].filter(
-        (entry) => entry.note.trim() || entry.status !== "pending",
-      ).length;
-      document.querySelector("#review-notice").textContent =
-        copy[reviewStorageFailed ? "failed" : "notice"];
+      const count =
+        [...reviews.values()].filter(
+          (entry) => entry.note.trim() || entry.status !== "pending",
+        ).length + unreadableReviews.size;
+      const notice = document.querySelector("#review-notice");
+      const message = copy[reviewStorageFailed ? "failed" : "notice"];
+      if (notice.textContent !== message) notice.textContent = message;
       const button = document.querySelector("#export-review");
       button.textContent = `${copy.export} · ${count}`;
       button.disabled = count === 0;
@@ -1469,14 +1627,20 @@
     function exportReview() {
       // ponytail: a local review file; add shared accounts only for multi-user review.
       return [
-        "ATTADIPA — DESIGN STUDY 01 / REVIEW V1",
+        "ATTADIPA — DESIGN STUDY 01 / REVIEW V2",
         "Only the listed variants are reviewed. Not firmware acceptance.",
-        ...[...reviews.values()]
-          .filter((entry) => entry.note.trim() || entry.status !== "pending")
+        ...[...reviews.entries()]
+          .filter(
+            ([, entry]) => entry.note.trim() || entry.status !== "pending",
+          )
           .map(
-            (entry) =>
-              `\n${entry.context}\nDecision: ${entry.status}\n\n${entry.note}\n\nScreen text when reviewed:\n${entry.preview}`,
+            ([key, entry]) =>
+              `\nRevision: ${key.startsWith(reviewPrefix) ? "V2" : "V1 (previous design)"}\n${entry.context}\nDecision: ${entry.status}\n\n${entry.note}\n\nScreen text when reviewed:\n${entry.preview}`,
           ),
+        ...[...unreadableReviews].map(
+          ([key, raw]) =>
+            `\nUNREADABLE SAVED ENTRY — recovery copy\n${key}\n${raw}`,
+        ),
       ].join("\n");
     }
     const fields = ["day", "month", "year", "hour", "minute", "zone"];
@@ -1524,7 +1688,7 @@
         : t("date");
       if (view.state === "unprovisioned")
         return empty("clockMissing", "clockHint", "time", "edit");
-      return `<div class="clock-art"></div><div class="clock-halo"></div><div class="content clock ${child ? "child" : ""}"><div class="clock-top"><span class="kicker">${escapeText(date)}</span>${view.state === "stale" ? icon("warning") : ""}</div><button class="clock-time" data-action="menu" aria-label="${t("edit")}" ${child ? "disabled" : ""}><span class="digits">${time}</span><span class="edit-label">${view.state === "stale" ? t("clockOld") : t("edit")}${icon("edit")}</span></button>${child ? '<img class="child-art" src="lumar-study.png" alt="Lumar">' : ""}<div class="actions">${action(t("navigate"), "nav")}${action(t("mesh"), "mesh")}</div></div>`;
+      return `<div class="clock-halo"></div><div class="content clock ${child ? "child" : ""}"><div class="clock-top"><span class="kicker">${escapeText(date)}</span>${view.state === "stale" ? icon("warning") : ""}</div><button class="clock-time" data-action="menu" aria-label="${t("edit")}" ${child ? "disabled" : ""}><span class="digits">${time}</span><span class="edit-label">${view.state === "stale" ? t("clockOld") : t("edit")}${icon("edit")}</span></button>${child ? '<img class="child-art" src="lumar-study.png" alt="Lumar">' : ""}<div class="actions">${action(t("navigate"), "nav")}${action(t("mesh"), "mesh")}</div></div>`;
     }
     function empty(title, hint, command = "home", label = "home") {
       return `<div class="content empty">${imageLumar()}<h3 class="title">${t(title)}</h3><p class="sub">${t(hint)}</p><div class="actions">${action(t(label), command, true)}</div></div>`;
@@ -1553,7 +1717,7 @@
         : [
             [t("identity"), "4c9a2f7b"],
             [t("peers"), "3"],
-            [t("snr"), "7.25 dB"],
+            [t("snr"), t("snrValue")],
             [t("mtu"), "244"],
           ];
       return `<div class="content details"><h3 class="title">${t("details")}</h3><dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>${navDetails ? `<p class="sub warning">${t("unconfirmed")}</p>` : ""}<div class="actions">${action(t("back"), navDetails ? "nav" : "mesh")}</div></div>`;
@@ -1567,7 +1731,7 @@
       if (state === "forgotten")
         return empty("forgotten", "forgottenHint", "passkey", "pair");
       if (state === "failed")
-        return empty("failed", "failedHint", "retry", "retry");
+        return `<div class="content empty failure"><div class="failure-symbol">${icon("warning")}</div><h3 class="title">${t("failed")}</h3><p class="sub">${t("failedHint")}</p><div class="actions">${action(t("retry"), "retry")}</div></div>`;
       if (state === "pending")
         return `<div class="content empty"><div class="pending-symbol"></div><h3 class="title">${t("pending")}</h3><p class="sub" aria-live="polite">${t("pendingHint")}</p><div class="actions">${action(t("stop"), "home")}</div></div>`;
       let content = "";
@@ -1606,6 +1770,7 @@
       const small = document.querySelector("#size").value === "small";
       screen.className = `screen ${small ? "small" : ""} ${document.querySelector("#theme").value}`;
       screen.lang = document.querySelector("#locale").value;
+      screen.dataset.page = view.page;
       if (view.page === "clock") screen.innerHTML = clock(view, id);
       else if (view.page === "nav") screen.innerHTML = nav(view);
       else if (view.page === "mesh") screen.innerHTML = mesh(view);
@@ -1614,6 +1779,10 @@
       else if (view.page === "message")
         screen.innerHTML = `<div class="content details"><h3 class="title">${t("readTitle")}</h3><div class="sub">${t("sender")}</div><div class="message-body" tabindex="0">${t("longMessage")}</div><div class="actions">${action(t("back"), "mesh")}</div></div>`;
       else screen.innerHTML = setup(view, wizards[id]);
+      screen.insertAdjacentHTML(
+        "afterbegin",
+        `<div class="scene-art" aria-hidden="true"></div>${motionEnabled(view) ? '<div class="fireflies" aria-hidden="true"><i></i><i></i><i></i></div>' : ""}`,
+      );
       renderReview(id);
       if (focused)
         (
@@ -1622,6 +1791,15 @@
         )?.focus({ preventScroll: true });
     }
     function render() {
+      document.querySelector("#motion").disabled = reducedMotion.matches;
+      document.querySelector("#motion-label").textContent =
+        document.querySelector("#locale").value === "ru"
+          ? reducedMotion.matches
+            ? "Светлячки: движение отключено системой"
+            : "Светлячки"
+          : reducedMotion.matches
+            ? "Fireflies: system reduced motion"
+            : "Fireflies";
       document
         .querySelector("#gallery")
         .classList.toggle(
@@ -1630,6 +1808,13 @@
         );
       cards.forEach((c) => renderCard(c.id));
       renderReviewNotice();
+    }
+    function motionEnabled(view) {
+      return (
+        document.querySelector("#motion").checked &&
+        !reducedMotion.matches &&
+        view.state !== "failed"
+      );
     }
     function go(id, page, state = "ready") {
       views[id] = { page, state };
@@ -1747,7 +1932,13 @@
         wizard.digit = 0;
         wizard.saved = event.target.value === "done";
         wizard.passkeyReturn = { page: "setup", state: "menu" };
-        go(id, id, event.target.value);
+        if (event.target.value === "time")
+          wizard.values = [...(savedClocks[id] || initialTime)];
+        go(
+          id,
+          id,
+          event.target.value === "code-saved" ? "done" : event.target.value,
+        );
       }
       if (event.target.matches(".review-panel select")) saveReview(event);
     });
@@ -1773,6 +1964,22 @@
       if ([...el.options].some((o) => o.value === params.get(key)))
         el.value = params.get(key);
     }
+    if (params.get("motion") === "off")
+      document.querySelector("#motion").checked = false;
+    reducedMotion.addEventListener("change", render);
+    document.addEventListener("visibilitychange", () =>
+      document.body.classList.toggle("motion-paused", document.hidden),
+    );
+    document.body.classList.toggle("motion-paused", document.hidden);
+    const visibility = new IntersectionObserver((entries) => {
+      entries.forEach(
+        (entry) =>
+          (entry.target.dataset.visible = String(entry.isIntersecting)),
+      );
+    });
+    document
+      .querySelectorAll(".screen")
+      .forEach((screen) => visibility.observe(screen));
     render();
   </script>
 </html>

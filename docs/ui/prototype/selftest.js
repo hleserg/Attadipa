@@ -48,6 +48,26 @@
     }
   };
   await document.fonts.ready;
+  assert(
+    [...document.fonts].some(
+      (font) => font.family.includes("Nunito") && font.status === "loaded",
+    ),
+    "The pinned Nunito font must actually load",
+  );
+  for (const source of [
+    "glade-day-v2.png",
+    "glade-night-v2.png",
+    "../../../ui/assets/source/backgrounds/clock_meadow_night_410x502.png",
+  ]) {
+    const image = new Image();
+    image.src = source;
+    try {
+      await image.decode();
+    } catch {
+      /* Report a broken raster below. */
+    }
+    assert(image.naturalWidth > 0, `Background loads: ${source}`);
+  }
   for (const size of ["small", "large"]) {
     select("#size", size);
     for (const theme of ["day", "night"]) {
@@ -72,6 +92,26 @@
         scenario("mesh", "ready");
         click("mesh", "message");
         fit("mesh", `${size}/${theme}/${locale}/message`);
+        scenario("mesh", "ready");
+        click("mesh", "mesh-details");
+        assert(
+          text("mesh").includes(locale === "ru" ? "7,25 дБ" : "7.25 dB"),
+          "Mesh details uses the selected locale",
+        );
+        fit("mesh", `${size}/${theme}/${locale}/mesh-details`);
+        scenario("setup", "failed");
+        assert(
+          !document.querySelector("#screen-setup .lumar") &&
+            document.querySelector("#screen-setup .failure-symbol"),
+          "Failure has warning art, not success art",
+        );
+        scenario("setup", "code-saved");
+        assert(
+          text("setup").includes(
+            locale === "ru" ? "Код сохранён" : "Passkey saved",
+          ),
+          "Passkey receipt is selectable in the gallery",
+        );
         scenario("nav", "stale");
         click("nav", "nav-details");
         assert(
@@ -213,8 +253,12 @@
   document.querySelector("#child").dispatchEvent(new Event("change"));
   // Preserve any real feedback: the check only owns the temporary edits below.
   const originalReviews = new Map(reviews);
+  const originalUnreadable = new Map(unreadableReviews);
   const originalStorage = new Map(
-    [...reviews.keys()].map((key) => [key, localStorage.getItem(key)]),
+    [...reviews.keys(), ...unreadableReviews.keys()].map((key) => [
+      key,
+      localStorage.getItem(key),
+    ]),
   );
   const originalStorageFailed = reviewStorageFailed;
   const setItem = Storage.prototype.setItem;
@@ -262,6 +306,20 @@
         exportReview().includes("Decision: changes"),
       "Export contains note, decision and context",
     );
+    const navKey = document.querySelector("#review-nav").dataset.key;
+    const child = document.querySelector("#child");
+    child.checked = true;
+    child.dispatchEvent(new Event("change"));
+    assert(
+      document.querySelector("#review-nav").dataset.key === navKey,
+      "Child clock does not split non-clock reviews",
+    );
+    assert(
+      document.querySelector("#review-clock").dataset.key !== key,
+      "Child clock has its own review",
+    );
+    child.checked = false;
+    child.dispatchEvent(new Event("change"));
     assert(
       !document.querySelector("#export-review").disabled,
       "A review enables download",
@@ -299,21 +357,101 @@
       exportReview().includes(input.value),
       "Storage failure does not lose the in-memory export",
     );
+    Storage.prototype.setItem = setItem;
+    const invalidKey = reviewPrefix + "selftest-invalid";
+    const validKey = reviewPrefix + "selftest-valid";
+    const legacyKey = "attadipa-study-01-review-v1/selftest-legacy";
+    const validEntry = {
+      context: "selftest only",
+      status: "changes",
+      note: "Recovered valid note",
+      preview: "Clock",
+    };
+    localStorage.setItem(invalidKey, "{broken-json");
+    localStorage.setItem(validKey, JSON.stringify(validEntry));
+    localStorage.setItem(
+      legacyKey,
+      JSON.stringify({ ...validEntry, note: "Earlier V1 feedback" }),
+    );
+    reviews.clear();
+    unreadableReviews.clear();
+    loadReviews();
+    assert(
+      reviews.get(validKey)?.note === validEntry.note,
+      "One corrupt entry cannot hide valid reviews",
+    );
+    assert(
+      exportReview().includes("{broken-json"),
+      "Unreadable records remain recoverable in export",
+    );
+    assert(
+      exportReview().includes("Earlier V1 feedback") &&
+        exportReview().includes("V1 (previous design)"),
+      "V1 feedback remains exported with its revision",
+    );
   } finally {
     Storage.prototype.setItem = setItem;
-    for (const key of reviews.keys()) {
-      if (!originalReviews.has(key)) localStorage.removeItem(key);
+    for (const key of [...reviews.keys(), ...unreadableReviews.keys()]) {
+      if (!originalStorage.has(key)) localStorage.removeItem(key);
     }
     reviews.clear();
-    for (const [key, entry] of originalReviews) {
-      reviews.set(key, entry);
-      const stored = originalStorage.get(key);
+    unreadableReviews.clear();
+    for (const [key, entry] of originalReviews) reviews.set(key, entry);
+    for (const [key, raw] of originalUnreadable)
+      unreadableReviews.set(key, raw);
+    for (const [key, stored] of originalStorage) {
       if (stored === null) localStorage.removeItem(key);
       else localStorage.setItem(key, stored);
     }
     reviewStorageFailed = originalStorageFailed;
     render();
   }
+  const motion = document.querySelector("#motion");
+  const originalMotion = motion.checked;
+  scenario("clock", "ready");
+  motion.checked = false;
+  motion.dispatchEvent(new Event("change"));
+  assert(
+    !document.querySelector(".fireflies"),
+    "Motion off removes decorative animation",
+  );
+  motion.checked = true;
+  motion.dispatchEvent(new Event("change"));
+  const particles = document.querySelectorAll("#screen-clock .fireflies i");
+  assert(
+    particles.length === (reducedMotion.matches ? 0 : 3),
+    "Motion respects the system preference",
+  );
+  if (particles.length) {
+    document.activeElement?.blur();
+    const before = getComputedStyle(particles[0]).transform;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    assert(
+      getComputedStyle(particles[0]).transform !== before,
+      "An enabled firefly actually moves",
+    );
+    const clockScreen = document.querySelector("#screen-clock");
+    clockScreen.querySelector("button:not(:disabled)").focus();
+    assert(
+      getComputedStyle(particles[0]).animationPlayState === "paused",
+      "Interaction pauses decorative motion",
+    );
+    document.activeElement.blur();
+    clockScreen.dataset.visible = "false";
+    assert(
+      getComputedStyle(particles[0]).animationPlayState === "paused",
+      "Offscreen decorative motion is paused",
+    );
+    delete clockScreen.dataset.visible;
+    document.body.classList.add("motion-paused");
+    assert(
+      getComputedStyle(particles[0]).animationPlayState === "paused",
+      "Hidden-page motion policy pauses animations",
+    );
+    document.body.classList.remove("motion-paused");
+  }
+  motion.checked = originalMotion;
+  motion.dispatchEvent(new Event("change"));
   const result = { checks, failures, passed: failures.length === 0 };
   window.designCheck = result;
   return result;
