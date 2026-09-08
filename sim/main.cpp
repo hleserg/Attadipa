@@ -211,7 +211,9 @@ int main(int argc, char **argv) {
     if (options.provision_screen) {
       // Straight to the entry screen, for a screenshot that does not need a
       // finger held on the clock first.
-      attadipa::sim::enter_provisioning();
+      attadipa::sim::enter_provisioning(
+          options.provision_node ? attadipa::apps::EntryTask::NodePasskey
+                                 : attadipa::apps::EntryTask::LocalTime);
     }
   } else {
     attadipa::sim::build_boot_screen(inventory, caps);

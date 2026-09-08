@@ -1,6 +1,7 @@
 #pragma once
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/provisioning.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/color.h"
 
@@ -30,6 +31,6 @@ void rebuild_clock_screen();
 // entry is done. Exported because `--provision` wants the entry screen without
 // a finger held on the clock first, and because a theme owner a test cannot
 // reach is the defect this file exists to fix.
-void enter_provisioning();
+void enter_provisioning(apps::EntryTask task = apps::EntryTask::LocalTime);
 
 } // namespace attadipa::sim

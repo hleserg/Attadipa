@@ -140,9 +140,6 @@ struct BoardState {
   // Present while the entry screen is up; a fresh one for each visit, so a
   // half-typed date from last time is not waiting on the next.
   std::optional<attadipa::apps::ProvisioningEntry> entry;
-  // Ticks of `refresh_ui` the Done screen has been showing; the clock comes
-  // back after kDoneTicks of them.
-  unsigned done_ticks = 0;
   attadipa::core::TimeService time_service;
   // Default NVS, classified once at boot: ESP_OK, or the `nvs_flash_init()`
   // verdict that stands for the rest of this boot. Read by `BoardTimeOps`.
@@ -906,8 +903,6 @@ void build_clock_screen() {
                          clock_text());
 }
 
-constexpr unsigned kDoneTicks = 3;
-
 // A long press on the clock opens the entry screen. It is on the screen
 // object, which both faces share, so it needs adding once; the clock face
 // leaves its children unclickable and the press lands here, while the
@@ -918,11 +913,32 @@ void long_press(lv_event_t *) {
   }
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
+  // The clock this watch already believes, so the entry opens on it rather
+  // than on 2000-01-01 and a correction is a nudge instead of a retyped date.
+  // Seeded only when both halves are genuinely known: an instant the service
+  // will not vouch for, or an offset nobody has ever set, would put a guess on
+  // screen wearing the clock's clothes. The entry drops a seed it cannot make
+  // a civil date out of, so this cannot smuggle one in either.
+  const attadipa::core::MonotonicTime seed_now{
+      static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+  const attadipa::core::TimeState seed_time = state.time_service.state(seed_now);
+  attadipa::apps::EntrySeed seed{};
+  if (seed_time.utc.validity == attadipa::core::Validity::Valid &&
+      seed_time.timezone_valid) {
+    seed.valid = true;
+    seed.utc = seed_time.utc.value;
+    seed.offset_minutes = static_cast<std::int16_t>(
+        (seed_time.local.value.unix_seconds - seed_time.utc.value.unix_seconds) /
+        60);
+  }
   // The page first: it clears the clock face, and `state.entry` with it, so
   // the emplace below has to follow rather than precede it.
   show_page(Page::Entry);
-  state.entry.emplace(provisioner);
-  state.done_ticks = 0;
+  // A long press on the clock is a question about the clock, so that is the
+  // task it opens. `NodePasskey` is unreachable from this board today: nothing
+  // here chooses between the two, and the chooser is the entry screen's own
+  // design work rather than part of this change (#469).
+  state.entry.emplace(provisioner, attadipa::apps::EntryTask::LocalTime, seed);
   state.provision_face.build(
       lv_screen_active(),
       {kWidth, kHeight, attadipa::ui::Theme::Night,
@@ -969,7 +985,11 @@ void refresh_ui(lv_timer_t *timer) {
     if (state.entry->poll()) {
       state.provision_face.update();
     }
-    if (!state.entry->finished() || ++state.done_ticks < kDoneTicks) {
+    // `finished()` is the entry's `Exit` field and nothing else: the receipt
+    // that says what the board did is a field the holder leaves, not a screen
+    // a timer takes away. So there is no tick count here any more -- the clock
+    // comes back on the press that asked for it and not a moment before.
+    if (!state.entry->finished()) {
       return;
     }
     show_page(Page::Clock);

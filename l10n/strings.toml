@@ -400,79 +400,146 @@ ru = "нужна доработка"
 en = "impossible"
 ru = "невозможно"
 
-# --- The provisioning entry screen (ADR-0018, OD-26) -----------------------
+# --- The provisioning entry screen (ADR-0018, OD-26, #469) -----------------
 #
-# What a holder types into the watch with a finger: the clock, then the
-# passkey the MeshCore node shows. Titles name the field; hints say what to
-# type, and are replaced by the verdict on the last OK until the next key.
-# The keypad's digits are digits and are not in the catalogue.
+# What a holder sets on the watch with a finger, and one of two things at a
+# time: the local clock, or the MeshCore node's passkey. Nothing here is
+# typed — every value is stepped — so there is no "that is not a date" to
+# report and no digit keys to label. What is left to say is what is being
+# set, what the six keys do to it, and what the board answered.
+#
+# The answer lines are the part that has to stay honest. A board's `Rejected`
+# and its `Failed` describe two different watches: one changed nothing, the
+# other may have moved part of what it was given and has no rollback behind
+# it. They keep separate sentences for that reason and not for variety.
 
-[provision_title_date]
-en = "Date"
-ru = "Дата"
+[provision_title_day]
+en = "Day"
+ru = "День"
 
-[provision_title_time]
-en = "Time, UTC"
-ru = "Время, UTC"
+[provision_title_month]
+en = "Month"
+ru = "Месяц"
+
+[provision_title_year]
+en = "Year"
+ru = "Год"
+
+[provision_title_hour]
+en = "Hour"
+ru = "Часы"
+
+[provision_title_minute]
+en = "Minute"
+ru = "Минуты"
 
 [provision_title_offset]
 en = "Local offset"
 ru = "Местный сдвиг"
 
-[provision_title_passkey]
-en = "Node passkey"
-ru = "Код узла"
+[provision_title_review]
+en = "Check it"
+ru = "Проверьте"
 
-[provision_title_done]
-en = "Done"
-ru = "Готово"
+[provision_title_receipt]
+en = "Result"
+ru = "Результат"
 
-[provision_hint_date]
-en = "year, month, day"
-ru = "год, месяц, день"
-
-[provision_hint_time]
-en = "hours and minutes, in UTC"
-ru = "часы и минуты по UTC"
-
-[provision_hint_offset]
-en = "local time minus UTC; ± flips it"
-ru = "местное время минус UTC; ± меняет знак"
-
-[provision_hint_passkey]
-en = "six digits from the node; OK alone skips"
-ru = "шесть цифр с узла; OK без цифр — пропустить"
-
-# The node field (#411): shown only on a watch that is pinned to a node, as
-# the first eight hex digits of its key, so it can be held against the node's
-# own screen. OK keeps it; the erase key, relabelled Forget, drops it with its
-# bond. What the radio answers is one of five things, and the hint names the
-# one that happened rather than the first that started.
+# The node (#411): shown only on a watch that is pinned to one, as the first
+# eight hex digits of its key, so it can be held against the node's own
+# screen. Forget drops it with its bond, behind a confirmation, and what the
+# radio answers is one of six things — the line names the one that happened
+# rather than the first that started.
 [provision_title_node]
 en = "Node"
 ru = "Узел"
 
-[provision_hint_node]
-en = "OK keeps it; Forget drops it"
-ru = "OK оставит; Забыть сбросит"
+[provision_title_forget]
+en = "Forget this node?"
+ru = "Забыть узел?"
 
-[provision_key_forget]
-en = "Forget"
-ru = "Забыть"
+[provision_title_passkey]
+en = "Node passkey"
+ru = "Код узла"
+
+[provision_hint_date]
+en = "the local date, not UTC"
+ru = "местная дата, не UTC"
+
+[provision_hint_time]
+en = "the local time, not UTC"
+ru = "местное время, не UTC"
+
+[provision_hint_offset]
+en = "local time minus UTC, in quarter hours"
+ru = "местное время минус UTC, шаг 15 минут"
+
+[provision_hint_review]
+en = "Save writes the UTC line to the clock"
+ru = "Сохранить запишет в часы строку UTC"
+
+[provision_hint_node]
+en = "Next goes on to the passkey"
+ru = "Далее — к коду узла"
+
+[provision_hint_forget]
+en = "its bond and its passkey, both. Nothing is sent until you confirm"
+ru = "и связь, и код. Пока не подтвердите, ничего не отправляется"
+
+[provision_hint_passkey]
+en = "six digits from the node's own screen"
+ru = "шесть цифр с экрана узла"
+
+# --- What the board answered ----------------------------------------------
+
+[provision_time_saved]
+en = "the clock is set"
+ru = "часы установлены"
+
+[provision_rejected]
+en = "not accepted — nothing changed"
+ru = "не принято — ничего не изменилось"
+
+# Not "could not be stored": part of the write may have landed, and there is
+# no rollback behind it. A holder who is told the first will not look at the
+# clock again.
+[provision_time_uncertain]
+en = "may be part-written; check the clock"
+ru = "могло записаться не полностью; проверьте часы"
+
+# The passkey is armed and written on the radio worker, not on the task that
+# takes the key press, so there is a moment where neither "set up" nor "could
+# not be stored" is true yet (#416). This is that moment.
+[provision_pending]
+en = "still setting up the node"
+ru = "узел ещё настраивается"
+
+[provision_done]
+en = "the watch is set up"
+ru = "часы настроены"
+
+[provision_passkey_uncertain]
+en = "it may work until the next restart"
+ru = "код может работать до перезапуска"
+
+# Left with the request still on the radio. The screen that would have been
+# told how it ended is gone, and the board keeps that answer from whatever
+# screen replaces this one, so nobody is ever going to hear it.
+[provision_abandoned]
+en = "the node still had it; how that ended is unknown"
+ru = "узел ещё держал запрос; чем кончилось — неизвестно"
 
 [provision_node_pending]
 en = "still forgetting the node"
 ru = "узел ещё забывается"
 
-# Also the passkey hint from then on: a reset node shows new digits, and the
-# old six would fail with nothing on the screen to say why.
 [provision_node_forgotten]
-en = "forgotten; type its new digits"
-ru = "узел забыт; введите цифры"
+en = "forgotten; set its new passkey"
+ru = "узел забыт; введите новый код"
 
 [provision_node_forgotten_ram]
-en = "forgot till reboot; type digits"
-ru = "забыт до рестарта; цифры"
+en = "forgot till reboot; a restart brings it back"
+ru = "забыт до рестарта; после него вернётся"
 
 [provision_node_kept]
 en = "not forgotten; retry"
@@ -486,50 +553,50 @@ ru = "не забыт; поиск после рестарта закрыт"
 en = "nothing to forget"
 ru = "нечего забывать"
 
-[provision_forgotten_skipped]
-en = "no passkey; node is forgotten"
-ru = "без кода; узел забыт"
+# --- The six keys ---------------------------------------------------------
+#
+# One label each, because a face that guessed them would draw "Next" on the
+# step that saves and "Leave" on the one that goes back.
 
-[provision_rejected]
-en = "not accepted — check it"
-ru = "не принято — проверьте"
+[provision_key_minus]
+en = "Down"
+ru = "Вниз"
 
-[provision_failed]
-en = "could not be stored"
-ru = "не удалось сохранить"
+[provision_key_plus]
+en = "Up"
+ru = "Вверх"
 
-# The passkey is armed and written on the radio worker, not on the task that
-# takes the key press, so there is a moment where neither "set up" nor "could
-# not be stored" is true yet (#416). This is that moment, and it is also what
-# the screen says to somebody who leaves during it: the request is with the
-# radio either way, and the watch will not pretend to know how it ended.
-[provision_pending]
-en = "still setting up the node"
-ru = "узел ещё настраивается"
+[provision_key_previous]
+en = "Back"
+ru = "Назад"
 
-[provision_skipped]
-en = "no passkey; the clock is set"
-ru = "без кода; часы установлены"
+[provision_key_next]
+en = "Next"
+ru = "Далее"
 
-[provision_done]
-en = "the watch is set up"
-ru = "часы настроены"
+[provision_key_save]
+en = "Save"
+ru = "Сохранить"
 
-[provision_cancelled]
-en = "nothing changed"
-ru = "ничего не изменено"
+[provision_key_forget]
+en = "Forget"
+ru = "Забыть"
 
-[provision_key_ok]
-en = "OK"
-ru = "OK"
+[provision_key_keep]
+en = "Keep"
+ru = "Оставить"
 
-[provision_key_erase]
-en = "Erase"
-ru = "Стереть"
+[provision_key_retry]
+en = "Retry"
+ru = "Повторить"
 
-[provision_key_cancel]
-en = "Cancel"
-ru = "Отмена"
+[provision_key_done]
+en = "Done"
+ru = "Готово"
+
+[provision_key_leave]
+en = "Leave"
+ru = "Выйти"
 
 # --- Navigation: where the other node is, from here ----------------------
 #

@@ -84,6 +84,7 @@ void print_usage(const char *argv0) {
       "  --no-touch       the Clock as a board shows it when touch did not come "
       "up\n"
       "  --child          render the Clock in Child mode\n"
+      "  --provision-node open that entry screen on the node passkey instead\n"
       "  --provision      open the Clock's entry screen for the time and the "
       "node passkey\n"
       "  --nav            show the node navigation readout\n"
@@ -152,6 +153,11 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     }
     if (std::strcmp(arg, "--clock") == 0) {
       out.clock_screen = true;
+      continue;
+    }
+    if (std::strcmp(arg, "--provision-node") == 0) {
+      out.provision_screen = true;
+      out.provision_node = true;
       continue;
     }
     if (std::strcmp(arg, "--provision") == 0) {

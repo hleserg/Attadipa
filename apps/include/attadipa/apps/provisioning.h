@@ -2,128 +2,228 @@
 
 #include <cstdint>
 
+#include "attadipa/core/clock.h"
 #include "attadipa/core/provisioning.h"
 #include "attadipa/l10n/locale.h"
 
-// The entry screen's half that has no pixels: which field is being typed, what
-// has been typed into it, what OK does next. A keypad of fourteen keys drives
-// it and a face renders `text()`; neither knows the other.
+// The entry screen's half that has no pixels: what is being set, what the six
+// keys do to it, and what the board said. A face renders `text()`; neither
+// knows the other.
 //
-// Four fields, in the order a person has them to hand: the date, the time in
-// UTC, the local offset, and the six-digit passkey the MeshCore node shows.
-// The clock is committed when the offset is accepted -- the board wants all
-// three at once -- and the passkey when its six digits are; OK on an empty
-// passkey skips it, because a watch with no node yet still needs a clock.
+// TWO TASKS, ONE AT A TIME (#469).
 //
-// A fifth, only on a watch that is pinned to a node, sits between the offset
-// and the passkey: the node itself, shown as the first eight hex digits of
-// its key so it can be held against the node's own screen. OK keeps it;
-// the erase key -- labelled Forget there -- asks the board to drop it, bond
-// and pin together, which is what a factory-reset node needs (#411). It is
-// where it is because a forgotten node's passkey is the next thing typed,
-// and the passkey hint then says so: the node shows new digits after a
-// reset, and the old ones would fail silently.
+// A holder who wants to correct the clock should not have to walk past the
+// node's passkey to do it, and a holder recovering a factory-reset node should
+// not have to retype a date that was already right. `EntryTask` is fixed at
+// construction and picks which sequence of fields this entry walks. It is a
+// runtime discriminator and nothing more -- both tasks are this one class over
+// one `core::Provisioner` -- so "a node task never writes the clock" is a
+// property the tests prove about the journey, not one the type system can
+// promise.
 //
-// Cancel is the way out that is not the way through. Before the offset is
-// accepted nothing has reached the board, so it leaves nothing behind; after,
-// the clock the person just set stays and the passkey is skipped -- the same
-// end as OK on an empty passkey. A long press is easy to make by accident on
-// a face that invites a tap, and a screen that can only be left by retyping a
-// correct clock is a trap (#406 round 1).
+// NO TYPED DIGITS.
 //
-// The passkey does not finish where it is typed. The radio arms and stores it
-// on its own task, so OK on six digits ends in `Pending` and this screen waits
-// -- `poll()`, driven by whatever redraws the face -- until the board says
-// which way it went. Done is reachable from a terminal success and from
-// nowhere else (#416): before that the watch had said "the watch is set up"
-// while the stack was still being asked, and a passkey the flash write then
-// refused was gone at the next boot with nobody told.
+// Every value is stepped, not typed: `Minus` and `Plus` move the field under
+// the cursor, `Previous` and `Next` move the cursor. A stepper cannot produce
+// 2026-13-32, so there is no "that is not a date" to report and the fourteen-key
+// pad is gone. What a stepper cannot rule out is the board refusing a value it
+// does take the shape of, and `core::ProvisionOutcome::Rejected` is still a
+// thing that happens; see the verdicts.
+//
+// THE RECEIPT IS NOT THE EXIT.
+//
+// `Receipt` shows what the board did. It stays until the holder leaves it:
+// `finished()` is true on `Exit` and nowhere else. A watch that dismissed its
+// own receipt would be the auto-dismiss #416 was about, one screen further on.
+// A receipt that reports a failure keeps the draft and offers Retry and Back,
+// so it is not an inert end either.
 
 namespace attadipa::apps {
 
-enum class EntryField : std::uint8_t { Date, Time, Offset, Node, Passkey, Done };
+// Which of the two things this entry sets. Fixed for the life of the entry.
+enum class EntryTask : std::uint8_t {
+    LocalTime,   // Day..Offset, a review, one `set_wall_clock`.
+    NodePasskey, // The node, optionally forgetting it, then its passkey.
+};
+
+enum class EntryField : std::uint8_t {
+    // LocalTime. `step`/`steps` count these six.
+    Day, Month, Year, Hour, Minute, Offset,
+    TimeReview,     // The draft and the UTC instant it means. Next saves.
+    // NodePasskey.
+    Node,           // The node this watch is pinned to. Forget asks to drop it.
+    ForgetConfirm,  // Next forgets, Previous keeps, Leave goes back. Nothing
+                    // has reached the board while this is on screen.
+    Passkey,        // Six stepped digits; `step` is the one under the cursor.
+    // Both.
+    Receipt,        // What the board did. Visible until the holder leaves.
+    Exit,           // Nothing is drawn here. `finished()` is this and only this.
+};
 
 enum class EntryKey : std::uint8_t {
-    Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8,
-    Digit9,
-    Sign,       // Toggles the offset's sign; ignored elsewhere.
-    Backspace,  // On the node field: forget it.
-    Ok,
-    Cancel,     // Leave: nothing committed before the offset is; after it, skip.
+    Minus,     // The value under the cursor, down.
+    Plus,      // ... and up.
+    Previous,  // Back one step; on the receipt, back to the draft.
+    Next,      // On one; on the last step, the thing the step was for.
+    Forget,    // Only on `Node`. Opens the confirmation, and confirms on it.
+    Leave,     // Out. On `ForgetConfirm` it is Back, not out.
 };
 
-// What was said about the last OK, shown until the next key.
+// What the last board answer was. `Rejected` and `Failed` stay apart because
+// they describe different watches: `Rejected` changed nothing, `Failed` may
+// have moved part of what it was given and has no rollback behind it. A screen
+// that called both "did not work" would be telling the second holder that
+// their RTC still holds the old time when it may not.
 enum class EntryVerdict : std::uint8_t {
-    None, Accepted, Rejected, Failed, Skipped,
-    Cancelled,  // Left before the board was asked anything.
-    Pending,    // The radio has the passkey or the forget and has not
-                // answered yet -- or, on a finished screen, still had not
-                // when the person left.
-    Forgotten,  // The forget finished, one way or another: the hint names
-                // which, from the board's `MeshForgetOutcome`.
+    None,
+    // The clock.
+    TimeSaved,        // Accepted. The only state that may say the clock is set.
+    TimeRefused,      // Rejected: not a value this watch takes; nothing changed.
+    TimeUncertain,    // Failed, or the Pending the contract forbids: part of
+                      // the write may have landed.
+    // The passkey.
+    PasskeyPending,   // With the radio. Only `poll()` moves this.
+    PasskeyStored,    // Armed, and on flash where it had to be.
+    PasskeyRefused,   // Rejected before the radio took it. Nothing is armed.
+    PasskeyUncertain, // Failed, or a bad answer after Pending: it may be armed
+                      // for this boot and gone at the next.
+    // The node. Four, not seven: the face needs to know which of complete,
+    // partial, nothing and failed it is styling, and `forget_outcome()` carries
+    // the exact one for the sentence.
+    ForgetPending,
+    NodeForgotten,        // Forgotten, or Unpinned: nothing of it is left.
+    NodePartlyForgotten,  // PinOnFlash: a restart brings the old pin back.
+    NodeNothingToForget,  // Nothing: there was neither a bond nor a pin.
+    ForgetKept,           // BondKept or ReplayInhibited: trust stayed. Retry.
+    // Leaving.
+    Abandoned,        // Left while the radio still had a request of ours. The
+                      // board keeps the answer from the entry that replaces
+                      // this one, so nobody will ever be told how it ended.
 };
 
+// What the clock already believes, offered as the draft's starting point. A
+// board that has no idea passes `valid = false` and the draft starts at a
+// round default; the lack of a physical RTC is not by itself the test.
+//
+// `valid` is a claim, not a guarantee: the constructor applies the offset and
+// checks the local instant it lands on. A seed that does not survive that is
+// dropped whole, and `EntryText::seeded` then says false rather than showing a
+// draft nothing stands behind.
+struct EntrySeed {
+    bool           valid          = false;
+    core::WallTime utc{};
+    std::int16_t   offset_minutes = 0;
+};
+
+// One frame of the screen, in one locale. Everything the face draws, and
+// nothing about how.
 struct EntryText {
-    const char* title = "";   // which field
-    char value[12] = {};      // the field with its blanks: "2026-09-__"
-    const char* hint = "";    // what to type, or what the last OK did
-    const char* ok = "";      // the OK key's label
-    const char* backspace = "";
-    const char* cancel = "";
-    bool sign_key = false;    // whether the ± key means anything now
-    bool done = false;
+    const char* title       = "";  // what is being set
+    const char* instruction = "";  // what the keys do here
+    const char* verdict     = "";  // what the board said, or ""
+
+    char value[16] = {};  // the stepped field alone: "31", "UTC+05:15"
+    char draft[40] = {};  // the whole local instant: "31.01.2026 · 21:00 · UTC+05:15"
+    char utc[20]   = {};  // what that means in UTC: "2026-01-31 16:00Z"
+    char node[9]   = {};  // the node's first eight hex digits
+
+    // Per key, because a key with no label is a key nobody presses, and a face
+    // that guessed the labels would guess "Next" on the step that saves. An
+    // empty string is a key that does nothing here and should not be drawn.
+    const char* minus    = "";
+    const char* plus     = "";
+    const char* previous = "";
+    const char* next     = "";
+    const char* forget   = "";
+    const char* leave    = "";
+
+    // Which step of how many. `steps == 0` is a field that is not stepped --
+    // the review, the node, the confirmation, the receipt -- and the face
+    // draws no progress there. On `Passkey`, `step` is the digit under the
+    // cursor, 1 to 6.
+    unsigned step  = 0;
+    unsigned steps = 0;
+
+    bool seeded   = false;  // the draft came from the clock, not from a default
+    bool finished = false;  // `Exit`: there is nothing left to draw
+    bool waiting  = false;  // the radio has a request and has not answered
 };
 
 class ProvisioningEntry {
 public:
-    explicit ProvisioningEntry(core::Provisioner& sink);
+    ProvisioningEntry(core::Provisioner& sink, EntryTask task,
+                      const EntrySeed& seed = {});
 
     void press(EntryKey key);
 
-    // Asks the board whether the passkey it took has finished, and says whether
-    // anything on the screen changed. Cheap and idempotent when nothing is in
-    // flight: whatever redraws this face may call it every tick. Nothing else
-    // moves the screen off `Pending`, so a face that never calls it never
-    // reaches Done.
+    // Asks the board whether the request it took has finished, and says
+    // whether anything on the screen changed. Cheap and idempotent with
+    // nothing in flight: whatever redraws this face may call it every tick.
+    // Nothing else moves the screen off a Pending verdict.
     bool poll();
 
     EntryText text(l10n::Locale locale) const;
 
-    EntryField field() const { return field_; }
+    EntryTask    task()    const { return task_; }
+    EntryField   field()   const { return field_; }
     EntryVerdict verdict() const { return verdict_; }
-    bool finished() const { return field_ == EntryField::Done; }
+
+    // True on `Exit` and nowhere else. A receipt is on the screen, not past it.
+    bool finished() const { return field_ == EntryField::Exit; }
+
     // The board has a passkey or a forget of this screen's that it has not
     // answered.
-    bool waiting() const { return awaiting_ || awaiting_forget_; }
+    bool waiting() const { return awaiting_passkey_ || awaiting_forget_; }
+
+    // The exact ending of the forget, for the sentence the receipt shows. The
+    // verdict above is the four-way version the face styles from.
+    core::MeshForgetOutcome forget_outcome() const { return forget_outcome_; }
+
+    // The draft as it stands, for a test or a caller that wants the numbers
+    // rather than the strings.
+    core::CivilTime draft() const;
+    std::int16_t    draft_offset_minutes() const { return offset_minutes_; }
 
 private:
-    unsigned capacity() const;
-    void accept();
-    void forget();
-    void advance();
+    void step_value(int direction);
+    void advance(int direction);
+    void save_time();
+    void send_passkey();
+    void begin_forget();
+    void clamp_day();
+    bool to_utc(core::WallTime& out) const;
 
     core::Provisioner& sink_;
-    EntryField field_ = EntryField::Date;
-    EntryVerdict verdict_ = EntryVerdict::None;
-    char digits_[9] = {};
-    unsigned count_ = 0;
-    bool offset_west_ = false;
-    bool board_failed_ = false;  // a set_wall_clock the board could not finish
-    bool awaiting_ = false;      // a passkey the radio has not answered
+    const EntryTask    task_;
+    EntryField         field_;
+    EntryVerdict       verdict_ = EntryVerdict::None;
+
+    // The draft. Local civil time plus the offset that turns it into UTC.
+    std::int64_t year_ = 2026;
+    unsigned     month_ = 1, day_ = 1, hour_ = 0, minute_ = 0;
+    std::int16_t offset_minutes_ = 0;
+    bool         seeded_ = false;
+    // A first step on the offset from a value that is not a multiple of the
+    // grid moves to the nearest multiple in that direction rather than past it,
+    // and only the first: after that it is grid by grid. Without the flag a
+    // seeded +05:45 would step to +06:00 and then, on the way back, to +05:45
+    // again, which is a stepper that cannot leave where it started.
+    bool         offset_touched_ = false;
+
+    unsigned digits_[6] = {};  // the passkey, one digit each
+    unsigned cursor_    = 0;   // which of them the keys move
+
+    bool awaiting_passkey_ = false;
+    bool awaiting_forget_  = false;
     // A passkey the radio answered badly: it may have been armed for this boot
-    // and not stored, so leaving now is not the empty-passkey skip.
-    bool passkey_failed_ = false;
-    bool awaiting_forget_ = false;  // a forget the radio has not answered
-    bool pending_is_forget_ = false;  // which wait a Pending exit left
-    // The node was forgotten on this screen, so the passkey hint asks for the
-    // digits the node shows *now*, and leaving without one is not "the clock
-    // is set": the watch is silent until its node's current passkey is typed.
-    bool node_forgotten_ = false;
+    // and not stored, so leaving is not "no passkey was set".
+    bool passkey_uncertain_ = false;
+    bool has_node_ = false;
+    core::MeshPeerId        node_{};
     core::MeshForgetOutcome forget_outcome_ = core::MeshForgetOutcome::Nothing;
-    core::MeshPeerId node_{};  // what the node field shows
-    // Kept across fields so the offset can be committed with them.
-    std::int64_t year_ = 0;
-    unsigned month_ = 0, day_ = 0, hour_ = 0, minute_ = 0;
+    // Where the receipt came from, so its keys know what Retry would retry and
+    // what Back would go back to.
+    EntryField  receipt_of_ = EntryField::Exit;
 };
 
 }  // namespace attadipa::apps

@@ -17,16 +17,24 @@ authority this file points at rather than repeats.
   sounds roomy can be smaller than the one it replaces: a 14-key grid needs
   `ceil(14/cols)` rows, and on the 240 px panel *no* arrangement reaches the
   `touch.min.adult` token's 61 px. Compute the cell before proposing the grid.
-- **The token that cannot be met is a documented price, not a silent one.**
-  `ui/lvgl/provision_face.cpp:137` — "      static_cast<int>(m.px(dp_of(TouchTarget::Adult))));" — caps a
-  key at the touch minimum and the code says why it lands under it. Do the
-  same: name the constraint that won, in the file that loses.
+- **The token that cannot be met is a documented price, not a silent one --
+  and the price is usually the layout, not the token.** The entry screen used
+  to cap its key at the touch minimum and land under it, because fourteen keys
+  do not fit a 240 px panel at any cell size. Six do, at the full target:
+  `ui/lvgl/provision_face.cpp:117` — "  // Six keys, not fourteen, so a key can be a full touch target on both".
+  Name the constraint that won, in the file that loses -- and check first
+  whether the count is what has to lose.
 - **An undefined colour resolves to black, in four separate copies.**
   `ui/src/color.cpp:113` — "    return e.kind == ColorKind::Foreground ? e.day : std::nullopt;" — returns
-  no night value for a background on purpose, and each face's local `resolved()`
-  helper turns that `nullopt` into black: `ui/lvgl/provision_face.cpp:13` —
+  no night value for a background on purpose, and most faces' local `resolved()`
+  helper turns that `nullopt` into black: `ui/lvgl/mesh_face.cpp:13` —
   "  return value ? lv_color_hex(value->packed()) : lv_color_black();". So a role you forget to define does not fail
-  the build, it paints a black rectangle. `ColorRole::Danger` is undefined in
+  the build, it paints a black rectangle. The entry screen is the one that
+  does not: its helper takes the fallback as an argument, so every caller has
+  to say what an undefined role becomes there
+  (`ui/lvgl/provision_face.cpp:11` — "lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost,").
+  Night has no `BackgroundRaised`, so a key that fell through to black would
+  have been a hole; it falls through to the surface instead. `ColorRole::Danger` is undefined in
   every column — `ui/src/color.cpp:67` — "{ColorRole::Danger, ColorKind::Foreground, std::nullopt," —
   because this palette has no red. Use `Warning` for a refusal.
 - **Contrast decides whether a state may be a word.** The night table measures
@@ -46,9 +54,12 @@ authority this file points at rather than repeats.
   grows the row — a short name, not a long one:
   `ui/lvgl/mesh_face.cpp:272` — "    // content height and `LV_LABEL_LONG_WRAP`, so a name carrying a line break".
   This is the one that was missing here, and #475 paid for it a third time.
-  `LV_LABEL_LONG_CLIP` on a centred label clips *both* ends, which is why the
-  provisioning hints lose their first word as well as their last:
-  `ui/lvgl/provision_face.cpp:121` — "  lv_label_set_long_mode(hint_, large ? LV_LABEL_LONG_WRAP".
+  `LV_LABEL_LONG_CLIP` on a centred label clips *both* ends. The entry screen
+  used to lose a hint's first word as well as its last that way and now wraps
+  every line instead; the clock's date still clips, on a line short enough that
+  it does not: `ui/lvgl/clock_face.cpp:125` — "  lv_label_set_long_mode(date_, LV_LABEL_LONG_CLIP);".
+  A centred CLIP is a promise the text will fit, not a way of handling text
+  that does not.
 - **`tools/ui/check_raw_values.py` does not see every literal.** It cannot read
   inside a ternary, and it cannot follow a local wrapper — a hard-coded pixel
   in either is invisible to it and the check stays green. Its silence is not

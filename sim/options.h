@@ -65,6 +65,10 @@ struct Options {
   // The entry screen, with a board that accepts everything and says so on
   // stdout. What a screenshot of it proves is the layout, not a clock.
   bool provision_screen = false;
+  // The entry screen's other task. Nothing on a board chooses between the two
+  // yet -- a long press goes straight to the clock -- so this flag is the only
+  // way the node half can be looked at (#469).
+  bool provision_node = false;
 
   // The navigation readout, and which of its states to stage. A screenshot of
   // "Ready" proves nothing about the six ways it says it does not know, and

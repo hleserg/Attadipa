@@ -134,14 +134,14 @@ ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
           clock.pixel_cost, clock.metrics,  l10n::locale()};
 }
 
-// The same loop the board runs: Done shows for a moment, then the clock is
-// back. Here it is an LVGL timer that deletes itself; there it is the
-// clock's own refresh timer counting ticks.
+// The same loop the board runs: poll for the answer the radio owes, and go
+// back to the clock when the holder leaves. Here it is an LVGL timer that
+// deletes itself; there it is the clock's own refresh timer.
 void leave_provisioning(lv_timer_t *timer) {
   // The board polls the passkey on its clock tick; here it is this timer, and
   // it is the only thing that can end the wait. The tick that hears the answer
-  // draws it and stops there: leaving on the same tick would put Done on the
-  // screen for no frames at all. The board spends three ticks on it.
+  // draws it and stops there, and nothing takes the receipt away afterwards:
+  // `finished()` is the entry's `Exit` field, which only a press can reach.
   if (g_entry->poll()) {
     g_provision_face.update();
     return;
@@ -214,11 +214,15 @@ void rebuild_clock_screen() {
       apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
 }
 
-void enter_provisioning() {
+void enter_provisioning(apps::EntryTask task) {
   g_clock_face.clear();
   g_clock_active = false;
   g_provision_config = provision_config_for(g_clock_config);
-  g_entry.emplace(g_provisioner);
+  // Unseeded, and deliberately: `ClockState` carries a UTC instant and no
+  // offset, so seeding from it would have to invent the offset half -- and an
+  // invented offset reads exactly like a remembered one. The board seeds from
+  // its time service, which keeps both.
+  g_entry.emplace(g_provisioner, task);
   l10n::set_locale_changed_handler(rebuild_provision_screen);
   set_theme_toggle(toggle_provision_theme);
   rebuild_provision_screen();

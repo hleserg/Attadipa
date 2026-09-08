@@ -1,466 +1,820 @@
 #include "attadipa/apps/provisioning.h"
 
-#include "attadipa/apps/clock.h"
+#include <cstdio>
+
 #include "attadipa/l10n/string_id.h"
 #include "attadipa/l10n/tr.h"
 
 namespace attadipa::apps {
 namespace {
 
-unsigned number(const char* digits, unsigned from, unsigned count) {
-  unsigned value = 0;
-  for (unsigned i = 0; i < count; ++i) {
-    value = value * 10 + static_cast<unsigned>(digits[from + i] - '0');
-  }
-  return value;
+using l10n::StringId;
+
+// UTC-12 to UTC+14 is every zone there is, and every one of them is a whole
+// number of quarter hours -- Nepal's +05:45 and the Chatham Islands' +12:45
+// are the awkward ones, and both land on the grid.
+constexpr std::int16_t kGrid        = 15;
+constexpr std::int16_t kOffsetFloor = -12 * 60;
+constexpr std::int16_t kOffsetCeil  = 14 * 60;
+// The clock this product sets is a wristwatch's, not an archive's.
+constexpr std::int64_t kYearFloor = 2000;
+constexpr std::int64_t kYearCeil  = 2099;
+constexpr unsigned     kPasskeyDigits = 6;
+constexpr unsigned     kTimeSteps     = 6;  // day, month, year, hour, minute, offset
+
+unsigned wrap(unsigned value, int direction, unsigned low, unsigned high)
+{
+    if (direction > 0) { return value >= high ? low : value + 1; }
+    return value <= low ? high : value - 1;
 }
 
-// The mask each field is typed into; `_` is a digit still to come.
-const char* mask(EntryField field) {
-  switch (field) {
-  case EntryField::Date:    return "____-__-__";
-  case EntryField::Time:    return "__:__";
-  case EntryField::Offset:  return "__:__";
-  case EntryField::Node:    return "";
-  case EntryField::Passkey: return "______";
-  case EntryField::Done:    return "";
-  }
-  return "";
+std::int64_t wrap_year(std::int64_t value, int direction)
+{
+    if (direction > 0) { return value >= kYearCeil ? kYearFloor : value + 1; }
+    return value <= kYearFloor ? kYearCeil : value - 1;
+}
+
+// The offset, by quarter hours, clamped rather than wrapped: a stepper that
+// rolled from +14:00 to -12:00 in one key would set the wrong day by a key
+// slip and say nothing about it.
+//
+// The first step off a value that is not on the grid goes to the nearest grid
+// point in that direction, and only the first. `%` truncates toward zero in
+// C++, so `rem` carries the sign of `value` and the two directions are not
+// mirror images of each other.
+std::int16_t step_offset(std::int16_t value, int direction, bool touched)
+{
+    int next = 0;
+    const int rem = value % kGrid;
+    if (!touched && rem != 0) {
+        next = direction > 0 ? value - rem + (rem > 0 ? kGrid : 0)
+                             : value - rem - (rem < 0 ? kGrid : 0);
+    } else {
+        next = value + direction * kGrid;
+    }
+    if (next < kOffsetFloor) { next = kOffsetFloor; }
+    if (next > kOffsetCeil)  { next = kOffsetCeil; }
+    return static_cast<std::int16_t>(next);
+}
+
+// snprintf that refuses to leave a truncated string behind. A half-written
+// instant is a wrong instant and the face cannot tell one from a short one;
+// an empty field it can at least decline to draw. Every caller here is sized
+// to fit, so a false is a bug in this file rather than a runtime condition --
+// which is exactly why it must not be silent.
+bool fits(int written, unsigned capacity, char* out)
+{
+    if (written < 0 || static_cast<unsigned>(written) >= capacity) {
+        out[0] = '\0';
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
 
-ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink) : sink_(sink) {}
-
-unsigned ProvisioningEntry::capacity() const {
-  switch (field_) {
-  case EntryField::Date:    return 8;
-  case EntryField::Time:    return 4;
-  case EntryField::Offset:  return 4;
-  case EntryField::Node:    return 0;
-  case EntryField::Passkey: return 6;
-  case EntryField::Done:    return 0;
-  }
-  return 0;
+ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink, EntryTask task,
+                                     const EntrySeed& seed)
+    : sink_(sink),
+      task_(task),
+      field_(task == EntryTask::LocalTime ? EntryField::Day : EntryField::Node)
+{
+    if (task_ == EntryTask::LocalTime) {
+        // `valid` is the board's claim; this is the check. An offset outside
+        // the zones there are, or a local instant outside the years this watch
+        // sets, is dropped whole rather than shown as a draft with a false
+        // `seeded` beside it.
+        if (seed.valid && seed.offset_minutes >= kOffsetFloor &&
+            seed.offset_minutes <= kOffsetCeil) {
+            const core::WallTime local{
+                seed.utc.unix_seconds +
+                static_cast<std::int64_t>(seed.offset_minutes) * 60};
+            core::CivilTime civil;
+            if (core::civil_from_wall_time(local, civil) &&
+                civil.year >= kYearFloor && civil.year <= kYearCeil) {
+                year_   = civil.year;
+                month_  = civil.month;
+                day_    = civil.day;
+                hour_   = civil.hour;
+                minute_ = civil.minute;
+                offset_minutes_ = seed.offset_minutes;
+                seeded_ = true;
+            }
+        }
+        return;
+    }
+    // Nothing to keep or forget on a watch that is pinned to no node, and no
+    // field to show it in: that journey is the passkey alone.
+    has_node_ = sink_.mesh_node(node_);
+    if (!has_node_) { field_ = EntryField::Passkey; }
 }
 
-void ProvisioningEntry::press(EntryKey key) {
-  if (field_ == EntryField::Done) {
-    return;
-  }
-  // While the radio has a passkey of ours, the only key that means anything is
-  // the way out. A second OK here would post a second configure over an answer
-  // nobody has read, and the digit keys would edit a value that has already
-  // gone; both would also clear the line telling the person to wait.
-  if (awaiting_ || awaiting_forget_) {
-    if (key == EntryKey::Cancel) {
-      // Neither "skipped" nor "set up" is true: the passkey, or the forget,
-      // is with the radio and this screen is no longer here to hear how it
-      // ended.
-      verdict_ = EntryVerdict::Pending;
-      pending_is_forget_ = awaiting_forget_;
-      awaiting_ = false;
-      awaiting_forget_ = false;
-      field_ = EntryField::Done;
-      count_ = 0;
-    }
-    return;
-  }
-  verdict_ = EntryVerdict::None;
-  if (key >= EntryKey::Digit0 && key <= EntryKey::Digit9) {
-    if (count_ < capacity()) {
-      digits_[count_++] = static_cast<char>(
-          '0' + (static_cast<unsigned>(key) -
-                 static_cast<unsigned>(EntryKey::Digit0)));
-    }
-    return;
-  }
-  switch (key) {
-  case EntryKey::Sign:
-    if (field_ == EntryField::Offset) {
-      offset_west_ = !offset_west_;
-    }
-    return;
-  case EntryKey::Backspace:
-    if (field_ == EntryField::Node) {
-      forget();
-      return;
-    }
-    if (count_ > 0) {
-      --count_;
-    }
-    return;
-  case EntryKey::Ok:
-    accept();
-    return;
-  case EntryKey::Cancel:
-    // Past the offset the clock is already the board's; leaving then is the
-    // empty-passkey skip by another key, and says so -- unless a passkey did
-    // reach the radio and came back badly, because "no passkey; the clock is
-    // set" would then be describing a watch that may be armed for this boot
-    // and unprovisioned at the next. Leaving after the board failed a write is
-    // not "nothing changed" either: the RTC may hold the typed time with no
-    // rollback behind it, so the last answer stands.
-    if (field_ == EntryField::Passkey || field_ == EntryField::Node) {
-      verdict_ = passkey_failed_ ? EntryVerdict::Failed : EntryVerdict::Skipped;
-    } else {
-      verdict_ = board_failed_ ? EntryVerdict::Failed : EntryVerdict::Cancelled;
-    }
-    field_ = EntryField::Done;
-    count_ = 0;
-    return;
-  default:
-    return;
-  }
+// February, and the short months. Stepping the month or the year off a 31st
+// has to land somewhere real, and the last day of the new month is the one a
+// person meant.
+void ProvisioningEntry::clamp_day()
+{
+    const unsigned last = core::days_in_month(year_, month_);
+    if (day_ > last) { day_ = last; }
 }
 
-// What OK does with a full field. A field that is not full, or does not name
-// a real moment, is refused and stays on the screen with its digits, so a slip
-// costs one key and not the whole entry.
-void ProvisioningEntry::accept() {
-  switch (field_) {
-  case EntryField::Date: {
-    if (count_ != 8) {
-      verdict_ = EntryVerdict::Rejected;
-      return;
+bool ProvisioningEntry::to_utc(core::WallTime& out) const
+{
+    core::CivilTime civil;
+    civil.year   = year_;
+    civil.month  = month_;
+    civil.day    = day_;
+    civil.hour   = hour_;
+    civil.minute = minute_;
+    if (!core::wall_time_from_civil(civil, out)) { return false; }
+    out.unix_seconds -= static_cast<std::int64_t>(offset_minutes_) * 60;
+    return true;
+}
+
+core::CivilTime ProvisioningEntry::draft() const
+{
+    core::CivilTime civil;
+    civil.year   = year_;
+    civil.month  = month_;
+    civil.day    = day_;
+    civil.hour   = hour_;
+    civil.minute = minute_;
+    return civil;
+}
+
+void ProvisioningEntry::step_value(int direction)
+{
+    switch (field_) {
+    case EntryField::Day:
+        day_ = wrap(day_, direction, 1, core::days_in_month(year_, month_));
+        break;
+    case EntryField::Month:
+        month_ = wrap(month_, direction, 1, 12);
+        clamp_day();
+        break;
+    case EntryField::Year:
+        year_ = wrap_year(year_, direction);
+        clamp_day();
+        break;
+    case EntryField::Hour:
+        hour_ = wrap(hour_, direction, 0, 23);
+        break;
+    case EntryField::Minute:
+        minute_ = wrap(minute_, direction, 0, 59);
+        break;
+    case EntryField::Offset:
+        offset_minutes_ = step_offset(offset_minutes_, direction, offset_touched_);
+        offset_touched_ = true;
+        break;
+    case EntryField::Passkey:
+        digits_[cursor_] = wrap(digits_[cursor_], direction, 0, 9);
+        break;
+    case EntryField::TimeReview:
+    case EntryField::Node:
+    case EntryField::ForgetConfirm:
+    case EntryField::Receipt:
+    case EntryField::Exit:
+        break;
     }
-    const unsigned year = number(digits_, 0, 4);
-    const unsigned month = number(digits_, 4, 2);
-    const unsigned day = number(digits_, 6, 2);
-    core::WallTime probe;
-    if (year < 2000 || year > 2099 ||
-        !core::wall_time_from_civil({year, month, day, 0, 0, 0, 0}, probe)) {
-      verdict_ = EntryVerdict::Rejected;
-      return;
+}
+
+// One step along the sequence this task walks. The two sequences do not meet.
+void ProvisioningEntry::advance(int direction)
+{
+    switch (field_) {
+    case EntryField::Day:
+        if (direction > 0) { field_ = EntryField::Month; }
+        break;
+    case EntryField::Month:
+        field_ = direction > 0 ? EntryField::Year : EntryField::Day;
+        break;
+    case EntryField::Year:
+        field_ = direction > 0 ? EntryField::Hour : EntryField::Month;
+        break;
+    case EntryField::Hour:
+        field_ = direction > 0 ? EntryField::Minute : EntryField::Year;
+        break;
+    case EntryField::Minute:
+        field_ = direction > 0 ? EntryField::Offset : EntryField::Hour;
+        break;
+    case EntryField::Offset:
+        field_ = direction > 0 ? EntryField::TimeReview : EntryField::Minute;
+        break;
+    case EntryField::TimeReview:
+        // Forward from the review is the save, which is not a field move.
+        if (direction > 0) { save_time(); } else { field_ = EntryField::Offset; }
+        break;
+    case EntryField::Node:
+        if (direction > 0) { field_ = EntryField::Passkey; }
+        break;
+    case EntryField::Passkey:
+        if (direction > 0) {
+            if (cursor_ + 1 < kPasskeyDigits) { ++cursor_; }
+            else { send_passkey(); }
+        } else if (cursor_ > 0) {
+            --cursor_;
+        } else if (has_node_) {
+            field_ = EntryField::Node;
+        }
+        break;
+    case EntryField::ForgetConfirm:
+    case EntryField::Receipt:
+    case EntryField::Exit:
+        break;
     }
-    year_ = year;
-    month_ = month;
-    day_ = day;
-    break;
-  }
-  case EntryField::Time: {
-    const unsigned hour = number(digits_, 0, 2);
-    const unsigned minute = number(digits_, 2, 2);
-    if (count_ != 4 || hour > 23 || minute > 59) {
-      verdict_ = EntryVerdict::Rejected;
-      return;
-    }
-    hour_ = hour;
-    minute_ = minute;
-    break;
-  }
-  case EntryField::Offset: {
-    const unsigned hours = number(digits_, 0, 2);
-    const unsigned minutes = number(digits_, 2, 2);
-    // UTC-12 to UTC+14 is every zone there is.
-    if (count_ != 4 || minutes > 59 || hours * 60 + minutes > 14 * 60 ||
-        (offset_west_ && hours * 60 + minutes > 12 * 60)) {
-      verdict_ = EntryVerdict::Rejected;
-      return;
-    }
+}
+
+void ProvisioningEntry::save_time()
+{
+    receipt_of_ = EntryField::TimeReview;
+    field_      = EntryField::Receipt;
     core::WallTime utc;
-    if (!core::wall_time_from_civil(
-            {static_cast<std::int64_t>(year_), month_, day_, 0, hour_, minute_, 0},
-            utc)) {
-      verdict_ = EntryVerdict::Rejected;
-      return;
+    if (!to_utc(utc)) {
+        // The steppers cannot build a date that is not a date, so this is a
+        // guard and not a path: reaching it means one of them let a value out
+        // of range, and the honest answer is that nothing was written.
+        verdict_ = EntryVerdict::TimeRefused;
+        return;
     }
-    const int signed_minutes =
-        static_cast<int>(hours * 60 + minutes) * (offset_west_ ? -1 : 1);
-    switch (sink_.set_wall_clock(
-        {utc.unix_seconds, static_cast<std::int16_t>(signed_minutes)})) {
+    switch (sink_.set_wall_clock({utc.unix_seconds, offset_minutes_})) {
     case core::ProvisionOutcome::Accepted:
-      break;
+        verdict_ = EntryVerdict::TimeSaved;
+        return;
     case core::ProvisionOutcome::Rejected:
-      verdict_ = EntryVerdict::Rejected;
-      return;
+        verdict_ = EntryVerdict::TimeRefused;
+        return;
     case core::ProvisionOutcome::Pending:
-      // The clock is written by the task that asks it -- `set_wall_clock` is
-      // terminal by contract, and there is no second half to wait for. A board
-      // that answers this has an answer nobody will ever collect, so it is the
-      // failure it already is rather than a screen that waits for ever.
+        // `set_wall_clock` is terminal by contract -- the clock is written by
+        // the task that asks -- so there is no second half to wait for and no
+        // `mesh_passkey_outcome()` equivalent to collect one from. A board
+        // that answers this has left the write in a state nobody can read,
+        // which is the uncertain case and not a wait.
     case core::ProvisionOutcome::Failed:
-      verdict_ = EntryVerdict::Failed;
-      board_failed_ = true;
-      return;
+        verdict_ = EntryVerdict::TimeUncertain;
+        return;
     }
-    break;
-  }
-  case EntryField::Node:
-    // OK keeps the node. Forgetting it is the erase key's, above.
-    break;
-  case EntryField::Passkey: {
-    if (count_ == 0) {
-      // The empty OK is the other door out of this field, and it asks the
-      // same question Cancel does: a passkey that reached the radio and came
-      // back badly may be armed for this boot, and "no passkey; the clock is
-      // set" would describe the opposite watch (#416, round 3).
-      verdict_ = passkey_failed_ ? EntryVerdict::Failed : EntryVerdict::Skipped;
-      field_ = EntryField::Done;
-      return;
+}
+
+void ProvisioningEntry::send_passkey()
+{
+    unsigned value = 0;
+    for (unsigned i = 0; i < kPasskeyDigits; ++i) {
+        value = value * 10 + digits_[i];
     }
-    if (count_ != 6) {
-      verdict_ = EntryVerdict::Rejected;
-      return;
-    }
-    switch (sink_.set_mesh_passkey(number(digits_, 0, 6))) {
+    switch (sink_.set_mesh_passkey(value)) {
     case core::ProvisionOutcome::Pending:
-      // The radio has it and has not armed it yet. The digits stay on the
-      // screen, the field does not advance, and poll() is the only thing that
-      // can move either -- which is the whole of #416.
-      verdict_ = EntryVerdict::Pending;
-      awaiting_ = true;
-      return;
+        // The radio has it and has not armed it yet. The digits stay on the
+        // screen and the field does not move: `poll()` is the only thing that
+        // can carry this the rest of the way, which is the whole of #416.
+        verdict_ = EntryVerdict::PasskeyPending;
+        awaiting_passkey_ = true;
+        return;
     case core::ProvisionOutcome::Accepted:
-      break;
+        verdict_ = EntryVerdict::PasskeyStored;
+        break;
     case core::ProvisionOutcome::Rejected:
-      verdict_ = EntryVerdict::Rejected;
-      return;
+        verdict_ = EntryVerdict::PasskeyRefused;
+        break;
     case core::ProvisionOutcome::Failed:
-      // Refused before the radio saw it -- no queue for it, no storage to keep
-      // it in, or an earlier passkey still with the radio. Only the last can
-      // still arm something, and the board says which: its outcome is Pending
-      // while a request is in flight and Failed with nothing outstanding, so
-      // "no passkey; the clock is set" is honest only in the Failed case. A
-      // screen that was cancelled with a passkey in flight is gone, and this
-      // one is the only place left that can be told how that ended (#416,
-      // round 1). Latched, not assigned: the board's answer is about the
-      // radio now, and a refusal after an earlier failure cannot forgive it
-      // (#416, round 4).
-      passkey_failed_ =
-          passkey_failed_ ||
-          sink_.mesh_passkey_outcome() != core::ProvisionOutcome::Failed;
-      verdict_ = EntryVerdict::Failed;
-      return;
+        // Refused before the radio saw it: no queue for it, no storage to keep
+        // it in, or an earlier passkey still with the radio. Only the last can
+        // still arm something, and the board says which -- its outcome is
+        // `Pending` while a request is in flight and `Failed` with nothing
+        // outstanding. Latched, because a later refusal cannot forgive an
+        // earlier one (#416, round 4).
+        passkey_uncertain_ =
+            passkey_uncertain_ ||
+            sink_.mesh_passkey_outcome() != core::ProvisionOutcome::Failed;
+        verdict_ = passkey_uncertain_ ? EntryVerdict::PasskeyUncertain
+                                      : EntryVerdict::PasskeyRefused;
+        break;
     }
-    break;
-  }
-  case EntryField::Done:
-    return;
-  }
-  verdict_ = EntryVerdict::Accepted;
-  advance();
+    receipt_of_ = EntryField::Passkey;
+    field_      = EntryField::Receipt;
 }
 
-// The next field -- and past the node field on a watch that has no node,
-// which is every watch until its first adoption and every watch after a
-// forget.
-void ProvisioningEntry::advance() {
-  field_ = static_cast<EntryField>(static_cast<std::uint8_t>(field_) + 1);
-  count_ = 0;
-  if (field_ == EntryField::Node && !sink_.mesh_node(node_)) {
-    field_ = EntryField::Passkey;
-  }
-}
-
-// The erase key on the node field. What it asks for is the whole of #411's
-// recovery -- the stale bond and the pin, together -- and it finishes on the
-// radio's task, so like the passkey it ends in `Pending` and poll() carries
-// it the rest of the way.
-void ProvisioningEntry::forget() {
-  switch (sink_.forget_mesh_node()) {
-  case core::ProvisionOutcome::Pending:
-    verdict_ = EntryVerdict::Pending;
-    awaiting_forget_ = true;
-    return;
-  case core::ProvisionOutcome::Rejected:
-    // Nothing to forget: the node went between this field being shown and
-    // the key. The field has nothing left to show, so it is over.
-    forget_outcome_ = core::MeshForgetOutcome::Nothing;
-    verdict_ = EntryVerdict::Forgotten;
-    advance();
-    return;
-  case core::ProvisionOutcome::Accepted:
-    // Not a value the contract allows -- the clears run elsewhere -- but a
-    // board that says it finished is not told it failed.
-    forget_outcome_ = core::MeshForgetOutcome::Forgotten;
-    node_forgotten_ = true;
-    verdict_ = EntryVerdict::Forgotten;
-    advance();
-    return;
-  case core::ProvisionOutcome::Failed:
-    // The request never reached the worker. The node stays on screen and the
-    // common failure line asks for a retry without claiming transport state.
-    verdict_ = EntryVerdict::Failed;
-    return;
-  }
-}
-
-// The other half of the passkey, arriving on the tick rather than on a key.
-// Terminal either way: the board consumes its answer, so this asks once and
-// then stops asking.
-bool ProvisioningEntry::poll() {
-  if (awaiting_forget_) {
-    const core::MeshForgetOutcome outcome = sink_.mesh_forget_outcome();
-    if (outcome == core::MeshForgetOutcome::Pending) {
-      return false;
+void ProvisioningEntry::begin_forget()
+{
+    switch (sink_.forget_mesh_node()) {
+    case core::ProvisionOutcome::Pending:
+        // The clears run on the radio's task. The confirmation stays on the
+        // screen while they do, so there is somewhere for the answer to land.
+        verdict_ = EntryVerdict::ForgetPending;
+        awaiting_forget_ = true;
+        return;
+    case core::ProvisionOutcome::Rejected:
+        // Nothing to forget: the node went between the field being drawn and
+        // the key. Not a failure, and not a success either.
+        forget_outcome_ = core::MeshForgetOutcome::Nothing;
+        verdict_  = EntryVerdict::NodeNothingToForget;
+        has_node_ = false;
+        break;
+    case core::ProvisionOutcome::Accepted:
+        // Not a value the contract allows -- the clears run elsewhere -- but a
+        // board that says it finished is not told that it failed.
+        forget_outcome_ = core::MeshForgetOutcome::Forgotten;
+        verdict_  = EntryVerdict::NodeForgotten;
+        has_node_ = false;
+        break;
+    case core::ProvisionOutcome::Failed:
+        // The request never reached the worker, so nothing of the node was
+        // touched and the retry is honest. `BondKept` is the outcome that says
+        // exactly that, and it is what the board itself answers with nothing
+        // outstanding.
+        forget_outcome_ = core::MeshForgetOutcome::BondKept;
+        verdict_ = EntryVerdict::ForgetKept;
+        break;
     }
-    awaiting_forget_ = false;
-    forget_outcome_ = outcome;
-    if (outcome == core::MeshForgetOutcome::BondKept ||
-        outcome == core::MeshForgetOutcome::ReplayInhibited) {
-      // Trust stayed, either because the store refused or because its durable
-      // rollback did. The node stays on the screen so the key can retry it;
-      // the hint below distinguishes the reboot-inhibited case.
-      verdict_ = EntryVerdict::Failed;
-      return true;
-    }
-    // Forgotten in some measure -- or there was nothing, which leaves the
-    // watch exactly as forgotten as it already was. Either way the field has
-    // nothing left to show, and the passkey is what comes next.
-    node_forgotten_ = outcome != core::MeshForgetOutcome::Nothing;
-    verdict_ = EntryVerdict::Forgotten;
-    advance();
-    return true;
-  }
-  if (!awaiting_) {
-    return false;
-  }
-  switch (sink_.mesh_passkey_outcome()) {
-  case core::ProvisionOutcome::Pending:
-    return false;
-  case core::ProvisionOutcome::Accepted:
-    // Armed, and on flash where it had to be. The one route to Done.
-    awaiting_ = false;
-    verdict_ = EntryVerdict::Accepted;
-    field_ = EntryField::Done;
-    count_ = 0;
-    return true;
-  case core::ProvisionOutcome::Rejected:
-    // A refusal this late is not a statement about the digits -- they were
-    // taken. It is the request ending badly, and it ends the same way.
-  case core::ProvisionOutcome::Failed:
-    // The stack refused the passkey, or flash did. The digits stay where they
-    // are, so OK asks again; leaving instead no longer claims the passkey was
-    // skipped, because it may be armed for this boot and gone at the next.
-    awaiting_ = false;
-    passkey_failed_ = true;
-    verdict_ = EntryVerdict::Failed;
-    return true;
-  }
-  return false;
+    receipt_of_ = EntryField::Node;
+    field_      = EntryField::Receipt;
 }
 
-EntryText ProvisioningEntry::text(l10n::Locale locale) const {
-  using l10n::StringId;
-  EntryText out;
-  out.ok = l10n::tr(StringId::ProvisionKeyOk, locale);
-  out.backspace = l10n::tr(StringId::ProvisionKeyErase, locale);
-  out.cancel = l10n::tr(StringId::ProvisionKeyCancel, locale);
-  out.sign_key = field_ == EntryField::Offset;
-  out.done = field_ == EntryField::Done;
+// The receipt's forward key. What it is depends on what the receipt says, and
+// so does where it goes.
+namespace {
 
-  StringId title = StringId::ProvisionTitleDone;
-  StringId hint = StringId::ProvisionDone;
-  switch (field_) {
-  case EntryField::Date:
-    title = StringId::ProvisionTitleDate;
-    hint = StringId::ProvisionHintDate;
-    break;
-  case EntryField::Time:
-    title = StringId::ProvisionTitleTime;
-    hint = StringId::ProvisionHintTime;
-    break;
-  case EntryField::Offset:
-    title = StringId::ProvisionTitleOffset;
-    hint = StringId::ProvisionHintOffset;
-    break;
-  case EntryField::Node:
-    title = StringId::ProvisionTitleNode;
-    hint = StringId::ProvisionHintNode;
-    out.backspace = l10n::tr(StringId::ProvisionKeyForget, locale);
-    break;
-  case EntryField::Passkey:
-    title = StringId::ProvisionTitlePasskey;
-    // After a forget the digits wanted are the ones the node shows *now*:
-    // a reset node rolls its passkey (report §5.3), and the old six would
-    // fail with nothing on the screen to say why.
-    hint = node_forgotten_ ? StringId::ProvisionNodeForgotten
-                           : StringId::ProvisionHintPasskey;
-    break;
-  case EntryField::Done:
-    break;
-  }
-  switch (verdict_) {
-  case EntryVerdict::None:
-    break;
-  case EntryVerdict::Accepted:
-    // Moving on is the answer; the new field's hint is what a person needs
-    // next, not a word about the last one. Done says its own line.
-    break;
-  case EntryVerdict::Rejected:
-    hint = StringId::ProvisionRejected;
-    break;
-  case EntryVerdict::Failed:
-    hint = field_ != EntryField::Node
-               ? StringId::ProvisionFailed
-               : forget_outcome_ == core::MeshForgetOutcome::ReplayInhibited
-                     ? StringId::ProvisionNodeReplayInhibited
-                     : StringId::ProvisionNodeKept;
-    break;
-  case EntryVerdict::Skipped:
-    // "the clock is set" is true either way; "no passkey" after a forget
-    // is a watch that stays silent, and the line says so.
-    hint = node_forgotten_ ? StringId::ProvisionForgottenSkipped
-                           : StringId::ProvisionSkipped;
-    break;
-  case EntryVerdict::Forgotten:
-    switch (forget_outcome_) {
-    case core::MeshForgetOutcome::PinOnFlash:
-      hint = StringId::ProvisionNodeForgottenRam;
-      break;
-    case core::MeshForgetOutcome::Nothing:
-      hint = StringId::ProvisionNodeNothing;
-      break;
+bool retryable(EntryVerdict verdict)
+{
+    switch (verdict) {
+    case EntryVerdict::TimeRefused:
+    case EntryVerdict::TimeUncertain:
+    case EntryVerdict::PasskeyRefused:
+    case EntryVerdict::PasskeyUncertain:
+    case EntryVerdict::ForgetKept:
+        return true;
     default:
-      hint = StringId::ProvisionNodeForgotten;
-      break;
+        return false;
     }
-    break;
-  case EntryVerdict::Cancelled:
-    hint = StringId::ProvisionCancelled;
-    break;
-  case EntryVerdict::Pending:
-    // On the passkey field this is "wait"; on a screen that was left during
-    // the wait it is "this is where it got to". One sentence for both,
-    // because it is one fact -- and a second sentence for the forget, which
-    // is the other thing the radio can still be holding.
-    hint = awaiting_forget_ || pending_is_forget_
-               ? StringId::ProvisionNodePending
-               : StringId::ProvisionPending;
-    break;
-  }
-  out.title = l10n::tr(title, locale);
-  out.hint = l10n::tr(hint, locale);
+}
 
-  if (field_ == EntryField::Node) {
-    // The first eight hex digits of the node's key, the way the mesh screen
-    // and the node's own screen show it.
-    static constexpr char kHex[] = "0123456789abcdef";
-    for (unsigned i = 0; i < 4; ++i) {
-      out.value[2 * i] = kHex[node_.public_key[i] >> 4];
-      out.value[2 * i + 1] = kHex[node_.public_key[i] & 0x0F];
+// A receipt that leads somewhere rather than out: the node was forgotten in
+// some measure, and the passkey it now needs is the next thing to set. The
+// node shows new digits after a reset (#411), so stopping here would leave a
+// watch that is silent with nothing on screen saying why.
+bool leads_to_passkey(EntryVerdict verdict)
+{
+    return verdict == EntryVerdict::NodeForgotten ||
+           verdict == EntryVerdict::NodePartlyForgotten ||
+           verdict == EntryVerdict::NodeNothingToForget;
+}
+
+}  // namespace
+
+void ProvisioningEntry::press(EntryKey key)
+{
+    if (field_ == EntryField::Exit) { return; }
+
+    // While the radio has a request of ours the only key that means anything
+    // is the way out. A second confirm would post a second request over an
+    // answer nobody has read, and the steppers would edit a value that has
+    // already gone.
+    if (waiting()) {
+        if (key == EntryKey::Leave) {
+            verdict_ = EntryVerdict::Abandoned;
+            awaiting_passkey_ = false;
+            awaiting_forget_  = false;
+            receipt_of_ = EntryField::Exit;  // nothing to go back to
+            field_      = EntryField::Receipt;
+        }
+        return;
     }
-    out.value[8] = '\0';
+
+    if (field_ == EntryField::Receipt) {
+        switch (key) {
+        case EntryKey::Next:
+            if (retryable(verdict_)) {
+                if (receipt_of_ == EntryField::TimeReview)   { save_time(); }
+                else if (receipt_of_ == EntryField::Passkey) { send_passkey(); }
+                else if (receipt_of_ == EntryField::Node)    { begin_forget(); }
+                return;
+            }
+            if (leads_to_passkey(verdict_)) {
+                verdict_ = EntryVerdict::None;
+                cursor_  = 0;
+                field_   = EntryField::Passkey;
+                return;
+            }
+            field_ = EntryField::Exit;
+            return;
+        case EntryKey::Previous:
+            // Back to the draft that produced this, untouched. Only from a
+            // receipt there is something to go back to.
+            if (retryable(verdict_) && receipt_of_ != EntryField::Exit) {
+                verdict_ = EntryVerdict::None;
+                field_   = receipt_of_;
+                if (field_ == EntryField::Passkey) { cursor_ = 0; }
+            }
+            return;
+        case EntryKey::Leave:
+            field_ = EntryField::Exit;
+            return;
+        default:
+            return;
+        }
+    }
+
+    if (field_ == EntryField::ForgetConfirm) {
+        switch (key) {
+        case EntryKey::Next:
+        case EntryKey::Forget:
+            begin_forget();
+            return;
+        case EntryKey::Previous:  // Keep
+        case EntryKey::Leave:     // Back
+            // Neither has asked the board anything, and neither has touched
+            // the node. The confirmation is the only screen `Leave` does not
+            // leave from, because the key beside it is the destructive one.
+            verdict_ = EntryVerdict::None;
+            field_   = EntryField::Node;
+            return;
+        default:
+            return;
+        }
+    }
+
+    switch (key) {
+    case EntryKey::Minus:
+        verdict_ = EntryVerdict::None;
+        step_value(-1);
+        return;
+    case EntryKey::Plus:
+        verdict_ = EntryVerdict::None;
+        step_value(1);
+        return;
+    case EntryKey::Previous:
+        verdict_ = EntryVerdict::None;
+        advance(-1);
+        return;
+    case EntryKey::Next:
+        verdict_ = EntryVerdict::None;
+        advance(1);
+        return;
+    case EntryKey::Forget:
+        if (field_ == EntryField::Node) {
+            verdict_ = EntryVerdict::None;
+            field_   = EntryField::ForgetConfirm;
+        }
+        return;
+    case EntryKey::Leave:
+        // Out, with nothing in flight. Nothing has been written that was not
+        // already reported on a receipt, so there is nothing left to say.
+        field_ = EntryField::Exit;
+        return;
+    }
+}
+
+bool ProvisioningEntry::poll()
+{
+    if (awaiting_forget_) {
+        const core::MeshForgetOutcome outcome = sink_.mesh_forget_outcome();
+        if (outcome == core::MeshForgetOutcome::Pending) { return false; }
+        awaiting_forget_ = false;
+        forget_outcome_  = outcome;
+        switch (outcome) {
+        case core::MeshForgetOutcome::Forgotten:
+        case core::MeshForgetOutcome::Unpinned:
+            // Nothing of the node is left in either. `Unpinned` is the state
+            // where no stale bond was ever recorded, so the pin was all there
+            // was to drop.
+            verdict_  = EntryVerdict::NodeForgotten;
+            has_node_ = false;
+            break;
+        case core::MeshForgetOutcome::PinOnFlash:
+            // Gone in RAM and still on flash. A restart before the next node
+            // is adopted brings the old pin back, so this is not "forgotten"
+            // and must not be drawn as one.
+            verdict_  = EntryVerdict::NodePartlyForgotten;
+            has_node_ = false;
+            break;
+        case core::MeshForgetOutcome::Nothing:
+            verdict_  = EntryVerdict::NodeNothingToForget;
+            has_node_ = false;
+            break;
+        case core::MeshForgetOutcome::BondKept:
+        case core::MeshForgetOutcome::ReplayInhibited:
+            // Trust stayed, because the store refused or its durable rollback
+            // did. The node is still this watch's and the retry is real.
+            verdict_ = EntryVerdict::ForgetKept;
+            break;
+        case core::MeshForgetOutcome::Pending:
+            return false;
+        }
+        receipt_of_ = EntryField::Node;
+        field_      = EntryField::Receipt;
+        return true;
+    }
+    if (!awaiting_passkey_) { return false; }
+    switch (sink_.mesh_passkey_outcome()) {
+    case core::ProvisionOutcome::Pending:
+        return false;
+    case core::ProvisionOutcome::Accepted:
+        awaiting_passkey_ = false;
+        verdict_ = EntryVerdict::PasskeyStored;
+        break;
+    case core::ProvisionOutcome::Rejected:
+        // A refusal this late is not a statement about the digits -- they were
+        // taken. It is the request ending badly, and it ends the same way.
+    case core::ProvisionOutcome::Failed:
+        // The stack refused the passkey, or flash did. Either way it may be
+        // armed for this boot and gone at the next, so leaving cannot claim
+        // that no passkey was set.
+        awaiting_passkey_  = false;
+        passkey_uncertain_ = true;
+        verdict_ = EntryVerdict::PasskeyUncertain;
+        break;
+    }
+    receipt_of_ = EntryField::Passkey;
+    field_      = EntryField::Receipt;
+    return true;
+}
+
+namespace {
+
+StringId title_of(EntryField field)
+{
+    switch (field) {
+    case EntryField::Day:           return StringId::ProvisionTitleDay;
+    case EntryField::Month:         return StringId::ProvisionTitleMonth;
+    case EntryField::Year:          return StringId::ProvisionTitleYear;
+    case EntryField::Hour:          return StringId::ProvisionTitleHour;
+    case EntryField::Minute:        return StringId::ProvisionTitleMinute;
+    case EntryField::Offset:        return StringId::ProvisionTitleOffset;
+    case EntryField::TimeReview:    return StringId::ProvisionTitleReview;
+    case EntryField::Node:          return StringId::ProvisionTitleNode;
+    case EntryField::ForgetConfirm: return StringId::ProvisionTitleForget;
+    case EntryField::Passkey:       return StringId::ProvisionTitlePasskey;
+    case EntryField::Receipt:       return StringId::ProvisionTitleReceipt;
+    case EntryField::Exit:          break;
+    }
+    return StringId::ProvisionTitleReceipt;
+}
+
+// The receipt has no instruction: the line above it is the board's answer and
+// the keys below it are labelled. A sentence between the two would be a third
+// account of the same thing.
+const char* instruction_of(EntryField field, l10n::Locale locale)
+{
+    switch (field) {
+    case EntryField::Day:
+    case EntryField::Month:
+    case EntryField::Year:
+        return l10n::tr(StringId::ProvisionHintDate, locale);
+    case EntryField::Hour:
+    case EntryField::Minute:
+        return l10n::tr(StringId::ProvisionHintTime, locale);
+    case EntryField::Offset:
+        return l10n::tr(StringId::ProvisionHintOffset, locale);
+    case EntryField::TimeReview:
+        return l10n::tr(StringId::ProvisionHintReview, locale);
+    case EntryField::Node:
+        return l10n::tr(StringId::ProvisionHintNode, locale);
+    case EntryField::ForgetConfirm:
+        return l10n::tr(StringId::ProvisionHintForget, locale);
+    case EntryField::Passkey:
+        return l10n::tr(StringId::ProvisionHintPasskey, locale);
+    case EntryField::Receipt:
+    case EntryField::Exit:
+        break;
+    }
+    return "";
+}
+
+// The exact sentence a forget ended with. The verdict is the four-way shape
+// the face styles from; this is the seven-way truth it prints, and the two are
+// deliberately not the same enum.
+StringId forget_line(core::MeshForgetOutcome outcome)
+{
+    switch (outcome) {
+    case core::MeshForgetOutcome::Forgotten:
+    case core::MeshForgetOutcome::Unpinned:  return StringId::ProvisionNodeForgotten;
+    case core::MeshForgetOutcome::PinOnFlash: return StringId::ProvisionNodeForgottenRam;
+    case core::MeshForgetOutcome::Nothing:    return StringId::ProvisionNodeNothing;
+    case core::MeshForgetOutcome::ReplayInhibited:
+        return StringId::ProvisionNodeReplayInhibited;
+    case core::MeshForgetOutcome::BondKept:
+    case core::MeshForgetOutcome::Pending:   break;
+    }
+    return StringId::ProvisionNodeKept;
+}
+
+}  // namespace
+
+EntryText ProvisioningEntry::text(l10n::Locale locale) const
+{
+    EntryText out;
+    out.finished = field_ == EntryField::Exit;
+    out.waiting  = waiting();
+    out.seeded   = seeded_;
+    if (out.finished) { return out; }
+
+    out.title       = l10n::tr(title_of(field_), locale);
+    out.instruction = instruction_of(field_, locale);
+
+    // --- the verdict line -------------------------------------------------
+    switch (verdict_) {
+    case EntryVerdict::None:
+        break;
+    case EntryVerdict::TimeSaved:
+        out.verdict = l10n::tr(StringId::ProvisionTimeSaved, locale);
+        break;
+    case EntryVerdict::TimeRefused:
+    case EntryVerdict::PasskeyRefused:
+        out.verdict = l10n::tr(StringId::ProvisionRejected, locale);
+        break;
+    case EntryVerdict::TimeUncertain:
+        out.verdict = l10n::tr(StringId::ProvisionTimeUncertain, locale);
+        break;
+    case EntryVerdict::PasskeyPending:
+        out.verdict = l10n::tr(StringId::ProvisionPending, locale);
+        break;
+    case EntryVerdict::PasskeyStored:
+        out.verdict = l10n::tr(StringId::ProvisionDone, locale);
+        break;
+    case EntryVerdict::PasskeyUncertain:
+        out.verdict = l10n::tr(StringId::ProvisionPasskeyUncertain, locale);
+        break;
+    case EntryVerdict::ForgetPending:
+        out.verdict = l10n::tr(StringId::ProvisionNodePending, locale);
+        break;
+    case EntryVerdict::NodeForgotten:
+    case EntryVerdict::NodePartlyForgotten:
+    case EntryVerdict::NodeNothingToForget:
+    case EntryVerdict::ForgetKept:
+        out.verdict = l10n::tr(forget_line(forget_outcome_), locale);
+        break;
+    case EntryVerdict::Abandoned:
+        out.verdict = l10n::tr(StringId::ProvisionAbandoned, locale);
+        break;
+    }
+
+    // --- the value under the cursor ---------------------------------------
+    const int sign = offset_minutes_ < 0 ? -1 : 1;
+    const unsigned offset_abs = static_cast<unsigned>(offset_minutes_ * sign);
+    int written = 0;
+    switch (field_) {
+    case EntryField::Day:
+        written = std::snprintf(out.value, sizeof out.value, "%u", day_);
+        break;
+    case EntryField::Month:
+        written = std::snprintf(out.value, sizeof out.value, "%02u", month_);
+        break;
+    case EntryField::Year:
+        written = std::snprintf(out.value, sizeof out.value, "%lld",
+                                static_cast<long long>(year_));
+        break;
+    case EntryField::Hour:
+        written = std::snprintf(out.value, sizeof out.value, "%02u", hour_);
+        break;
+    case EntryField::Minute:
+        written = std::snprintf(out.value, sizeof out.value, "%02u", minute_);
+        break;
+    case EntryField::Offset:
+        written = std::snprintf(out.value, sizeof out.value, "UTC%c%02u:%02u",
+                                sign < 0 ? '-' : '+', offset_abs / 60,
+                                offset_abs % 60);
+        break;
+    case EntryField::Passkey:
+        written = std::snprintf(out.value, sizeof out.value, "%u%u%u%u%u%u",
+                                digits_[0], digits_[1], digits_[2], digits_[3],
+                                digits_[4], digits_[5]);
+        break;
+    case EntryField::TimeReview:
+    case EntryField::Node:
+    case EntryField::ForgetConfirm:
+    case EntryField::Receipt:
+    case EntryField::Exit:
+        break;
+    }
+    (void)fits(written, sizeof out.value, out.value);
+
+    // --- the whole draft, and the instant it means ------------------------
+    //
+    // On every field of the clock task, not only on the review: a person
+    // stepping the month wants to see what the whole thing now says, and the
+    // UTC line is the one that tells them whether the offset is the right way
+    // round. ISO in English and dotted in Russian, because a mixed audience
+    // reading `31.01` as a month is exactly the mistake this screen exists to
+    // prevent.
+    if (task_ == EntryTask::LocalTime) {
+        const bool iso = locale == l10n::Locale::En;
+        written = iso
+            ? std::snprintf(out.draft, sizeof out.draft,
+                            "%04lld-%02u-%02u \xC2\xB7 %02u:%02u \xC2\xB7 UTC%c%02u:%02u",
+                            static_cast<long long>(year_), month_, day_, hour_,
+                            minute_, sign < 0 ? '-' : '+', offset_abs / 60,
+                            offset_abs % 60)
+            : std::snprintf(out.draft, sizeof out.draft,
+                            "%02u.%02u.%04lld \xC2\xB7 %02u:%02u \xC2\xB7 UTC%c%02u:%02u",
+                            day_, month_, static_cast<long long>(year_), hour_,
+                            minute_, sign < 0 ? '-' : '+', offset_abs / 60,
+                            offset_abs % 60);
+        (void)fits(written, sizeof out.draft, out.draft);
+
+        core::WallTime utc;
+        core::CivilTime civil;
+        if (to_utc(utc) && core::civil_from_wall_time(utc, civil)) {
+            written = std::snprintf(out.utc, sizeof out.utc,
+                                    "%04lld-%02u-%02u %02u:%02uZ",
+                                    static_cast<long long>(civil.year),
+                                    civil.month, civil.day, civil.hour,
+                                    civil.minute);
+            (void)fits(written, sizeof out.utc, out.utc);
+        }
+    }
+
+    // --- the node's first eight hex digits, the way its own screen shows ---
+    if (has_node_) {
+        static constexpr char kHex[] = "0123456789abcdef";
+        for (unsigned i = 0; i < 4; ++i) {
+            out.node[2 * i]     = kHex[node_.public_key[i] >> 4];
+            out.node[2 * i + 1] = kHex[node_.public_key[i] & 0x0F];
+        }
+        out.node[8] = '\0';
+    }
+
+    // --- which step of how many -------------------------------------------
+    switch (field_) {
+    case EntryField::Day:    out.step = 1; out.steps = kTimeSteps; break;
+    case EntryField::Month:  out.step = 2; out.steps = kTimeSteps; break;
+    case EntryField::Year:   out.step = 3; out.steps = kTimeSteps; break;
+    case EntryField::Hour:   out.step = 4; out.steps = kTimeSteps; break;
+    case EntryField::Minute: out.step = 5; out.steps = kTimeSteps; break;
+    case EntryField::Offset: out.step = 6; out.steps = kTimeSteps; break;
+    case EntryField::Passkey:
+        out.step  = cursor_ + 1;
+        out.steps = kPasskeyDigits;
+        break;
+    default:
+        break;
+    }
+
+    // --- the keys ---------------------------------------------------------
+    //
+    // A key with no label is a key the face does not draw. That is the whole
+    // of the rule: nothing here is decided by which field it is except through
+    // these six strings, so a face cannot draw `Next` on the step that saves.
+    out.leave = l10n::tr(StringId::ProvisionKeyLeave, locale);
+    if (out.waiting) {
+        // Nothing else does anything while the radio has the request, and a
+        // key drawn as live that is not is worse than no key.
+        return out;
+    }
+
+    const char* const down = l10n::tr(StringId::ProvisionKeyMinus, locale);
+    const char* const up   = l10n::tr(StringId::ProvisionKeyPlus, locale);
+    const char* const back = l10n::tr(StringId::ProvisionKeyPrevious, locale);
+    const char* const next = l10n::tr(StringId::ProvisionKeyNext, locale);
+
+    switch (field_) {
+    case EntryField::Day:
+        out.minus = down; out.plus = up; out.next = next;
+        break;
+    case EntryField::Month:
+    case EntryField::Year:
+    case EntryField::Hour:
+    case EntryField::Minute:
+    case EntryField::Offset:
+        out.minus = down; out.plus = up; out.previous = back; out.next = next;
+        break;
+    case EntryField::TimeReview:
+        out.previous = back;
+        out.next     = l10n::tr(StringId::ProvisionKeySave, locale);
+        break;
+    case EntryField::Node:
+        out.next   = next;
+        out.forget = l10n::tr(StringId::ProvisionKeyForget, locale);
+        break;
+    case EntryField::ForgetConfirm:
+        out.previous = l10n::tr(StringId::ProvisionKeyKeep, locale);
+        out.next     = l10n::tr(StringId::ProvisionKeyForget, locale);
+        out.forget   = out.next;
+        // `Leave` is Back here, not out: the key beside it is the destructive
+        // one, and a screen where the two neighbours do opposite kinds of
+        // thing is a screen that loses a node to a mis-tap.
+        out.leave    = back;
+        break;
+    case EntryField::Passkey:
+        out.minus = down;
+        out.plus  = up;
+        if (cursor_ > 0 || has_node_) { out.previous = back; }
+        out.next = cursor_ + 1 < kPasskeyDigits
+                       ? next
+                       : l10n::tr(StringId::ProvisionKeySave, locale);
+        break;
+    case EntryField::Receipt:
+        if (retryable(verdict_)) {
+            out.next = l10n::tr(StringId::ProvisionKeyRetry, locale);
+            if (receipt_of_ != EntryField::Exit) { out.previous = back; }
+        } else if (leads_to_passkey(verdict_)) {
+            out.next = next;
+        } else {
+            out.next = l10n::tr(StringId::ProvisionKeyDone, locale);
+        }
+        break;
+    case EntryField::Exit:
+        break;
+    }
     return out;
-  }
-
-  // The mask with the typed digits laid over its blanks.
-  const char* shape = mask(field_);
-  unsigned typed = 0;
-  unsigned n = 0;
-  if (field_ == EntryField::Offset) {
-    out.value[n++] = offset_west_ ? '-' : '+';
-  }
-  for (unsigned i = 0; shape[i] != '\0' && n + 1 < sizeof(out.value); ++i) {
-    if (shape[i] == '_' && typed < count_) {
-      out.value[n++] = digits_[typed++];
-    } else {
-      out.value[n++] = shape[i];
-    }
-  }
-  out.value[n] = '\0';
-  return out;
 }
 
 }  // namespace attadipa::apps

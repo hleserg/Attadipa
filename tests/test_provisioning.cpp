@@ -38,6 +38,9 @@ int failures = 0;
 
 using attadipa::apps::EntryField;
 using attadipa::apps::EntryKey;
+using attadipa::apps::EntrySeed;
+using attadipa::apps::EntryTask;
+using attadipa::apps::EntryText;
 using attadipa::apps::EntryVerdict;
 using attadipa::apps::ProvisioningEntry;
 using attadipa::core::ProvisionOutcome;
@@ -245,779 +248,722 @@ private:
     std::uint32_t forget_ticket_ = 0;
 };
 
-void type(ProvisioningEntry& entry, const char* digits)
+void press_n(ProvisioningEntry& entry, EntryKey key, unsigned times)
 {
-    for (; *digits != '\0'; ++digits) {
-        entry.press(static_cast<EntryKey>(
-            static_cast<unsigned>(EntryKey::Digit0) +
-            static_cast<unsigned>(*digits - '0')));
-    }
+    for (unsigned i = 0; i < times; ++i) { entry.press(key); }
 }
+
+bool eq(const char* a, const char* b) { return std::strcmp(a, b) == 0; }
 
 bool value_is(const ProvisioningEntry& entry, const char* expected)
 {
-    return std::strcmp(entry.text(Locale::En).value, expected) == 0;
+    return eq(entry.text(Locale::En).value, expected);
 }
 
-bool hint_is(const ProvisioningEntry& entry, const char* expected)
+bool verdict_is(const ProvisioningEntry& entry, const char* expected)
 {
-    return std::strcmp(entry.text(Locale::En).hint, expected) == 0;
+    return eq(entry.text(Locale::En).verdict, expected);
 }
 
-// Everything before the passkey, typed the short way: a valid date, a time,
-// and UTC. Leaves the entry on the passkey field with the clock committed.
-void to_passkey(ProvisioningEntry& entry)
+// The clock task's six steppers, walked to a given local instant from the
+// default the constructor leaves. Every move is a real key press, so what this
+// reaches is what a finger reaches.
+// Five Nexts and nothing else: from Day to Offset with the draft untouched.
+// The one to use on a seeded entry, where `step_to` below would name values
+// it does not set.
+void walk_to_offset(ProvisioningEntry& entry)
 {
-    type(entry, "20260902");
-    entry.press(EntryKey::Ok);
-    type(entry, "1230");
-    entry.press(EntryKey::Ok);
-    type(entry, "0000");
-    entry.press(EntryKey::Ok);
+    for (unsigned i = 0; i < 5; ++i) {
+        entry.press(EntryKey::Next);
+    }
+}
+
+// Steps *from wherever the draft already is*, so the values name the result
+// only on a fresh unseeded entry -- which starts on 2026-01-01 00:00 UTC+00:00
+// and is what every caller of this one has.
+void step_to(ProvisioningEntry& entry, unsigned day, unsigned month,
+             unsigned year_from_2026, unsigned hour, unsigned minute,
+             unsigned offset_quarters)
+{
+    press_n(entry, EntryKey::Plus, day - 1);
+    entry.press(EntryKey::Next);
+    press_n(entry, EntryKey::Plus, month - 1);
+    entry.press(EntryKey::Next);
+    press_n(entry, EntryKey::Plus, year_from_2026);
+    entry.press(EntryKey::Next);
+    press_n(entry, EntryKey::Plus, hour);
+    entry.press(EntryKey::Next);
+    press_n(entry, EntryKey::Plus, minute);
+    entry.press(EntryKey::Next);
+    press_n(entry, EntryKey::Plus, offset_quarters);
+}
+
+// The passkey's six digits, each stepped up from zero and left on the last.
+void step_passkey(ProvisioningEntry& entry, const char* digits)
+{
+    for (unsigned i = 0; i < 6; ++i) {
+        press_n(entry, EntryKey::Plus,
+                static_cast<unsigned>(digits[i] - '0'));
+        if (i + 1 < 6) { entry.press(EntryKey::Next); }
+    }
+}
+
+// A seed the constructor should accept, built from a local instant so the
+// test says what it means rather than a Unix number.
+EntrySeed seed_at(std::int64_t year, unsigned month, unsigned day,
+                  unsigned hour, unsigned minute, std::int16_t offset)
+{
+    attadipa::core::CivilTime civil;
+    civil.year = year; civil.month = month; civil.day = day;
+    civil.hour = hour; civil.minute = minute;
+    attadipa::core::WallTime local{};
+    EntrySeed seed;
+    if (!attadipa::core::wall_time_from_civil(civil, local)) { return seed; }
+    seed.valid = true;
+    seed.utc.unix_seconds = local.unix_seconds -
+                            static_cast<std::int64_t>(offset) * 60;
+    seed.offset_minutes = offset;
+    return seed;
+}
+
+// --- the clock ------------------------------------------------------------
+
+// The whole clock task, and the one thing it is for: what the review showed is
+// what the board was given. The draft is local and the board takes UTC, so the
+// two lines on the review are not the same instant written twice -- getting
+// the sign of that subtraction backwards is a watch that is five hours wrong
+// and says nothing about it.
+void test_the_clock_task_saves_the_instant_the_review_showed()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::LocalTime);
+    CHECK(entry.task() == EntryTask::LocalTime);
+    CHECK(entry.field() == EntryField::Day);
+    CHECK(!entry.text(Locale::En).seeded);
+    CHECK(entry.text(Locale::En).step == 1 && entry.text(Locale::En).steps == 6);
+
+    // 31 January 2026, 21:00 local, UTC+05:15.
+    step_to(entry, 31, 1, 0, 21, 0, 21);
+    CHECK(entry.field() == EntryField::Offset);
+    CHECK(value_is(entry, "UTC+05:15"));
+    CHECK(entry.text(Locale::En).step == 6);
+
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::TimeReview);
+    CHECK(entry.text(Locale::En).steps == 0);
+    CHECK(eq(entry.text(Locale::En).draft, "2026-01-31 \xC2\xB7 21:00 \xC2\xB7 UTC+05:15"));
+    CHECK(eq(entry.text(Locale::En).utc, "2026-01-31 15:45Z"));
+    CHECK(eq(entry.text(Locale::En).next, "Save"));
+
+    CHECK(board.clocks == 0);
+    entry.press(EntryKey::Next);
+    CHECK(board.clocks == 1);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::TimeSaved);
+    CHECK(board.clock.timezone_offset_minutes == 315);
+    // 2026-01-31T15:45:00Z.
+    CHECK(board.clock.utc_seconds == 1769874300);
+}
+
+// The receipt is a screen, not a door closing behind you. Until #469 the
+// terminal field *was* `finished()`, which is the auto-dismiss #416 removed
+// from the passkey arriving one screen later.
+void test_the_receipt_is_not_the_exit()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::LocalTime);
+    walk_to_offset(entry);
+    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::TimeSaved);
+    CHECK(!entry.finished());
+    CHECK(!entry.text(Locale::En).finished);
+    CHECK(verdict_is(entry, "the clock is set"));
+    CHECK(eq(entry.text(Locale::En).next, "Done"));
+    // No Back from a receipt that succeeded: there is no draft to go back to
+    // that the board does not already hold.
+    CHECK(eq(entry.text(Locale::En).previous, ""));
+
+    entry.press(EntryKey::Next);
+    CHECK(entry.finished() && entry.field() == EntryField::Exit);
+    CHECK(entry.text(Locale::En).finished);
+    // Keys past the exit do nothing.
+    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Plus);
+    CHECK(entry.finished() && board.clocks == 1);
+}
+
+// A board that refuses the value has not changed anything, and the draft it
+// refused is still worth keeping: retyping six fields to fix one is the trap
+// #406 called a trap.
+void test_a_refused_clock_keeps_the_draft_and_offers_both_ways_on()
+{
+    FakeBoard board;
+    board.clock_answer = ProvisionOutcome::Rejected;
+    ProvisioningEntry entry(board, EntryTask::LocalTime);
+    step_to(entry, 9, 2, 1, 7, 30, 4);
+    entry.press(EntryKey::Next);
+    const attadipa::core::CivilTime before = entry.draft();
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::TimeRefused);
+    CHECK(verdict_is(entry, "not accepted \xE2\x80\x94 nothing changed"));
+    CHECK(eq(entry.text(Locale::En).next, "Retry"));
+    CHECK(eq(entry.text(Locale::En).previous, "Back"));
+
+    // Retry asks again with the same draft, and is answered the same way.
+    entry.press(EntryKey::Next);
+    CHECK(board.clocks == 2);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::TimeRefused);
+
+    // Back returns to the review with the draft untouched.
+    entry.press(EntryKey::Previous);
+    CHECK(entry.field() == EntryField::TimeReview);
+    const attadipa::core::CivilTime after = entry.draft();
+    CHECK(before.year == after.year && before.month == after.month &&
+          before.day == after.day && before.hour == after.hour &&
+          before.minute == after.minute);
+    CHECK(entry.draft_offset_minutes() == 60);
+
+    board.clock_answer = ProvisionOutcome::Accepted;
+    entry.press(EntryKey::Next);
+    CHECK(entry.verdict() == EntryVerdict::TimeSaved && board.clocks == 3);
+}
+
+// `Rejected` and `Failed` are two different watches and get two different
+// sentences. Collapsing them into "did not work" tells the second holder
+// their clock still holds the old time when it may not.
+void test_a_failed_clock_does_not_claim_nothing_changed()
+{
+    for (const ProvisionOutcome answer :
+         {ProvisionOutcome::Failed, ProvisionOutcome::Pending}) {
+        FakeBoard board;
+        board.clock_answer = answer;
+        ProvisioningEntry entry(board, EntryTask::LocalTime);
+        walk_to_offset(entry);
+        entry.press(EntryKey::Next);
+        entry.press(EntryKey::Next);
+        CHECK(entry.verdict() == EntryVerdict::TimeUncertain);
+        CHECK(verdict_is(entry, "may be part-written; check the clock"));
+        CHECK(!verdict_is(entry, "not accepted \xE2\x80\x94 nothing changed"));
+        // Uncertain is not a wait: `set_wall_clock` is terminal by contract,
+        // so there is no second answer coming and nothing to poll for.
+        CHECK(!entry.waiting());
+        CHECK(!entry.poll());
+        CHECK(eq(entry.text(Locale::En).next, "Retry"));
+    }
+}
+
+// A stepper cannot produce 2026-13-32, and the reason it cannot is that the
+// day follows the month and the year rather than standing still while they
+// move underneath it.
+void test_the_stepper_cannot_build_a_date_that_is_not_one()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::LocalTime);
+    press_n(entry, EntryKey::Plus, 30);  // 31 January
+    CHECK(value_is(entry, "31"));
+    entry.press(EntryKey::Plus);         // and it wraps rather than growing
+    CHECK(value_is(entry, "1"));
+    press_n(entry, EntryKey::Plus, 30);
+    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Plus);         // February
+    CHECK(value_is(entry, "02"));
+    entry.press(EntryKey::Previous);
+    CHECK(value_is(entry, "28"));        // 2026 is not a leap year
+
+    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Next);
+    press_n(entry, EntryKey::Plus, 2);   // 2028
+    CHECK(value_is(entry, "2028"));
+    entry.press(EntryKey::Previous);
+    entry.press(EntryKey::Previous);
+    CHECK(value_is(entry, "28"));        // the clamp does not step back up
+
+    // 29 February 2028 is real, and stepping the year off it is not.
+    entry.press(EntryKey::Plus);
+    CHECK(value_is(entry, "29"));
+    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Plus);         // 2029
+    entry.press(EntryKey::Previous);
+    entry.press(EntryKey::Previous);
+    CHECK(value_is(entry, "28"));
+}
+
+// Every zone there is, and no zone there is not. Clamped rather than wrapped,
+// because a stepper that rolls from +14:00 to -12:00 in one key sets the wrong
+// day on a slip and says nothing about it.
+void test_the_offset_steps_by_quarter_hours_and_stops_at_the_ends()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::LocalTime);
+    walk_to_offset(entry);
+    CHECK(value_is(entry, "UTC+00:00"));
+    entry.press(EntryKey::Plus);
+    CHECK(value_is(entry, "UTC+00:15"));
+    entry.press(EntryKey::Minus);
+    entry.press(EntryKey::Minus);
+    CHECK(value_is(entry, "UTC-00:15"));
+
+    press_n(entry, EntryKey::Plus, 200);
+    CHECK(value_is(entry, "UTC+14:00"));
+    entry.press(EntryKey::Plus);
+    CHECK(value_is(entry, "UTC+14:00"));
+    press_n(entry, EntryKey::Minus, 200);
+    CHECK(value_is(entry, "UTC-12:00"));
+    entry.press(EntryKey::Minus);
+    CHECK(value_is(entry, "UTC-12:00"));
+}
+
+// A seeded offset that is not on the grid is the case the grid alone gets
+// wrong: without the first-step rule, +05:53 steps to +06:00 and then back to
+// +05:53, which is a stepper that cannot leave where it started. `%` truncates
+// toward zero in C++, so the two directions are not mirror images and both are
+// checked.
+void test_the_first_step_off_the_grid_lands_on_it()
+{
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 6, 1, 12, 0, 353));
+        CHECK(entry.text(Locale::En).seeded);
+        walk_to_offset(entry);
+        CHECK(value_is(entry, "UTC+05:53"));
+        entry.press(EntryKey::Plus);
+        CHECK(value_is(entry, "UTC+06:00"));
+    }
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 6, 1, 12, 0, 353));
+        walk_to_offset(entry);
+        entry.press(EntryKey::Minus);
+        CHECK(value_is(entry, "UTC+05:45"));
+    }
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 6, 1, 12, 0, -353));
+        walk_to_offset(entry);
+        CHECK(value_is(entry, "UTC-05:53"));
+        entry.press(EntryKey::Plus);
+        CHECK(value_is(entry, "UTC-05:45"));
+    }
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 6, 1, 12, 0, -353));
+        walk_to_offset(entry);
+        entry.press(EntryKey::Minus);
+        CHECK(value_is(entry, "UTC-06:00"));
+    }
+}
+
+// `valid` is the board's claim and the constructor is the check. An offset
+// outside the zones there are, or a local instant outside the years this watch
+// sets, is dropped whole -- not shown as a draft with a false `seeded` beside
+// it, which is a screen asserting that the clock told it something.
+void test_a_seed_that_does_not_survive_its_offset_is_dropped()
+{
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 9, 8, 14, 30, 315));
+        CHECK(entry.text(Locale::En).seeded);
+        CHECK(eq(entry.text(Locale::En).draft,
+                 "2026-09-08 \xC2\xB7 14:30 \xC2\xB7 UTC+05:15"));
+        CHECK(entry.draft_offset_minutes() == 315);
+    }
+    {
+        // An offset no zone has. The instant behind it may be perfectly good
+        // and it is still not a draft this screen can show.
+        EntrySeed seed = seed_at(2026, 9, 8, 14, 30, 315);
+        seed.offset_minutes = 900;
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime, seed);
+        CHECK(!entry.text(Locale::En).seeded);
+        CHECK(entry.draft().year == 2026 && entry.draft().month == 1 &&
+              entry.draft().day == 1);
+        CHECK(entry.draft_offset_minutes() == 0);
+    }
+    {
+        // A local year this watch does not set. The offset is what carries it
+        // over the edge, which is why the check has to come after applying it.
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2100, 1, 1, 0, 0, 0));
+        CHECK(!entry.text(Locale::En).seeded);
+        CHECK(entry.draft().year == 2026);
+    }
+    {
+        // 2099-12-31 23:30 UTC is inside the range; at +01:00 the local
+        // instant it seeds is 2100-01-01 00:30, and it is not.
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2100, 1, 1, 0, 30, 60));
+        CHECK(!entry.text(Locale::En).seeded);
+        CHECK(entry.draft().year == 2026);
+    }
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime, EntrySeed{});
+        CHECK(!entry.text(Locale::En).seeded);
+    }
+}
+
+// --- the node -------------------------------------------------------------
+
+// THE INVARIANT THE TASK EXISTS FOR, and the only way it can be shown: both
+// tasks are this one class over one `core::Provisioner`, so nothing but the
+// journey proves that the node one never writes the clock. Every branch the
+// node task has is walked here -- keep, back, forget, a refused passkey, a
+// retry, the exit -- and `set_wall_clock` is never called once.
+void test_the_node_task_never_writes_the_clock()
+{
+    FakeBoard board;
+    board.pinned = true;
+    board.pin_on_flash = true;
+    board.stale_bond();
+    ProvisioningEntry entry(board, EntryTask::NodePasskey);
+    CHECK(entry.field() == EntryField::Node);
+    CHECK(eq(entry.text(Locale::En).node, "5c62d9bc"));
+
+    // Keep, and Back: neither asks the board anything.
+    entry.press(EntryKey::Forget);
+    CHECK(entry.field() == EntryField::ForgetConfirm);
+    entry.press(EntryKey::Previous);
+    CHECK(entry.field() == EntryField::Node && board.forgets == 0);
+    entry.press(EntryKey::Forget);
+    entry.press(EntryKey::Leave);
+    CHECK(entry.field() == EntryField::Node && board.forgets == 0);
+    CHECK(!entry.finished());
+
+    // And then the forget, which finishes on the radio's task.
+    entry.press(EntryKey::Forget);
+    entry.press(EntryKey::Next);
+    CHECK(board.forgets == 1);
+    CHECK(entry.verdict() == EntryVerdict::ForgetPending);
+    CHECK(entry.waiting() && entry.field() == EntryField::ForgetConfirm);
+    CHECK(!entry.poll());
+    board.forget_worker();
+    CHECK(entry.poll());
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::NodeForgotten);
+    CHECK(entry.forget_outcome() == MeshForgetOutcome::Forgotten);
+
+    // The passkey a forgotten node now needs is what the receipt leads to.
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Passkey);
+    CHECK(entry.text(Locale::En).step == 1 && entry.text(Locale::En).steps == 6);
+
+    // Refused outright, and retried.
+    board.passkey_answer = ProvisionOutcome::Rejected;
+    step_passkey(entry, "246813");
+    CHECK(value_is(entry, "246813"));
+    CHECK(entry.text(Locale::En).step == 6);
+    CHECK(eq(entry.text(Locale::En).next, "Save"));
+    entry.press(EntryKey::Next);
+    CHECK(board.passkeys == 1 && board.passkey == 246813);
+    CHECK(entry.verdict() == EntryVerdict::PasskeyRefused);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(eq(entry.text(Locale::En).next, "Retry"));
+
+    board.passkey_answer = ProvisionOutcome::Pending;
+    entry.press(EntryKey::Next);
+    CHECK(board.passkeys == 2);
+    CHECK(entry.verdict() == EntryVerdict::PasskeyPending && entry.waiting());
+    board.worker(PasskeyOutcome::Armed);
+    CHECK(entry.poll());
+    CHECK(entry.verdict() == EntryVerdict::PasskeyStored);
+    CHECK(verdict_is(entry, "the watch is set up"));
+    CHECK(!entry.finished());
+    entry.press(EntryKey::Next);
+    CHECK(entry.finished());
+
+    CHECK(board.clocks == 0);
+}
+
+// A watch pinned to no node has nothing to keep or forget, and no field to
+// show it in.
+void test_an_unpinned_watch_starts_at_the_passkey()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::NodePasskey);
+    CHECK(entry.field() == EntryField::Passkey);
+    CHECK(eq(entry.text(Locale::En).node, ""));
+    // Nothing behind the first digit to go back to.
+    CHECK(eq(entry.text(Locale::En).previous, ""));
+    entry.press(EntryKey::Previous);
+    CHECK(entry.field() == EntryField::Passkey);
+}
+
+// One value names what actually landed, and each of the six needs its own
+// sentence. A partial forget drawn as a complete one is #378 with more state:
+// the pin comes back at the next restart and the screen said it was gone.
+void test_every_forget_ending_gets_its_own_sentence()
+{
+    struct Case {
+        attadipa::firmware::ForgetNodeOutcome worker;
+        MeshForgetOutcome outcome;
+        EntryVerdict verdict;
+        const char* line;
+    };
+    const Case cases[] = {
+        {attadipa::firmware::ForgetNodeOutcome::Forgotten,
+         MeshForgetOutcome::Forgotten, EntryVerdict::NodeForgotten,
+         "forgotten; set its new passkey"},
+        {attadipa::firmware::ForgetNodeOutcome::Unpinned,
+         MeshForgetOutcome::Unpinned, EntryVerdict::NodeForgotten,
+         "forgotten; set its new passkey"},
+        {attadipa::firmware::ForgetNodeOutcome::PinOnFlash,
+         MeshForgetOutcome::PinOnFlash, EntryVerdict::NodePartlyForgotten,
+         "forgot till reboot; a restart brings it back"},
+        {attadipa::firmware::ForgetNodeOutcome::Nothing,
+         MeshForgetOutcome::Nothing, EntryVerdict::NodeNothingToForget,
+         "nothing to forget"},
+        {attadipa::firmware::ForgetNodeOutcome::BondKept,
+         MeshForgetOutcome::BondKept, EntryVerdict::ForgetKept,
+         "not forgotten; retry"},
+        {attadipa::firmware::ForgetNodeOutcome::ReplayInhibited,
+         MeshForgetOutcome::ReplayInhibited, EntryVerdict::ForgetKept,
+         "not forgotten; reboot scan is blocked"},
+    };
+    for (const Case& one : cases) {
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry entry(board, EntryTask::NodePasskey);
+        entry.press(EntryKey::Forget);
+        entry.press(EntryKey::Next);
+        CHECK(entry.waiting());
+        board.forget_op.complete(board.forget_queued, one.worker);
+        CHECK(entry.poll());
+        CHECK(entry.forget_outcome() == one.outcome);
+        CHECK(entry.verdict() == one.verdict);
+        CHECK(verdict_is(entry, one.line));
+        // A kept node is still this watch's, and the retry is real; anything
+        // else has nothing left to keep, and leads on to the passkey.
+        if (one.verdict == EntryVerdict::ForgetKept) {
+            CHECK(eq(entry.text(Locale::En).next, "Retry"));
+            entry.press(EntryKey::Next);
+            CHECK(board.forgets == 2);
+        } else {
+            CHECK(eq(entry.text(Locale::En).next, "Next"));
+            entry.press(EntryKey::Next);
+            CHECK(entry.field() == EntryField::Passkey);
+        }
+    }
+}
+
+// A partial forget must not be styled as a complete one, and the face styles
+// from the verdict. Three of the six endings would read as "forgotten" if the
+// verdict were the outcome by another name.
+void test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one()
+{
+    FakeBoard board;
+    board.pinned = true;
+    ProvisioningEntry entry(board, EntryTask::NodePasskey);
+    entry.press(EntryKey::Forget);
+    entry.press(EntryKey::Next);
+    board.forget_op.complete(board.forget_queued,
+                             attadipa::firmware::ForgetNodeOutcome::PinOnFlash);
+    CHECK(entry.poll());
+    CHECK(entry.verdict() != EntryVerdict::NodeForgotten);
+    CHECK(!verdict_is(entry, "forgotten; set its new passkey"));
+}
+
+// --- leaving --------------------------------------------------------------
+
+// Leaving with the radio still holding the request is neither "set up" nor
+// "nothing changed", and it is not a wait either: the board keeps that answer
+// from whatever screen replaces this one, so nobody is ever going to hear it.
+void test_leaving_a_wait_says_the_answer_is_lost()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::NodePasskey);
+    step_passkey(entry, "123456");
+    entry.press(EntryKey::Next);
+    CHECK(entry.waiting() && entry.verdict() == EntryVerdict::PasskeyPending);
+    CHECK(verdict_is(entry, "still setting up the node"));
+    // Nothing but the way out means anything while the radio has it.
+    entry.press(EntryKey::Plus);
+    entry.press(EntryKey::Next);
+    CHECK(board.passkeys == 1 && entry.waiting());
+    CHECK(eq(entry.text(Locale::En).next, ""));
+
+    entry.press(EntryKey::Leave);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::Abandoned);
+    CHECK(verdict_is(entry,
+                     "the node still had it; how that ended is unknown"));
+    CHECK(!entry.waiting() && !entry.finished());
+    // Nothing to go back to: the draft it would return to has already gone.
+    CHECK(eq(entry.text(Locale::En).previous, ""));
+    entry.press(EntryKey::Next);
+    CHECK(entry.finished());
+
+    // AND THE ANSWER IS NOT HANDED TO THE ENTRY THAT REPLACES IT. The worker
+    // arms the abandoned request after the screen that asked for it has gone.
+    // A second screen reserves the slot afresh, which discards that answer
+    // where it stands: `take()` only ever answers the ticket that owns the
+    // slot, and this one no longer does.
+    board.worker(PasskeyOutcome::Armed);
+    ProvisioningEntry second(board, EntryTask::NodePasskey);
+    step_passkey(second, "654321");
+    second.press(EntryKey::Next);
+    CHECK(board.passkeys == 2 && board.passkey == 654321);
+    CHECK(second.verdict() == EntryVerdict::PasskeyPending);
+    CHECK(second.waiting());
+    // Nothing to collect: the armed answer belonged to the request this
+    // screen replaced, and no amount of polling will produce it.
+    CHECK(!second.poll());
+    CHECK(second.verdict() == EntryVerdict::PasskeyPending);
+
+    // The answer this screen does get is its own. Had the abandoned `Armed`
+    // reached it, this would say the watch is set up.
+    board.worker(PasskeyOutcome::Refused);
+    CHECK(second.poll());
+    CHECK(second.verdict() == EntryVerdict::PasskeyUncertain);
+    CHECK(second.verdict() != EntryVerdict::PasskeyStored);
+    CHECK(verdict_is(second, "it may work until the next restart"));
+    CHECK(!second.finished());
+}
+
+// A screen that can only be left by getting something right is a trap, and a
+// long press onto it is easy to make by accident (#406 round 1). Every field
+// of both tasks has a way out that asks nothing of the holder -- except the
+// confirmation, where the neighbouring key is the destructive one and Leave is
+// Back instead.
+void test_leave_is_never_a_trap()
+{
+    const EntryKey walk_time[] = {EntryKey::Next, EntryKey::Next, EntryKey::Next,
+                                  EntryKey::Next, EntryKey::Next, EntryKey::Next};
+    for (unsigned stop = 0; stop <= 6; ++stop) {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime);
+        for (unsigned i = 0; i < stop; ++i) { entry.press(walk_time[i]); }
+        entry.press(EntryKey::Leave);
+        CHECK(entry.finished());
+        CHECK(board.clocks == 0);
+    }
+    {
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry entry(board, EntryTask::NodePasskey);
+        entry.press(EntryKey::Leave);
+        CHECK(entry.finished() && board.forgets == 0);
+    }
+    {
+        // The confirmation is the one screen Leave does not leave -- and the
+        // node it protects is still there afterwards.
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry entry(board, EntryTask::NodePasskey);
+        entry.press(EntryKey::Forget);
+        entry.press(EntryKey::Leave);
+        CHECK(!entry.finished() && entry.field() == EntryField::Node);
+        CHECK(board.forgets == 0);
+        entry.press(EntryKey::Leave);
+        CHECK(entry.finished());
+    }
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::NodePasskey);
+        step_passkey(entry, "111111");
+        entry.press(EntryKey::Leave);
+        CHECK(entry.finished() && board.passkeys == 0);
+    }
+}
+
+// --- what the face is given -----------------------------------------------
+
+// The exact bytes, in both locales, with an offset that is neither zero nor a
+// whole hour and on both sides of Greenwich. `draft` is emptied rather than
+// truncated when it does not fit, so a non-empty string here is also the
+// check that it did.
+void test_both_locales_print_the_whole_instant()
+{
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 1, 31, 21, 0, 315));
+        const EntryText en = entry.text(Locale::En);
+        const EntryText ru = entry.text(Locale::Ru);
+        CHECK(eq(en.draft, "2026-01-31 \xC2\xB7 21:00 \xC2\xB7 UTC+05:15"));
+        CHECK(eq(ru.draft, "31.01.2026 \xC2\xB7 21:00 \xC2\xB7 UTC+05:15"));
+        CHECK(eq(en.utc, "2026-01-31 15:45Z"));
+        CHECK(eq(ru.utc, "2026-01-31 15:45Z"));
+        CHECK(std::strlen(en.draft) == 32 && std::strlen(ru.draft) == 32);
+        CHECK(std::strlen(en.utc) == 17);
+        CHECK(eq(en.title, "Day") && eq(ru.title, "\xD0\x94\xD0\xB5\xD0\xBD\xD1\x8C"));
+    }
+    {
+        // West of Greenwich, and over the date line into the next day.
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2026, 1, 31, 21, 0, -315));
+        const EntryText en = entry.text(Locale::En);
+        CHECK(eq(en.draft, "2026-01-31 \xC2\xB7 21:00 \xC2\xB7 UTC-05:15"));
+        CHECK(eq(en.utc, "2026-02-01 02:15Z"));
+    }
+    {
+        // The widest the two lines get: four-digit year, +14:00, and the
+        // longest month and day. Still inside `draft[40]`.
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime,
+                                seed_at(2099, 12, 31, 23, 59, 840));
+        const EntryText en = entry.text(Locale::En);
+        CHECK(eq(en.draft, "2099-12-31 \xC2\xB7 23:59 \xC2\xB7 UTC+14:00"));
+        CHECK(eq(en.utc, "2099-12-31 09:59Z"));
+    }
+}
+
+// `step` is which of `steps` is being set, and on the passkey that is the
+// digit under the cursor rather than the field. A face drawing six boxes has
+// no other way to know which one to light.
+void test_the_passkey_step_names_the_digit_under_the_cursor()
+{
+    FakeBoard board;
+    ProvisioningEntry entry(board, EntryTask::NodePasskey);
+    for (unsigned digit = 1; digit <= 6; ++digit) {
+        CHECK(entry.text(Locale::En).step == digit);
+        CHECK(entry.text(Locale::En).steps == 6);
+        CHECK(eq(entry.text(Locale::En).next, digit < 6 ? "Next" : "Save"));
+        if (digit < 6) { entry.press(EntryKey::Next); }
+    }
+    entry.press(EntryKey::Previous);
+    CHECK(entry.text(Locale::En).step == 5);
+    press_n(entry, EntryKey::Minus, 1);
+    CHECK(value_is(entry, "000090"));
 }
 
 }  // namespace
 
 int main()
 {
-    // The whole path, west of Greenwich: 2026-09-02 12:30 local at UTC-3 is
-    // 15:30Z -- no: the time field is typed in UTC, so the board gets 12:30Z
-    // and the offset separately.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        CHECK(entry.field() == EntryField::Date);
-        CHECK(value_is(entry, "____-__-__"));
-        type(entry, "2026");
-        CHECK(value_is(entry, "2026-__-__"));
-        type(entry, "0902");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Time);
-        CHECK(entry.verdict() == EntryVerdict::Accepted);
-        type(entry, "1230");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Offset);
-        CHECK(value_is(entry, "+__:__"));
-        entry.press(EntryKey::Sign);
-        type(entry, "0300");
-        CHECK(value_is(entry, "-03:00"));
-        CHECK(board.clocks == 0);
-        entry.press(EntryKey::Ok);
-        CHECK(board.clocks == 1);
-        CHECK(board.clock.utc_seconds == 1788352200);  // 2026-09-02T12:30:00Z
-        CHECK(board.clock.timezone_offset_minutes == -180);
-        CHECK(entry.field() == EntryField::Passkey);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        CHECK(board.passkeys == 1 && board.passkey == 123456);
-        // Queued is not armed. The radio has it, the screen waits, and the
-        // sentence a person reads is neither of the two terminal ones.
-        CHECK(!entry.finished() && entry.waiting());
-        CHECK(entry.verdict() == EntryVerdict::Pending);
-        CHECK(hint_is(entry, "still setting up the node"));
-        CHECK(!entry.poll());
-        CHECK(!entry.finished());
-        // The worker armed it and flash holds it. Only now.
-        board.worker(PasskeyOutcome::Armed);
-        CHECK(entry.poll());
-        CHECK(entry.finished() && !entry.waiting());
-        CHECK(entry.text(Locale::En).done);
-        CHECK(hint_is(entry, "the watch is set up"));
-        // A second poll asks nothing: the answer was taken.
-        const int polls = board.polls;
-        CHECK(!entry.poll() && board.polls == polls);
-        // Keys after Done do nothing.
-        type(entry, "9");
-        entry.press(EntryKey::Ok);
-        CHECK(board.passkeys == 1 && entry.finished());
-    }
-    // A slip costs one key: a bad date is refused with its digits kept.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "20261332");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Date);
-        CHECK(entry.verdict() == EntryVerdict::Rejected);
-        CHECK(value_is(entry, "2026-13-32"));
-        for (int i = 0; i < 4; ++i) entry.press(EntryKey::Backspace);
-        CHECK(value_is(entry, "2026-__-__"));
-        CHECK(entry.verdict() == EntryVerdict::None);
-        entry.press(EntryKey::Ok);  // short
-        CHECK(entry.verdict() == EntryVerdict::Rejected);
-        type(entry, "0229");  // 2026 is not a leap year
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Rejected);
-        // Extra digits past the mask are dropped, not wrapped.
-        type(entry, "99");
-        CHECK(value_is(entry, "2026-02-29"));
-    }
-    // The year the chip can hold, and the hours of a day.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "19991231");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Rejected);
-        for (int i = 0; i < 8; ++i) entry.press(EntryKey::Backspace);
-        type(entry, "20000101");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Time);
-        type(entry, "2400");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Rejected);
-        entry.press(EntryKey::Sign);  // means nothing here
-        CHECK(value_is(entry, "24:00"));
-    }
-    // Every zone there is and none that is not: +14:00 yes, +14:01 no,
-    // -12:00 yes, -12:01 no.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        type(entry, "1401");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Rejected && board.clocks == 0);
-        entry.press(EntryKey::Backspace);
-        type(entry, "0");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Passkey && board.clocks == 1);
-        CHECK(board.clock.timezone_offset_minutes == 840);
-    }
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        entry.press(EntryKey::Sign);
-        type(entry, "1201");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Rejected && board.clocks == 0);
-        entry.press(EntryKey::Backspace);
-        type(entry, "0");
-        entry.press(EntryKey::Ok);
-        CHECK(board.clocks == 1 && board.clock.timezone_offset_minutes == -720);
-    }
-    // The board says Failed: the field stays, and the next OK asks again.
-    {
-        FakeBoard board;
-        board.clock_answer = ProvisionOutcome::Failed;
-        ProvisioningEntry entry(board);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Failed);
-        CHECK(entry.field() == EntryField::Offset && board.clocks == 1);
-        // Cancel here is not "nothing changed": the board was asked and may
-        // have written the RTC before it failed, so the failure is what stays.
-        {
-            ProvisioningEntry left(board);
-            type(left, "20260902");
-            left.press(EntryKey::Ok);
-            type(left, "0000");
-            left.press(EntryKey::Ok);
-            type(left, "0000");
-            left.press(EntryKey::Ok);
-            left.press(EntryKey::Cancel);
-            CHECK(left.finished() && left.verdict() == EntryVerdict::Failed);
-            CHECK(std::strcmp(left.text(Locale::En).hint, "could not be stored") == 0);
-            CHECK(board.clocks == 2);
-        }
-        board.clock_answer = ProvisionOutcome::Accepted;
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Passkey && board.clocks == 3);
-        // A refused passkey likewise.
-        board.passkey_answer = ProvisionOutcome::Rejected;
-        type(entry, "000000");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.verdict() == EntryVerdict::Rejected && !entry.finished());
-        CHECK(board.passkeys == 1);
-    }
-    // OK on an empty passkey skips it; the board is not asked.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        entry.press(EntryKey::Ok);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
-        CHECK(board.passkeys == 0);
-        // Five digits is neither empty nor a passkey.
-        FakeBoard board2;
-        ProvisioningEntry entry2(board2);
-        type(entry2, "20260902");
-        entry2.press(EntryKey::Ok);
-        type(entry2, "0000");
-        entry2.press(EntryKey::Ok);
-        type(entry2, "0000");
-        entry2.press(EntryKey::Ok);
-        type(entry2, "12345");
-        entry2.press(EntryKey::Ok);
-        CHECK(!entry2.finished() && board2.passkeys == 0);
-    }
-    // Both catalogues answer, and the sign key is offered only on the offset.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        CHECK(!entry.text(Locale::En).sign_key);
-        CHECK(std::strcmp(entry.text(Locale::En).title,
-                          entry.text(Locale::Ru).title) != 0);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.text(Locale::Ru).sign_key);
-        // An accepted field shows the next field's hint, not a verdict.
-        CHECK(std::strstr(entry.text(Locale::En).hint, "flips") != nullptr);
-        entry.press(EntryKey::Ok);
-        CHECK(std::strstr(entry.text(Locale::En).hint, "check") != nullptr);
-    }
-    // Cancel before the offset is accepted leaves nothing behind: the board
-    // was never asked, and the screen says so.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "12");
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished());
-        CHECK(entry.verdict() == EntryVerdict::Cancelled);
-        CHECK(board.clocks == 0 && board.passkeys == 0);
-        CHECK(entry.text(Locale::En).done);
-        CHECK(std::strcmp(entry.text(Locale::En).hint, "nothing changed") == 0);
-        CHECK(std::strcmp(entry.text(Locale::En).cancel, "Cancel") == 0);
-        // Keys after a cancel do nothing either.
-        type(entry, "3");
-        entry.press(EntryKey::Ok);
-        CHECK(board.clocks == 0 && entry.finished());
-    }
-    // Cancel on the passkey is the empty-passkey skip: the clock the person
-    // just set stays set, and no passkey reaches the board.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        type(entry, "20260902");
-        entry.press(EntryKey::Ok);
-        type(entry, "1230");
-        entry.press(EntryKey::Ok);
-        type(entry, "0000");
-        entry.press(EntryKey::Ok);
-        CHECK(board.clocks == 1 && entry.field() == EntryField::Passkey);
-        type(entry, "12");
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
-        CHECK(board.clocks == 1 && board.passkeys == 0);
-    }
-    // Cancel on a fresh screen: a long press made by accident costs one key.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Cancelled);
-        CHECK(board.clocks == 0 && board.passkeys == 0);
-    }
+    test_the_clock_task_saves_the_instant_the_review_showed();
+    test_the_receipt_is_not_the_exit();
+    test_a_refused_clock_keeps_the_draft_and_offers_both_ways_on();
+    test_a_failed_clock_does_not_claim_nothing_changed();
+    test_the_stepper_cannot_build_a_date_that_is_not_one();
+    test_the_offset_steps_by_quarter_hours_and_stops_at_the_ends();
+    test_the_first_step_off_the_grid_lands_on_it();
+    test_a_seed_that_does_not_survive_its_offset_is_dropped();
+    test_the_node_task_never_writes_the_clock();
+    test_an_unpinned_watch_starts_at_the_passkey();
+    test_every_forget_ending_gets_its_own_sentence();
+    test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one();
+    test_leaving_a_wait_says_the_answer_is_lost();
+    test_leave_is_never_a_trap();
+    test_both_locales_print_the_whole_instant();
+    test_the_passkey_step_names_the_digit_under_the_cursor();
 
-    // --- #416: the passkey is finished by the radio, not by the keypad ----
-
-    // The stack refuses it. The screen says so, keeps the digits, and the next
-    // OK asks again -- there is a way forward from a failure, which is what
-    // makes it worth showing.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        board.worker(PasskeyOutcome::Refused);
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Failed);
-        CHECK(!entry.finished() && !entry.waiting());
-        CHECK(entry.field() == EntryField::Passkey);
-        CHECK(hint_is(entry, "could not be stored"));
-        CHECK(!entry.text(Locale::En).done);
-        // The digits are still on the screen, so the retry is one key.
-        CHECK(value_is(entry, "123456"));
-        entry.press(EntryKey::Ok);
-        CHECK(board.passkeys == 2 && entry.waiting());
-        board.worker(PasskeyOutcome::Armed);
-        CHECK(entry.poll());
-        CHECK(entry.finished() && hint_is(entry, "the watch is set up"));
+    if (failures != 0) {
+        std::fprintf(stderr, "%d check(s) failed\n", failures);
+        return 1;
     }
-    // Flash refuses the write. The passkey is armed for this boot and gone at
-    // the next, which is a failure and not a set-up watch: Done is not
-    // reachable from here at all.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        board.worker(PasskeyOutcome::NotStored);
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Failed && !entry.finished());
-        CHECK(hint_is(entry, "could not be stored"));
-        // Polling on does not turn it into a success later.
-        CHECK(!entry.poll());
-        CHECK(!entry.finished());
-        // Leaving now does not claim the passkey was skipped: it may be armed
-        // until the watch is next switched off.
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
-        CHECK(hint_is(entry, "could not be stored"));
-    }
-    // The same exit through the other door: erase the digits and press OK,
-    // which on a clean field is the skip. After NotStored it is not.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        board.worker(PasskeyOutcome::NotStored);
-        CHECK(entry.poll());
-        for (int i = 0; i < 6; ++i) entry.press(EntryKey::Backspace);
-        entry.press(EntryKey::Ok);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
-    }
-    // A refusal after a failure does not forgive it. NotStored leaves the
-    // digits armed in the radio and the board without a ticket; an OK the
-    // worker queue then refuses is answered Failed over an idle slot, which
-    // says nothing about what this screen was already told. Cancel and the
-    // empty OK must still say Failed (#416, round 4).
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        board.worker(PasskeyOutcome::NotStored);
-        CHECK(entry.poll());
-        board.queue_full = true;
-        entry.press(EntryKey::Ok);
-        CHECK(!entry.finished() && entry.verdict() == EntryVerdict::Failed);
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
-    }
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        board.worker(PasskeyOutcome::NotStored);
-        CHECK(entry.poll());
-        board.queue_full = true;
-        entry.press(EntryKey::Ok);
-        for (int i = 0; i < 6; ++i) entry.press(EntryKey::Backspace);
-        entry.press(EntryKey::Ok);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Failed);
-    }
-    // Back to back. A second OK over an in-flight request would be a second
-    // configure with one answer to share; the keypad is deaf until the radio
-    // has answered, and the digits nobody can edit stay as they are.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        CHECK(board.passkeys == 1);
-        entry.press(EntryKey::Ok);
-        entry.press(EntryKey::Ok);
-        type(entry, "9");
-        entry.press(EntryKey::Backspace);
-        CHECK(board.passkeys == 1);
-        CHECK(entry.waiting() && entry.verdict() == EntryVerdict::Pending);
-        CHECK(value_is(entry, "123456"));
-        board.worker(PasskeyOutcome::Armed);
-        CHECK(entry.poll() && entry.finished());
-    }
-    // The way out of the wait. A screen that can only be left by an answer the
-    // radio may never send is the trap #406 round 1 closed for the clock; and
-    // "no passkey; the clock is set" would be a lie, because the radio has one.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && !entry.waiting());
-        CHECK(entry.verdict() == EntryVerdict::Pending);
-        CHECK(entry.text(Locale::En).done);
-        CHECK(hint_is(entry, "still setting up the node"));
-        CHECK(std::strcmp(entry.text(Locale::Ru).hint,
-                          "узел ещё настраивается") == 0);
-        // Nothing the abandoned worker does can reach a screen that is over.
-        board.worker(PasskeyOutcome::Armed);
-        CHECK(!entry.poll());
-        CHECK(hint_is(entry, "still setting up the node"));
-    }
-    // Cancel, reopen, type again: the answer to the session that was left
-    // does not finish the one that replaced it (#416, DoD 3).
-    {
-        FakeBoard board;
-        ProvisioningEntry left(board);
-        to_passkey(left);
-        type(left, "123456");
-        left.press(EntryKey::Ok);
-        const std::uint32_t abandoned = board.queued;
-        left.press(EntryKey::Cancel);
-        // The radio finishes what it was given. There is nobody on that screen
-        // to hear it, and the answer sits there uncollected.
-        board.worker(PasskeyOutcome::Armed);
-
-        ProvisioningEntry fresh(board);
-        to_passkey(fresh);
-        type(fresh, "654321");
-        fresh.press(EntryKey::Ok);
-        CHECK(board.passkeys == 2 && board.passkey == 654321);
-        CHECK(fresh.waiting() && board.queued != abandoned);
-        // The success belonging to the passkey nobody waited for does not
-        // finish this one.
-        CHECK(!fresh.poll());
-        CHECK(!fresh.finished() && fresh.waiting());
-
-        // Nor does a completion that quotes the ticket it was made under.
-        board.op.complete(abandoned, PasskeyOutcome::Armed);
-        CHECK(!fresh.poll());
-        CHECK(!fresh.finished());
-
-        // The answer to this screen's own request is the one it hears.
-        board.worker(PasskeyOutcome::NotStored);
-        CHECK(fresh.poll());
-        CHECK(fresh.verdict() == EntryVerdict::Failed && !fresh.finished());
-    }
-    // Two screens cannot have the radio at once. A request made over one it
-    // has not answered is refused where the person can still be told, and is
-    // taken as soon as the first is done -- there must not be two configures
-    // in flight over one answer slot.
-    {
-        FakeBoard board;
-        ProvisioningEntry left(board);
-        to_passkey(left);
-        type(left, "123456");
-        left.press(EntryKey::Ok);
-        const std::uint32_t in_flight = board.queued;
-        left.press(EntryKey::Cancel);
-
-        ProvisioningEntry fresh(board);
-        to_passkey(fresh);
-        type(fresh, "654321");
-        fresh.press(EntryKey::Ok);
-        CHECK(!fresh.waiting() && !fresh.finished());
-        CHECK(fresh.verdict() == EntryVerdict::Failed);
-        CHECK(board.queued == in_flight);  // nothing new was queued
-
-        // The radio answers the first, and the retry is taken.
-        board.worker(PasskeyOutcome::Armed);
-        fresh.press(EntryKey::Ok);
-        CHECK(fresh.waiting() && board.queued != in_flight);
-        board.worker(PasskeyOutcome::Armed);
-        CHECK(fresh.poll() && fresh.finished());
-    }
-    // Cancel after that refusal must not say "no passkey; the clock is set":
-    // the first screen's request is still with the radio and may arm and
-    // persist its digits after this screen is gone. The board's outcome is
-    // Pending while that is so, and the entry reads it before it lets the
-    // person leave under the skip line.
-    {
-        FakeBoard board;
-        ProvisioningEntry left(board);
-        to_passkey(left);
-        type(left, "111111");
-        left.press(EntryKey::Ok);
-        left.press(EntryKey::Cancel);
-
-        ProvisioningEntry fresh(board);
-        to_passkey(fresh);
-        type(fresh, "222222");
-        fresh.press(EntryKey::Ok);
-        CHECK(fresh.verdict() == EntryVerdict::Failed);
-        fresh.press(EntryKey::Cancel);
-        CHECK(fresh.finished() && fresh.verdict() == EntryVerdict::Failed);
-    }
-    // A queue that would not hold the request is refused where the person can
-    // still be told, and nothing is left in flight: the entry stays on the
-    // field and leaving it is still the honest skip, because no passkey ever
-    // reached the radio. The board is asked once, at the refusal, whether an
-    // earlier request is still out; it is not, and no tick asks again.
-    {
-        FakeBoard board;
-        board.passkey_answer = ProvisionOutcome::Failed;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        CHECK(!entry.waiting() && !entry.finished());
-        CHECK(entry.verdict() == EntryVerdict::Failed);
-        CHECK(board.polls == 1);
-        CHECK(!entry.poll() && board.polls == 1);
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
-    }
-    // A board with no radio behind the seam still works: a terminal Accepted
-    // from set_mesh_passkey() finishes the screen without a poll.
-    {
-        FakeBoard board;
-        board.passkey_answer = ProvisionOutcome::Accepted;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        type(entry, "123456");
-        entry.press(EntryKey::Ok);
-        CHECK(entry.finished() && !entry.waiting());
-        CHECK(hint_is(entry, "the watch is set up"));
-    }
-
-    // ----- The node field (#411) ------------------------------------------
-    //
-    // State (b) of the report's §6.1: the watch paired afresh with the reset
-    // node and then refused its new key. Nothing stale is recorded, so the
-    // bond is kept and the pin alone goes -- from memory, from flash, with
-    // the refusal cooldown -- and nothing is re-armed: the radio stays down
-    // until the passkey that follows arms it. The passkey itself is never
-    // touched by the forget.
-    {
-        FakeBoard board;
-        board.pinned = board.pin_on_flash = true;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        CHECK(entry.field() == EntryField::Node);
-        CHECK(value_is(entry, "5c62d9bc"));
-        CHECK(std::strcmp(entry.text(Locale::En).backspace, "Forget") == 0);
-        CHECK(std::strcmp(entry.text(Locale::Ru).backspace, "Забыть") == 0);
-        CHECK(std::strcmp(entry.text(Locale::En).title, "Node") == 0);
-        CHECK(!entry.text(Locale::En).sign_key);
-        // Digits mean nothing here.
-        type(entry, "12");
-        CHECK(value_is(entry, "5c62d9bc"));
-
-        entry.press(EntryKey::Backspace);
-        CHECK(board.forgets == 1 && entry.waiting());
-        CHECK(entry.verdict() == EntryVerdict::Pending);
-        CHECK(hint_is(entry, "still forgetting the node"));
-        CHECK(entry.field() == EntryField::Node);
-        // Still pinned: the screen said Pending and nothing has run.
-        CHECK(board.pinned && board.armed);
-        CHECK(!entry.poll());
-
-        board.forget_worker();
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Forgotten);
-        CHECK(entry.field() == EntryField::Passkey && !entry.waiting());
-        CHECK(hint_is(entry, "forgotten; type its new digits"));
-        CHECK(board.deletes == 0);           // the bond is kept
-        CHECK(!board.pinned && !board.pin_on_flash);
-        CHECK(!board.cooling_down);
-        CHECK(!board.armed);                 // nothing re-armed
-        CHECK(board.terminates == 1);
-        CHECK(board.passkeys == 0);          // the passkey was not touched
-        // The passkey hint stays the post-forget one while digits go in.
-        type(entry, "1");
-        CHECK(hint_is(entry, "forgotten; type its new digits"));
-        entry.press(EntryKey::Backspace);
-        // Leaving without a passkey is not "the clock is set".
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Skipped);
-        CHECK(hint_is(entry, "no passkey; node is forgotten"));
-        CHECK(!board.armed);
-    }
-    // State (a): a stale bond is recorded. It is deleted, once, and the pin
-    // goes with it; the arm that follows is the passkey entry's Configure,
-    // which is counted here as the passkey reaching the board and nothing
-    // else -- the forget armed nothing.
-    {
-        FakeBoard board;
-        board.pinned = board.pin_on_flash = true;
-        board.stale_bond();
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        entry.press(EntryKey::Backspace);
-        board.forget_worker();
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Forgotten);
-        CHECK(board.deletes == 1);
-        CHECK(board.delete_saw_marker && board.erase_saw_marker);
-        CHECK(!board.recovery.recovery_required());
-        CHECK(!board.pinned && !board.pin_on_flash && !board.armed);
-        CHECK(board.reprovision_pending);
-        CHECK(entry.field() == EntryField::Passkey);
-        // A restart between the clear and the next adoption finds no pin:
-        // what boot would read is `pin_on_flash`, and it is gone.
-        {
-            FakeBoard rebooted;
-            rebooted.pinned = board.pin_on_flash;
-            ProvisioningEntry again(rebooted);
-            to_passkey(again);
-            CHECK(again.field() == EntryField::Passkey);
-        }
-        type(entry, "654321");
-        entry.press(EntryKey::Ok);
-        CHECK(board.passkeys == 1 && board.passkey == 654321);
-        board.worker(PasskeyOutcome::Armed);
-        CHECK(!board.reprovision_pending);
-        CHECK(entry.poll() && entry.finished());
-        CHECK(hint_is(entry, "the watch is set up"));
-    }
-    // Refusing the transport termination or the crash-safe marker is a
-    // truthful failure before either trust copy is changed.
-    {
-        FakeBoard board;
-        board.pinned = board.pin_on_flash = true;
-        board.stale_bond();
-        board.terminate_refuses = true;
-        CHECK(attadipa::firmware::forget_node(board) ==
-              ForgetNodeOutcome::BondKept);
-        CHECK(board.pinned && board.pin_on_flash);
-        CHECK(board.recovery.recovery_required());
-        CHECK(board.deletes == 0 && !board.reprovision_pending);
-        CHECK(!board.armed && board.terminates == 1);
-
-        board.terminate_refuses = false;
-        board.marker_refuses = true;
-        board.armed = true;
-        CHECK(attadipa::firmware::forget_node(board) ==
-              ForgetNodeOutcome::BondKept);
-        CHECK(board.pinned && board.pin_on_flash);
-        CHECK(board.recovery.recovery_required());
-        CHECK(board.deletes == 0 && !board.reprovision_pending);
-        CHECK(!board.armed && board.terminates == 2);
-    }
-    // The store refuses. The record goes back, the pin is untouched in both
-    // places, the node stays on the screen, and the key works again once
-    // the store does.
-    {
-        FakeBoard board;
-        board.pinned = board.pin_on_flash = true;
-        board.stale_bond();
-        board.store_refuses = true;
-        board.marker_clear_refuses = true;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        entry.press(EntryKey::Backspace);
-        board.forget_worker();
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Failed);
-        CHECK(entry.field() == EntryField::Node && !entry.waiting());
-        CHECK(hint_is(entry, "not forgotten; reboot scan is blocked"));
-        CHECK(value_is(entry, "5c62d9bc"));
-        CHECK(board.deletes == 1);
-        CHECK(board.recovery.recovery_required());
-        CHECK(board.pinned && board.pin_on_flash);
-        CHECK(board.reprovision_pending);
-        board.store_refuses = false;
-        board.marker_clear_refuses = false;
-        entry.press(EntryKey::Backspace);
-        board.forget_worker();
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Forgotten);
-        CHECK(board.deletes == 2 && !board.pinned && !board.pin_on_flash);
-    }
-    // Flash refuses the erase. Memory is clear, so the next adoption goes
-    // through, and the hint says what a restart before it would undo.
-    {
-        FakeBoard board;
-        board.pinned = board.pin_on_flash = true;
-        board.erase_refuses = true;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        entry.press(EntryKey::Backspace);
-        board.forget_worker();
-        CHECK(entry.poll());
-        CHECK(entry.verdict() == EntryVerdict::Forgotten);
-        CHECK(entry.field() == EntryField::Passkey);
-        CHECK(hint_is(entry, "forgot till reboot; type digits"));
-        CHECK(!board.pinned && board.pin_on_flash);
-    }
-    // Nothing to forget, twice over: with no pin the field is not shown at
-    // all, and a request made anyway is refused where the caller can be told.
-    {
-        FakeBoard board;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        CHECK(entry.field() == EntryField::Passkey);
-        CHECK(board.forget_mesh_node() == ProvisionOutcome::Rejected);
-        CHECK(board.forgets == 1);
-    }
-    // The pin went between the field being shown and the key: the worker
-    // finds nothing, says so, and the passkey field that follows is the
-    // ordinary one -- nothing was forgotten here.
-    {
-        FakeBoard board;
-        board.pinned = true;
-        board.stale_bond();
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        CHECK(entry.field() == EntryField::Node);
-        board.pinned = false;
-        BondIdentity gone{};
-        (void)board.recovery.take_forget(gone);
-        entry.press(EntryKey::Backspace);
-        CHECK(entry.verdict() == EntryVerdict::Forgotten);
-        CHECK(hint_is(entry, "nothing to forget"));
-        CHECK(entry.field() == EntryField::Passkey && !entry.waiting());
-        CHECK(hint_is(entry, "nothing to forget"));
-        entry.press(EntryKey::Cancel);
-        CHECK(hint_is(entry, "no passkey; the clock is set"));
-    }
-    // OK keeps the node: on to the passkey with nothing asked of the board.
-    {
-        FakeBoard board;
-        board.pinned = true;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        entry.press(EntryKey::Ok);
-        CHECK(entry.field() == EntryField::Passkey);
-        CHECK(board.forgets == 0 && board.pinned);
-        CHECK(hint_is(entry, "six digits from the node; OK alone skips"));
-    }
-    // Leaving while the forget is with the radio: the screen says which
-    // wait it left, and the worker's answer lands in a slot nobody reads.
-    {
-        FakeBoard board;
-        board.pinned = true;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        entry.press(EntryKey::Backspace);
-        // No other key does anything while the radio has it.
-        entry.press(EntryKey::Ok);
-        CHECK(board.forgets == 1 && entry.waiting());
-        entry.press(EntryKey::Cancel);
-        CHECK(entry.finished() && entry.verdict() == EntryVerdict::Pending);
-        CHECK(hint_is(entry, "still forgetting the node"));
-        board.forget_worker();
-        CHECK(!entry.poll());
-        CHECK(!board.pinned);
-    }
-    // The worker queue refusing the post: nothing changed and the key can
-    // be pressed again.
-    {
-        FakeBoard board;
-        board.pinned = true;
-        board.queue_full = true;
-        ProvisioningEntry entry(board);
-        to_passkey(entry);
-        entry.press(EntryKey::Backspace);
-        CHECK(entry.verdict() == EntryVerdict::Failed && !entry.waiting());
-        CHECK(hint_is(entry, "not forgotten; retry"));
-        CHECK(board.pinned && entry.field() == EntryField::Node);
-        board.queue_full = false;
-        entry.press(EntryKey::Backspace);
-        CHECK(entry.waiting());
-    }
-
-    return failures == 0 ? 0 : 1;
+    std::printf("provisioning entry: all host checks passed\n");
+    return 0;
 }
