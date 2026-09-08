@@ -947,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2058`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2115`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1119,6 +1119,63 @@ is sourced to the drawing itself.
 - **Impact:** this was previously an argument from absence in a vendor feature
   table, which is weak. It is now an argument from the schematic, which is the
   right kind of evidence for a negative. All compass work stays architectural.
+
+### The MIA-M10Q's backup domain is fed from `V_IO`, not from `V_BCKP`
+
+- **Claim:** `V_BCKP` (ball `J5`) is optional and supplies the backup domain
+  **only when `V_IO` is gone**. With the rail up, `V_IO` maintains BBR, RTC and
+  orbit data by itself. The data sheet gives the switchover as a `V_IO`
+  threshold, `V_IOSWITCH` = 1.45 V typical: *"V_IO voltage threshold to switch
+  an internal supply for the backup domain from V_IO to V_BCKP"*. The
+  integration manual states the failure directly: *"A power interruption at
+  V_IO will erase the battery-backed RAM (BBR) unless there is an external
+  supply connected to V_BCKP."*
+- **Source:** MIA-M10Q data sheet **UBX-22015849 R08**, pin table (`J5`
+  `V_BCKP`, *"Backup voltage supply. Leave open if no external backup supply."*)
+  and the operating-conditions table; integration manual **UBX-21028173 R05**
+  §4.1.2, §4.1.3.
+- **Impact:** it splits the `V_BCKP` question in two, and only one half was ever
+  load-bearing. Any mode that **keeps `BLDO1` up** retains everything regardless
+  of how the daughterboard wires `J5`. Only cutting the rail depends on it. That
+  is why the receiver power policy could be decided without rendering sheet S4 —
+  [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md).
+
+### `UBX-CFG-RST` cannot report what it did; software standby reports both edges
+
+- **Claim:** the interface description says of `UBX-CFG-RST` (`0x06 0x04`):
+  *"Do not expect this message to be acknowledged by the receiver. • Newer FW
+  version will not acknowledge this message at all."* There is no status message
+  for the stopped engine either, so the only postcondition of a controlled stop
+  is NMEA ceasing. `UBX-RXM-PMREQ` software standby has one: `UBX-MON-RXR`
+  (`0x0a 0x21`), *"sent when the receiver changes from or to backup mode"*,
+  carrying `flags` bit 0 `awake`.
+- **Source:** u-blox **M10 SPG 5.10** interface description **UBX-21035062 R03**
+  §3.10.2.1 and §3.14.7. SPG 5.10 is the firmware the bench unit reported on
+  2026-09-05 — [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md).
+- **Impact:** an engine state published from a `CFG-RST` write is published from
+  the request, not from the receiver — the class of claim
+  [ADR-0011](../adr/0011-gnss-integrity.md) exists to forbid. `MON-RXR` is a
+  positive report and its default output rate on UART1 is **0**
+  (`CFG-MSGOUT-UBX_MON_RXR_UART1` `0x20910188`), so it must be enabled on the
+  **RAM** layer first; no configuration save is required and none may be used.
+
+### The step worth taking is engine-to-standby, not rail-off
+
+- **Claim:** on a 3.0 V supply, default `GPS+GAL+BDS B1I`, continuous tracking
+  draws 10.5 mA at `VCC` plus 2.4 mA at `V_IO`. Software standby draws 46 µA at
+  `V_IO` (3.3 V) plus 120 nA at `VCC`. Hardware backup, with the rail off and
+  `V_BCKP` supplied, draws 28 µA. Entering software standby *"clears the RAM
+  memory including the receiver configuration"*, and *"the 'force' flag must be
+  set in UBX-RXM-PMREQ"*; the wake sources are *"UART RX and/or EXTINT pin"*.
+- **Source:** data sheet **UBX-22015849 R08** Tables 16 and 18; integration
+  manual **UBX-21028173 R05** §3.6.3.2. **All figures are vendor typicals at
+  25 °C — NOT MEASURED on this board.**
+- **Impact:** 12.85 mA of the 12.88 mA available is bought by the first step,
+  which needs no wiring fact; the rail cut below it is worth 18 µA on the module
+  before board-side terms that are `UNKNOWN`. It also carries a hazard the
+  standby does not: *"In hardware backup mode (VCC = 0 V and V_IO = 0 V), PIOs
+  must not be driven"*, and the 13-pin FPC has no buffers, so a rail cut must
+  release ESP32 GPIO 42 — the module's `RXD`, ball `H1` — first.
 
 ### The GNSS PPS signal never reaches the SoC
 
@@ -2672,7 +2729,7 @@ ones that heading states.
   and its bit is clear. This says nothing about BLE, which lives in the SoC and has
   no rail of its own. It therefore does **not** answer the Waveshare entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2595` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2652` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
