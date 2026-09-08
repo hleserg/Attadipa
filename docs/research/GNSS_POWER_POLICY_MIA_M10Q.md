@@ -187,7 +187,13 @@ The RAM clear on entering standby then resolves the round trip cleanly:
 - **leaving** — a byte on the UART wakes it; it restarts on its **default**
   configuration, which is the configuration that emits NMEA today with no setup
   at all. The observable is NMEA *resuming*, which is positive content, and it
-  costs nothing because it is the default.
+  costs nothing because it is the default. **No byte has ever gone the other
+  way on this link**, `firmware/main/local_gnss.cpp:411` — "        // RX only. `UART_PIN_NO_CHANGE` for TX leaves this end's transmitter" —
+  so this is the one step of the round trip with nothing behind it: `EXTINT`
+  is not on this board, the module's reset does not cross the FPC, and cutting
+  the rail is unknown 5. If the wake edge does not take, the state is the one
+  `CFG-RST` is rejected for above — except that after `CFG-RST` the receiver is
+  still running and answering.
 
 The `MON-RXR` enable is re-sent once per cycle. That is the correct price: it
 keeps the whole contract on the RAM layer and never touches BBR or Flash.
@@ -205,8 +211,8 @@ off. TTFF is Table 2, same column.
 | **Tracking** (today) | `BLDO1` on; nothing sent | NMEA frames arrive | everything, receiver never stops | — | NOT MEASURED — typ. 10.5 mA `VCC` + 2.4 mA `V_IO` | — |
 | **Acquiring** | `BLDO1` set from clear (a register write — see the rail note) | NMEA arrives, no fix yet | — | — | NOT MEASURED — typ. 12.5 mA + 2.4 mA | NOT MEASURED — typ. 27 s cold |
 | **Cyclic tracking** (option 4) | `CFG-PM-OPERATEMODE`, rail up; an optimisation *inside* Tracking, not a stop | NMEA continues at the configured rate | everything, while it stays in Tracking or POT; RAM cleared only if it drops to "Inactive for search" past the acquisition timeout | none — it never stopped | NOT MEASURED — typ. 5.5 mA `VCC` + 2.1 mA `V_IO` | — |
-| **Engine stop** (option 2) | `UBX-CFG-RST` `0x08`, rail up | **none** — unacknowledged, no status message; NMEA merely stops | RAM and BBR both kept (MAX-M10S integration manual, per #479) | `0x09` start, also unacknowledged | UNKNOWN — no Table 18 row; above standby | UNKNOWN |
-| **Standby** (**recommended**) | `RXM-PMREQ` `backup`+`force`, `wakeupSources.uartrx`, rail up | NMEA stops; `MON-RXR` `awake = 0` too if the enable survives to emission — documented, unverified | **BBR, RTC, orbit data — from `V_IO`.** RAM configuration **cleared** | a byte on the UART; NMEA resumes on the default configuration | NOT MEASURED — typ. 46 µA `V_IO` + 120 nA `VCC` | NOT MEASURED — typ. 1 s hot, while orbit data is valid |
+| **Engine stop** (option 2) | `UBX-CFG-RST` `0x08`, rail up | **none** — unacknowledged, no status message; NMEA merely stops | RAM and BBR both kept — UBX-21028173 R05 §3.4 Table 23: `0x08` clears neither | `0x09` start, also unacknowledged | UNKNOWN — no Table 18 row; above standby | UNKNOWN |
+| **Standby** (**recommended**) | `RXM-PMREQ` `backup`+`force`, `wakeupSources.uartrx`, rail up | NMEA stops; `MON-RXR` `awake = 0` too if the enable survives to emission — documented, unverified | **BBR, RTC, orbit data — from `V_IO`.** RAM configuration **cleared** | a byte on the UART — **which this end has never sent: TX is not routed**; NMEA then resumes on the default configuration | NOT MEASURED — typ. 46 µA `V_IO` + 120 nA `VCC` | NOT MEASURED — typ. 1 s hot, while orbit data is valid |
 | **Rail off** (option 3) | `PMREQ` standby, **release GPIO 42**, then clear `BLDO1` (a register write — see the rail note) | **none from the module.** Nothing can report its own supply going away; and whether clearing the bit removes that supply at all is unexercised | BBR, RTC and orbit data, **from the `MS412FE` on `V_BCKP`** — for as long as the cell holds, which is `UNKNOWN` | set `BLDO1`; hot while the cell held, cold once it did not | NOT MEASURED — typ. 28 µA on `V_BCKP`, plus `UNKNOWN` board-side terms | NOT MEASURED — typ. 1 s hot while the cell holds |
 
 Four cells deserve their reasoning in words rather than a footnote.
@@ -251,10 +257,10 @@ policy that promises 1 s after an overnight hold would be lying.
 
 **The board-side terms of the rail-off row are not small print.** Cutting
 `BLDO1` also removes whatever the daughterboard draws from `VDD3V3` in standby —
-the `MS412FE` charge path and the active-antenna LNA among them — and changes
-the AXP2101's own consumption. None of those are established. The 18 µA figure
-is the module alone, and it is the only part of that row anybody has a number
-for.
+the `MS412FE` charge path among them — and changes the AXP2101's own
+consumption. Neither term is quantified, and whether S4 draws anything else from
+that rail at all is `UNKNOWN`. The 18 µA figure is the module alone, and it is
+the only part of that row anybody has a number for.
 
 ## The seven states #479 asks to keep apart
 
@@ -371,7 +377,9 @@ Its scope, if opened, is bounded by what is above:
   not there";
 - route the GNSS UART TX, which `firmware/main/local_gnss.cpp:411` —
   "        // RX only. `UART_PIN_NO_CHANGE` for TX leaves this end's transmitter" —
-  currently and deliberately does not;
+  currently and deliberately does not — and with it a **bounded hold and a wake
+  timeout**, since until the byte is demonstrated the recommended state has no
+  exit that has ever been exercised;
 - add the standby round trip: RAM-layer `MON-RXR` enable, `PMREQ`
   `backup`+`force`+`uartrx`, wake by byte, resume on defaults;
 - record `command_transmitted` from the write's byte count and

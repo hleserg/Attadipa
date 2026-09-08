@@ -732,8 +732,8 @@ to every unit of the same model.
   not a GNSS requirement, and assisted GNSS, when designed, is u-blox
   AssistNow. What DC4 does feed on this board is **UNKNOWN**.
 - **What the rail attribution does *not* license.** BLDO1 was found already
-  enabled, the bit was never cleared to watch the module go silent, and the
-  `GPS_LDO` enable net on FPC pin 3 sits in the same path and was never
+  enabled, the bit was never cleared to watch the module go silent, and
+  `GPS_LDO` on FPC pin 3 is that same supply crossing, not a gate, and was never
   exercised. So **nothing here shows that toggling BLDO1 controls the module** —
   which is exactly what a power gate or a sleep path would assume. Anything that
   proposes to switch this rail at runtime owes that experiment first.
