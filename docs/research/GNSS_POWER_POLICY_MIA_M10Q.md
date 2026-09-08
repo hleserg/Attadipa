@@ -38,8 +38,13 @@ So the recommended contract is **software standby mode**, entered with
 `UBX-RXM-PMREQ` and left on a UART RX edge. It is not one of the issue's five
 options as written; it sits between option 2 and option 3 and dominates both.
 
-The `V_BCKP` question stays open, but it comes off the critical path. It is now
-an optimisation question worth 18 µA, not a precondition.
+The `V_BCKP` question came off the critical path, and then closed anyway while
+this document was in review: the daughterboard sheet's own vector segments put
+ball `J5` on a net named `VRTC`, put the `MS412FE` on that net, and route
+`VDD3V3` into it through `D1` (`1N4148`) and `R3` (`1K`) — D23, and
+[VERIFIED_FACTS](VERIFIED_FACTS.md) *"The `MS412FE` does reach `V_BCKP`"*. The
+answer is **yes to both halves**, and it changes no recommendation here. It was
+worth 18 µA before it was answered and it is worth 18 µA now.
 
 ## What the receiver actually is
 
@@ -162,7 +167,7 @@ off. TTFF is Table 2, same column.
 | **Cyclic tracking** (option 4) | `CFG-PM-OPERATEMODE`, rail up; an optimisation *inside* Tracking, not a stop | NMEA continues at the configured rate | everything, while it stays in Tracking or POT; RAM cleared only if it drops to "Inactive for search" past the acquisition timeout | none — it never stopped | NOT MEASURED — typ. 5.5 mA `VCC` + 2.1 mA `V_IO` | — |
 | **Engine stop** (option 2) | `UBX-CFG-RST` `0x08`, rail up | **none** — unacknowledged, no status message; NMEA merely stops | RAM and BBR both kept (MAX-M10S integration manual, per #479) | `0x09` start, also unacknowledged | UNKNOWN — no Table 18 row; above standby | UNKNOWN |
 | **Standby** (**recommended**) | `RXM-PMREQ` `backup`+`force`, `wakeupSources.uartrx`, rail up | NMEA stops; `MON-RXR` `awake = 0` too if the enable survives to emission — documented, unverified | **BBR, RTC, orbit data — from `V_IO`.** RAM configuration **cleared** | a byte on the UART; NMEA resumes on the default configuration | NOT MEASURED — typ. 46 µA `V_IO` + 120 nA `VCC` | NOT MEASURED — typ. 1 s hot, while orbit data is valid |
-| **Rail off** (option 3) | `PMREQ` standby, **release GPIO 42**, then `BLDO1` off | none from the module — it is unpowered | **UNKNOWN.** BBR survives only if `V_BCKP` (ball `J5`) is supplied; otherwise erased | `BLDO1` on; cold or hot depending on the above | NOT MEASURED — typ. 28 µA on `V_BCKP` if wired, plus `UNKNOWN` board-side terms | UNKNOWN — 1 s hot if `J5` is fed, else typ. 27 s cold |
+| **Rail off** (option 3) | `PMREQ` standby, **release GPIO 42**, then `BLDO1` off | none from the module — it is unpowered | BBR, RTC and orbit data, **from the `MS412FE` on `V_BCKP`** — for as long as the cell holds, which is `UNKNOWN` | `BLDO1` on; hot while the cell held, cold once it did not | NOT MEASURED — typ. 28 µA on `V_BCKP`, plus `UNKNOWN` board-side terms | NOT MEASURED — typ. 1 s hot while the cell holds |
 
 Three cells deserve their reasoning in words rather than a footnote.
 
@@ -242,12 +247,14 @@ correction.
 
 ## What is still unknown, and what it is worth
 
-1. **Does the `MS412FE` node on S4 reach ball `J5`, and is there a charge path
-   from `VDD3V3`?** `docs/research/HARDWARE_MATRIX.md:244` — "S4 is one sheet: a u-blox `MIA-M10Q`, an IPEX antenna jack, an `MS412FE`" —
-   records the cell as present on that sheet, from a commit whose subject is
-   *"Read the schematics I had only been citing"*, so the cell is very likely real. **Its node is what
-   is open**, and only rendering S4 and looking at it can close it. Worth
-   18 µA plus unquantified board-side terms; **not a blocker for anything.**
+1. **How long the `MS412FE` actually holds `V_BCKP`, and whether `VDD3V3` less
+   the `1N4148` drop across `1 K` charges it at all.** The topology is now read
+   off the sheet (D23); the cell's capacity, its charge window and its state of
+   charge after however long this unit sat are not, because **no `MS412FE` data
+   sheet has been read**. This is what bounds the rail-off row's hot start, and
+   it is the reason that row still says `UNKNOWN` where it matters. Cutting
+   `BLDO1` also cuts the charge path, so a duty cycle that lives in rail-off
+   never recharges what it is spending.
 2. **Which constellations the bench unit is configured for.** Decides which
    column of Table 16 and Table 2 applies. One `CFG-VALGET` read.
 3. **Every current and every TTFF on this board.** All typicals above are the
@@ -303,6 +310,7 @@ chasing against a device that idles in milliamps; the 18 µA below it is not,
 against anything.
 
 The `SupportState` for `Backup` in `gnss_power.h` stays `Unknown`, and it is
-correct that it does. What changes is that **the decision no longer waits on
-it**: `Unknown` buys a cold start, and the recommended mechanism never needs
-one.
+still correct that it does — D23 answers the *wiring*, and `Supported` is a
+claim about retention, which only a bench hold-and-restart can make. What
+changes is that **the decision no longer waits on it**: `Unknown` buys a cold
+start, and the recommended mechanism never needs one.

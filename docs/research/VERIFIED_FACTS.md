@@ -947,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2120`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2152`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1181,6 +1181,38 @@ is sourced to the drawing itself.
   standby does not: *"In hardware backup mode (VCC = 0 V and V_IO = 0 V), PIOs
   must not be driven"*, and the 13-pin FPC has no buffers, so a rail cut must
   release ESP32 GPIO 42 — the module's `RXD`, ball `H1` — first.
+
+### The `MS412FE` does reach `V_BCKP`, and `VDD3V3` charges it through `D1` and `R3`
+
+- **Claim:** on the GNSS daughterboard, ball `J5` (`V_BCKP`) of the `MIA-M10Q`
+  carries the net named `VRTC`, and the `MS412FE` cell (`J2`, pin 1) is on that
+  same net. `VRTC` is reached from `VDD3V3` through `D1` (`1N4148`) and then
+  `R3` (`1K`), in that order, with the diode's **anode at `VDD3V3`** — so the
+  rail can charge the cell and the cell cannot back-feed the rail. `C1`
+  (`100 nF`) decouples `VRTC` to `GND`. Ball `J4` (`V_IO`) and ball `B1` (`VCC`)
+  are both on `VDD3V3`, and `J6` (`VIO_SEL`) is an open stub, which is what the
+  data sheet requires for a 3.3 V `V_IO`.
+- **Source:** `Xinyuan-LilyGO/LilyGoLib`,
+  `schematic/T-Watch-S3-Plus-GPS V1.0 2025-04-29.pdf` (one sheet, blob
+  `4a92090b`, local sha256 `7f06c578…`). Read by extracting the page's stroked
+  vector segments, dropping component body rectangles, and joining segments only
+  where an endpoint of one lies **on** another — so a crossing without a
+  junction stays two nets. The resulting 128 nets check themselves: the three
+  `GND` balls on the top edge (`J9`, `J8`, `H8`) land on one net, the five
+  `RESERVED` balls and `VIO_SEL` are each a singleton stub, and every pin's
+  function label centres on its own stub to within 0.15 pt. The diode's polarity
+  is read from the symbol geometry — base at `y = 158.06` toward `VDD3V3`, apex
+  and cathode bar at `y = 163.21` toward the cell — not from the picture.
+- **Impact:** resolves D23. Hardware backup would retain BBR on this board, so
+  the rail-off row of
+  [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md) is no longer
+  `UNKNOWN` for retained data. It does **not** change the recommendation: the
+  step is still worth only 18 µA module-side, the PIO-isolation hazard is
+  unchanged, and cutting `BLDO1` also cuts the charge path, so the hold is now
+  bounded by the cell rather than by the rail. **The cell's capacity, its charge
+  window, and whether `3.3 V` minus the diode drop across `1 K` actually charges
+  it are UNKNOWN** — no `MS412FE` data sheet has been read. Nothing here was
+  measured on hardware.
 
 ### The GNSS PPS signal never reaches the SoC
 
@@ -2734,7 +2766,7 @@ ones that heading states.
   and its bit is clear. This says nothing about BLE, which lives in the SoC and has
   no rail of its own. It therefore does **not** answer the Waveshare entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2657` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2689` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
