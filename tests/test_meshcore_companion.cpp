@@ -331,6 +331,93 @@ void test_a_dropped_notification_ends_the_drain()
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
 }
 
+// WHAT THE COALESCING OWES, AND WHEN IT PAYS.
+//
+// A push arriving inside a drain costs nothing extra only because the request
+// already out is going to bring back everything the node holds. That is true
+// of a drain the node ends with RESP_CODE_NO_MORE_MESSAGES and true of no
+// other kind -- and the other kinds are all reachable. Before the coalescing
+// every push enqueued its own request and none of this mattered; after it, a
+// push swallowed in one of those windows was a backlog nobody asked for again,
+// because nothing in this repository establishes that a node re-announces a
+// message it has already announced once.
+//
+// The counter-case -- a drain the node *does* end properly, which owes
+// nothing -- is `test_a_queued_backlog_is_drained_to_the_end`: five pushes are
+// swallowed there, and after RESP_CODE_NO_MORE_MESSAGES it ticks out to a
+// minute and requires silence.
+void test_a_push_swallowed_by_a_drain_is_paid_back()
+{
+    const std::uint8_t waiting[] = {0x83};
+    MeshCoreFrame frame{};
+
+    // AN ANSWER THIS BUILD CANNOT PARSE.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(waiting, sizeof(waiting), at(10)));
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 1 && frame.bytes[0] == 10);
+        // A second message reaches the node while that request is outstanding.
+        // Swallowed by design -- the request out is going to fetch it.
+        CHECK(client.receive(waiting, sizeof(waiting), at(11)));
+        CHECK(!client.next_tx(frame));
+        // Except that the request is answered with a frame `accept_message`
+        // refuses, which ends the drain and fetches nothing.
+        std::uint8_t truncated[12]{};
+        truncated[0] = 16;  // V3 needs 16 bytes before any text; this is 12.
+        CHECK(client.receive(truncated, sizeof(truncated), at(12)));
+        CHECK(!client.next_tx(frame));
+        // The worker calls tick() on every event and every poll timeout, and
+        // that is where the swallowed push is paid back. Without it the
+        // message waits for a push the node has already sent.
+        client.tick(at(13));
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 1 && frame.bytes[0] == 10);
+        // ONCE, NOT ONCE A TICK. A bit spent by the request that goes out for
+        // it cannot become a poll.
+        for (std::uint64_t ms = 14; ms <= 60; ++ms) {
+            client.tick(at(ms));
+        }
+        CHECK(!client.next_tx(frame));
+    }
+
+    // AN ANSWER THAT NEVER ARRIVES, which is the trigger measured on the
+    // bench: a dropped RX event posts nothing to the provider at all.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(waiting, sizeof(waiting), at(100)));
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 1 && frame.bytes[0] == 10);
+        CHECK(client.receive(waiting, sizeof(waiting), at(101)));
+        CHECK(!client.next_tx(frame));
+        // The drain's own deadline is what ends it, so nothing is owed until
+        // the millisecond it falls. 15099 is 100 + 15000 - 1.
+        client.tick(at(15099));
+        CHECK(!client.next_tx(frame));
+        client.tick(at(15100));
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    }
+
+    // ONE THE TRANSPORT DROPPED BEFORE receive() COULD SEE IT.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(waiting, sizeof(waiting), at(100)));
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 1 && frame.bytes[0] == 10);
+        CHECK(client.receive(waiting, sizeof(waiting), at(101)));
+        CHECK(!client.next_tx(frame));
+        client.drop_oversize_frame();
+        CHECK(!client.next_tx(frame));
+        client.tick(at(102));
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    }
+}
+
 void test_self_info_carries_the_node_identity()
 {
     MeshCoreCompanion client;
@@ -1564,6 +1651,7 @@ int main()
     test_an_unreadable_message_does_not_spin_the_drain();
     test_a_drain_nobody_answers_expires();
     test_a_dropped_notification_ends_the_drain();
+    test_a_push_swallowed_by_a_drain_is_paid_back();
     test_self_info_carries_the_node_identity();
     test_the_pinned_node_is_the_one_the_handshake_continues_with();
     test_another_node_answers_and_the_handshake_stops_there();

@@ -69,6 +69,8 @@ public:
     // otherwise the node's backlog waits out `draining_since_` below for no
     // reason. Clearing it when the dropped frame was something else costs one
     // duplicate CMD_SYNC_NEXT_MESSAGE, which the node answers like any other.
+    // The push that was coalesced into that drain is not lost with it:
+    // `pending_push_` outlives the flag and `tick()` spends it.
     void drop_oversize_frame() { ++malformed_frames_; draining_ = false; }
 
     // WHICH NODE THIS IS, AND WHETHER IT IS THE RIGHT ONE.
@@ -219,6 +221,7 @@ private:
     bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     bool request_next_message(core::MonotonicTime now);
+    bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
 
@@ -264,6 +267,31 @@ private:
     // the deadline leaves behind is never consulted.
     bool draining_ = false;
     core::MonotonicTime draining_since_{};
+    // WHAT THE COALESCING COSTS, AND WHO PAYS IT BACK.
+    //
+    // Swallowing a push while `draining_` is true is only free if the drain
+    // ends the way the node ends it. `RESP_CODE_NO_MORE_MESSAGES` proves the
+    // queue was empty when that sync was processed, so a message queued
+    // before the swallowed push had already been handed over and one queued
+    // after it pushes again behind the terminator -- there, and only there,
+    // the push is genuinely spent and this bit is cleared.
+    //
+    // Every other way a drain ends leaves the node holding messages: an
+    // answer this build cannot parse, one that never arrived, one
+    // `drop_oversize_frame()` threw away, a full ring, or a RESP_CODE_ERR
+    // belonging to some other command. Before the coalescing every push
+    // enqueued its own request and none of that mattered; after it, a push
+    // dropped in one of those windows is a backlog nobody asks for again,
+    // because nothing in this repository establishes that the node emits a
+    // second PUSH_CODE_MSG_WAITING for a message it has already announced.
+    //
+    // So the push is remembered rather than dropped, and `tick()` spends it
+    // whenever no request is outstanding. `tick()` rather than each of those
+    // five sites: two of them have no `now` to stamp a request with, the
+    // worker calls `tick()` unconditionally on every event and every poll
+    // timeout, and one place that asks "the node has a message and we are not
+    // asking for it" cannot be added to and forgotten the way five can.
+    bool pending_push_ = false;
     core::Position node_position_{};
     core::MonotonicTime node_position_at_{};
     bool has_node_position_ = false;

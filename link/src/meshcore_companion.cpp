@@ -136,6 +136,7 @@ void MeshCoreCompanion::reset_session()
     contacts_complete_ = false;
     draining_ = false;
     draining_since_ = {};
+    pending_push_ = false;
     // THE COORDINATE IS SESSION STATE, like the identity above and for the same
     // reason. A reconnect re-reads RESP_CODE_SELF_INFO, so carrying the last
     // session's coordinate would let a node that has gone away keep answering.
@@ -241,6 +242,17 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // answers the duplicate request as it would any other.
     if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
         draining_ = false;
+    }
+    // AND THE PUSH THAT DRAIN SWALLOWED IS SPENT HERE. This is the one place
+    // that asks the question rather than the five places that end a drain,
+    // because two of those have no `now` and all five are easy to add a sixth
+    // to. It costs one branch per tick and, when it fires, exactly one
+    // CMD_SYNC_NEXT_MESSAGE per push the node sent: the bit is set once by a
+    // push and cleared by the request that goes out for it or by the
+    // terminator that proves it was already answered, so there is no way to
+    // spend it twice and no way for it to poll.
+    if (!draining_) {
+        (void)spend_pending_push(now);
     }
     update_availability();
 }
@@ -368,6 +380,22 @@ bool MeshCoreCompanion::request_next_message(core::MonotonicTime now)
     }
     draining_ = true;
     draining_since_ = now;
+    return true;
+}
+
+// Turns a remembered PUSH_CODE_MSG_WAITING into the one request that answers
+// it. False is a full ring and leaves the bit set, so the next tick tries
+// again -- which is what the push arm used to have no way of doing: a push
+// that arrived with the ring full was counted malformed and forgotten.
+bool MeshCoreCompanion::spend_pending_push(core::MonotonicTime now)
+{
+    if (!pending_push_) {
+        return true;
+    }
+    if (!request_next_message(now)) {
+        return false;
+    }
+    pending_push_ = false;
     return true;
 }
 
@@ -719,7 +747,13 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         break;
     case kPushMessageWaiting:
-        if (!draining_ && !request_next_message(now)) {
+        // Remembered first, asked for second. While a request is outstanding
+        // the node is going to hand over everything it has, so the ask is
+        // skipped -- but the fact that the node told us something is waiting
+        // is kept either way, because the drain it is being folded into does
+        // not always end with the node's terminator.
+        pending_push_ = true;
+        if (!draining_ && !spend_pending_push(now)) {
             ++malformed_frames_;
             return false;
         }
@@ -762,6 +796,11 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // The queue is empty and the drain is over. A later push starts a new
         // one; nothing here polls the node on a timer.
         draining_ = false;
+        // AND THIS IS THE ONE ANSWER THAT SPENDS A COALESCED PUSH WITHOUT
+        // ASKING AGAIN. The node processed the sync with an empty queue, so
+        // whatever prompted the push it swallowed had already been handed
+        // over; a message queued after it pushes again behind this frame.
+        pending_push_ = false;
         break;
     case kResponseError: {
         if (size < 2) { ++malformed_frames_; return false; }
