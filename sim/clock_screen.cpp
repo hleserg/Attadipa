@@ -7,6 +7,8 @@
 
 #include "lvgl.h"
 
+#include "attadipa/apps/app_registry.h"
+#include "attadipa/apps/clock.h"
 #include "attadipa/apps/provisioning.h"
 #include "attadipa/core/provisioning.h"
 #include "attadipa/l10n/tr.h"
@@ -166,6 +168,16 @@ void on_long_press(lv_event_t *) {
   enter_provisioning();
 }
 
+// The slowest the simulator will let a screen sit between repaints.
+//
+// It has no work of its own on this timer -- unlike a board, which drains a
+// receive ring on every tick whatever page is up -- so this is a ceiling and
+// not an obligation. It is here so the simulator spends an application's
+// declared cadence through the same door the firmware does
+// (`apps::ui_period`), instead of naming one manifest by hand and drifting from
+// the device on the one rule this seam exists to make visible.
+constexpr core::Millis kSimBoardPeriod{1000};
+
 void refresh_clock(lv_timer_t *timer) {
   if (g_clock_live) {
     g_clock_state.time.value.unix_seconds =
@@ -174,7 +186,8 @@ void refresh_clock(lv_timer_t *timer) {
   g_clock_state.locale = l10n::locale();
   g_clock_face.update(
       apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
-  lv_timer_set_period(timer, apps::clock_manifest().tick_period.value);
+  lv_timer_set_period(
+      timer, apps::ui_period(apps::clock_manifest(), kSimBoardPeriod).value);
 }
 
 } // namespace
@@ -200,8 +213,9 @@ void build_clock_screen(const platform::BoardProfile &board, ui::Theme theme,
   set_theme_toggle(toggle_clock_theme);
   rebuild_clock_screen();
   if (g_clock_live) {
-    lv_timer_create(refresh_clock, apps::clock_manifest().tick_period.value,
-                    nullptr);
+    lv_timer_create(
+        refresh_clock,
+        apps::ui_period(apps::clock_manifest(), kSimBoardPeriod).value, nullptr);
   }
   lv_obj_add_event_cb(lv_screen_active(), on_long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
