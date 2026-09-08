@@ -92,6 +92,9 @@ void print_usage(const char *argv0) {
       "                   node-stale, arrived, far, head-up, head-up-east,\n"
       "                   head-up-south, head-up-west, compass-unusable,\n"
       "                   compass-node, compass-stale\n"
+      "  --mesh           show the mesh link screen\n"
+      "  --mesh-state <name> unprovisioned, absent, attached, connecting,\n"
+      "                   ready, suspended, faulted, refused\n"
       "  --no-bring-up    leave every part untouched instead of pretending it "
       "came up\n"
       "  --list-boards    print the board profiles this build knows about\n"
@@ -166,6 +169,19 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
       }
       out.nav_screen = true;
       out.nav_state = value;
+      continue;
+    }
+    if (std::strcmp(arg, "--mesh") == 0) {
+      out.mesh_screen = true;
+      continue;
+    }
+    if (std::strcmp(arg, "--mesh-state") == 0) {
+      const char *value = take_value(argc, argv, i, arg);
+      if (value == nullptr) {
+        return ParseResult::Error;
+      }
+      out.mesh_screen = true;
+      out.mesh_state = value;
       continue;
     }
     if (std::strcmp(arg, "--child") == 0) {
@@ -329,9 +345,16 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
   }
 
   if (out.nav_screen && (out.clock_screen || out.provision_screen ||
-                         out.diagnostic_screen)) {
+                         out.diagnostic_screen || out.mesh_screen)) {
     std::fprintf(stderr,
                  "--nav replaces the whole panel; it cannot share it with "
+                 "--clock, --provision, --diagnostic or --mesh\n");
+    return ParseResult::Error;
+  }
+  if (out.mesh_screen && (out.clock_screen || out.provision_screen ||
+                          out.diagnostic_screen)) {
+    std::fprintf(stderr,
+                 "--mesh replaces the whole panel; it cannot share it with "
                  "--clock, --provision or --diagnostic\n");
     return ParseResult::Error;
   }

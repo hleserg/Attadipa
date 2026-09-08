@@ -26,7 +26,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > in doubt — the watch pins one by its public key and terminates every other
 > connection (`firmware/main/meshcore_node_pin.h`), and draws four bytes of that
 > key beside the name:
-> `firmware/main/waveshare_board.cpp:801` — "// Four bytes of a node's public key as hex. The bench reports identify nodes by".
+> `apps/include/attadipa/apps/mesh.h:108` — "// Four bytes of a node's public key as hex, into a nine-byte buffer."
 > The delivery and the reply are the parts that remain `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
@@ -107,10 +107,23 @@ Written 2026-08-24, after an independent cold read of the repository.
 > A shut gate does not answer with an error, which is what makes this worth
 > writing down here rather than discovering in a decoder —
 > `docs/research/NODE_POSITION_FROM_MESHCORE.md:135` — "   returns a well-formed telemetry reply **with no GPS record in it**, and that".
-> So what #450 owes on this half is which path to pay for, and opening that
-> path's gate is bench configuration of a node, a step beside H16. It is not a
-> wire to invent, and it is certainly not a change to node firmware, which the
-> seam note above forbids in as many words.
+> **That debt was which path to pay for, and it was paid on 2026-09-07.**
+> [ADR-0020](adr/0020-remote-target-position-source.md) takes path C, the
+> contact record, on evidence in
+> [REMOTE_TARGET_POSITION_FROM_MESHCORE](research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md),
+> and the argument turned out not to be the one this paragraph was set up to
+> settle. Freshness could not decide it: **all three paths read the same two
+> variables on the target node**, so no request makes a coordinate newer than a
+> broadcast does. What decided it is that path C's bytes are already inside a
+> frame this repository parses and discards, at a hundred times the resolution,
+> carrying the full public key that the telemetry path's response throws away.
+> Opening the target's gate is still bench configuration of a node, a step
+> beside H16; it is still not a wire to invent, and still not a change to node
+> firmware, which the seam note above forbids in as many words. **The telemetry
+> path is deferred with a named trigger rather than rejected** — it is the only
+> one the wrist can pull, and a companion node has no periodic advert at all, so
+> the honest resting state of a path-C target is `NodePositionStale`. That is
+> the readout, not a defect in it.
 >
 > **The default slot for a companion's own coordinate is `target`,** and it is
 > settled by body rather than by preference —

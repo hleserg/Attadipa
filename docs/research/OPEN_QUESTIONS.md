@@ -271,6 +271,23 @@ not say.
 | M25 | **Does losing the fix really leave the transmitted coordinate unchanged?** Read from source the answer is yes — the receiver's value is copied into `node_lat` only inside `if (_location->isValid())`, so the last good value persists — and every conservative rule in the mapping rests on it. It has never been observed | **ASSUMPTION**, with the source behind it | an open-sky capture of `RESP_CODE_SELF_INFO` with the node's own fix independently visible, then indoor captures for an hour. **The prediction is that bytes 36–43 are byte-identical.** If they are not, the report is wrong in a way worth knowing at once. `NOT EXECUTED — HARDWARE REQUIRED` |
 | M26 | **What datum is the altitude in an `LPP_GPS` record?** Cayenne LPP says "meters" and stops. MicroNMEA reads NMEA GGA field 9, which is orthometric height above mean sea level, so MSL is the better guess — but the chain passes through `LocationProvider::getAltitude()`, which any variant may implement differently, and a geoid separation is tens of metres | **UNKNOWN** | reading every in-tree `getAltitude` implementation, or a bench comparison against a known elevation. Until then populate `altitude_msl_mm` with the provenance recorded, and never `altitude_ellipsoid_mm` |
 | M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?** It is the only way to re-read the node's coordinate, and its handler also sets `_iter_started = false`, aborting a contacts iteration in progress. Read from source; the practical cost — whether a client notices, whether contacts resync cleanly — is unmeasured | **UNKNOWN** | a bench session that starts a contacts sync and interrupts it. `NOT EXECUTED — HARDWARE REQUIRED` |
+
+### What a *remote* node's coordinate still does not say
+
+Opened 2026-09-07 by [#467](https://github.com/hleserg/Attadipa/issues/467). The
+choice between the two remote paths is closed —
+[ADR-0020](../adr/0020-remote-target-position-source.md), on
+[REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md).
+Four things it could not close, and the first is not a measurement gap but a
+source that does not exist.
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| M28 | **What firmware is on the V4.3, and what does it do differently?** The fork it runs, `dt267/MeshCore-Low-Power-Firmware`, publishes **no source** — nine Markdown files and a `LICENSE` at every commit and at `origin/main` (`5048e00`, 2026-09-06); firmware ships as release binaries. The release `MeshCore-low-power-v1.17.dev_0809` matches the measured version string, which matches a *release name* and is not reading a firmware. So this is not a commit to be identified: there is nothing to read, and no claim in either MeshCore report is asserted about that node | **UNKNOWN, and unreadable** | only a bench measurement of the node's actual behaviour, or the fork publishing source. Until then a run that wants both ends readable needs two pin-matched nodes, which this fleet does not have. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M29 | **How often does a companion node in real use actually advert?** Source says there is no timer at all: `advert_interval` and `flood_advert_interval` are commented out of the companion's prefs, and `MyMesh::advert()` is reached only from a button on the node's own screen, sending zero-hop. So the cadence is a person, and the readout's honest resting state is `NodePositionStale`. What is unmeasured is whether that is usable for the wearer's task — which is the first of the two triggers that would move the decision to the telemetry path | **UNKNOWN** | an hour with two nodes and nobody touching either, logging every `0x80`. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M30 | **Can a rebooted target be permanently silenced against our companion?** `bootstrapRTCfromContacts()` sets a node's RTC from the newest contact `lastmod` at boot, and `onAdvertRecv` drops any advert whose sender timestamp does not exceed the stored `last_advert_timestamp`. Read together those describe a target whose clock went backwards being ignored until it catches up — which would look, from the wrist, exactly like a node that stopped existing | **UNKNOWN**, with the source behind it | reboot the target with its RTC unset and re-advert, watching for `0x80` on the companion. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M31 | **What does a second client of the same companion do to a target's contact record?** `CMD_ADD_UPDATE_CONTACT` lets any BLE client write `gps_lat`, `gps_lon` and `last_advert_timestamp` into any contact, persisted, with nothing marking the result as client-written. The owner's phone app is such a client. So the record's coordinate is authenticated as *what our companion holds for that key* and not as *what that node signed*, which is exactly the claim ADR-0020 lets the readout make | **UNKNOWN** in practice; the mechanism is `VERIFIED` from source | observing whether any mainstream client writes the field unprompted. Not blocking: the decision is already written to the weaker claim |
+
 ## Architecture
 
 | # | Question | Status | Resolved by |
@@ -370,7 +387,7 @@ is the record of what was true at `144459f` and what changed it:
   sequence compile in every image; its second gave a product image the caller:
   `firmware/main/waveshare_board.cpp:466` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
   is ungated and is reached from the entry screen a long press on the clock
-  opens (`firmware/main/waveshare_board.cpp:1025` — "void long_press(lv_event_t *) {").
+  opens (`firmware/main/waveshare_board.cpp:915` — "void long_press(lv_event_t *) {").
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same

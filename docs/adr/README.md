@@ -54,6 +54,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0017](0017-board-backends-compose-esp-idf-drivers.md) | A board backend composes ESP-IDF drivers; a vendor BSP is read, not linked | **accepted** |
 | [0018](0018-owner-consent-for-provisioning.md) | What counts as owner consent when a product image is provisioned | **accepted** — the owner chose on-device entry, OD-26 |
 | [0019](0019-confirmed-companion-body.md) | A companion the wearer confirmed is on their body, and how that lapses | **accepted** — implements OD-28 |
+| [0020](0020-remote-target-position-source.md) | A remote target's coordinate comes from the contact record, and no age is claimed for it | **accepted** — the telemetry path is deferred with a named trigger, not rejected |
 
 ### What the statuses mean here
 

@@ -81,6 +81,7 @@ want to inherit the experience, not only the code.
 | `CayenneLPP` (ElectronicCats) | github.com/ElectronicCats/CayenneLPP | `a83f3e4` (**1.6.1**) | 2026-05-01 | MIT, `LICENSE.md`. **The library MeshCore actually links** — `platformio.ini:27`, `electroniccats/CayenneLPP @ 1.6.1` — so `src/CayenneLPP.cpp::addGPS` is the code that writes the bytes a node sends, and not one more implementation of the same spec. Read 2026-09-02 for exactly that: it closes the encoder caveat [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) carried since 2026-08-22. Rejected as a dependency — heap `_buffer`, ArduinoJson in the ESP-IDF component — and kept as the writer of record for golden vectors |
 | `CayenneLPP` (myDevices) | github.com/myDevicesIoT/CayenneLPP | `e8cca2c` | **2018-12-07** | the original, read for format lineage only. Eight years unmaintained; not a candidate |
 | `meshcore_py` | github.com/meshcore-dev/meshcore_py | `664ba0c99e3eedd13d701fc58ed4b273670bf64b` (2.3.9.1) | 2026-08-30 | MIT. The maintained **host** client for the same companion protocol Attadipa speaks, so it is prior art for request correlation and for what a real node answers. Cannot be a firmware dependency and is not treated as one. Read 2026-09-02: `req_telemetry_sync` serialises every mesh request behind one lock, mirroring the node's own single pending slot — and converts the node's millisecond `est_timeout` as `/ 800` here and `/ 1000 * 1.2` elsewhere, which is why the unit is taken from the firmware instead |
+| `meshcore.js` | github.com/meshcore-dev/meshcore.js | `9e76c51409c13c3ed0183ee1e9c1b380e671a038` (v1.15.0) | 2026-09-07 | MIT, `LICENSE`, © 2025-2026 Liam Cottle. The **second** first-party client of the companion protocol, and its value is that it was written independently of `meshcore_py`: its `onContactResponse` reads the 148-byte contact frame field for field the same way, which is what makes that layout corroborated rather than merely read twice. Its constants also annotate the `0x80`/`0x8A` split correctly, which the issue that commissioned this reading had backwards. Read 2026-09-07. Not a candidate for anything: JavaScript, and its `package.json` `test` script is `echo "Error: no test specified" && exit 1` |
 | `zephyr` (GNSS subsystem) | github.com/zephyrproject-rtos/zephyr | `2f0bc11264a8e72e214f3db0a3fa221eb022453a` | 2026-09-02 | Apache-2.0. **A second revision of a project already in this table** — the power-management record pins v4.4.2 `671f64aa` — and deliberately a different one, because these are different files read on a different date. `include/zephyr/drivers/gnss.h`, `gnss_publish.h` and `drivers/gnss/gnss_emul.c`: the acquisition struct, the publish seam and the emulator pattern. `drivers/modem/vendor_standalone/hl78xx/hl78xx_gnss.c` is read as a **counter-example**: it wraps `gnss_publish_data()` in `if (fix_status != GNSS_FIX_STATUS_NO_FIX)`, so losing the fix produces silence rather than a transition |
 
 ### Upstream deltas being monitored, and not taken
@@ -2546,7 +2547,7 @@ table as source-pinned board data **if and only if** the experiment proves it
 necessary; `REJECT` every vendor BSP as a link-time dependency.
 
 **Reason:** the shipping tree already exposes the right seam —
-`waveshare_board.cpp:125-129` — "esp_lcd_panel_handle_t panel" — hands on an
+`waveshare_board.cpp:128-132` — "esp_lcd_panel_handle_t panel" — hands on an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, and
 `physical_input.cpp:523` — "start_physical_input(esp_lcd_touch_handle_t touch"
 — takes exactly those.
@@ -2777,3 +2778,103 @@ no ADR changes — [TWATCH_RTC_INPUT_WAKE](TWATCH_RTC_INPUT_WAKE.md) §6.3 and
 **Tests required:** The bench procedure in that report, §4. Every hardware row
 of it is `NOT EXECUTED — HARDWARE REQUIRED`, and the six questions it cannot
 answer from a desk are H19–H24 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+
+### Getting a *remote* node's coordinate to the wrist
+
+**Problem:** #450 needs two coordinates and the link carries one. Something has
+to fetch the position of a node that is **not** the connected companion, name it
+unambiguously, and refuse to say how old it is. Researched under
+[#467](https://github.com/hleserg/Attadipa/issues/467); the full reading is
+[REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md)
+and the decision is [ADR-0020](../adr/0020-remote-target-position-source.md).
+This record is the reuse half only; it does not restate the byte layouts or the
+test matrix.
+
+**Projects investigated:** MeshCore's `BaseChatMesh`, `AdvertDataHelpers`,
+`ContactInfo` and the companion example, at the pin and at current `main` ·
+`meshcore-dev/meshcore.js`, the JavaScript client · `meshcore-dev/meshcore_py`,
+the Python client, re-read at a newer revision than the previous record used ·
+`dt267/MeshCore-Low-Power-Firmware`, the fork the V4.3 runs.
+
+**Useful implementation:** two ideas and one corroboration. No code.
+
+- `meshcore.js@9e76c51`, `src/connection/connection.js::onContactResponse` and
+  `onNewAdvertPush` — an **independent** reading of the 148-byte contact frame,
+  field for field, which is what makes the layout corroborated rather than read
+  twice from the same place. Its `src/constants.js` also annotates
+  `Advert: 0x80` as the auto-add case and `NewAdvert: 0x8A` as the manual-add
+  one, which is the correction that reorganised the whole design;
+- `meshcore_py@837ac53`, `src/meshcore/meshcore.py` — the shape of a resync:
+  an advert push marks the table dirty and a later call fetches. The *shape* is
+  right and the *call* is wrong for us — see below;
+- `meshcore_py@837ac53`, `src/meshcore/commands/base.py::send_binary_req` — a
+  tag-to-request table that keeps the peer's key beside the tag, which is the
+  only safe way to use `PUSH_CODE_BINARY_RESPONSE` at all, since that frame
+  carries no identity. Relevant only if ADR-0020 decision 8 ever fires.
+
+**Licence:** MIT for MeshCore, `meshcore.js` (`LICENSE`, © 2025-2026 Liam
+Cottle) and `meshcore_py`. Nothing is copied in any case.
+
+**Strengths:** two first-party clients, written in different languages by
+different people, agreeing on the frame. That is a better basis for a decoder
+than one client and a header.
+
+**Weaknesses**, and they are what this record is for:
+
+- **`meshcore.js` has no tests.** Its `package.json` `test` script is
+  `echo "Error: no test specified" && exit 1`. It is evidence about the
+  protocol, not a suite to lean on;
+- **it does not implement `CMD_GET_CONTACT_BY_KEY` (30) at all** — the command
+  is absent from its `CommandCodes`. Neither does `meshcore_py` use it. Both
+  resync with `CMD_GET_CONTACTS`, which is correct for a client mirroring a
+  whole contact table and wrong for one that wants a single named target: on a
+  `MAX_CONTACTS=350` build that answer is ~52 kB over a link whose notifications
+  carry 173 bytes;
+- **`meshcore_py`'s `since` cursor is not monotone.** The node resets its
+  reported `lastmod` to 0 at the start of every iteration and updates it only
+  for contacts that pass the filter, so a delta matching nothing reports 0 — and
+  the client stores that verbatim, causing a full table sync next time. If
+  anything here ever uses `since`, it advances it as `max(previous, reported)`;
+- **`meshcore_py` sends a one-byte telemetry request body.** The responder reads
+  `data[1]` as an inverse permission mask with no length check; a one-byte body
+  leaves that byte to AES's zero padding, which happens to yield `0xFF` and
+  therefore happens to work. Do not copy an accident;
+- its `est_timeout` conversion is still `/ 800` in one place, which the previous
+  record already refused;
+- **`dt267/MeshCore-Low-Power-Firmware` is not a source at all.** Its repository
+  holds nine Markdown files and a `LICENSE` at every commit; firmware ships as
+  release binaries. It cannot be read, compared or reused, and no claim in
+  either MeshCore report is asserted about the node that runs it — **M28**.
+
+**Decision:** `REIMPLEMENT`, and the reimplementation is sixteen bytes of a
+frame this repository already parses. `READ` both clients as protocol evidence
+and depend on neither. `REJECT` `CMD_GET_CONTACTS` as the resync in favour of
+`CMD_GET_CONTACT_BY_KEY`, which neither client implements. `REJECT` the fork as
+a source, because it is not one.
+
+**Reason.** This is the rare case where the reuse question answers itself: the
+bytes arrive inside `RESP_CODE_CONTACT`, the session already validates all 148
+of them —
+`link/src/meshcore_companion.cpp:587` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+and reads two fields out of it. Adding a dependency to obtain the other two
+would import a client's failure model to avoid writing an offset. The scaling is
+integer: the wire is `e6` and
+`core/include/attadipa/core/position.h:42` — "struct Position {" — is `e7`, so
+the conversion is ×10 with a range check on the raw `int32` first, because
+nothing upstream range-checks either field.
+
+**Source revision:** MeshCore `0679dbeffc504d562d2f09eb072fdc223f8ffc2a`,
+confirmed byte-identical to the pin `d92964352441e53b93e8667b802e04f6e072b39e`
+for all eleven relevant files on 2026-09-07 · `meshcore.js@9e76c51409c13c3ed0183ee1e9c1b380e671a038`
+(v1.15.0) · `meshcore_py@837ac53e77ad75610ceeb0fde4ae318546a10ab9` (2.3.9.1) ·
+`dt267/MeshCore-Low-Power-Firmware@5048e001fbf180782ea7787fc182a3e623f24cc0`.
+
+**Attadipa integration:** in `link/`, beside the companion client that already
+parses the frame — one `PUSH_CODE_ADVERT` handler, one command, and the target
+key. `core/` learns no wire format and applications see availability, validity
+and two ages, one of which is `UNKNOWN` and says so.
+
+**Tests required:** not restated here —
+[REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md)
+§12 holds them. The one that matters most is the advert that stops carrying a
+coordinate while its timestamps keep advancing: it must move neither age.

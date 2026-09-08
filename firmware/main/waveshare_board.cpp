@@ -35,11 +35,14 @@
 #include "sdkconfig.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/mesh.h"
 #include "attadipa/apps/navigation.h"
 #include "attadipa/apps/provisioning.h"
 #include "attadipa/core/time_service.h"
+#include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/mesh_face.h"
 #include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
 #include "attadipa_fonts.h"
@@ -144,10 +147,7 @@ struct BoardState {
   // Default NVS, classified once at boot: ESP_OK, or the `nvs_flash_init()`
   // verdict that stands for the rest of this boot. Read by `BoardTimeOps`.
   esp_err_t metadata_storage = ESP_ERR_NVS_NOT_INITIALIZED;
-  lv_obj_t *mesh_state = nullptr;
-  lv_obj_t *mesh_node = nullptr;
-  lv_obj_t *mesh_message = nullptr;
-  lv_obj_t *mesh_signal = nullptr;
+  attadipa::ui::MeshFace mesh_face;
   // The navigation readout, which shares the mesh screen's slot: a tap swaps
   // between them. It is not a third place to get lost in -- both are about the
   // same node, and the tap is a page turn rather than navigation.
@@ -776,12 +776,12 @@ void refresh_clock(lv_timer_t *timer) {
 }
 
 // The one place a page changes, and the only one that tears the outgoing face
-// down. All three `clear()` calls are idempotent, so calling them all is
+// down. All four `clear()` calls are idempotent, so calling them all is
 // cheaper than asking which face was up -- but they are not all harmless.
 // `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
-// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:322` — "    lv_obj_clean(screen_);"
-// and empties the shared screen. So this leaves the panel with nothing on it,
-// and **every caller must draw the incoming page before it returns**.
+// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:515` — "    lv_obj_clean(screen_);"
+// and `MeshFace::clear()` does the same, so this leaves the panel with nothing
+// on it, and **every caller must draw the incoming page before it returns**.
 void show_page(Page next) {
   if (state.page == next) {
     return;
@@ -789,161 +789,51 @@ void show_page(Page next) {
   state.clock_face.clear();
   state.nav_face.clear();
   state.provision_face.clear();
+  state.mesh_face.clear();
   state.entry.reset();
-  state.mesh_state = nullptr;
-  state.mesh_node = nullptr;
-  state.mesh_message = nullptr;
-  state.mesh_signal = nullptr;
   state.page = next;
 }
 
 #if CONFIG_BT_NIMBLE_ENABLED
-// Four bytes of a node's public key as hex. The bench reports identify nodes by
-// exactly this much (`5c62d9bc…`, `044e2de8…`), and eight characters is what
-// fits beside a name.
-void key_prefix(const attadipa::core::MeshPeerId &id, char (&out)[9]) {
-  static constexpr char kHex[] = "0123456789abcdef";
-  for (std::size_t i = 0; i < 4; ++i) {
-    out[i * 2] = kHex[id.public_key[i] >> 4U];
-    out[i * 2 + 1] = kHex[id.public_key[i] & 0x0FU];
-  }
-  out[8] = '\0';
+// The panel's density, for the two faces that ask for it. One lookup, because
+// two copies of it are two places to forget the null check.
+unsigned panel_dpi() {
+  const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  return profile != nullptr ? profile->display.dpi() : 0;
 }
 
-void build_mesh_screen() {
-  lv_obj_t *screen = lv_screen_active();
-  show_page(Page::Mesh);
-  lv_obj_clean(screen);
-  // The screen object outlives every face, so it carries the last one's styles
-  // into the next. NavFace makes it a flex column; this screen aligns its five
-  // labels absolutely, and a flex parent ignores every one of them. Strip it
-  // first, the way ClockFace and ProvisionFace already do.
-  lv_obj_remove_style_all(screen);
-  lv_obj_set_style_bg_color(screen, lv_color_hex(0x05080B), 0);
-  lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
-  lv_obj_set_style_text_font(screen, &attadipa_nunito_sans_20, 0);
-  lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t *title = lv_label_create(screen);
-  lv_label_set_text(title, "MESH");
-  lv_obj_set_style_text_font(title, &attadipa_nunito_sans_28, 0);
-  lv_obj_set_style_text_color(title, lv_color_hex(0x8CE8C2), 0);
-  lv_obj_align(title, LV_ALIGN_TOP_LEFT, 28, 26);
-
-  state.mesh_state = lv_label_create(screen);
-  lv_obj_set_style_text_font(state.mesh_state, &attadipa_nunito_sans_28, 0);
-  lv_obj_set_style_text_color(state.mesh_state, lv_color_hex(0xF4F7F5), 0);
-  lv_obj_align(state.mesh_state, LV_ALIGN_TOP_LEFT, 28, 70);
-
-  state.mesh_node = lv_label_create(screen);
-  lv_obj_set_width(state.mesh_node, kWidth - 56);
-  lv_label_set_long_mode(state.mesh_node, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_color(state.mesh_node, lv_color_hex(0xBBC6C1), 0);
-  lv_obj_align(state.mesh_node, LV_ALIGN_TOP_LEFT, 28, 135);
-
-  state.mesh_message = lv_label_create(screen);
-  lv_obj_set_width(state.mesh_message, kWidth - 56);
-  lv_label_set_long_mode(state.mesh_message, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_color(state.mesh_message, lv_color_hex(0xF4F7F5), 0);
-  lv_obj_align(state.mesh_message, LV_ALIGN_TOP_LEFT, 28, 225);
-
-  state.mesh_signal = lv_label_create(screen);
-  lv_obj_set_style_text_color(state.mesh_signal, lv_color_hex(0x8CE8C2), 0);
-  lv_obj_align(state.mesh_signal, LV_ALIGN_BOTTOM_LEFT, 28, -28);
+attadipa::ui::MeshFaceConfig mesh_config() {
+  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+          attadipa::ui::PixelCost::PerPixel,
+          attadipa::ui::Metrics::for_dpi(panel_dpi())};
 }
 
 void refresh_mesh() {
-  // `show_page()` nulls these on the way out, so a live label is the honest
-  // answer to "is this page built" -- there is no second flag to disagree.
-  if (state.mesh_state == nullptr) {
-    build_mesh_screen();
+  // Everything this used to decide now lives one layer down and is testable
+  // without a panel: `apps::format_mesh()` chooses the words and the shape,
+  // `ui::MeshFace` draws them. What was here was 120 lines of absolute offsets
+  // measured for this display, so the screen existed on one board and could be
+  // rendered on none.
+  const attadipa::apps::MeshText text = attadipa::apps::format_mesh(
+      meshcore_ble_status(), attadipa::l10n::locale());
+  // `built()` is the honest answer to "is this page drawn": `show_page()` tears
+  // the outgoing face down, and the face's own flag is the one copy of that
+  // fact. The four label pointers this replaced were a second copy.
+  if (!state.mesh_face.built()) {
+    show_page(Page::Mesh);
+    state.mesh_face.build(lv_screen_active(), mesh_config(), text);
+    return;
   }
-  const attadipa::core::MeshStatus status = meshcore_ble_status();
-  lv_label_set_text(state.mesh_state,
-                    status.availability == attadipa::core::Availability::Unprovisioned
-                        ? "STOPPED"
-                        : status.transport == attadipa::core::TransportPhase::Ready
-                              ? "CONNECTED"
-                              : attadipa::core::to_string(status.transport));
-  // The key prefix shares the "Node:" line rather than taking one of its own:
-  // the label wraps, the name below it can already be two lines, and there are
-  // 90 px to the message label under it. A name is not an identity -- the two
-  // bench nodes were `Beta test companion` and a name differing by an emoji,
-  // and an operator reading a screenshot could not say which mesh a run was on
-  // (docs/research/MESHCORE_T114_FIRST_CONTACT.md:54 "There are two MeshCore
-  // nodes in range"). Four bytes is what the bench reports already identify
-  // nodes by.
-  char node_key[11] = {};
-  if (status.has_node_id) {
-    char hex[9];
-    key_prefix(status.node_id, hex);
-    std::snprintf(node_key, sizeof(node_key), " %s", hex);
-  }
-  // A REFUSAL IS THE ONE THING ON THIS SCREEN THAT IS NOT SESSION STATE, and it
-  // is here because a refused watch has no session: the state line says
-  // SCANNING, the name is blank, and without this the screen is silent about
-  // the one fact that explains all of it. Since #411 the recovery is the
-  // entry screen's node field, a long press on the clock away, and this line
-  // is how an operator learns that there is something to go there for.
-  //
-  // Third line, and the label has room for it: line_height is 22 px
-  // (assets/fonts/generated/attadipa_nunito_sans_20.c:2892 ".line_height = 22,")
-  // and there are 90 px from this label's y=135 to mesh_message's y=225, so
-  // four lines (88 px) fit and five do not. Worst case is exactly four: the key
-  // line, a 32-byte name wrapping to two on a 354 px label, and this. This line
-  // cannot itself wrap -- its content is fixed, two 8-character prefixes, and
-  // it measures 331.8 px against the 354 px label (COMPUTED from the font's own
-  // `adv_w` table, not measured on glass). NOT EXECUTED -- HARDWARE REQUIRED:
-  // `sim/` has a boot screen and a diagnostic screen and no mesh screen, so
-  // there is no screenshot of this to look at that would be this screen.
-  char refused[40] = {};
-  if (status.has_refused && status.has_pinned) {
-    char bad[9];
-    char want[9];
-    key_prefix(status.refused_id, bad);
-    key_prefix(status.pinned_id, want);
-    std::snprintf(refused, sizeof(refused), "\nrefused %s, pinned %s", bad,
-                  want);
-  }
-  lv_label_set_text_fmt(state.mesh_node, "Node:%s\n%s%s", node_key,
-                        status.node_name[0] != '\0' ? status.node_name.data()
-                                                     : "—",
-                        refused);
-  // Sender, text and delivery state are the three things a screenshot has to
-  // carry to be evidence of a message going out or coming in, so they share one
-  // label rather than one each.
-  lv_label_set_text_fmt(state.mesh_message, "Last message:\n%s%s%s\nSent: %s",
-                        status.last_sender[0] != '\0' ? status.last_sender.data()
-                                                      : "",
-                        status.last_sender[0] != '\0' ? ": " : "",
-                        status.last_message[0] != '\0'
-                            ? status.last_message.data()
-                            : "—",
-                        attadipa::core::to_string(status.delivery));
-  if (status.has_snr) {
-    const int magnitude = status.snr_quarter_db < 0
-                              ? -static_cast<int>(status.snr_quarter_db)
-                              : static_cast<int>(status.snr_quarter_db);
-    lv_label_set_text_fmt(state.mesh_signal, "SNR: %s%d.%02d dB   Peers: %u",
-                          status.snr_quarter_db < 0 ? "-" : "",
-                          magnitude / 4, (magnitude % 4) * 25,
-                          static_cast<unsigned>(status.peers_reported));
-  } else {
-    lv_label_set_text_fmt(state.mesh_signal, "SNR: —   Peers: %u   MTU: %u",
-                          static_cast<unsigned>(status.peers_reported),
-                          static_cast<unsigned>(status.mtu));
-  }
+  state.mesh_face.update(text);
 }
 #endif
 
 #if CONFIG_BT_NIMBLE_ENABLED
 attadipa::ui::NavFaceConfig nav_config() {
-  const attadipa::platform::BoardProfile *profile =
-      attadipa::platform::find_board_profile(kBoardProfileId);
   return {kWidth, kHeight, attadipa::ui::Theme::Night,
           attadipa::ui::PixelCost::PerPixel,
-          attadipa::ui::Metrics::for_dpi(profile != nullptr ? profile->display.dpi()
-                                                            : 0)};
+          attadipa::ui::Metrics::for_dpi(panel_dpi())};
 }
 
 void refresh_nav() {

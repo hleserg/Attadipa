@@ -72,6 +72,12 @@ struct Options {
   bool nav_screen = false;
   const char *nav_state = "ready";
 
+  // The mesh screen, and which of its states to stage. Same argument as the
+  // readout above, one screen earlier: `ready` is the state a wearer sees least
+  // and the seven others are the ones that used to be an enumerator name.
+  bool mesh_screen = false;
+  const char *mesh_state = "ready";
+
   bool help = false;
   bool list_boards = false;
 };

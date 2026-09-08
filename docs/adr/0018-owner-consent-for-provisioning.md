@@ -144,7 +144,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:1056` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:1157` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -152,7 +152,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:1055` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:1156` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
@@ -210,7 +210,7 @@ Priced against the current build, B is **A plus a radio**:
   `firmware/sdkconfig.defaults:116` — "CONFIG_BT_NIMBLE_MAX_BONDS=1", and the
   watch's one bond is the MeshCore node's. A provisioning phone that bonds
   evicts it — NimBLE drops the oldest peer to make room:
-  `docs/research/VERIFIED_FACTS.md:320` — "### A wrong MeshCore node's bond evicts the pinned node's",
+  `docs/research/VERIFIED_FACTS.md:421` — "### A wrong MeshCore node's bond evicts the pinned node's",
   which traces it to the upstream source and marks the boundary honestly as
   source-traced rather than measured. So B either raises `MAX_BONDS` (more NVS
   and RAM in every image) or pairs without bonding, which means re-entering the
@@ -407,7 +407,10 @@ Beyond B and C:
   the implementation, so the sentence and the code changed together.
 - Puts the face in `ui/lvgl/`, which is what subjects it to the theme-token
   rule: `tools/ui/check_raw_values.py` scans `sim`, `apps` and `ui` and not
-  `firmware`, which is why `build_mesh_screen()` in
-  `firmware/main/waveshare_board.cpp:813` — "void build_mesh_screen() {" — is
-  full of literal colours. Building the entry screen where the mesh screen was
-  built would silently opt it out of the check.
+  `firmware`. The example this bullet gave was `build_mesh_screen()` in
+  `firmware/main/waveshare_board.cpp`, which was full of literal colours for
+  exactly that reason. #465 moved it to `ui/lvgl/` as well, so it is gone:
+  `ui/lvgl/include/attadipa/ui/mesh_face.h:34` —
+  "// with literal hex and offsets measured for one panel. It could not be drawn on".
+  Building the entry screen where the mesh screen was built would silently opt
+  it out of the check.
