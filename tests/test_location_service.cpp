@@ -591,6 +591,20 @@ public:
         has_sample_ = true;
     }
 
+    // What this epoch says about itself, over and above the coordinate. A local
+    // receiver states these and the node provider states none of them, which is
+    // why it is a second call rather than more arguments to `offer()`: the
+    // default is a sample that measured nothing, because that is the one this
+    // repository actually ships.
+    void also_states(core::FixType fix_type, std::uint8_t satellites,
+                     std::uint16_t hdop_centi)
+    {
+        sample_.observation.fix_type = fix_type;
+        sample_.observation.satellites_used = satellites;
+        sample_.observation.hdop_centi = hdop_centi;
+        sample_.observation.source = core::PositionSource::LocalGnss;
+    }
+
     void withdraw() { has_sample_ = false; }
 
 private:
@@ -641,6 +655,70 @@ void test_availability_travels_without_touching_the_position()
     CHECK(!location.state(at(2000)).has_origin);
     // ...and the repeat did not refresh the age either.
     CHECK(location.state(at(2000)).position.age_at_us_ms == 1990);
+}
+
+// A REPEATED COORDINATE FREEZES THE AGE AND FREEZES NOTHING ELSE.
+//
+// `test_an_unchanged_coordinate_is_not_evidence_of_a_live_fix` above is the
+// rule this one bounds. Both rules are needed and they are about different
+// fields: an unchanged coordinate is evidence against a live fix, so its age
+// goes on growing -- and the producer's account of *this* epoch is new evidence
+// whatever the coordinate did, so it is adopted.
+//
+// The service kept the whole retained observation on a repeat, and for the node
+// provider the two were indistinguishable: it states a coordinate and nothing
+// else, so there was never a second field to lose. A provider that states
+// quality made the difference visible and it was a downgrade going missing --
+// `ThreeD`/`Valid` held on screen for a receiver that had already published
+// `NoFix` at the same coordinate (#470).
+void test_a_repeat_freezes_the_age_and_nothing_else()
+{
+    AnonymousProvider provider;
+    core::LocationService location(provider);
+    provider.set(Availability::Ready);
+
+    provider.offer(557558000, 376173000, at(1000));
+    provider.also_states(core::FixType::ThreeD, 12, 158);
+    location.poll();
+    CHECK(location.state(at(1000)).validity == core::PositionValidity::Valid);
+    CHECK(location.state(at(1000)).position.age_at_us_ms == 0);
+
+    // The same coordinate to the last digit, from a receiver that has stopped
+    // solving for it. Everything the new sample states is adopted; the stamp is
+    // the one the coordinate arrived with.
+    provider.offer(557558000, 376173000, at(2000));
+    provider.also_states(core::FixType::NoFix, 0, 9999);
+    location.poll();
+    const core::LocationState lost = location.state(at(2000));
+    CHECK(lost.fix_type == core::FixType::NoFix);
+    CHECK(lost.validity == core::PositionValidity::NoFix);
+    CHECK(lost.has_position);
+    CHECK(lost.position.age_at_us_ms == 1000);
+    CHECK(location.observation()->observed_at == at(1000));
+    CHECK(location.observation()->satellites_used.has_value());
+    CHECK(*location.observation()->satellites_used == 0);
+    CHECK(location.observation()->hdop_centi.has_value());
+    CHECK(*location.observation()->hdop_centi == 9999);
+
+    // A FIELD THE NEW SAMPLE DOES NOT STATE IS NOT INHERITED FROM THE ONE IT
+    // REPLACED. "Did not say" is not "still true" -- position.h's first rule --
+    // and a satellite count carried forward from a minute ago would be exactly
+    // the manufactured evidence the optionals exist to prevent.
+    provider.offer(557558000, 376173000, at(3000));  // no `also_states`
+    location.poll();
+    CHECK(!location.observation()->satellites_used.has_value());
+    CHECK(!location.observation()->hdop_centi.has_value());
+    CHECK(location.state(at(3000)).position.age_at_us_ms == 2000);
+
+    // And a coordinate that moved is a new observation with its own stamp,
+    // which is the branch none of this touched. 1.1 cm at the equator is a
+    // move: nothing here has a threshold, and adding one would be a decision
+    // about receiver jitter that no measurement in this repository supports.
+    provider.offer(557558001, 376173000, at(4000));
+    provider.also_states(core::FixType::ThreeD, 12, 158);
+    location.poll();
+    CHECK(location.state(at(4000)).position.age_at_us_ms == 0);
+    CHECK(location.state(at(4000)).validity == core::PositionValidity::Valid);
 }
 
 // THE ENGINEERING LINE MAKES THE UNCERTAINTY THE SUBJECT.
@@ -708,6 +786,7 @@ int main()
     test_a_typed_coordinate_is_indistinguishable_from_a_solved_one();
     test_the_boundary_values_and_the_one_past_it();
     test_availability_travels_without_touching_the_position();
+    test_a_repeat_freezes_the_age_and_nothing_else();
     test_the_engineering_line_says_unknown_where_nothing_is_known();
 
     if (failures != 0) {

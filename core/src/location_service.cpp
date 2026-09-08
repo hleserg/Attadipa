@@ -82,19 +82,48 @@ void LocationService::poll()
         observation_.reset();
     }
 
-    if (observation_.has_value() && observation_->position.has_value() &&
+    // The same coordinate again. That is evidence *against* a live fix -- the
+    // node's own write gate leaves the last value in place when its receiver
+    // stops solving -- so neither age is refreshed and the coordinate keeps the
+    // stamp it arrived with, across a reconnect included.
+    const bool repeats_the_coordinate =
+        observation_.has_value() && observation_->position.has_value() &&
         sample.observation.position.has_value() &&
-        same_position(*observation_->position, *sample.observation.position)) {
-        // The same coordinate again. That is evidence *against* a live fix --
-        // the node's own write gate leaves the last value in place when its
-        // receiver stops solving -- so neither age is refreshed and the
-        // observation keeps the stamp it arrived with, across a reconnect
-        // included. The receiver state above is still updated: it is a separate
-        // fact and it can genuinely change while the coordinate does not.
-        return;
-    }
+        same_position(*observation_->position, *sample.observation.position);
+
+    // THE STAMP IS FROZEN, AND NOTHING ELSE IS. The rule above is about *how old
+    // this coordinate is*, and it was written for a producer that states nothing
+    // else: a MeshCore node sends two fields and no fix flag, so freezing the
+    // whole observation and freezing its stamp were the same act and the
+    // difference never showed.
+    //
+    // It shows the moment a producer states quality. `gnss::NmeaReceiver` reads
+    // a receiver directly and reports a real `FixType`, a satellite count and an
+    // HDOP per epoch. Whether a receiver that loses its fix keeps publishing the
+    // last coordinate while downgrading the verdict beside it -- 3D, then 2D,
+    // then `NoFix`, all at bytes that never moved -- is `UNKNOWN` for the
+    // receiver this project ships with, and this rule does not rest on it:
+    // `docs/adr/0011-gnss-integrity.md:374` — "That last sentence is `UNKNOWN` as a hardware fact and this decision does not"
+    // -- the other possibility empties the fields, which every path here already
+    // reads as silence. So the retained coordinate is the only case that needs a
+    // rule, and where it does happen, discarding that sample whole kept `ThreeD`
+    // and `Valid` on a screen the receiver had already disowned, and
+    // `format_navigation()` went on printing `Ready` and a distance from it
+    // (#470). Freshness and quality are separate questions
+    // here exactly as they are everywhere else in this tree, so the repeat
+    // answers only the first of them.
+    //
+    // Not a restamp on the new evidence, either: an epoch saying "still here,
+    // and now on four satellites" has not re-observed the position, and taking
+    // its stamp is how a coordinate the receiver stopped solving for comes to
+    // look a second old. What is adopted is what the epoch measured; what is
+    // kept is when the coordinate was last actually stated.
+    const MonotonicTime observed_at = repeats_the_coordinate
+                                          ? observation_->observed_at
+                                          : sample.observation.observed_at;
 
     observation_ = sample.observation;
+    observation_->observed_at = observed_at;
     origin_      = sample.origin;
     has_origin_  = sample.has_origin;
 }
