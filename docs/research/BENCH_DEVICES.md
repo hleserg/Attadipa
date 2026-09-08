@@ -24,12 +24,39 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | **`0xEF 0x4018` — Winbond, 16 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | LilyGO T-Watch S3 Plus; the shipped firmware's own FQBN is `esp32:esp32:twatchs3:Revision=Radio_SX1262` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **factory, untouched** — nothing has ever been written to this unit | unchanged; do not write |
+| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **Attadipa skeleton**, flashed 2026-09-05; the factory image is backed up and restorable | unchanged; do not write |
 
-The **T-Watch column is the only one of the three whose flash is still exactly
-as the factory shipped it.** A complete 16 777 216-byte image was read off it on
-2026-08-27 and proved three independent ways — on-chip MD5, a second byte-identical
-read, and a structural parse — before anything else was attempted. Its SHA-256 is
+This table said until 2026-09-08 that the T-Watch was **the only one of the
+three whose flash was still exactly as the factory shipped it**, and that
+nothing had ever been written to the unit. Both were false, and a reader would
+have drawn the wrong conclusion from either: that the shipped firmware is what
+answers on the port, and that this unit still needs its first backup.
+
+Its `factory` partition holds this repository's own firmware. The
+`esp_app_desc_t` at `0x10020` carries magic `0xabcd5432`, `project_name`
+`attadipa`, `version` `attadipa-claim-writer-local-hle`, built `Sep  5 2026
+22:07:42` against `idf_ver` `v5.5.5-dirty`, with `app_elf_sha256`
+`53fdd0d8ebd6898d3583e315503dc8e850ac85257ccff22e81595d6d8a7977f1`. The
+partition table is ESP-IDF's default — `nvs`, `phy_init`, and one 4 MB
+`factory` app — and not the `app0`/`app1`/`spiffs` shape the shipped Arduino
+image used, so the table was overwritten too. Both were read back with
+`esptool read_flash` on 2026-09-08; that command only reads, and nothing was
+written to establish this.
+
+**Reading the serial port would not have caught this, and nearly did not.** Two
+`cat` of the port a minute apart returned device uptimes 38 minutes apart,
+because a tty hands back what it buffered rather than what the board is saying
+now. The app description in flash is the evidence; the log is not.
+
+The consequence for the bench is the good one: OD-19's precondition was met
+before the unit was ever flashed, so a further reversible flash — a GNSS probe
+build for [#442](https://github.com/hleserg/Attadipa/issues/442), for instance —
+needs no new backup, and the restore path is the image below.
+
+What that backup is remains exactly as recorded. A complete 16 777 216-byte
+image was read off this unit on 2026-08-27 and proved three independent ways —
+on-chip MD5, a second byte-identical read, and a structural parse — before
+anything else was attempted. Its SHA-256 is
 `e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`; the evidence and
 the reproduction notes are
 [TWATCH_S3_PLUS_BRINGUP_2026-08-27](TWATCH_S3_PLUS_BRINGUP_2026-08-27.md), and as with

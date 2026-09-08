@@ -2601,8 +2601,72 @@ ones that heading states.
 - **What this is not.** It is one state, not a power budget: no sleep figure, no
   screen-off figure, no per-rail split, and nothing about the T-Watch, which is
   micro-USB — `docs/research/HARDWARE_MATRIX.md:90` — "| USB | Micro-USB, charge + programming only" — and
-  needs an adapter the bench does not have. It is the first number of its kind
+  needed an adapter the bench did not have until 2026-09-08. The entry below is
+  that measurement, and the two are **not** comparable: this one is screen-on
+  with the cell disconnected, that one is screen-never-brought-up with the cell
+  state unestablished. It is the first number of its kind
   here, and the AXP2101 has no current channel on either silicon variant, so
   external instrumentation — or a board shunt, if either board turns out to fit
   one, which is H2's still-open half — is the only way any of the others can be
   taken.
+
+### The T-Watch's USB input carries 779 mW, and an unknown share of that is charge current
+
+- **Claim:** the T-Watch S3 Plus (`DC:B4:D9:18:49:40`) running this
+  repository's own skeleton firmware, **the display never brought up**, idle and
+  untouched, presents a **mean 778.9 mW** at its micro-USB input — a mean
+  158.0 mA at a mean 4.930 V. The distribution is **bimodal, not flat**: a floor
+  of **754.5 mW across 81.4 % of samples**, and bursts averaging **886.2 mW**
+  across the other 18.6 %, median burst length **300 ms**, onsets clustered at
+  ~1.15 s and at multiples of it. The median sample is 754.7 mW, p99 is
+  949.1 mW, and the largest single sample is 986.9 mW. **The figure to quote for
+  anything integrated over time is the mean, 779 mW**; the 754 mW floor is what
+  a spot reading between bursts returns and it understates consumption by 3.2 %.
+  Over the 45 minutes the mean of the first five and of the last five differ by
+  **+0.5 mW**, so nothing was tapering. **What produces the bursts is
+  `UNKNOWN`** — nothing instrumented the firmware during the run, and a
+  ~1.15 s cadence is consistent with several things this build does.
+- **This is input power, and its composition is `UNKNOWN`.** The meter sits
+  upstream of the AXP2101, so the PMU's conversion losses are inside the number.
+  Unlike the Waveshare entry above — where the cell was disconnected, and that
+  is the only reason its figure is board consumption — **whether a cell was in
+  this watch, and whether the charger was passing current into it, was not
+  established.** 158 mA is consistent with board draw alone and equally with
+  board draw plus a constant-current charge; forty-five flat minutes rule out
+  only the tapering CV phase of a charge, not a charge. **Do not derive a
+  battery life, a per-rail split, or a sleep figure from this.** The
+  discriminator is cheap and has not been run: power the watch off with a long
+  press while leaving it inline, and whatever current remains is charge current.
+- **Source:** a FNIRSI **FNB-58** — the same meter and the same HID decode as
+  S16 above, but **not** that source: S16 is the Waveshare's USB-C input on
+  2026-09-05, and this is the T-Watch's micro-USB input on **2026-09-08**,
+  reached through a USB-C-to-micro-USB adapter the owner fitted that day.
+  **242 847 raw samples over 2698.8 s at 89.98 samples/s**, beginning
+  **2026-09-08 10:27:28Z**. Nothing shorter than 11.1 ms is visible to this
+  instrument, so the 986.9 mW largest sample bounds the peak from **below
+  only**.
+- **293 samples — 0.121 % — are decode artefacts and are discarded before every
+  figure above.** They read `V = 0`, or `V` at a power of two divided by a
+  thousand (65.536, 32.768, 8.192, 6.144), or `I ≈ 1.27 A`, none of which a 5 V
+  USB line can present. The filter is `4.0 < V < 5.5` together with
+  `0 ≤ I < 1.0`, leaving 242 554 samples; applying it to the capture reproduces
+  every number in this entry. Left in, they pull the mean to 780.7 mW.
+- **No zero offset was subtracted.** The 2.484 mA measured on 2026-09-05 was not
+  re-measured for this run and is not silently applied here; it is **1.6 % of
+  this reading** and is a known bias in it, not a correction that has been made.
+- **The capture is bench-only and pinned by hash**, for the reason the entry
+  above gives: `~/attadipa-bench/twatch_taper_20260908.csv`, sha256
+  `0062e49452b5e647c0b236a9260d74362a6c817309da91b45e9124373b9b4dac`.
+- **Checked:** 2026-09-08. **Which firmware was running is established, not
+  inferred** — the gap the Waveshare entry above records against itself. The
+  `factory` partition was read back read-only the same day with no write in
+  between: `project_name` `attadipa`, built `Sep  5 2026 22:07:42`, `app_elf_sha256`
+  `53fdd0d8ebd6898d3583e315503dc8e850ac85257ccff22e81595d6d8a7977f1`
+  ([BENCH_DEVICES](BENCH_DEVICES.md)).
+- **Impact:** this is **not a product figure**. It is a skeleton with no display
+  brought up, so it neither supersedes nor competes with the Waveshare's 413 mW,
+  which is screen-on at minimum brightness on the provisioning screen. What it is
+  good for is a baseline: a display bring-up on this board is now measurable as a
+  difference. The vendor's published sleep figures above — light sleep 2.38 mA,
+  deep sleep 460–530 µA — are three orders of magnitude below this and describe
+  states this run never entered, so nothing here contradicts them.
