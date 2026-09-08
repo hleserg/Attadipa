@@ -537,6 +537,10 @@ ru = "узел ещё забывается"
 en = "forgotten; set its new passkey"
 ru = "узел забыт; введите новый код"
 
+[provision_node_unpinned]
+en = "node dropped; the pairing stayed, set its new passkey"
+ru = "узел сброшен; сопряжение сохранено, введите код"
+
 [provision_node_forgotten_ram]
 en = "forgot till reboot; a restart brings it back"
 ru = "забыт до рестарта; после него вернётся"

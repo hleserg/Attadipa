@@ -29,8 +29,8 @@ at [`assets/fonts/attadipa_fonts.h:25`](../../assets/fonts/attadipa_fonts.h) —
 temporal strings at
 [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) —
 "ClockMonthJan"; the simulator's state injection at
-[`sim/options.cpp:195`](../../sim/options.cpp) — "out.child_mode = true;" and
-[`sim/options.cpp:206`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
+[`sim/options.cpp:201`](../../sim/options.cpp) — "out.child_mode = true;" and
+[`sim/options.cpp:212`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
 at [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) —
 "core::Millis tick_period". Two things §8.1 asks for are still missing —
 battery injection, and a screenshot taken after a chosen event rather than on
@@ -634,14 +634,14 @@ that the Clock is one of the six minimum screens.
 
 | Axis | Today | Evidence |
 |---|---|---|
-| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:263` — "out.board = *found;" |
+| geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:269` — "out.board = *found;" |
 | theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:296-310` — "out.theme = ui::Theme::Day;" |
 | locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:281-294` — "out.locale = l10n::Locale::En;" |
-| Adult/Child | **yes** — `--child` | [`sim/options.cpp:195`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:208`](../../sim/main.cpp) — "apps::ClockMode::Child" |
-| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:206`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:210`](../../sim/main.cpp) — "!options.clock_time_set" and passed to `build_clock_screen` as its `live` argument |
+| Adult/Child | **yes** — `--child` | [`sim/options.cpp:201`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:208`](../../sim/main.cpp) — "apps::ClockMode::Child" |
+| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:212`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:210`](../../sim/main.cpp) — "!options.clock_time_set" and passed to `build_clock_screen` as its `live` argument |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
 | node attached / detached | **yes** — `--node` | `sim/options.cpp:142-145` — "out.node_attached = true;" |
-| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:295` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
+| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:297` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
 

@@ -65,10 +65,14 @@ struct Options {
   // The entry screen, with a board that accepts everything and says so on
   // stdout. What a screenshot of it proves is the layout, not a clock.
   bool provision_screen = false;
-  // The entry screen's other task. Nothing on a board chooses between the two
-  // yet -- a long press goes straight to the clock -- so this flag is the only
-  // way the node half can be looked at (#469).
-  bool provision_node = false;
+  // Which of the three tasks `--provision*` opens. Plain `--provision` is the
+  // board's own walk, `EntryTask::All`, so a screenshot of it is evidence
+  // about the firmware and not about a shape only the simulator has. The other
+  // two are the narrow tasks the entry screen's chooser will select once it
+  // exists (#469); until then nothing on a board reaches either alone, and
+  // these flags are the only way to look at them.
+  bool provision_node = false;  // --provision-node: EntryTask::NodePasskey
+  bool provision_time = false;  // --provision-time: EntryTask::LocalTime
 
   // The navigation readout, and which of its states to stage. A screenshot of
   // "Ready" proves nothing about the six ways it says it does not know, and

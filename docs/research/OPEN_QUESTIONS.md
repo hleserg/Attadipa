@@ -391,12 +391,19 @@ is the record of what was true at `144459f` and what changed it:
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same
-  reason it now is: the offset is the third field of that screen and goes
-  through the same `provision_time()` as the clock.
+  reason it now is: the offset is a field of that screen -- its own step, after
+  the five that spell the local instant
+  (`apps/include/attadipa/apps/provisioning.h:63` —
+  "    Day, Month, Year, Hour, Minute, Offset,") -- and goes through the same
+  `provision_time()` as the clock. Named rather than numbered on purpose: it
+  was "the third field" while the date was one step, and #469 split it into
+  three without that sentence noticing.
 - **MeshCore never scanned.** `configure_meshcore_ble()` is the only writer of
   the passkey key. #356's first change made boot replay a stored passkey
-  through the same `Configure` event, and its second lets the fourth field of
-  the entry screen store one:
+  through the same `Configure` event, and its second lets the entry screen's
+  passkey field store one -- reached on a board by the walk a long press opens
+  (`firmware/main/waveshare_board.cpp:948` —
+  "  state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);"):
   `firmware/main/waveshare_board.cpp:494` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
   `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load()) start_scan();"

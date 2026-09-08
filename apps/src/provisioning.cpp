@@ -1,6 +1,7 @@
 #include "attadipa/apps/provisioning.h"
 
 #include <cstdio>
+#include <limits>
 
 #include "attadipa/l10n/string_id.h"
 #include "attadipa/l10n/tr.h"
@@ -77,18 +78,30 @@ ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink, EntryTask task,
                                      const EntrySeed& seed)
     : sink_(sink),
       task_(task),
-      field_(task == EntryTask::LocalTime ? EntryField::Day : EntryField::Node)
+      field_(task == EntryTask::NodePasskey ? EntryField::Node : EntryField::Day)
 {
-    if (task_ == EntryTask::LocalTime) {
+    if (task_ != EntryTask::NodePasskey) {
         // `valid` is the board's claim; this is the check. An offset outside
         // the zones there are, or a local instant outside the years this watch
         // sets, is dropped whole rather than shown as a draft with a false
         // `seeded` beside it.
-        if (seed.valid && seed.offset_minutes >= kOffsetFloor &&
+        // The offset is added to a number the caller handed over, and the
+        // civil-range check that would reject a wild one happens after the
+        // addition. A claimed-valid seed at the end of the `int64` range
+        // therefore overflows on the way to being rejected, and signed
+        // overflow is undefined rather than merely wrong -- so the addition is
+        // guarded here, before it happens, and not audited afterwards.
+        const std::int64_t shift =
+            static_cast<std::int64_t>(seed.offset_minutes) * 60;
+        const bool addable =
+            shift >= 0
+                ? seed.utc.unix_seconds <=
+                      std::numeric_limits<std::int64_t>::max() - shift
+                : seed.utc.unix_seconds >=
+                      std::numeric_limits<std::int64_t>::min() - shift;
+        if (seed.valid && addable && seed.offset_minutes >= kOffsetFloor &&
             seed.offset_minutes <= kOffsetCeil) {
-            const core::WallTime local{
-                seed.utc.unix_seconds +
-                static_cast<std::int64_t>(seed.offset_minutes) * 60};
+            const core::WallTime local{seed.utc.unix_seconds + shift};
             core::CivilTime civil;
             if (core::civil_from_wall_time(local, civil) &&
                 civil.year >= kYearFloor && civil.year <= kYearCeil) {
@@ -394,6 +407,22 @@ void ProvisioningEntry::press(EntryKey key)
                 field_   = EntryField::Passkey;
                 return;
             }
+            // Under `All` the clock's receipt is a waypoint and not the end:
+            // the walk goes on to the node, which is the only way a board
+            // reaches the passkey while nothing chooses between the two narrow
+            // tasks. Whatever the clock's verdict was, it has been shown.
+            if (task_ == EntryTask::All &&
+                receipt_of_ == EntryField::TimeReview) {
+                verdict_ = EntryVerdict::None;
+                // Asked here rather than in the constructor: the clock half of
+                // this walk has no business reading the mesh, and by the time
+                // it is over the answer is fresher anyway. A watch pinned to
+                // no node has nothing to show or forget, so it goes where the
+                // node task sends it -- straight to the passkey.
+                has_node_ = sink_.mesh_node(node_);
+                field_ = has_node_ ? EntryField::Node : EntryField::Passkey;
+                return;
+            }
             field_ = EntryField::Exit;
             return;
         case EntryKey::Previous:
@@ -415,8 +444,12 @@ void ProvisioningEntry::press(EntryKey key)
 
     if (field_ == EntryField::ForgetConfirm) {
         switch (key) {
-        case EntryKey::Next:
         case EntryKey::Forget:
+            // The only key that forgets, and deliberately not `Next`: the
+            // fixed key order puts `Next` between `Previous` and `Leave`, so
+            // confirming there would seat the destructive key between the two
+            // that undo it. `Forget` is the key that asked the question one
+            // screen back and it sits alone in its own row.
             begin_forget();
             return;
         case EntryKey::Previous:  // Keep
@@ -585,8 +618,15 @@ const char* instruction_of(EntryField field, l10n::Locale locale)
 StringId forget_line(core::MeshForgetOutcome outcome)
 {
     switch (outcome) {
-    case core::MeshForgetOutcome::Forgotten:
-    case core::MeshForgetOutcome::Unpinned:  return StringId::ProvisionNodeForgotten;
+    case core::MeshForgetOutcome::Forgotten:  return StringId::ProvisionNodeForgotten;
+    case core::MeshForgetOutcome::Unpinned:
+        // Not `Forgotten`: `core/include/attadipa/core/provisioning.h:43` --
+        // "    Unpinned,    // No stale bond was recorded, so the bond was kept and the"
+        // The watch's choice of node is gone and the pairing behind it is not,
+        // so a sentence that says "forgotten" claims something that did not
+        // happen. The verdict stays the same four-way shape -- the passkey is
+        // still the next thing to set -- and only the sentence differs.
+        return StringId::ProvisionNodeUnpinned;
     case core::MeshForgetOutcome::PinOnFlash: return StringId::ProvisionNodeForgottenRam;
     case core::MeshForgetOutcome::Nothing:    return StringId::ProvisionNodeNothing;
     case core::MeshForgetOutcome::ReplayInhibited:
@@ -695,7 +735,16 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
     // round. ISO in English and dotted in Russian, because a mixed audience
     // reading `31.01` as a month is exactly the mistake this screen exists to
     // prevent.
-    if (task_ == EntryTask::LocalTime) {
+    // Under `All` the walk carries on past the clock into the node and the
+    // passkey, where a date is noise at best and a claim at worst, so the
+    // draft stops at the receipt the save produced rather than at the task.
+    // For the two narrow tasks this is exactly what the task test was.
+    const bool on_clock =
+        task_ != EntryTask::NodePasskey && field_ != EntryField::Node &&
+        field_ != EntryField::ForgetConfirm && field_ != EntryField::Passkey &&
+        !(field_ == EntryField::Receipt &&
+          receipt_of_ != EntryField::TimeReview);
+    if (on_clock) {
         const bool iso = locale == l10n::Locale::En;
         written = iso
             ? std::snprintf(out.draft, sizeof out.draft,
@@ -786,11 +835,13 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
         break;
     case EntryField::ForgetConfirm:
         out.previous = l10n::tr(StringId::ProvisionKeyKeep, locale);
-        out.next     = l10n::tr(StringId::ProvisionKeyForget, locale);
-        out.forget   = out.next;
-        // `Leave` is Back here, not out: the key beside it is the destructive
-        // one, and a screen where the two neighbours do opposite kinds of
-        // thing is a screen that loses a node to a mis-tap.
+        // `Next` is left unlabelled on purpose, which is what hides it: it
+        // sits between `Previous` and `Leave` in the fixed key order, and a
+        // screen where a key that destroys has a key that keeps on either side
+        // is a screen that loses a node to a mis-tap. So the row that answers
+        // is Keep and Back, and the one key that forgets is `Forget` -- the
+        // same key that asked the question, alone in the row above.
+        out.forget   = l10n::tr(StringId::ProvisionKeyForget, locale);
         out.leave    = back;
         break;
     case EntryField::Passkey:
@@ -806,6 +857,10 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
             out.next = l10n::tr(StringId::ProvisionKeyRetry, locale);
             if (receipt_of_ != EntryField::Exit) { out.previous = back; }
         } else if (leads_to_passkey(verdict_)) {
+            out.next = next;
+        } else if (task_ == EntryTask::All &&
+                   receipt_of_ == EntryField::TimeReview) {
+            // Not Done: under `All` this receipt is followed by the node.
             out.next = next;
         } else {
             out.next = l10n::tr(StringId::ProvisionKeyDone, locale);

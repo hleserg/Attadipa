@@ -44,6 +44,18 @@ namespace attadipa::apps {
 enum class EntryTask : std::uint8_t {
     LocalTime,   // Day..Offset, a review, one `set_wall_clock`.
     NodePasskey, // The node, optionally forgetting it, then its passkey.
+    // Both halves in one walk: the clock, then its receipt, then the node and
+    // the passkey. This is the shape the single flow had before this file was
+    // split in two, and it is here because a board has no way to choose
+    // between the two narrow tasks -- with only `LocalTime` wired, a product
+    // image cannot reach `set_mesh_passkey` or `forget_mesh_node` at all, and
+    // a watch off the shelf can never be given its node.
+    //
+    // Deliberately a placeholder. The chooser that makes the narrow tasks
+    // reachable on their own is the entry screen's design work (#469); the
+    // caller that gets one asks for `LocalTime` or `NodePasskey` and this
+    // enumerator goes.
+    All,
 };
 
 enum class EntryField : std::uint8_t {

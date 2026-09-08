@@ -927,18 +927,25 @@ void long_press(lv_event_t *) {
       seed_time.timezone_valid) {
     seed.valid = true;
     seed.utc = seed_time.utc.value;
-    seed.offset_minutes = static_cast<std::int16_t>(
-        (seed_time.local.value.unix_seconds - seed_time.utc.value.unix_seconds) /
-        60);
+    // The service's own number, not `local - utc`: reaching through
+    // `.unix_seconds` to subtract two `WallTime`s is the shape
+    // `core/include/attadipa/core/clock.h` removes `operator-` to prevent, and
+    // it only happens to be exact here because `local` is `utc` plus this very
+    // offset. Give `local` a second correction term one day and that
+    // arithmetic seeds a wrong draft with `seeded = true` beside it.
+    seed.offset_minutes = seed_time.timezone_offset_minutes;
   }
   // The page first: it clears the clock face, and `state.entry` with it, so
   // the emplace below has to follow rather than precede it.
   show_page(Page::Entry);
-  // A long press on the clock is a question about the clock, so that is the
-  // task it opens. `NodePasskey` is unreachable from this board today: nothing
-  // here chooses between the two, and the chooser is the entry screen's own
-  // design work rather than part of this change (#469).
-  state.entry.emplace(provisioner, attadipa::apps::EntryTask::LocalTime, seed);
+  // `All`, and not `LocalTime`, because nothing on this board chooses between
+  // the two narrow tasks yet. With `LocalTime` alone a product image can never
+  // reach `set_mesh_passkey` or `forget_mesh_node` -- the watch would have no
+  // way to be told its node, `meshcore_ble.cpp` would never start scanning,
+  // and #411's recovery would lose its only gesture. `All` is the single walk
+  // this flow had before the model was split, and it goes when the entry
+  // screen gets its chooser (#469).
+  state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);
   state.provision_face.build(
       lv_screen_active(),
       {kWidth, kHeight, attadipa::ui::Theme::Night,

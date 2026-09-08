@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <limits>
 #include <cstring>
 
 #include "attadipa/apps/provisioning.h"
@@ -608,10 +609,116 @@ void test_a_seed_that_does_not_survive_its_offset_is_dropped()
         CHECK(entry.draft().year == 2026);
     }
     {
+        // The two ends of the type. `valid` is the board's claim, so a seed
+        // this far out is a thing the constructor must survive, not a thing it
+        // may assume away: applying the offset first would be signed overflow
+        // -- undefined, and undefined before the civil-range check that would
+        // have rejected the value could run. Both directions, because the
+        // guard is one-sided in each.
+        for (const std::int16_t offset : {std::int16_t{840}, std::int16_t{-840}}) {
+            for (const std::int64_t instant :
+                 {std::numeric_limits<std::int64_t>::max(),
+                  std::numeric_limits<std::int64_t>::min()}) {
+                EntrySeed seed;
+                seed.valid = true;
+                seed.utc.unix_seconds = instant;
+                seed.offset_minutes = offset;
+                FakeBoard board;
+                ProvisioningEntry entry(board, EntryTask::LocalTime, seed);
+                CHECK(!entry.text(Locale::En).seeded);
+                CHECK(entry.draft().year == 2026 && entry.draft().month == 1 &&
+                      entry.draft().day == 1);
+                CHECK(entry.draft_offset_minutes() == 0);
+            }
+        }
+    }
+    {
         FakeBoard board;
         ProvisioningEntry entry(board, EntryTask::LocalTime, EntrySeed{});
         CHECK(!entry.text(Locale::En).seeded);
     }
+}
+
+// --- the walk a board opens -----------------------------------------------
+
+// `EntryTask::All` is what `waveshare_board.cpp` emplaces, and it is the only
+// thing on a product image that can reach `set_mesh_passkey` or
+// `forget_mesh_node`: nothing there chooses between the two narrow tasks. Wire
+// the board to `LocalTime` alone and a watch off the shelf can never be told
+// its node, so this test is the one that says the firmware is still reachable.
+void test_the_board_walk_reaches_the_node_and_the_passkey()
+{
+    FakeBoard board;
+    board.pinned = true;
+    ProvisioningEntry entry(board, EntryTask::All);
+    CHECK(entry.field() == EntryField::Day);
+
+    // The clock half, unchanged: six steps, a review, one write.
+    for (int i = 0; i < 6; ++i) { entry.press(EntryKey::Next); }
+    CHECK(entry.field() == EntryField::TimeReview);
+    entry.press(EntryKey::Next);
+    CHECK(board.clocks == 1);
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(entry.verdict() == EntryVerdict::TimeSaved);
+
+    // ... and the key on that receipt goes on rather than out, because there
+    // is more of this walk left. `Done` would be a lie about the screen.
+    CHECK(eq(entry.text(Locale::En).next, "Next"));
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Node);
+    CHECK(!entry.finished());
+    // The node is read on the way in, not at construction: the clock half has
+    // no business reading the mesh. A screen that offered Forget over a blank
+    // node is what this check is here for.
+    CHECK(eq(entry.text(Locale::En).node, "5c62d9bc"));
+    CHECK(eq(entry.text(Locale::En).forget, "Forget"));
+
+    // The node half, reached with no chooser and no simulator flag.
+    entry.press(EntryKey::Forget);
+    CHECK(entry.field() == EntryField::ForgetConfirm);
+    entry.press(EntryKey::Forget);
+    board.forget_worker();
+    CHECK(entry.poll());
+    CHECK(entry.verdict() == EntryVerdict::NodeForgotten);
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Passkey);
+    step_passkey(entry, "135790");
+    entry.press(EntryKey::Next);
+    CHECK(board.passkeys == 1 && board.passkey == 135790);
+
+    // Both halves ran once each, and the clock was not written a second time.
+    CHECK(board.clocks == 1 && board.forgets == 1);
+}
+
+// A watch pinned to no node has nothing to show it in, so the walk goes where
+// the node task itself goes from there: the passkey, and not a blank field
+// with a Forget key over it.
+void test_the_board_walk_skips_a_node_that_is_not_there()
+{
+    FakeBoard board;
+    board.pinned = false;
+    ProvisioningEntry entry(board, EntryTask::All);
+    for (int i = 0; i < 7; ++i) { entry.press(EntryKey::Next); }
+    CHECK(entry.field() == EntryField::Receipt);
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Passkey);
+    CHECK(eq(entry.text(Locale::En).node, ""));
+}
+
+// The clock's own draft is the clock's. Carried past the receipt it would sit
+// under the node and the passkey asserting a date nobody is editing there.
+void test_the_clock_draft_stops_where_the_clock_does()
+{
+    FakeBoard board;
+    board.pinned = true;
+    ProvisioningEntry entry(board, EntryTask::All);
+    for (int i = 0; i < 7; ++i) { entry.press(EntryKey::Next); }
+    CHECK(entry.field() == EntryField::Receipt);
+    CHECK(!eq(entry.text(Locale::En).draft, ""));
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Node);
+    CHECK(eq(entry.text(Locale::En).draft, ""));
+    CHECK(eq(entry.text(Locale::En).utc, ""));
 }
 
 // --- the node -------------------------------------------------------------
@@ -641,9 +748,19 @@ void test_the_node_task_never_writes_the_clock()
     CHECK(entry.field() == EntryField::Node && board.forgets == 0);
     CHECK(!entry.finished());
 
-    // And then the forget, which finishes on the radio's task.
+    // `Next` is the key between the two that undo, so it does not confirm and
+    // is not even drawn. Pressing it on the confirmation asks the board
+    // nothing and leaves the screen where it was.
     entry.press(EntryKey::Forget);
+    CHECK(entry.field() == EntryField::ForgetConfirm);
+    CHECK(eq(entry.text(Locale::En).next, ""));
     entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::ForgetConfirm && board.forgets == 0);
+
+    // And then the forget, which finishes on the radio's task. The key that
+    // does it is the one that asked the question.
+    CHECK(eq(entry.text(Locale::En).forget, "Forget"));
+    entry.press(EntryKey::Forget);
     CHECK(board.forgets == 1);
     CHECK(entry.verdict() == EntryVerdict::ForgetPending);
     CHECK(entry.waiting() && entry.field() == EntryField::ForgetConfirm);
@@ -715,9 +832,12 @@ void test_every_forget_ending_gets_its_own_sentence()
         {attadipa::firmware::ForgetNodeOutcome::Forgotten,
          MeshForgetOutcome::Forgotten, EntryVerdict::NodeForgotten,
          "forgotten; set its new passkey"},
+        // The bond was kept: only the pin went. Same verdict as a complete
+        // forget -- a passkey is still the next thing to set -- and a
+        // different sentence, because the pairing is still there.
         {attadipa::firmware::ForgetNodeOutcome::Unpinned,
          MeshForgetOutcome::Unpinned, EntryVerdict::NodeForgotten,
-         "forgotten; set its new passkey"},
+         "node dropped; the pairing stayed, set its new passkey"},
         {attadipa::firmware::ForgetNodeOutcome::PinOnFlash,
          MeshForgetOutcome::PinOnFlash, EntryVerdict::NodePartlyForgotten,
          "forgot till reboot; a restart brings it back"},
@@ -736,7 +856,7 @@ void test_every_forget_ending_gets_its_own_sentence()
         board.pinned = true;
         ProvisioningEntry entry(board, EntryTask::NodePasskey);
         entry.press(EntryKey::Forget);
-        entry.press(EntryKey::Next);
+        entry.press(EntryKey::Forget);
         CHECK(entry.waiting());
         board.forget_op.complete(board.forget_queued, one.worker);
         CHECK(entry.poll());
@@ -766,7 +886,7 @@ void test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one()
     board.pinned = true;
     ProvisioningEntry entry(board, EntryTask::NodePasskey);
     entry.press(EntryKey::Forget);
-    entry.press(EntryKey::Next);
+    entry.press(EntryKey::Forget);
     board.forget_op.complete(board.forget_queued,
                              attadipa::firmware::ForgetNodeOutcome::PinOnFlash);
     CHECK(entry.poll());
@@ -951,6 +1071,9 @@ int main()
     test_the_offset_steps_by_quarter_hours_and_stops_at_the_ends();
     test_the_first_step_off_the_grid_lands_on_it();
     test_a_seed_that_does_not_survive_its_offset_is_dropped();
+    test_the_board_walk_reaches_the_node_and_the_passkey();
+    test_the_board_walk_skips_a_node_that_is_not_there();
+    test_the_clock_draft_stops_where_the_clock_does();
     test_the_node_task_never_writes_the_clock();
     test_an_unpinned_watch_starts_at_the_passkey();
     test_every_forget_ending_gets_its_own_sentence();
