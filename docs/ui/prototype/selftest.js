@@ -32,6 +32,13 @@
       content.scrollHeight <= content.clientHeight + 1,
       `${context}: vertical overflow ${content.scrollHeight}/${content.clientHeight}`,
     );
+    const hint = screen.querySelector(".empty .sub");
+    if (hint)
+      assert(
+        getComputedStyle(hint).backgroundColor ===
+          getComputedStyle(screen).backgroundColor,
+        `${context}: the state instruction has its token reading surface`,
+      );
     for (const button of screen.querySelectorAll("button:not(:disabled)")) {
       const rect = button.getBoundingClientRect();
       assert(
@@ -423,29 +430,29 @@
     "Motion respects the system preference",
   );
   if (particles.length) {
-    document.activeElement?.blur();
-    const before = getComputedStyle(particles[0]).transform;
+    click("clock", "nav");
+    const clockScreen = document.querySelector("#screen-clock");
+    const particle = clockScreen.querySelector(".fireflies i");
+    assert(
+      clockScreen.contains(document.activeElement),
+      "Navigation retains keyboard focus without needing a click outside",
+    );
+    const before = getComputedStyle(particle).transform;
     await new Promise((resolve) => setTimeout(resolve, 350));
     assert(
-      getComputedStyle(particles[0]).transform !== before,
-      "An enabled firefly actually moves",
+      getComputedStyle(particle).animationPlayState === "running" &&
+        getComputedStyle(particle).transform !== before,
+      "Fireflies resume after navigation while focus stays on the screen",
     );
-    const clockScreen = document.querySelector("#screen-clock");
-    clockScreen.querySelector("button:not(:disabled)").focus();
-    assert(
-      getComputedStyle(particles[0]).animationPlayState === "paused",
-      "Interaction pauses decorative motion",
-    );
-    document.activeElement.blur();
     clockScreen.dataset.visible = "false";
     assert(
-      getComputedStyle(particles[0]).animationPlayState === "paused",
+      getComputedStyle(particle).animationPlayState === "paused",
       "Offscreen decorative motion is paused",
     );
     delete clockScreen.dataset.visible;
     document.body.classList.add("motion-paused");
     assert(
-      getComputedStyle(particles[0]).animationPlayState === "paused",
+      getComputedStyle(particle).animationPlayState === "paused",
       "Hidden-page motion policy pauses animations",
     );
     document.body.classList.remove("motion-paused");

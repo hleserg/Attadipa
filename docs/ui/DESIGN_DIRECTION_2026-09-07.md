@@ -134,7 +134,7 @@ clock raster and the canonical reference sheets are unchanged.
 The browser animates three small amber lights in the outer gutters with a
 12-second CSS transform/opacity cycle. Their flight paths stay outside the
 content inset; they neither carry status nor follow a compass target. Movement
-pauses during screen interaction, when a card is offscreen, and when the page is
+pauses while a screen is pressed, when a card is offscreen, and when the page is
 hidden. It is absent on failure screens. The review checkbox removes it, and
 `prefers-reduced-motion: reduce` removes it regardless of the checkbox. Day
 lights are softer. The image itself never moves or blurs.
@@ -229,13 +229,16 @@ font, decodable raster files, localised Mesh details, both success receipts,
 distinct failure art and moving/stopped fireflies. It is evidence about the
 prototype, not the production caller.
 
-V2 passed 1,487 assertions with motion available and 1,483 with system reduced
+V2 passed 1,567 assertions with motion available and 1,563 with system reduced
 motion (the four movement-only assertions are skipped). A separate page reload
 restored a valid note alongside a corrupt record and kept the latter exportable;
 temporary browser test records were removed afterward. A deliberately missing
 font produced the expected failed assertion instead of accepting fallback type.
 Failure and passkey-success screens were also opened on both geometries, and
 two animated frames were compared for the restrained edge-light movement.
+The check also covers instruction reading surfaces in every empty/pending state
+and moving fireflies after navigation with keyboard focus retained. A real
+pointer down/up check verified pause while held and resumption after release.
 
 With Chromium and `agent-browser` available:
 
