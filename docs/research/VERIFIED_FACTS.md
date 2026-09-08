@@ -2612,9 +2612,11 @@ ones that heading states.
 
 ### The T-Watch's USB input carries 779 mW, and an unknown share of that is charge current
 
-- **Claim:** the T-Watch S3 Plus (`DC:B4:D9:18:49:40`) running this
-  repository's own skeleton firmware, **panel up and the backlight undimmed**,
-  idle and untouched, presents a **mean 778.9 mW** at its micro-USB input — a mean
+- **Claim:** the T-Watch S3 Plus (`DC:B4:D9:18:49:40`), untouched and running
+  this repository's own bring-up firmware — **panel up and the backlight
+  undimmed**, a **GNSS receiver powered and searching**, a 1 s heartbeat, and
+  the LoRa rail down; not a product build, and not as idle as "skeleton"
+  suggested — presents a **mean 778.9 mW** at its micro-USB input — a mean
   158.0 mA at a mean 4.930 V. The distribution is **bimodal, not flat**: a floor
   of **754.5 mW across 81.4 % of samples**, and bursts averaging **886.2 mW**
   across the other 18.6 %, median burst length **300 ms**, onsets clustered at
@@ -2622,8 +2624,9 @@ ones that heading states.
   949.1 mW, and the largest single sample is 986.9 mW. **The figure to quote for
   anything integrated over time is the mean, 779 mW**; the 754 mW floor is what
   a spot reading between bursts returns and it understates consumption by 3.2 %.
-  Over the 45 minutes the mean of the first five and of the last five differ by
-  **+0.5 mW**, so nothing was tapering. **What produces the bursts is
+  Over the 45 minutes the mean of the **first five minutes** and of the **last
+  five minutes** differ by **+0.5 mW** — one window at each end, not five
+  windows — so nothing was tapering. **What produces the bursts is
   `UNKNOWN`** — nothing instrumented the firmware during the run, and a
   ~1.15 s cadence is consistent with several things this build does.
 - **This is input power, and its composition is `UNKNOWN`.** The meter sits
@@ -2637,6 +2640,30 @@ ones that heading states.
   battery life, a per-rail split, or a sleep figure from this.** The
   discriminator is cheap and has not been run: power the watch off with a long
   press while leaving it inline, and whatever current remains is charge current.
+- **A powered GNSS receiver is inside this number, and its share is
+  `UNKNOWN`.** The boot log's own byte says so. `LDO enable 0x17 -> 0x17` prints
+  the register **as read, before the write** —
+  `firmware/main/board_power.cpp:578` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
+  and `0x17` is `0b10111`: bit 4 is BLDO1
+  (`firmware/main/board_power.cpp:539` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
+  On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
+  2026-09-05 and recorded above at `docs/research/VERIFIED_FACTS.md:720`, and
+  this image raises that rail on purpose
+  (`firmware/main/twatch_board.cpp:875` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
+  So for the whole 45 minutes a receiver was powered, indoors, with no sky —
+  a receiver's most expensive state, because it never stops searching — and
+  **nothing here measures what it cost.** The rail is named, not gated: this
+  entry does not claim that clearing BLDO1 would turn the module off:
+  `docs/research/VERIFIED_FACTS.md:734` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
+  says why nothing here could show that.
+- **The LoRa radio rail was down for the run.** Bit 3 of that same byte is
+  ALDO4, which on this board is the radio
+  (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
+  and it is clear. This says nothing about BLE, which lives in the SoC and has
+  no rail of its own. It therefore does **not** answer the Waveshare entry's
+  open question above
+  (`docs/research/VERIFIED_FACTS.md:2595` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  which is about BLE on a different board; that one stays open.
 - **Source:** a FNIRSI **FNB-58** — the same meter as S16 above, but **not**
   that source and **not**, as far as anything here establishes, the same
   decoder. S16 records its own decode as
@@ -2679,9 +2706,11 @@ ones that heading states.
   unconditionally, so it reports either state
   (`firmware/main/twatch_board.cpp:790` — "T-Watch S3 Plus bring-up: panel %s, touch %s (probe %u of %u); SPI "),
   and the backlight is switched on inside the block that runs when the panel
-  came up (`:729` — "  if (panel_err == ESP_OK) {", `:779` — "    err = backlight(true);").
+  came up (`firmware/main/twatch_board.cpp:729` — "  if (panel_err == ESP_OK) {",
+  `firmware/main/twatch_board.cpp:779` — "    err = backlight(true);").
   **Nothing dims it.** The backlight is a plain GPIO with no PWM anywhere in
-  this build (`:69` — "constexpr gpio_num_t kBacklight = GPIO_NUM_45;"), fed by
+  this build (`firmware/main/twatch_board.cpp:69` —
+  "constexpr gpio_num_t kBacklight = GPIO_NUM_45;"), fed by
   a rail the firmware writes to a fixed 3.3 V
   (`firmware/main/board_power.cpp:576` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
   So "screen on" here means undimmed, unlike the Waveshare figure above, which
@@ -2713,7 +2742,8 @@ ones that heading states.
   `attadipa-claim-writer-local-hle` is a writer-claim name, and this
   repository's build has refused to put one in `PROJECT_VER` since 2026-08-28
   (`firmware/CMakeLists.txt:20` — "  COMMAND git describe --always --tags --dirty --exclude ",
-  added for the reason at `:16` — "# name onto another agent's board and nearly caused a needless reflash, and it").
+  added for the reason at `firmware/CMakeLists.txt:16` —
+  "# name onto another agent's board and nearly caused a needless reflash, and it").
   So the one field that could name a commit names something the current build
   cannot emit, and it is exactly 31 characters — the most a 32-byte `version`
   holds with its NUL — so it may also be truncated. The ELF SHA-256 identifies
@@ -2733,16 +2763,27 @@ ones that heading states.
   up and reasoned from that; the boot capture above shows it was up, so **a
   display bring-up on this board is not measurable as a difference against this
   number** — that difference is ≈0. What the number bounds is the opposite
-  thing: an idle T-Watch with its panel lit and nothing dimming it.
+  thing: an idle T-Watch with its panel lit, nothing dimming it, **and a GNSS
+  receiver powered and searching indoors**. That last clause is not decoration:
+  budget a screen-on T-Watch from this figure and the budget is over by a whole
+  module whose draw nobody here measured.
   It does not compete with the Waveshare's 413 mW either, and the reason is no
-  longer the display. Three differences remain and any one of them dominates:
+  longer the display. Four differences remain and any one of them dominates:
   that board is screen-on at its **measured 5 % visible floor** while this one
   has no dimming path at all; that board's **cell was disconnected** while this
-  one's cell state was never established; and the two panels are different
+  one's cell state was never established; **this one carried a powered
+  MIA-M10Q and that one has no GNSS to power**
+  (`docs/research/HARDWARE_MATRIX.md:29` — "| GNSS | yes — **two possible modules** | **absent** |"); and the two panels are different
   technologies at different sizes. 158 mA for an undimmed 240×240 IPS with an
-  ESP32-S3 at 160 MHz, PSRAM up and a GNSS UART open is unremarkable, so the
-  charge current this entry cannot rule out no longer has an anomaly to explain.
-  It stays open as a composition question, not as the leading suspect.
+  ESP32-S3 at 160 MHz, PSRAM up and a searching MIA-M10Q on BLDO1 is
+  unremarkable — it was a *UART* this entry used to price, and a UART is not
+  what draws — so the charge current this entry cannot rule out no longer has
+  an anomaly to explain. It stays open as a composition question, not as the
+  leading suspect. **What the burst structure now has a named candidate for is
+  the receiver**: ~1.15 s onsets with a 300 ms median are the shape of a 1 Hz
+  navigation epoch and the parse behind it. That is a candidate and not a
+  finding — nothing instrumented the firmware during the run, so **the cause
+  stays `UNKNOWN`** and only the list of suspects got shorter.
   The vendor's published sleep figures above — light sleep 2.38 mA, deep sleep
   460–530 µA — are three orders of magnitude below this and describe states this
   run never entered, so nothing here contradicts them.
