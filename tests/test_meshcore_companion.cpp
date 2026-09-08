@@ -156,7 +156,7 @@ void test_a_queued_backlog_is_drained_to_the_end()
     // A BURST OF PUSHES WHILE THAT REQUEST IS OUTSTANDING COSTS NOTHING EXTRA.
     // The node is already going to hand over what it holds, so a second ask
     // would only fill the ring with commands whose answers are on their way.
-    for (int i = 0; i < 5; ++i) {
+    for (std::uint64_t i = 0; i < 5; ++i) {
         CHECK(client.receive(waiting, sizeof(waiting), at(11 + i)));
     }
     CHECK(!client.next_tx(frame));
@@ -272,6 +272,61 @@ void test_an_unreadable_message_does_not_spin_the_drain()
 
     // And the way back in is the next push, not a retry.
     CHECK(client.receive(waiting, sizeof(waiting), at(12)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+}
+
+// THE ONE CLEARING PATH THAT DOES NOT NEED THE NODE'S ANSWER. The others all
+// run in the dispatcher on a frame that arrived and was accepted, so a node
+// that takes CMD_SYNC_NEXT_MESSAGE and answers nothing at all used to latch
+// the coalescing on with no request outstanding -- and every later push was
+// then swallowed, for the life of the session, by the flag that exists to make
+// a burst of them cheap.
+void test_a_drain_nobody_answers_expires()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshCoreFrame frame{};
+
+    // The request goes out at 100 ms and this node never answers it.
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(100)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    // ONE MILLISECOND SHORT OF THE BOUND, THE COALESCING STILL HOLDS -- and it
+    // is the millisecond that matters. A tick a round number of seconds past
+    // the deadline passes against a bound that is off by one second in either
+    // direction, which is to say against a bound that was never checked.
+    // 15099 is 100 + 15000 - 1.
+    client.tick(at(15099));
+    CHECK(client.receive(waiting, sizeof(waiting), at(15099)));
+    CHECK(!client.next_tx(frame));
+
+    // At the bound it does not, and the next push starts a drain again.
+    client.tick(at(15100));
+    CHECK(client.receive(waiting, sizeof(waiting), at(15100)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+}
+
+// A notification too long to copy is dropped before receive() ever sees it, so
+// when it was the drain's answer nothing downstream can end the drain. Waiting
+// out the deadline above would work and would cost the backlog fifteen seconds
+// for a loss the client already knows about at the moment it happens.
+void test_a_dropped_notification_ends_the_drain()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshCoreFrame frame{};
+
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(100)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    client.drop_oversize_frame();
+    CHECK(client.receive(waiting, sizeof(waiting), at(101)));
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
 }
@@ -1507,6 +1562,8 @@ int main()
     test_a_queued_backlog_is_drained_to_the_end();
     test_a_reconnect_starts_a_new_drain();
     test_an_unreadable_message_does_not_spin_the_drain();
+    test_a_drain_nobody_answers_expires();
+    test_a_dropped_notification_ends_the_drain();
     test_self_info_carries_the_node_identity();
     test_the_pinned_node_is_the_one_the_handshake_continues_with();
     test_another_node_answers_and_the_handshake_stops_there();

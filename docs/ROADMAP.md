@@ -89,7 +89,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > **And the link carries one coordinate, not two.** The readout needs a place
 > to walk from and a place to walk to. What arrives over BLE is the connected
 > node's own position, out of `RESP_CODE_SELF_INFO`:
-> `link/src/meshcore_companion.cpp:589` — "        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every"
+> `link/src/meshcore_companion.cpp:603` — "        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every"
 > Nothing in **this repository** parses a remote peer's: a contact record is a
 > public key and a name and nothing else —
 > `core/include/attadipa/core/mesh_service.h:27` — "struct MeshPeer {".
@@ -168,7 +168,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 >
 > **And whatever answers it runs into one more rule.** Every position the MeshCore channel
 > produces states no fix type and therefore classifies `NoFix`:
-> `link/src/meshcore_companion.cpp:607` — "path in this repository can reach `PositionValidity::Valid` from it."
+> `link/src/meshcore_companion.cpp:621` — "path in this repository can reach `PositionValidity::Valid` from it."
 > And `NoFix` is exactly what an own position may not be —
 > `apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&" — on
 > purpose. **ADR-0019 answered that gate by moving `own_ok` rather than by

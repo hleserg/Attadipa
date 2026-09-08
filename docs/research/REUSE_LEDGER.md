@@ -2855,7 +2855,7 @@ a source, because it is not one.
 **Reason.** This is the rare case where the reuse question answers itself: the
 bytes arrive inside `RESP_CODE_CONTACT`, the session already validates all 148
 of them —
-`link/src/meshcore_companion.cpp:630` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+`link/src/meshcore_companion.cpp:644` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 and reads two fields out of it. Adding a dependency to obtain the other two
 would import a client's failure model to avoid writing an offset. The scaling is
 integer: the wire is `e6` and

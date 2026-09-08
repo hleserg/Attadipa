@@ -135,6 +135,7 @@ void MeshCoreCompanion::reset_session()
     self_info_seen_ = false;
     contacts_complete_ = false;
     draining_ = false;
+    draining_since_ = {};
     // THE COORDINATE IS SESSION STATE, like the identity above and for the same
     // reason. A reconnect re-reads RESP_CODE_SELF_INFO, so carrying the last
     // session's coordinate would let a node that has gone away keep answering.
@@ -228,6 +229,18 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     if (awaiting_custom_vars_ &&
         core::elapsed(custom_vars_since_, now) >= kMaxAckWait) {
         awaiting_custom_vars_ = false;
+    }
+    // AND THE DRAIN GETS ONE, because it is the only way the flag comes down
+    // without the node's cooperation. The five other clearing paths are all in
+    // the dispatcher and all need an answer that arrived and was accepted, so
+    // an answer the node never sent -- or one `drop_oversize_frame()` threw
+    // away before receive() -- used to latch the coalescing on with nothing
+    // outstanding, and `kPushMessageWaiting` then swallowed every later push
+    // for the session. Fifteen seconds is the same budget a send gets, and
+    // giving up is cheap in the case it is wrong about: a merely slow node
+    // answers the duplicate request as it would any other.
+    if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
+        draining_ = false;
     }
     update_availability();
 }
@@ -343,7 +356,7 @@ MeshCoreCompanion::find_peer_prefix(const std::uint8_t* prefix) const
 // `draining_` is what keeps a burst of MSG_WAITING pushes costing one request
 // instead of one each -- while a request is outstanding the node is already
 // going to hand over everything it has.
-bool MeshCoreCompanion::request_next_message()
+bool MeshCoreCompanion::request_next_message(core::MonotonicTime now)
 {
     const std::uint8_t sync[] = {kSyncNextMessage};
     if (!enqueue(sync, sizeof(sync))) {
@@ -354,6 +367,7 @@ bool MeshCoreCompanion::request_next_message()
         return false;
     }
     draining_ = true;
+    draining_since_ = now;
     return true;
 }
 
@@ -362,10 +376,10 @@ bool MeshCoreCompanion::request_next_message()
 // would otherwise trade frames with it for the life of the session; the next
 // MSG_WAITING push is the cheaper way back in, and `malformed_frames_` has
 // already counted what happened.
-void MeshCoreCompanion::drain_after(bool accepted)
+void MeshCoreCompanion::drain_after(bool accepted, core::MonotonicTime now)
 {
     if (accepted) {
-        (void)request_next_message();
+        (void)request_next_message(now);
     } else {
         draining_ = false;
     }
@@ -633,7 +647,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
         contacts_complete_ = true;
-        if (!request_next_message()) {
+        if (!request_next_message(now)) {
             ++malformed_frames_;
             return false;
         }
@@ -705,7 +719,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         break;
     case kPushMessageWaiting:
-        if (!draining_ && !request_next_message()) {
+        if (!draining_ && !request_next_message(now)) {
             ++malformed_frames_;
             return false;
         }
@@ -735,13 +749,13 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         status_.delivery = core::MeshDelivery::Failed;
         break;
     case kResponseContactMessage:
-        drain_after(accept_message(data, size, false));
+        drain_after(accept_message(data, size, false), now);
         break;
     case kResponseContactMessageV3:
-        drain_after(accept_message(data, size, true));
+        drain_after(accept_message(data, size, true), now);
         break;
     case kResponseChannelMessageV3:
-        drain_after(accept_channel_message_v3(data, size));
+        drain_after(accept_channel_message_v3(data, size), now);
         break;
     case kResponseNoMoreMessages:
         if (size != 1) { ++malformed_frames_; return false; }

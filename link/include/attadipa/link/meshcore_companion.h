@@ -63,7 +63,13 @@ public:
     // of through receive(). Dropping and counting -- rather than tearing the
     // link down -- is what keeps one malformed frame from a peer we do not
     // trust (MESHCORE_PARSER_BOUNDS.md §5) out of the recovery path.
-    void drop_oversize_frame() { ++malformed_frames_; }
+    // A dropped notification can be the answer to an outstanding drain
+    // request, and nothing downstream will ever see it -- this path bypasses
+    // receive() by construction. So the drop is where that drain has to end:
+    // otherwise the node's backlog waits out `draining_since_` below for no
+    // reason. Clearing it when the dropped frame was something else costs one
+    // duplicate CMD_SYNC_NEXT_MESSAGE, which the node answers like any other.
+    void drop_oversize_frame() { ++malformed_frames_; draining_ = false; }
 
     // WHICH NODE THIS IS, AND WHETHER IT IS THE RIGHT ONE.
     //
@@ -212,8 +218,8 @@ private:
     void accept_custom_vars(const std::uint8_t* data, std::size_t size);
     bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
-    bool request_next_message();
-    void drain_after(bool accepted);
+    bool request_next_message(core::MonotonicTime now);
+    void drain_after(bool accepted, core::MonotonicTime now);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
 
     // Liveness zero: disabled. BLE reports connection and disconnection, so a
@@ -246,7 +252,18 @@ private:
     // with commands whose answers are on their way. Cleared by
     // `reset_session()` with the rest of the session, which is what starts
     // a fresh drain after a reconnect rather than resuming a dead one.
+    //
+    // `draining_since_` bounds it, and the bound is not tidiness: every other
+    // path that clears this flag runs in the dispatcher, on a frame that
+    // reached it *and* was accepted. An answer the node never sends, one a
+    // full ring refuses, or one dropped before receive() sees it would leave
+    // the flag latched with no request outstanding -- and from then on every
+    // PUSH_CODE_MSG_WAITING is coalesced into a request that is never going to
+    // be answered, so the whole backlog strands for the life of the session.
+    // The timestamp is read only while `draining_` is true, so the stale value
+    // the deadline leaves behind is never consulted.
     bool draining_ = false;
+    core::MonotonicTime draining_since_{};
     core::Position node_position_{};
     core::MonotonicTime node_position_at_{};
     bool has_node_position_ = false;
