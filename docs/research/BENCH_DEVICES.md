@@ -24,7 +24,7 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | **`0xEF 0x4018` — Winbond, 16 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | LilyGO T-Watch S3 Plus; the shipped firmware's own FQBN is `esp32:esp32:twatchs3:Revision=Radio_SX1262` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **Attadipa skeleton**, flashed 2026-09-05; the factory image is backed up and restorable | unchanged; do not write |
+| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **Attadipa skeleton**, built `Sep  5 2026 22:07:42` and written on or after that — the write itself is not recorded, and the stamp is a compile time; the factory image is backed up and restorable | unchanged; do not write |
 
 This table said until 2026-09-08 that the T-Watch was **the only one of the
 three whose flash was still exactly as the factory shipped it**, and that
@@ -37,9 +37,14 @@ Its `factory` partition holds this repository's own firmware. The
 `attadipa`, `version` `attadipa-claim-writer-local-hle`, built `Sep  5 2026
 22:07:42` against `idf_ver` `v5.5.5-dirty`, with `app_elf_sha256`
 `53fdd0d8ebd6898d3583e315503dc8e850ac85257ccff22e81595d6d8a7977f1`. The
-partition table is ESP-IDF's default — `nvs`, `phy_init`, and one 4 MB
-`factory` app — and not the `app0`/`app1`/`spiffs` shape the shipped Arduino
-image used, so the table was overwritten too. Both were read back with
+partition table is **this repository's own** — `nvs`, `phy_init`, and one 4 MB
+`factory` app, offset for offset
+`firmware/partitions.csv:24` — "factory,     app,  factory,  0x10000,   0x400000,",
+selected by `firmware/sdkconfig.defaults:120` — "CONFIG_PARTITION_TABLE_CUSTOM=y".
+It is **not** ESP-IDF's default, which sizes a single `factory` app at 1 MB, and
+not the `app0`/`app1`/`spiffs` shape the shipped Arduino image used, so the
+table was overwritten too. Naming the writer is the stronger fact: it says which
+build put it there rather than only which one did not. Both were read back with
 `esptool read_flash` on 2026-09-08; that command only reads, and nothing was
 written to establish this.
 

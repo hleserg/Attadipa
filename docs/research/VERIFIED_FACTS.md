@@ -2603,8 +2603,8 @@ ones that heading states.
   micro-USB — `docs/research/HARDWARE_MATRIX.md:90` — "| USB | Micro-USB, charge + programming only" — and
   needed an adapter the bench did not have until 2026-09-08. The entry below is
   that measurement, and the two are **not** comparable: this one is screen-on
-  with the cell disconnected, that one is screen-never-brought-up with the cell
-  state unestablished. It is the first number of its kind
+  at the measured 5 % visible floor with the cell disconnected, that one is
+  screen-on with no dimming path and the cell state unestablished. It is the first number of its kind
   here, and the AXP2101 has no current channel on either silicon variant, so
   external instrumentation — or a board shunt, if either board turns out to fit
   one, which is H2's still-open half — is the only way any of the others can be
@@ -2613,8 +2613,8 @@ ones that heading states.
 ### The T-Watch's USB input carries 779 mW, and an unknown share of that is charge current
 
 - **Claim:** the T-Watch S3 Plus (`DC:B4:D9:18:49:40`) running this
-  repository's own skeleton firmware, **the display never brought up**, idle and
-  untouched, presents a **mean 778.9 mW** at its micro-USB input — a mean
+  repository's own skeleton firmware, **panel up and the backlight undimmed**,
+  idle and untouched, presents a **mean 778.9 mW** at its micro-USB input — a mean
   158.0 mA at a mean 4.930 V. The distribution is **bimodal, not flat**: a floor
   of **754.5 mW across 81.4 % of samples**, and bursts averaging **886.2 mW**
   across the other 18.6 %, median burst length **300 ms**, onsets clustered at
@@ -2637,18 +2637,26 @@ ones that heading states.
   battery life, a per-rail split, or a sleep figure from this.** The
   discriminator is cheap and has not been run: power the watch off with a long
   press while leaving it inline, and whatever current remains is charge current.
-- **Source:** a FNIRSI **FNB-58** — the same meter and the same HID decode as
-  S16 above, but **not** that source: S16 is the Waveshare's USB-C input on
-  2026-09-05, and this is the T-Watch's micro-USB input on **2026-09-08**,
+- **Source:** a FNIRSI **FNB-58** — the same meter as S16 above, but **not**
+  that source and **not**, as far as anything here establishes, the same
+  decoder. S16 records its own decode as
+  `baryluk/fnirsi-usb-power-data-logger` at an `UNKNOWN` revision with the
+  working copy not kept; this run used a copy fetched **2026-09-07**, two days
+  after S16, pinned as `~/attadipa-bench/fnirsi_logger.py` sha256
+  `388061aeb580cde0b7306626d87f833dfdbbf1fdf6c17663b49fde557ace250b`
+  (bench-only). Its own upstream revision is `UNKNOWN` for the same reason
+  S16's is, so **whether the two agree is `UNKNOWN` and is not claimed.**
+  S16 is the Waveshare's USB-C input on 2026-09-05, and this is the T-Watch's micro-USB input on **2026-09-08**,
   reached through a USB-C-to-micro-USB adapter the owner fitted that day.
   **242 847 raw samples over 2698.8 s at 89.98 samples/s**, beginning
   **2026-09-08 10:27:28Z**. Nothing shorter than 11.1 ms is visible to this
   instrument, so the 986.9 mW largest sample bounds the peak from **below
   only**.
 - **293 samples — 0.121 % — are decode artefacts and are discarded before every
-  figure above.** They read `V = 0`, or `V` at a power of two divided by a
-  thousand (65.536, 32.768, 8.192, 6.144), or `I ≈ 1.27 A`, none of which a 5 V
-  USB line can present. The filter is `4.0 < V < 5.5` together with
+  figure above.** They read `V = 0`, or `V` at a whole binary count divided
+  by a thousand (65.536 = 2^16, 32.768 = 2^15, 8.192 = 2^13, 6.144 = 3·2^11 —
+  the first three are powers of two and the fourth is not), or `I ≈ 1.27 A`,
+  none of which a 5 V USB line can present. The filter is `4.0 < V < 5.5` together with
   `0 ≤ I < 1.0`, leaving 242 554 samples; applying it to the capture reproduces
   every number in this entry. Left in, they pull the mean to 780.7 mW.
 - **No zero offset was subtracted.** The 2.484 mA measured on 2026-09-05 was not
@@ -2657,16 +2665,84 @@ ones that heading states.
 - **The capture is bench-only and pinned by hash**, for the reason the entry
   above gives: `~/attadipa-bench/twatch_taper_20260908.csv`, sha256
   `0062e49452b5e647c0b236a9260d74362a6c817309da91b45e9124373b9b4dac`.
-- **Checked:** 2026-09-08. **Which firmware was running is established, not
-  inferred** — the gap the Waveshare entry above records against itself. The
-  `factory` partition was read back read-only the same day with no write in
-  between: `project_name` `attadipa`, built `Sep  5 2026 22:07:42`, `app_elf_sha256`
-  `53fdd0d8ebd6898d3583e315503dc8e850ac85257ccff22e81595d6d8a7977f1`
-  ([BENCH_DEVICES](BENCH_DEVICES.md)).
-- **Impact:** this is **not a product figure**. It is a skeleton with no display
-  brought up, so it neither supersedes nor competes with the Waveshare's 413 mW,
-  which is screen-on at minimum brightness on the provisioning screen. What it is
-  good for is a baseline: a display bring-up on this board is now measurable as a
-  difference. The vendor's published sleep figures above — light sleep 2.38 mA,
-  deep sleep 460–530 µA — are three orders of magnitude below this and describe
-  states this run never entered, so nothing here contradicts them.
+- **The panel was up for the run, and this is MEASURED rather than assumed.**
+  The unit was restarted read-only over USB-JTAG at **2026-09-08 16:05Z**, after
+  the capture and with no write to flash in between, and its own boot log says
+  so at `I (16335)`: `T-Watch S3 Plus bring-up: panel up, touch ACK at 0x38
+  (probe 1 of 3); ... panel exercise passed`. Fifteen seconds earlier in the
+  same boot the PMU brings the backlight rail up — `I (625) board-power: AXP2101: LDO enable 0x17 ->
+  0x17 (ALDO3 panel+touch, ALDO2 backlight)` — and the log then runs a full
+  panel exercise: ten display cycles, a full flush, a partial flush, a rotation
+  and two sleep intervals, all passing.
+
+  It could not have been otherwise on this image. The bring-up line is printed
+  unconditionally, so it reports either state
+  (`firmware/main/twatch_board.cpp:790` — "T-Watch S3 Plus bring-up: panel %s, touch %s (probe %u of %u); SPI "),
+  and the backlight is switched on inside the block that runs when the panel
+  came up (`:729` — "  if (panel_err == ESP_OK) {", `:779` — "    err = backlight(true);").
+  **Nothing dims it.** The backlight is a plain GPIO with no PWM anywhere in
+  this build (`:69` — "constexpr gpio_num_t kBacklight = GPIO_NUM_45;"), fed by
+  a rail the firmware writes to a fixed 3.3 V
+  (`firmware/main/board_power.cpp:576` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
+  So "screen on" here means undimmed, unlike the Waveshare figure above, which
+  is at that board's measured 5 % visible floor.
+
+  The same log identifies what ran, which the flash read alone could not: `App
+  version attadipa-claim-writer-local-hle`, `Compile time Sep  5 2026 22:07:42`,
+  `ELF file SHA256 53fdd0d8e...`, matching the `esp_app_desc_t` read out of
+  `factory` field for field. It also shows `CONFIG_ATTADIPA_GNSS_LOCAL` compiled
+  in — `I (16335) gnss: listening on GPIO 41 at 38400 baud, NMEA, receive only`
+  — and a 1 s `alive` heartbeat. Neither is offered as the cause of the bursts;
+  the cause stays `UNKNOWN`, but the run was not as idle as "skeleton" suggests.
+  The capture is bench-only and pinned:
+  `~/attadipa-bench/twatch_bringup_20260908.log`, sha256
+  `85b441d3acdac1b319cf1f5b25898e823ea292077c324d430fa7a5ebeee094d9`.
+  **Caveat this does not clear:** it is a boot *after* the measurement. It
+  establishes what this image does on this unit, not that no one power-cycled it
+  into a different state during the 45 minutes; nothing was watching the port
+  then.
+- **Checked:** 2026-09-08. **Which image was running is established** — the gap
+  the Waveshare entry above records against itself. The `factory` partition was
+  read back read-only that day with no write in between (`project_name`
+  `attadipa`, built `Sep  5 2026 22:07:42`, `app_elf_sha256`
+  `53fdd0d8ebd6898d3583e315503dc8e850ac85257ccff22e81595d6d8a7977f1`,
+  [BENCH_DEVICES](BENCH_DEVICES.md)), and the boot log above reports the same
+  three fields from the running application, which a flash read on its own
+  cannot do.
+- **Which *tree* built that image is `UNKNOWN`, and the version field is why.**
+  `attadipa-claim-writer-local-hle` is a writer-claim name, and this
+  repository's build has refused to put one in `PROJECT_VER` since 2026-08-28
+  (`firmware/CMakeLists.txt:20` — "  COMMAND git describe --always --tags --dirty --exclude ",
+  added for the reason at `:16` — "# name onto another agent's board and nearly caused a needless reflash, and it").
+  So the one field that could name a commit names something the current build
+  cannot emit, and it is exactly 31 characters — the most a 32-byte `version`
+  holds with its NUL — so it may also be truncated. The ELF SHA-256 identifies
+  the binary uniquely; nothing here maps it to a tree. **Do not read the
+  version string as a provenance.**
+- **The 2026-09-06 GNSS session is reconciled, and it is the same
+  configuration.** That run is recorded as `CONFIG_ATTADIPA_GNSS_LOCAL=y` with
+  `_RX=41` (`docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md:10` — "sky, on USB power. The build is `CONFIG_ATTADIPA_GNSS_LOCAL=y` with `_RX=41` and"),
+  and the image in flash announces exactly that: `listening on GPIO 41 at 38400
+  baud`. Its `Sep  5 2026 22:07:42` build stamp falls about four hours before
+  `bd90201`, the commit that enabled the option, which is what building from a
+  working tree and committing afterwards looks like. **The stamp is a compile
+  time and bounds the write from below only**; no record says when the unit was
+  actually written, and none is claimed.
+- **Impact:** this is **not a product figure**, and it is **not** a screen-off
+  baseline. An earlier revision of this entry said the display was never brought
+  up and reasoned from that; the boot capture above shows it was up, so **a
+  display bring-up on this board is not measurable as a difference against this
+  number** — that difference is ≈0. What the number bounds is the opposite
+  thing: an idle T-Watch with its panel lit and nothing dimming it.
+  It does not compete with the Waveshare's 413 mW either, and the reason is no
+  longer the display. Three differences remain and any one of them dominates:
+  that board is screen-on at its **measured 5 % visible floor** while this one
+  has no dimming path at all; that board's **cell was disconnected** while this
+  one's cell state was never established; and the two panels are different
+  technologies at different sizes. 158 mA for an undimmed 240×240 IPS with an
+  ESP32-S3 at 160 MHz, PSRAM up and a GNSS UART open is unremarkable, so the
+  charge current this entry cannot rule out no longer has an anomaly to explain.
+  It stays open as a composition question, not as the leading suspect.
+  The vendor's published sleep figures above — light sleep 2.38 mA, deep sleep
+  460–530 µA — are three orders of magnitude below this and describe states this
+  run never entered, so nothing here contradicts them.
