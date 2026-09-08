@@ -28,8 +28,12 @@ cut, and the figure is on `V_BCKP`, the cell's supply. The two rows are not
 subtractable as rail current, which is a second reason the first step is the
 whole of the decision.
 
-The first step is **99.86 % of the saving that is available at all**, and it
-needs no backup cell, no rail sequencing and no reading of sheet S4. The second
+The first step is **99.64 % of the saving that is available at all** — 12.854 mA
+of the 12.9 mA the rail carries. The denominator is the rail's own figure and
+not 12.9 mA less the 28 µA, because subtracting a `V_BCKP` current from a rail
+current is exactly what the paragraph above says cannot be done; the earlier
+99.86 % here did it. It needs no backup cell, no rail sequencing and no reading
+of sheet S4. The second
 step is worth 18 µA on the module — before any board-side term, all of which are
 `UNKNOWN` — and it costs the whole `V_BCKP` question, a supply-sequencing rule,
 and a PIO-isolation hazard this board is not built for.
@@ -53,14 +57,29 @@ the bench unit on 2026-09-05 —
 [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md). Its supply
 is `BLDO1` at 3300 mV, enable net `GPS_LDO` on FPC pin 3.
 
+**That is one unit, and the product is two.**
+`docs/adr/0011-gnss-integrity.md:23` — "- **The T-Watch S3 Plus ships one of two receivers** — a u-blox **MIA-M10Q** or" —
+and one read-off retires neither branch:
+`firmware/main/local_gnss.h:23` — "// Quectel LS550G and one read-off does not retire the other, which is why the".
+Everything below this line is the `MIA-M10Q`. On a Quectel LS550G unit the UBX
+frame is simply unparsed: `command_transmitted` goes true, `engine_observed`
+never arrives, and the receiver stays at full tracking current. **No false state
+is published** — the contract is honest about exactly that — but the saving is
+zero and the symptom is silence. Identifying the receiver is therefore the first
+step of any implementation rather than a refinement of it, and the scope list at
+the end of this document opens with it.
+
 **Three module supply pins, one rail.** The data sheet's pin table gives `J4`
 `V_IO` ("IO voltage supply"), `J5` `V_BCKP` ("Backup voltage supply. Leave open
 if no external backup supply.") and `VCC`. Only one supply net crosses the FPC,
 so the board must be Table 40 option 1 — *"3.3 V design where VCC and V_IO are
-connected together … VIO_SEL pin left open."* **That is an inference from the
-connector, not a reading of S4**, and it is the one structural assumption this
-document makes. It is falsifiable: a local regulator on the daughterboard would
-break it.
+connected together … VIO_SEL pin left open."* That was an inference from the
+connector when this document was written. **It has since been read off S4**:
+ball `J4` (`V_IO`) and ball `B1` (`VCC`) are both on `VDD3V3` and `J6`
+(`VIO_SEL`) is an open stub — D23, and
+[VERIFIED_FACTS](VERIFIED_FACTS.md) *"The `MS412FE` does reach `V_BCKP`"*. The
+option-1 reading is now a reading, and this document no longer rests on a
+structural assumption.
 
 ## The two backup modes are not variants of one thing
 
@@ -83,10 +102,15 @@ same section:
 2. *"The 'force' flag must be set in UBX-RXM-PMREQ to enter software standby
    mode."* `flags` bit 2, alongside `backup` bit 1.
 3. *"The possible wake-up sources are UART RX and/or EXTINT pin."* `EXTINT`
-   (ball `A6`) does not cross the FPC — the daughterboard net list read for
-   [#312](https://github.com/hleserg/Attadipa/issues/312) lists six nets on `J1`
-   and `EXTINT` is not among them — so on this board **`wakeupSources.uartrx`
-   is the only wake that exists.**
+   (ball `A6`) is an **open stub on the module's own footprint** — no wire
+   leaves it at all, so the question of which nets cross the FPC never arises.
+   That is the same vector read of sheet S4 that placed `J5`, with the same
+   provenance: D23, and
+   [VERIFIED_FACTS](VERIFIED_FACTS.md) *"The `MS412FE` does reach `V_BCKP`"*.
+   An earlier version of this line cited a count of six nets on `J1` that no
+   record in this repository holds. So on this board **`wakeupSources.uartrx`
+   is the only wake that exists** — for the `MIA-M10Q`; the LS550G scoping
+   above applies here too.
 4. *"As V_IO is supplied, the PIOs can be driven by an external host processor.
    No buffers are required for isolating the PIOs."*
 
@@ -163,13 +187,27 @@ off. TTFF is Table 2, same column.
 | Requested | Command / rail action | Observable postcondition | Retained data | Recovery | Current | TTFF |
 | --- | --- | --- | --- | --- | --- | --- |
 | **Tracking** (today) | `BLDO1` on; nothing sent | NMEA frames arrive | everything, receiver never stops | — | NOT MEASURED — typ. 10.5 mA `VCC` + 2.4 mA `V_IO` | — |
-| **Acquiring** | `BLDO1` on from off | NMEA arrives, no fix yet | — | — | NOT MEASURED — typ. 12.5 mA + 2.4 mA | NOT MEASURED — typ. 27 s cold |
+| **Acquiring** | `BLDO1` set from clear (a register write — see the rail note) | NMEA arrives, no fix yet | — | — | NOT MEASURED — typ. 12.5 mA + 2.4 mA | NOT MEASURED — typ. 27 s cold |
 | **Cyclic tracking** (option 4) | `CFG-PM-OPERATEMODE`, rail up; an optimisation *inside* Tracking, not a stop | NMEA continues at the configured rate | everything, while it stays in Tracking or POT; RAM cleared only if it drops to "Inactive for search" past the acquisition timeout | none — it never stopped | NOT MEASURED — typ. 5.5 mA `VCC` + 2.1 mA `V_IO` | — |
 | **Engine stop** (option 2) | `UBX-CFG-RST` `0x08`, rail up | **none** — unacknowledged, no status message; NMEA merely stops | RAM and BBR both kept (MAX-M10S integration manual, per #479) | `0x09` start, also unacknowledged | UNKNOWN — no Table 18 row; above standby | UNKNOWN |
 | **Standby** (**recommended**) | `RXM-PMREQ` `backup`+`force`, `wakeupSources.uartrx`, rail up | NMEA stops; `MON-RXR` `awake = 0` too if the enable survives to emission — documented, unverified | **BBR, RTC, orbit data — from `V_IO`.** RAM configuration **cleared** | a byte on the UART; NMEA resumes on the default configuration | NOT MEASURED — typ. 46 µA `V_IO` + 120 nA `VCC` | NOT MEASURED — typ. 1 s hot, while orbit data is valid |
-| **Rail off** (option 3) | `PMREQ` standby, **release GPIO 42**, then `BLDO1` off | none from the module — it is unpowered | BBR, RTC and orbit data, **from the `MS412FE` on `V_BCKP`** — for as long as the cell holds, which is `UNKNOWN` | `BLDO1` on; hot while the cell held, cold once it did not | NOT MEASURED — typ. 28 µA on `V_BCKP`, plus `UNKNOWN` board-side terms | NOT MEASURED — typ. 1 s hot while the cell holds |
+| **Rail off** (option 3) | `PMREQ` standby, **release GPIO 42**, then clear `BLDO1` (a register write — see the rail note) | **none from the module.** Nothing can report its own supply going away; and whether clearing the bit removes that supply at all is unexercised | BBR, RTC and orbit data, **from the `MS412FE` on `V_BCKP`** — for as long as the cell holds, which is `UNKNOWN` | set `BLDO1`; hot while the cell held, cold once it did not | NOT MEASURED — typ. 28 µA on `V_BCKP`, plus `UNKNOWN` board-side terms | NOT MEASURED — typ. 1 s hot while the cell holds |
 
-Three cells deserve their reasoning in words rather than a footnote.
+Four cells deserve their reasoning in words rather than a footnote.
+
+**The rail action in two of those rows is a register write, not a demonstrated
+supply cut.** What this project has established is the *attribution* — `BLDO1`
+at 3300 mV is the GNSS supply. What it has not established is *control*:
+`docs/research/VERIFIED_FACTS.md:737` — "  exercised. So **nothing here shows that toggling BLDO1 controls the module** —" —
+and `:739` — "  proposes to switch this rail at runtime owes that experiment first." —
+because the bit was found already set and never cleared, and the `GPS_LDO`
+enable net sits unexercised in the same path,
+`docs/research/HARDWARE_MATRIX.md:252` — "| 3 | `GPS_LDO` | GNSS supply / enable |".
+So "`BLDO1` off" above names the write; the module going dark is its expected
+consequence, not an observed one. **The recommendation is untouched** — software
+standby keeps the rail up and never performs that step — but nothing should lift
+the rail-off row's ordering as though its precondition were settled. It is
+unknown 5 below.
 
 **Cyclic tracking is in the issue's scope, and it answers a different
 question.** The integration manual §3.6.2 puts PSMCT inside the Tracking state:
@@ -266,6 +304,12 @@ correction.
    The contract above depends on neither — NMEA stopping and resuming brackets
    the hold either way — but a `MON-RXR` that does arrive at entry is the
    positive report `CFG-RST` can never give, so it is the first thing to record.
+5. **Whether clearing `BLDO1` removes the module's supply at all.** The rail
+   attribution is established; control over it is not, and `GPS_LDO` on FPC
+   pin 3 is in the same path and equally unexercised. One experiment settles it
+   and it needs no instrument: clear the bit, watch NMEA stop, set it, watch
+   NMEA return. Until then the rail-off row's "release GPIO 42, then `BLDO1`
+   off" ordering guards a hazard whose own precondition is unproven.
 
 ## Reuse verdict
 
@@ -291,6 +335,13 @@ open it.
 
 Its scope, if opened, is bounded by what is above:
 
+- **identify the fitted receiver before sending a single UBX byte** — one
+  `UBX-MON-VER` request, or the absence of an answer to it — because the
+  contract above is `MIA-M10Q`-specific and an LS550G unit would take the whole
+  sequence silently and save nothing. The receiver-specific half belongs where
+  the pair already lives, `firmware/main/local_gnss.h:7` —
+  "// per-board defaults, so nothing below names a GPIO and nothing below asks" —
+  and not in the policy layer;
 - route the GNSS UART TX, which `firmware/main/local_gnss.cpp:411` —
   "        // RX only. `UART_PIN_NO_CHANGE` for TX leaves this end's transmitter" —
   currently and deliberately does not;

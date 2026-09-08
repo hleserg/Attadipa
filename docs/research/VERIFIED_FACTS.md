@@ -947,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2152`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2181`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1175,7 +1175,7 @@ is sourced to the drawing itself.
 - **Source:** data sheet **UBX-22015849 R08** Tables 16 and 18; integration
   manual **UBX-21028173 R05** §3.6.3.2. **All figures are vendor typicals at
   25 °C — NOT MEASURED on this board.**
-- **Impact:** 12.85 mA of the 12.87 mA available is bought by the first step,
+- **Impact:** 12.85 mA of the 12.9 mA the rail carries is bought by the first step,
   which needs no wiring fact; the rail cut below it is worth 18 µA on the module
   before board-side terms that are `UNKNOWN`. It also carries a hazard the
   standby does not: *"In hardware backup mode (VCC = 0 V and V_IO = 0 V), PIOs
@@ -1191,18 +1191,37 @@ is sourced to the drawing itself.
   rail can charge the cell and the cell cannot back-feed the rail. `C1`
   (`100 nF`) decouples `VRTC` to `GND`. Ball `J4` (`V_IO`) and ball `B1` (`VCC`)
   are both on `VDD3V3`, and `J6` (`VIO_SEL`) is an open stub, which is what the
-  data sheet requires for a 3.3 V `V_IO`.
+  data sheet requires for a 3.3 V `V_IO`. Three more balls on that edge are read
+  the same way and are used elsewhere: `A4` (`RTC_I`) and `A6` (`EXTINT`) are
+  **open stubs** — no wire leaves either — and `A5` (`RTC_O`) is a **junction on
+  the ground bus**.
 - **Source:** `Xinyuan-LilyGO/LilyGoLib`,
   `schematic/T-Watch-S3-Plus-GPS V1.0 2025-04-29.pdf` (one sheet, blob
   `4a92090b`, local sha256 `7f06c578…`). Read by extracting the page's stroked
   vector segments, dropping component body rectangles, and joining segments only
   where an endpoint of one lies **on** another — so a crossing without a
-  junction stays two nets. The resulting 128 nets check themselves: the three
-  `GND` balls on the top edge (`J9`, `J8`, `H8`) land on one net, the five
-  `RESERVED` balls and `VIO_SEL` are each a singleton stub, and every pin's
-  function label centres on its own stub to within 0.15 pt. The diode's polarity
-  is read from the symbol geometry — base at `y = 158.06` toward `VDD3V3`, apex
-  and cathode bar at `y = 163.21` toward the cell — not from the picture.
+  junction stays two nets. `A5` is a junction on the ground bus and not a
+  crossing of it because the vertical bus at `x = 293.27` is **split** at exactly
+  that stub's `y = 228.90`, along with each of the seven other connected stubs —
+  and an exporter splits a wire at a junction, never at a crossing.
+
+  What ties a label to a ball is measured rather than eyeballed: within each edge
+  the designator-to-stub offset is uniform — 2.631 to 2.803 pt on the top edge,
+  2.861 to 2.935 pt on the left — against a 5.28 pt pitch, and the first
+  designator has no stub before it while the last has none after it, so a
+  one-slot shift would move every offset by ±5.28. Function labels then land on
+  their own stubs to within **0.3 pt**; the worst two are `GND`/`J9` at 0.170 pt
+  on the top edge and `GND`/`A1` at 0.295 pt on the left. *An earlier version of
+  this entry said 0.15 pt, which neither edge meets.* The 128 nets also check
+  themselves: the three `GND` balls on the top edge (`J9`, `J8`, `H8`) land on
+  one net, and `VIO_SEL` (`J6`), `LNA_EN` (`H9`) and five of the six `RESERVED`
+  balls (`J7`, `J3`, `J2`, `J1`, `G9`) are singleton stubs — *the earlier
+  version counted five `RESERVED` balls and there are six*; the sixth, `G7`, is
+  on a 14-segment net running to `R1` (`0R`). The diode's polarity is read from
+  the symbol geometry — base at `y = 158.06` toward `VDD3V3`, apex and cathode
+  bar at `y = 163.21` toward the cell — not from the picture, and `B1` (`VCC`)
+  the same way: its stub ends in a filled left-pointing power-port arrow (apex
+  `x = 244.36`, base `x = 249.64`) drawn under the word `VDD3V3`.
 - **Impact:** resolves D23. Hardware backup would retain BBR on this board, so
   the rail-off row of
   [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md) is no longer
@@ -1213,6 +1232,16 @@ is sourced to the drawing itself.
   window, and whether `3.3 V` minus the diode drop across `1 K` actually charges
   it are UNKNOWN** — no `MS412FE` data sheet has been read. Nothing here was
   measured on hardware.
+
+  Two further consequences fall out of the left edge. `RTC_I` open with `RTC_O`
+  grounded is the integration manual's Figure 28 — *"An RTC may be omitted for
+  the lowest-cost designs. If an RTC is not used, the RTC_I pin is left
+  unconnected and the RTC_O pin is connected to GND as shown in Figure 28"*
+  (UBX-21028173 R05), and the data sheet asks for the same pin by pin — so **the
+  daughterboard carries no external RTC crystal**. And `A6` open means the
+  module's `EXTINT` wake source **does not exist on this board**, which is what
+  leaves UART RX as the only wake in
+  [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md).
 
 ### The GNSS PPS signal never reaches the SoC
 
@@ -2766,7 +2795,7 @@ ones that heading states.
   and its bit is clear. This says nothing about BLE, which lives in the SoC and has
   no rail of its own. It therefore does **not** answer the Waveshare entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2689` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2718` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register

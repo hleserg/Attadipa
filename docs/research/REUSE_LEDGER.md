@@ -2903,7 +2903,9 @@ this project needs between `engine_requested`, `rail_on` and `engine_observed`.
 **License:** Apache-2.0 — compatible, and not the reason nothing was taken.
 
 **Strengths:** the split is right and is the part worth keeping. The M10 command
-encoding is correct against the interface description.
+encoding matches the interface description **as quoted in #479** — the source
+was not cloned, so that is a reading of the issue's citations against the vendor
+document, not of the driver.
 
 **Weaknesses:** two, and the second is decisive.
 
@@ -2922,8 +2924,12 @@ encoding is correct against the interface description.
 **Reason:** #479 proposed `ADAPT`, and the research came out differently for one
 fact that was not visible when the issue was written. `UBX-RXM-PMREQ` software
 standby beats `UBX-CFG-RST` controlled stop on **both** axes at once: it draws
-46 µA against a receiver still running, and `UBX-MON-RXR` reports the transition
-in both directions where `CFG-RST` reports nothing. Adapting an implementation
+46 µA against a receiver still running, and `UBX-MON-RXR` is **expected** to
+report the transition where `CFG-RST` has no status message at all. Expected,
+not established: whether the RAM-layer `MON-RXR` enable survives to emission on
+either edge is untested, and the policy document lists it as an open unknown.
+The verdict does not rest on it — the asymmetry is between a mechanism that can
+report and one that provably cannot. Adapting an implementation
 of the weaker mechanism would have carried its unobservability into this
 codebase, which is exactly what [ADR-0011](../adr/0011-gnss-integrity.md)
 forbids.
