@@ -242,7 +242,7 @@ font, decodable raster files, localised Mesh details, both success receipts,
 distinct failure art and moving/stopped fireflies. It is evidence about the
 prototype, not the production caller.
 
-V2 passed 1,799 assertions with motion available and 1,795 with system reduced
+V2 passed 1,825 assertions with motion available and 1,821 with system reduced
 motion (the four particle-dependent assertions are skipped). A separate page reload
 restored a valid note alongside a corrupt record and kept the latter exportable;
 temporary browser test records were removed afterward. A deliberately missing
@@ -257,6 +257,9 @@ The matrix also covers unchanged Keep/Back exits, refused-node return, cancelled
 missing/stale clocks, successful Save and matching night navigation-header
 reading surfaces. Both geometries, themes and locales were opened after these
 journeys; the committed overview captures were refreshed with fireflies enabled.
+Scenario selectors follow in-card navigation and both success receipts; other
+screens show a localized placeholder. Native keyboard selection also restored
+the no-fix scenario after leaving and returning, without synthetic change events.
 
 With Chromium and `agent-browser` available:
 

@@ -91,6 +91,7 @@
         select("#locale", locale);
         for (const control of document.querySelectorAll("[data-card]")) {
           for (const option of control.options) {
+            if (option.disabled) continue;
             select(`[data-card="${control.dataset.card}"]`, option.value);
             fit(
               control.dataset.card,
@@ -98,6 +99,24 @@
             );
           }
         }
+        scenario("nav", "no-fix");
+        click("nav", "home");
+        assert(
+          document.querySelector('[data-card="nav"]').value === "",
+          "A different screen clears the old scenario selection",
+        );
+        click("nav", "nav");
+        assert(
+          document.querySelector('[data-card="nav"]').value === "ready",
+          "Returning to navigation synchronizes its actual scenario",
+        );
+        scenario("nav", "no-fix");
+        assert(
+          text("nav").includes(
+            locale === "ru" ? "Ищем вашу позицию" : "Finding your position",
+          ),
+          "The previous scenario can be selected again",
+        );
         scenario("setup", "time");
         for (let step = 0; step < 6; step++) {
           fit("setup", `${size}/${theme}/${locale}/time/${step}`);
@@ -232,6 +251,10 @@
     text("setup").includes("Time is set"),
     "Save reaches the time receipt",
   );
+  assert(
+    document.querySelector('[data-card="setup"]').value === "done",
+    "Time receipt synchronizes its gallery scenario",
+  );
   click("setup", "home");
   assert(
     text("setup").includes("00:00"),
@@ -296,6 +319,10 @@
     text("setup").includes("Passkey saved") &&
       text("setup").includes("Connection is still being checked"),
     "Stored code is not a connected node",
+  );
+  assert(
+    document.querySelector('[data-card="setup"]').value === "code-saved",
+    "Passkey receipt has its own gallery scenario",
   );
   // Child mode only exists for the clock in this design scope.
   scenario("clock", "ready");

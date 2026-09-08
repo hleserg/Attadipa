@@ -1220,6 +1220,7 @@
         freshAge: "3 s",
         staleAge: "2 min",
         nofix: "Finding your position",
+        otherScreen: "Other screen",
         outdoors: "Move into open sky.",
         unknown: "No node position",
         unknownHint: "Waiting for its coordinates.",
@@ -1319,6 +1320,7 @@
         freshAge: "3 с",
         staleAge: "2 мин",
         nofix: "Ищем вашу позицию",
+        otherScreen: "Другой экран",
         outdoors: "Выйдите под открытое небо.",
         unknown: "Нет позиции узла",
         unknownHint: "Ждём его координаты.",
@@ -1772,6 +1774,15 @@
       screen.className = `screen ${small ? "small" : ""} ${document.querySelector("#theme").value}`;
       screen.lang = document.querySelector("#locale").value;
       screen.dataset.page = view.page;
+      const scenario = document.querySelector(`[data-card="${id}"]`);
+      scenario.querySelector('[value=""]').textContent = t("otherScreen");
+      scenario.value =
+        view.page === id
+          ? view.state === "done" && !wizards[id].saved
+            ? "code-saved"
+            : view.state
+          : "";
+      if (scenario.selectedIndex < 0) scenario.value = "";
       if (view.page === "clock") screen.innerHTML = clock(view, id);
       else if (view.page === "nav") screen.innerHTML = nav(view);
       else if (view.page === "mesh") screen.innerHTML = mesh(view);
@@ -1924,7 +1935,7 @@
     document.querySelector("#gallery").innerHTML = cards
       .map(
         (c, i) =>
-          `<article><div class="card-heading"><h2><span class="index">0${i + 1}</span>${c.title}</h2><select class="state-control" aria-label="${c.title} scenario" data-card="${c.id}">${c.states.map((s) => `<option>${s}</option>`).join("")}</select></div><div class="frame"><section class="screen" id="screen-${c.id}" aria-label="${c.title} prototype"></section></div><p class="caption">${c.note}</p><div class="review-panel" id="review-${c.id}"><p class="review-context"></p><label class="review-status-label" for="decision-${c.id}"></label><select id="decision-${c.id}"><option value="pending"></option><option value="approved"></option><option value="changes"></option></select><label class="review-note-label" for="note-${c.id}"></label><textarea id="note-${c.id}" maxlength="10000"></textarea></div></article>`,
+          `<article><div class="card-heading"><h2><span class="index">0${i + 1}</span>${c.title}</h2><select class="state-control" aria-label="${c.title} scenario" data-card="${c.id}"><option value="" disabled>${t("otherScreen")}</option>${c.states.map((s) => `<option>${s}</option>`).join("")}</select></div><div class="frame"><section class="screen" id="screen-${c.id}" aria-label="${c.title} prototype"></section></div><p class="caption">${c.note}</p><div class="review-panel" id="review-${c.id}"><p class="review-context"></p><label class="review-status-label" for="decision-${c.id}"></label><select id="decision-${c.id}"><option value="pending"></option><option value="approved"></option><option value="changes"></option></select><label class="review-note-label" for="note-${c.id}"></label><textarea id="note-${c.id}" maxlength="10000"></textarea></div></article>`,
       )
       .join("");
     document.querySelector("#gallery").addEventListener("click", (event) => {
