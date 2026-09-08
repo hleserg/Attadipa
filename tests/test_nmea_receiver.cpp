@@ -79,7 +79,13 @@ void deliver(gnss::NmeaReceiver& receiver, const std::string& line)
 void deliver_body(gnss::NmeaReceiver& receiver, const std::string& body)
 {
     unsigned checksum = 0;
-    for (const unsigned char c : body) checksum ^= c;
+    // `static_cast`, not a narrowing in the loop variable: `body` is a
+    // `std::string`, so `char` to `unsigned char` here is a sign change and
+    // GCC 13 refuses it under `-Wsign-conversion -Werror`. GCC 14 does not,
+    // so this is red in CI and green on a bench that runs the newer compiler;
+    // the cast is what the warning asks for and is correct either way,
+    // because the checksum is defined over the bytes.
+    for (const char c : body) checksum ^= static_cast<unsigned char>(c);
     char tail[8];
     std::snprintf(tail, sizeof(tail), "*%02X", checksum);
     deliver(receiver, "$" + body + tail);
