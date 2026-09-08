@@ -340,7 +340,7 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 which is right.** The sites below do not agree, and they are **not the whole
 list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "QMI8658A Datasheet, `13-52-25`",
 [`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md) "chapter 11 documents a complete hardware pedometer",
-[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
+[`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
 [`HARDWARE_MATRIX.md:392`](HARDWARE_MATRIX.md) "13-52-27 ∙ QMI8658C Datasheet ∙ Rev A" and
 [`VERIFIED_FACTS.md:2030`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
 as well. Enumerating and reconciling them is #341's job, not this report's:
@@ -361,7 +361,7 @@ own register-description page. A paper numbered `13-52-25` has been read in
 this tree too: [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "Feature list p. 1; chapter 11" records its
 chapter 11 *"Pedometer"* at pp. 64–66 with `STEP_CNT_LOW/MIDL/HIGH` at
 `0x5A`–`0x5C`, `CTRL8.Pedo_EN` and both CTRL9 commands, and
-[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" gives its md5. **What
+[`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" gives its md5. **What
 is `UNKNOWN` is which number names the Rev A part**, not what either paper
 holds — the two records put the same chapter 11 in both, so no register below
 turns on the number. This report therefore cites only the paper it read, and
@@ -378,7 +378,7 @@ read, in `VERIFIED_FACTS`, `HARDWARE_MATRIX` and `WAVESHARE_RUNNING_OUR_CODE`
 alike. Then `13-52-25` was fetched from the vendor's own published copy and
 read directly, which **settles what this report left `UNKNOWN` and moots the
 question it was asking**. Its md5 matches the one
-[`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" already
+[`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" already
 recorded, and it gives **`REVISION_ID = 0x7C`** — the same byte as `13-52-27`,
 in the same register-description section, with the same `0x68` in the same
 register-map summary. `WHO_AM_I` and the product id are identical too. So the

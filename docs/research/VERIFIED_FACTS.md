@@ -962,7 +962,7 @@ to every unit of the same model.
   `e093b1cc1d1cf85097f955abbea65c08`. `13-52-25`: md5
   `5a0fef65a358430d6499944a75d22e19`, fetched from the vendor's own published
   copy at `files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf` and
-  byte-identical to the copy [`MAGNETOMETER_RETROFIT.md:138`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence"
+  byte-identical to the copy [`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence"
   already recorded, which closes that document's provenance.
 - **How to name these two, everywhere in this tree.** Write the vendor's own
   footer form in full — `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and
@@ -2826,3 +2826,14 @@ ones that heading states.
   The vendor's published sleep figures above — light sleep 2.38 mA, deep sleep
   460–530 µA — are three orders of magnitude below this and describe states this
   run never entered, so nothing here contradicts them.
+
+### Received Waveshare close-ups and first magnetometer supply checkpoint
+
+- **Scope:** the owner's received `ESP32-S3-Touch-AMOLED-2.06`, checked
+  2026-09-08; exact PCB revision remains UNKNOWN.
+- **Evidence:** [received-board photo comparison](WAVESHARE_BOARD_RECEIVED.md)
+  §1.10 records newly legible markings and corrects the cover-opening claim.
+  [The bench report](MAGNETOMETER_BENCH_2026-09-08.md) records the owner-reported
+  3.313 V DC expansion-pad reading, meter mode, unpowered module continuity,
+  contradictions and original-photo hashes. This is not a powered magnetometer
+  or heading validation.

@@ -3,6 +3,10 @@
 **Date:** 2026-08-22. **Unit:** one `ESP32-S3-Touch-AMOLED-2.06`, received by
 the owner, opened, photographed, and still on the desk.
 
+**Photo update:** 2026-09-08, §1.10. The August observations below are dated
+history; the new photographs resolve several previously illegible markings.
+Later powered bring-up results live in [BENCH_DEVICES](BENCH_DEVICES.md).
+
 Everything this repository has said about this board until today came from a
 schematic PDF, a vendor BSP and a wiki. Those are good sources and most of what
 they said survives. This file records what changed when a physical unit was
@@ -26,11 +30,12 @@ who made the board; about **populated or not**, because an empty footprint is
 visible; and about **labels on parts large enough to read**. It is *not*
 authoritative about anything requiring magnification the camera did not have —
 the SoC's variant suffix, the flash's capacity digits, or the IMU's own marking
-are all present in the frame and none is legible.
+are all present in the August frames and none is legible there. See §1.10 for
+the September close-ups.
 
 Where a photograph and the schematic agree, that is corroboration and it is
-worth having: it means the schematic we read describes the board we own, which
-was an assumption until today. Where the photograph shows something the
+worth having: it supports a model match, but does not establish the exact PCB
+revision or every hidden net. Where the photograph shows something the
 schematic never mentioned, it is new. Where the photograph cannot resolve
 something, this file says `UNKNOWN` and names the bench measurement that would
 settle it, exactly as if no unit had arrived — a blurry photograph is not
@@ -40,14 +45,14 @@ evidence and must not be written up as if it were.
 
 ## 1. What the unit settles
 
-### 1.1 It is the board we read the schematic for. `VERIFIED`
+### 1.1 The board model matches the cited schematic. `VERIFIED`
 
 The mainboard carries `ESP32-S3-Touch-AMOLED-2.06` in silkscreen along the
-bottom edge, next to the expansion pad row. This is the revision named in
-[HARDWARE_MATRIX](HARDWARE_MATRIX.md) — schematic
-`ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0`. Everything downstream of "the
-schematic describes our board" is now standing on an observation instead of an
-assumption.
+bottom edge, next to the expansion pad row. This matches the model named in
+[HARDWARE_MATRIX](HARDWARE_MATRIX.md), whose source is schematic
+`ESP32-S3-Touch-AMOLED-2.06-Schematic-V1.0`. The model name is not a PCB revision
+mark. Exact received PCB revision remains `UNKNOWN`; visible agreement does
+not verify every physical connection.
 
 ### 1.2 The battery is *marked* 400 mAh, and that marking is now the headline
 
@@ -97,20 +102,19 @@ puts a meter on it — §3.
 ### 1.3 The flash really is external, and really is GigaDevice. `VERIFIED`
 
 A **GigaDevice**-branded SOP-8 sits beside the SoC — the brand name is legible
-in silkscreen-white on the package top; the part-number line is not. The
+in silkscreen-white on the package top; the August part-number line is not. The
 schematic names it `GD25Q256EYIGR`, 256 Mbit = 32 MB, quad SPI, at `U3`, and a
 GigaDevice SOP-8 in that position is consistent with that and inconsistent with
 nothing.
 
-The structural half of this matters more than the brand. **The flash is a
-separate package.** Whatever is inside the SoC's own package is therefore not
-flash — which is what an `R8` suffix means and what an `N`-prefixed suffix would
-not. It corroborates D12a's conclusion that the in-package memory is 8 MB of
-octal PSRAM, without re-proving it: the photograph rules out in-package flash,
-and the datasheet argument already ruled out an 8 MB quad in-package part.
+**An external flash package is physically present.** That observation alone
+does not rule out other memory inside the SoC. The SoC variant and 8 MB PSRAM
+are established separately by the eFuse and boot results linked from
+[BENCH_DEVICES](BENCH_DEVICES.md), corroborated by the September marking (§1.10).
 
-The capacity digits are not legible. `esptool.py flash_id` reports the density
-from the chip's own JEDEC ID and takes seconds — §3.
+The capacity digits were not legible in August. They are readable in §1.10;
+the earlier physical JEDEC result already established 32 MB, independently of
+these new photographs.
 
 ### 1.4 Both microphones are fitted. `VERIFIED`
 
@@ -234,9 +238,11 @@ its impedance and rated power are `UNKNOWN` and matter only if somebody drives
 it near its limit.
 
 The relevant structural point is that the speaker, like the motor, connects by
-**solder pads and wires**, not by a connector. Opening this watch for any reason
-means desoldering, and that is worth knowing before anyone plans a repeated
-teardown.
+**solder pads and wires**, not by a connector. **Correction, 2026-09-08:** the
+new photos show the back cover open with both wires still connected. Opening
+does not inherently require desoldering; fully separating the cover from the
+board requires disconnecting that soldered pair. Support both pieces within
+the wires' available slack.
 
 ### 1.9 The factory firmware runs, and it is a capability inventory
 
@@ -257,6 +263,33 @@ unprovisioned, not broken.
 is the first action on the board and it is in §4 for that reason.
 
 ---
+
+### 1.10 September 8 close-ups: markings, wiring and limits
+
+All twelve originals in `/home/hleserg/temp/magneto/Waveshare watch/` were
+inspected at original resolution. Representative file hashes and the separate
+3V3 bench reading are recorded in
+[MAGNETOMETER_BENCH_2026-09-08](MAGNETOMETER_BENCH_2026-09-08.md).
+Comparison source: the official
+[Waveshare schematic](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.06/ESP32-S3-Touch-AMOLED-2.06.pdf)
+and the already recorded received-unit evidence above.
+
+| Subject | VERIFIED photograph observation | What this establishes / leaves UNKNOWN |
+| --- | --- | --- |
+| Model and expansion pads | `IMG_20260908_223437.jpg`: `ESP32-S3-Touch-AMOLED-2.06`; the ten labels match §1.5 in the same order | Model and printed pad identities corroborated; exact PCB revision and untraced nets remain UNKNOWN |
+| SoC | `IMG_20260908_223653.jpg`, also `223714`: `ESP32-S3`, `062026`, next line begins `R8` | The suffix prefix is now readable and consistent with the established PSRAM result; no new RAM test |
+| Flash | `IMG_20260908_223741.jpg`, also `223653`: GigaDevice, `25Q256EYIG` | Previously illegible part marking now agrees with the schematic's `GD25Q256EYIGR`; complete ordering suffix is not printed. Capacity was measured separately, not by this photograph |
+| IMU | `IMG_20260908_223653.jpg`: `8658`, `6D111`, `KB`; printed axis triad as §1.6 | QMI8658-family marking corroborated; no visible `C` suffix. H14 variant/function question and H15 wearer-frame measurement remain open |
+| Motor | `IMG_20260908_223714.jpg`: bare MOTOR pads and empty circular footprint | No motor fitted at this footprint on this unit; no motor influence measurement has occurred |
+| Speaker and cover | `IMG_20260908_223729.jpg`: `AAC210602A1`, second line reads `15771`; `223741` shows red/black wires still soldered to SPK pads while cover is open | Marking and soldered connection corroborated; mandatory-desoldering statement corrected in §1.8. Impedance, magnetic field and usable clearance remain UNKNOWN |
+
+The photos do not expose the PMU/DC-DC and AMOLED supply circuitry sufficiently
+to verify their component markings or revision-specific routing. They do not
+measure the magnetic contribution of those circuits, the speaker or the case.
+The visible moulded cover and metal parts do not establish material composition
+or magnetic properties. Final magnetometer placement still needs a powered
+sensor comparison near the assembled case; the expansion-pad location is an
+electrical attachment point, not a proven magnetic mounting position.
 
 ## 2. What this changes in the record
 
@@ -281,6 +314,11 @@ and one thing a drawing cannot show.
 
 Every item here is answered by reading, not writing, and none of it requires
 flashing anything.
+
+**Historical checklist, 2026-08-22:** the SoC/flash/PSRAM and later bring-up
+results are now in [BENCH_DEVICES](BENCH_DEVICES.md) and its linked transcripts.
+The old UNKNOWN statements below describe that day's evidence, not a request to
+repeat completed hardware tests. September photographic changes are in §1.10.
 
 | Question | How | Why it is not guessable |
 |---|---|---|
@@ -340,4 +378,5 @@ person knows what it is.
   question.
 
 The photographs themselves are **not** committed. They show the owner's hands
-and desk, and nothing in them is needed once the readings are written down.
+and desk. Keep the originals locally: the read-offs, hashes and unresolved
+markings still need their evidence.

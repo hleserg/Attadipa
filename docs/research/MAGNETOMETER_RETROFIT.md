@@ -1,11 +1,12 @@
 # Adding a magnetometer to a board that shipped without one
 
-> **Status:** research, 2026-08-22. **Nothing here has touched hardware.** The
-> parts arrived 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)) and neither has
-> been read off. Every electrical number is quoted from a manufacturer datasheet
-> or application note identified by revision; every number that would need a
-> board to obtain is marked `UNKNOWN` or `ESTIMATED`. No test in this document
-> has been run: all of them are **`NOT EXECUTED — HARDWARE REQUIRED`**.
+> **Status:** research, 2026-08-22; bench evidence added 2026-09-08. The
+> parts arrived 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)). Received-module
+> photos, unpowered tracing and a Waveshare supply measurement now live in
+> [MAGNETOMETER_BENCH_2026-09-08](MAGNETOMETER_BENCH_2026-09-08.md).
+> Sensor identity and powered module behaviour remain UNKNOWN. Compass,
+> calibration, tilt and motor influence tests remain
+> **`NOT EXECUTED — HARDWARE REQUIRED`**.
 >
 > **Owner decision this document rests on**
 > ([#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22): *two*
@@ -25,7 +26,8 @@
 > **Later board-specific correction, 2026-08-24 — takes precedence over an
 > earlier generalisation in this synthesis.** The AK09911C reset input and the
 > existing Waveshare I²C pull-ups were re-read from primary sources. Neither
-> correction is a hardware pass: the candidate modules are still unmeasured.
+> correction is a hardware pass. Later physical measurements are in the linked
+> September 8 bench report and are limited to its stated probe points.
 
 ### Addendum: reset, test pin and the shared I²C bus
 
@@ -35,12 +37,15 @@ connection drives it from a host GPIO and says that an unused reset input is
 connected to `VID`. `RSTN` must therefore not float.
 
 The CJMCU-9911 photograph shows a pad labelled `RST`, but a photograph proves a
-label, not its net or whether the module already pulls it to `VCC`. The safe
-default is five wires (`SDA`, `SCL`, `3V3`, `GND`, `RSTN`) until an unpowered
-ohmmeter check proves that the pad is tied to `VID`. Check both `RST`→`VCC` and
-`RST`→`GND`; a pull-up or short to `VCC` permits four external wires, while an
-open pad must be tied high or driven. This is **`NOT EXECUTED — HARDWARE
-REQUIRED`**.
+label, not its net. **Correction, 2026-09-08:** the received purple module has a
+`662K` device with continuity consistent with a regulator: header VCC reaches
+its input lead, while the tested SDA resistance reaches its output node.
+`VCC` therefore must not be equated with sensor `VID`. Check reset against the
+**identified VID rail**, not merely against VCC. Only a proven reset connection
+to a valid VID-domain high permits omitting an external reset connection.
+Repeated OL from RST to the tested output node does not prove a broken trace.
+Sensor VID routing and reset-high voltage remain UNKNOWN; no RST-to-VCC bridge
+is justified. The linked bench report preserves all readings and contradictions.
 
 The same module exposes `TST`. M1 says to leave that pin unconnected; it is not
 a spare control pin. Its module routing is likewise not a hardware-verified
@@ -57,8 +62,10 @@ At `VOL = 0.4 V`, the board alone sinks 1.318 mA at 3.3 V. With a candidate
 module's unknown pull-up in parallel, a 4.7 kΩ module gives 1.935 mA; two 4.7 kΩ
 modules give 2.552 mA. Two 3.3 kΩ modules would give 3.076 mA and exceed the
 AK09911C/I²C 3 mA limit. Consequently, do not remove module pull-ups merely by
-habit: first measure each unpowered module's `SDA`→`VCC` and `SCL`→`VCC`
-resistance. With the board's fixed 2.2 kΩ, one module needs at least 1.8 kΩ at
+habit: first identify each module's pull-up rail, then measure each unpowered
+line to that rail. Measuring only to VCC can include an intervening regulator
+and miss the resistor, as the September bench results illustrate. With the
+board's fixed 2.2 kΩ, one module needs at least 1.8 kΩ at
 3.3 V (2.2 kΩ under a 3.6 V assumption); equal pull-ups on two modules need at
 least 3.6 kΩ at 3.3 V (4.3 kΩ at 3.6 V).
 

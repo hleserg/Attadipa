@@ -435,7 +435,7 @@ records. One clause of that is weaker than it sounds and belongs here rather
 than in a review: what is provisioned is stored in plain NVS, this project
 builds with no flash or NVS encryption and will not, since `AGENTS.md` forbids
 burning eFuses, and a full flash read over that same cable is documented on this
-unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:314` —
+unit: `docs/research/WAVESHARE_BOARD_RECEIVED.md:352` —
 "read_flash 0 0x2000000 waveshare-2.06-factory.bin".
 So the factor is possession of the watch **or** of a cable and esptool.
 Every option stores the same secret, so this separates none of them; it bounds
@@ -721,5 +721,4 @@ Failing a shunt on either board, H1, H5, H6 and H9 need external
 instrumentation —
 an inline USB power meter, or a bench supply with an ammeter — which is the
 owner's bench question rather than a documentary one.
-
 
