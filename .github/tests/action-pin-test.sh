@@ -87,33 +87,38 @@ fi
 # nothing parses, every ref in the tree becomes uncovered and this goes red
 # rather than quietly asserting nothing over zero rows.
 #
-# The row shape this reads, which is why `×N` is syntax and not decoration:
+# The row shape this reads:
 #
-#   | **`owner/action`** ×3 | `<40-hex>`, <date> | ... |
+#   | **`owner/action`** | `<40-hex>`, <date> | ... |
 #
 # Column 2 opening with a backticked 40-hex commit is what makes a row an
 # inventory row. That is not enough on its own: the `Decided` table above uses
-# the same shape for minmea, MeshCore and RadioLib, which are vendored and
-# fetched sources rather than actions and appear in no workflow. So the scan is
-# scoped to the `## GitHub Actions` section, and the container sub-table inside
-# it drops out on its own -- `sha256:…` is 64 hex behind a prefix, not 40.
-ledger_section() {  # ledger file -> the GitHub Actions section, headings and all
-  awk '/^## GitHub Actions[[:space:]]*$/ { inside = 1; next }
-       /^## / { inside = 0 }
+# the same shape for minmea, MeshCore and RadioLib, and the LVGL sub-section
+# further down uses it for the vendored converter -- fetched sources rather than
+# actions, appearing in no workflow. So the scan is bounded by the inventory
+# table itself and not by a heading: it starts after that table's header row and
+# stops at the first line that is not a table row. A heading bound is far too
+# wide, because the table does not own its heading -- it sits inside
+# `### The container image`, and `## GitHub Actions` runs on for six more
+# sub-sections of prose and tables, any pin-shaped row in which would be read
+# here as an action. The container sub-table drops out on its own as well --
+# `sha256:…` is 64 hex behind a prefix, not 40 -- but it no longer has to.
+ledger_section() {  # ledger file -> the rows of the action inventory table
+  awk '/^\| *Action *\| *Pinned at *\|/ { inside = 1; next }
+       inside && !/^\|/ { exit }
        inside' "$1"
 }
 
 # shellcheck disable=SC2016  # the backticks are Markdown code spans in a PCRE.
-ledger_rows() {  # ledger file -> sha \t count \t path[ path...]
-  local line c1 c2 sha count paths
+ledger_rows() {  # ledger file -> sha \t path[ path...]
+  local line c1 c2 sha paths
   while IFS= read -r line; do
     case "$line" in '|'*) ;; *) continue ;; esac
     c1=$(printf '%s' "$line" | cut -d'|' -f2)
     c2=$(printf '%s' "$line" | cut -d'|' -f3)
     sha=$(printf '%s' "$c2" | grep -oP '^\s*`\K[0-9a-f]{40}(?=`)') || continue
-    count=$(printf '%s' "$c1" | grep -oP '×\K[0-9]+' | head -1)
     paths=$(printf '%s' "$c1" | grep -oP '`\K[^`]+/[^`]+(?=`)' | tr '\n' ' ')
-    printf '%s\t%s\t%s\n' "$sha" "$count" "${paths% }"
+    printf '%s\t%s\n' "$sha" "${paths% }"
   done < <(ledger_section "$1")
 }
 
@@ -121,25 +126,22 @@ ledger_rows() {  # ledger file -> sha \t count \t path[ path...]
 # the workflow root and the ledger as arguments so the regression cases below run
 # THIS, against a planted tree, rather than a second copy of the rule.
 ledger_check() {  # workflows root, ledger file
-  local tree_refs rows sha count paths path at_any at_row wrong subtotal covered rc=0
+  local tree_refs rows sha paths path at_any at_row wrong covered rc=0
   tree_refs=$(workflow_refs "$1" | grep -v '^\./' || true)
   rows=$(ledger_rows "$2")
   covered=""
 
-  while IFS=$'\t' read -r sha count paths; do
+  while IFS=$'\t' read -r sha paths; do
     [ -n "$sha" ] || continue
-    if [ -z "$count" ] || [ -z "$paths" ]; then
-      printf 'row %s names %s and %s\n' "${sha:0:8}" \
-        "${paths:-no action path}" "${count:-no ×N occupancy}"
+    if [ -z "$paths" ]; then
+      printf 'row %s names no action path\n' "${sha:0:8}"
       rc=1
       continue
     fi
-    subtotal=0
     for path in $paths; do
       at_any=$(printf '%s\n' "$tree_refs" | awk -v p="$path@" 'index($0, p) == 1' | grep -c . || true)
       at_row=$(printf '%s\n' "$tree_refs" | awk -v r="$path@$sha" '$0 == r' | grep -c . || true)
       covered="$covered $path"
-      subtotal=$((subtotal + at_any))
       if [ "$at_any" -eq 0 ]; then
         printf 'the table pins %s at %s and no workflow uses it\n' "$path" "${sha:0:8}"
         rc=1
@@ -151,10 +153,6 @@ ledger_check() {  # workflows root, ledger file
         rc=1
       fi
     done
-    if [ "$subtotal" -ne "$count" ]; then
-      printf 'the table says %s ×%s, the tree has %d\n' "$paths" "$count" "$subtotal"
-      rc=1
-    fi
   done <<EOF
 $rows
 EOF
@@ -362,10 +360,13 @@ plant_workflows() {  # sha for the three claude steps, sha for the third alone
   } >"$lfix/wf/agent.yml"
 }
 
-# A ledger with an unrelated `Decided` row in the same 40-hex shape, so the
-# section scoping stays asserted: MeshCore is a fetched source, appears in no
-# workflow, and must not be read as an action.
-plant_ledger() {  # sha recorded for the action, ×N recorded for it
+# A ledger with two unrelated rows in the same 40-hex shape, one on each side of
+# the inventory table, so the scoping stays asserted in every case below rather
+# than in one of them: MeshCore and the vendored LVGL converter are fetched
+# sources, appear in no workflow, and must not be read as actions. The LVGL row
+# is the one a heading bound gets wrong -- `### Where the resolved graph lives`
+# is a *sub*-section, so a scan that stops at the next `## ` swallows it whole.
+plant_ledger() {  # sha recorded for the action
   cat >"$lfix/ledger.md" <<LEDGER
 ## Decided
 
@@ -377,10 +378,14 @@ plant_ledger() {  # sha recorded for the action, ×N recorded for it
 
 | Action | Pinned at | Tag it came from | Licence | Upgrade strategy |
 |---|---|---|---|---|
-| **\`actions/checkout\`** ×1 | \`$CHECKOUT_SHA\`, 2026-07-17 | \`v7\` | MIT | as below |
-| **\`anthropics/claude-code-action\`** ×$2 | \`$1\`, 2026-09-04 | \`v1\` | MIT | read the diff |
+| **\`actions/checkout\`** | \`$CHECKOUT_SHA\`, 2026-07-17 | \`v7\` | MIT | as below |
+| **\`anthropics/claude-code-action\`** | \`$1\`, 2026-09-04 | \`v1\` | MIT | read the diff |
 
-## Where the resolved graph lives
+### Where the resolved graph lives
+
+| Library | Pinned at | Licence |
+|---|---|---|
+| **LVGL** | \`85aa60d18b3d5e5588d7b247abf90198f07c8a63\`, 2026-08-20 | MIT |
 LEDGER
 }
 
@@ -399,13 +404,13 @@ ledger_case() {  # name, expected rc (0 pass / 1 reject), needle the output must
 # 1. Agreement. Also case 5 of the issue's list: the local `uses: ./…` is
 #    covered by no row and must not be demanded to be.
 plant_workflows "$RUN_SHA"
-plant_ledger "$RUN_SHA" 3
+plant_ledger "$RUN_SHA"
 ledger_case "a ledger naming the executed commit is accepted" 0
 
 # 2. The regression as it shipped: Dependabot moved the workflows, the table
 #    stayed. The message has to name the commit that actually runs, because that
 #    is the only thing the next reader needs.
-plant_ledger "$LEDGER_SHA" 3
+plant_ledger "$LEDGER_SHA"
 ledger_case "a SHA-only bump that leaves the table behind is rejected" 1 "$RUN_SHA"
 
 # 3. One occurrence moved alone -- a half-applied bump, which reads as correct
@@ -413,25 +418,31 @@ ledger_case "a SHA-only bump that leaves the table behind is rejected" 1 "$RUN_S
 plant_workflows "$LEDGER_SHA" "$RUN_SHA"
 ledger_case "one occurrence out of three at another commit is rejected" 1 "1 of 3 occurrences"
 
-# 4. The count. The tree loses a call site and the table still claims three.
-plant_workflows "$LEDGER_SHA"
-sed -i '0,/claude-code-action/{/claude-code-action/d}' "$lfix/wf/agent.yml"
-ledger_case "an occupancy count the tree no longer has is rejected" 1 "×3, the tree has 2"
+# 4. Occupancy is not asserted, and must not be. A second job takes a checkout
+#    at the commit the table already names: the dependency did not move, nothing
+#    executes a byte the table does not name, and a required check that reddened
+#    here would charge every job added anywhere in the tree with a document edit.
+plant_workflows "$RUN_SHA"
+printf '  extra:\n    steps:\n      - uses: actions/checkout@%s # v7\n' \
+  "$CHECKOUT_SHA" >>"$lfix/wf/agent.yml"
+plant_ledger "$RUN_SHA"
+ledger_case "a second occurrence at the commit the table names is accepted" 0
 
 # 5. The other direction. A row for an action nothing uses is as stale as a
 #    missing one, and it is how a removed workflow leaves the table lying.
 plant_workflows "$LEDGER_SHA"
-plant_ledger "$LEDGER_SHA" 3
-sed -i "/^## Where the resolved graph lives\$/i | **\`actions/stale-action\`** ×1 | \`$CHECKOUT_SHA\`, 2026-01-01 | \`v1\` | MIT | gone |" \
+plant_ledger "$LEDGER_SHA"
+sed -i "/anthropics\/claude-code-action/a | **\`actions/stale-action\`** | \`$CHECKOUT_SHA\`, 2026-01-01 | \`v1\` | MIT | gone |" \
   "$lfix/ledger.md"
 ledger_case "a row for an action no workflow uses is rejected" 1 "no workflow uses it"
 
 # 6. THE VACUOUS PASS, which is the failure mode a check like this really dies
-#    of. Rename the heading and the section scan matches nothing; without the
-#    second direction that is zero rows, zero disagreements, green. Every ref in
-#    the tree becoming uncovered is what makes it red instead.
-plant_ledger "$RUN_SHA" 3
-sed -i 's/^## GitHub Actions$/## Actions we use/' "$lfix/ledger.md"
+#    of. Rename a column of the header row the scan anchors on and it matches
+#    nothing; without the second direction that is zero rows, zero
+#    disagreements, green. Every ref in the tree becoming uncovered is what
+#    makes it red instead.
+plant_ledger "$RUN_SHA"
+sed -i 's/^| Action | Pinned at |/| Action name | Pinned at |/' "$lfix/ledger.md"
 ledger_case "a table the parser can no longer find is rejected, not passed over" 1 \
   "no inventory row names it"
 

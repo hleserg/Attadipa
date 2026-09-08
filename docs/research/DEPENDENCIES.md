@@ -63,11 +63,11 @@ nothing else, so this page — the record of which third-party code receives the
 Anthropic credential — named a commit no job executed, under green required CI.
 The pin test read the *shape* of a pin and never compared it with this page. A
 reader caught it inside a day; no check would have caught it at all. Every
-row's commit and its `×N` occupancy must equal what the workflow tree actually
-contains, in both directions: a row naming an action nothing uses fails, and an
-action used by a workflow that no row names fails. The `×N` is therefore load-
-bearing syntax rather than a note to the reader, which is why `actions/cache`
-carries `×1` and the two `codeql-action` sub-paths are written out in full.
+occurrence in the tree must execute the commit its row names, in both
+directions: a row naming an action nothing uses fails, and an action a workflow
+uses that no row names fails. That second direction is why `actions/cache` is
+here at all and why both `codeql-action` sub-paths are written out — each is a
+distinct `uses:` path, and one left unnamed is a failure rather than a note.
 
 ### The container image
 
@@ -102,11 +102,11 @@ the commit assertion.
 
 | Action | Pinned at | Tag it came from | Licence | Upgrade strategy |
 |---|---|---|---|---|
-| **`actions/checkout`** ×24 | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
-| **`anthropics/claude-code-action`** ×3 | `d75b94d5ad426cb8546e6628b6f5f19b84e5cce1`, 2026-09-04 | release `v1.0.216`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
-| **`actions/upload-artifact`** ×2 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
-| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** ×2 | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
-| **`actions/cache`** ×1 | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
+| **`actions/checkout`** | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
+| **`anthropics/claude-code-action`** | `d75b94d5ad426cb8546e6628b6f5f19b84e5cce1`, 2026-09-04 | release `v1.0.216`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
+| **`actions/upload-artifact`** | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
+| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
+| **`actions/cache`** | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
 
 `v1` moved twice while this pin was being prepared — the tag resolved to a
 different commit on 2026-08-27 and again on 2026-08-28. That is ordinary
