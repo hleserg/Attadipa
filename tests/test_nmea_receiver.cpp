@@ -737,11 +737,21 @@ void the_readout_stops_saying_waiting_for_gps()
 
 // A LOST FIX AT A COORDINATE THAT DID NOT MOVE, ALL THE WAY TO THE SENTENCE.
 //
-// The shape of a lost fix on this wire is not a silence and not a moved
-// coordinate: the receiver goes on publishing the last position it solved and
-// downgrades the verdict beside it. Three epochs at bytes that never change,
-// GGA quality and GSA mode falling from a 3D solution to nothing, and the
-// question is whether the parser's downgrade survives the two layers above it.
+// THAT SHAPE IS `UNKNOWN` FOR THE RECEIVER THIS PROJECT SHIPS WITH, and the
+// epochs below compose it because it is the harder of the two possibilities,
+// not because anything in this repository has observed it. Whether a receiver
+// losing its fix goes on publishing the last position it solved and downgrades
+// the verdict beside it is ruled `UNKNOWN` in the durable place:
+// `docs/adr/0011-gnss-integrity.md:374` — "That last sentence is `UNKNOWN` as a hardware fact and this decision does not"
+// — and nothing in `VERIFIED_FACTS.md` settles it. A receiver that instead
+// empties its fields publishes no position at all, which every path here
+// already reads as silence and handled correctly before #470; the retained
+// coordinate is the possibility that needs a rule, so it is the one the test
+// drives. The `NoFix` leg below carries the same caveat where it bites hardest.
+//
+// Three epochs at bytes that never change, GGA quality and GSA mode falling
+// from a 3D solution to nothing, and the question is whether the parser's
+// downgrade survives the two layers above it.
 //
 // It did not. `LocationService::poll()` discarded a sample whose coordinate
 // repeated — a rule written for the node provider, which restates one retained
