@@ -1,0 +1,2008 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Attadipa — a little light</title>
+  <style>
+    @font-face {
+      font-family: Nunito;
+      src: url("../../../artifacts/ui/NunitoSans.ttf");
+      font-weight: 100 900;
+      font-display: swap;
+    }
+    :root {
+      --ivory: #fff6e8;
+      --sand: #f3e8d1;
+      --clay: #e9dcc2;
+      --ink: #2f3a2e;
+      --olive: #3c4033;
+      --sage: #a7b49c;
+      --green: #6fa07a;
+      --teal: #6fb7b5;
+      --orange: #ff8a40;
+      --amber: #ffc857;
+      --cocoa: #7a5e3a;
+      --fast: 120ms;
+      --base: 200ms;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--ivory);
+      color: var(--ink);
+      font-family: Nunito, system-ui, sans-serif;
+    }
+    button,
+    select,
+    textarea {
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid var(--teal);
+      outline-offset: 3px;
+    }
+    button:disabled {
+      cursor: wait;
+    }
+    button,
+    select {
+      touch-action: manipulation;
+    }
+    header,
+    main,
+    footer {
+      max-width: 1840px;
+      margin: auto;
+      padding: 28px 40px;
+    }
+    .masthead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--sage);
+      padding-bottom: 22px;
+    }
+    .wordmark {
+      font-size: 30px;
+      letter-spacing: -1.5px;
+    }
+    .wordmark b {
+      color: var(--cocoa);
+      font-weight: 600;
+    }
+    .edition,
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .intro {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 36px;
+      padding: 32px 0 8px;
+    }
+    h1 {
+      font-size: clamp(38px, 4vw, 64px);
+      line-height: 1.04;
+      letter-spacing: -3px;
+      font-weight: 500;
+      margin: 0;
+    }
+    h1 em {
+      font-style: normal;
+      color: var(--cocoa);
+    }
+    .intro p {
+      max-width: 390px;
+      font-size: 16px;
+      line-height: 1.6;
+      margin: 0;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
+      padding: 24px 0;
+    }
+    .toolbar label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+    .toolbar select,
+    .state-control {
+      border: 1px solid var(--sage);
+      background: transparent;
+      border-radius: 12px;
+      padding: 10px;
+      color: var(--ink);
+    }
+    .toolbar .note {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--cocoa);
+    }
+    .review-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      border-block: 1px solid var(--sage);
+      padding: 16px 0;
+      margin-bottom: 28px;
+    }
+    .review-bar p {
+      flex: 1 1 300px;
+      font-size: 14px;
+      margin: 0;
+    }
+    #export-review {
+      background: var(--ink);
+      color: var(--ivory);
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      min-height: 44px;
+    }
+    #export-review:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .review-panel {
+      border-top: 1px solid var(--sage);
+      padding-top: 16px;
+      display: grid;
+      gap: 8px;
+    }
+    .review-panel label {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .review-panel select,
+    .review-panel textarea {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px;
+      color: var(--ink);
+      border: 1px solid var(--sage);
+      border-radius: 10px;
+      background: transparent;
+    }
+    .review-panel textarea {
+      resize: vertical;
+      min-height: 90px;
+    }
+    .review-context {
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      margin: 0;
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(424px, 1fr));
+      gap: 38px 24px;
+      align-items: start;
+    }
+    .gallery.small-gallery {
+      grid-template-columns: repeat(auto-fit, minmax(264px, 1fr));
+    }
+    article {
+      min-width: 0;
+    }
+    .card-heading {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin: 0 0 14px;
+    }
+    h2 {
+      font-size: 17px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .index {
+      font-size: 12px;
+      color: var(--cocoa);
+      margin-right: 10px;
+    }
+    .state-control {
+      max-width: 190px;
+      padding: 6px;
+      font-size: 12px;
+    }
+    .frame {
+      width: max-content;
+      padding: 6px;
+      border: 1px solid var(--sage);
+      border-radius: 32px;
+      background: var(--olive);
+    }
+    .screen {
+      --bg: var(--ink);
+      --surface: var(--olive);
+      --text: var(--ivory);
+      --muted: var(--sage);
+      --accent: var(--amber);
+      --line: var(--sage);
+      --pad: 24px;
+      --gap: 12px;
+      --target: 87px;
+      --title: 28px;
+      --body: 24px;
+      --caption: 18px;
+      --radius: 24px;
+      position: relative;
+      width: 410px;
+      height: 502px;
+      overflow: hidden;
+      border-radius: 25px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: var(--body);
+      isolation: isolate;
+    }
+    .screen.day {
+      --bg: var(--ivory);
+      --surface: var(--sand);
+      --text: var(--ink);
+      --muted: var(--cocoa);
+      --accent: var(--orange);
+    }
+    .screen.small {
+      width: 240px;
+      height: 240px;
+      --pad: 11px;
+      --gap: 6px;
+      --target: 61px;
+      --title: 18px;
+      --body: 18px;
+      --caption: 12px;
+      --radius: 15px;
+      border-radius: 18px;
+    }
+    .screen button {
+      color: inherit;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      min-height: var(--target);
+      min-width: var(--target);
+      padding: 0;
+      transition: background var(--fast);
+    }
+    .screen button:active {
+      background: var(--surface);
+    }
+    .screen svg {
+      display: block;
+      width: 28px;
+      height: 28px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+    .screen.small svg {
+      width: 22px;
+      height: 22px;
+    }
+    .screen .content {
+      position: absolute;
+      inset: var(--pad);
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+    }
+    .screen .kicker {
+      font-size: var(--caption);
+      color: var(--muted);
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+    .screen .sub {
+      font-size: var(--caption);
+      color: var(--muted);
+      line-height: 1.25;
+      background: var(--bg);
+      border-radius: 6px;
+    }
+    .screen .title {
+      font-size: var(--title);
+      line-height: 1.15;
+      margin: 0;
+      font-weight: 500;
+    }
+    .screen p {
+      margin: 0;
+    }
+    .screen .actions {
+      display: flex;
+      gap: var(--gap);
+      margin-top: auto;
+      flex-shrink: 0;
+    }
+    .screen .actions button {
+      flex: 1;
+      border-radius: var(--radius);
+      background: var(--surface);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--caption);
+      padding: 0 8px;
+    }
+    .screen .actions button.primary,
+    .screen .primary {
+      background: var(--accent);
+      color: var(--ink);
+    }
+    .screen .actions button.home {
+      flex: 0 0 var(--target);
+      padding: 0;
+      border: 1px solid var(--muted);
+    }
+    .screen .actions button:active {
+      filter: brightness(0.9);
+    }
+    .screen .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--caption);
+      color: var(--muted);
+    }
+    .screen .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 4px var(--surface);
+    }
+    .screen.day .dot {
+      border: 1px solid var(--ink);
+    }
+    .screen .value {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -2px;
+      font-size: 64px;
+      line-height: 1.05;
+    }
+    .screen.small .value {
+      font-size: 36px;
+      letter-spacing: -1px;
+    }
+    .screen .paper {
+      border-radius: var(--radius);
+      padding: 20px;
+      background: var(--surface);
+    }
+    .screen.small .paper {
+      padding: 10px;
+    }
+    .screen .warning {
+      color: var(--text);
+      border-left: 3px solid var(--accent);
+      padding-left: 10px;
+    }
+    .screen .grow {
+      flex: 1;
+      min-height: 0;
+    }
+    .caption {
+      font-size: 14px;
+      color: var(--cocoa);
+      line-height: 1.55;
+      margin: 14px 0 0;
+      max-width: 410px;
+    }
+    .caption b {
+      font-weight: 600;
+    }
+    .screen .clock {
+      justify-content: space-between;
+      gap: 0;
+    }
+    .scene-art {
+      position: absolute;
+      inset: 0;
+      background: url("glade-night-v2.png") center/cover;
+      z-index: -2;
+      pointer-events: none;
+    }
+    .screen[data-page="clock"].night .scene-art {
+      background-image: url("../../../ui/assets/source/backgrounds/clock_meadow_night_410x502.png");
+    }
+    .day .scene-art {
+      background-image: url("glade-day-v2.png");
+    }
+    /* Local reading surfaces keep the foliage itself crisp and fully visible. */
+    .screen .clock-top,
+    .screen .nav-header,
+    .screen .mesh-top,
+    .screen .step-head,
+    .screen .message,
+    .screen .details dl,
+    .screen .message-body {
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--bg) 90%, transparent);
+      border-radius: 6px;
+    }
+    .screen .nav-reading,
+    .screen .nav-status,
+    .screen .edit-label,
+    .screen .entry .sub,
+    .screen .summary .sub {
+      align-self: center;
+      background: var(--bg);
+      border-radius: 6px;
+      box-shadow: 0 0 0 3px var(--bg);
+    }
+    .screen .digits,
+    .screen .value,
+    .screen .title,
+    .screen .node-name {
+      text-shadow: 0 1px 3px var(--bg);
+    }
+    .screen .nav .dial {
+      background: var(--bg);
+      border-radius: 50%;
+    }
+    .screen.night .clock-top,
+    .screen.night .nav-header,
+    .screen.night .mesh-top,
+    .screen.night .step-head {
+      background: none;
+      box-shadow: none;
+    }
+    .night .clock-top .kicker,
+    .night .nav-header .kicker,
+    .night .nav-header .sub,
+    .night .mesh-top .kicker,
+    .night .mesh-top .pill,
+    .night .step-head .title {
+      background: var(--bg);
+      box-shadow: 0 0 6px 3px var(--bg);
+      border-radius: 6px;
+    }
+    .fireflies {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .fireflies i {
+      position: absolute;
+      left: 2%;
+      top: 30%;
+      width: 3px;
+      height: 3px;
+      background: var(--amber);
+      border-radius: 50%;
+      box-shadow: 0 0 5px 1px var(--amber);
+      animation: firefly-drift 12s ease-in-out infinite;
+    }
+    .fireflies i:nth-child(2) {
+      left: auto;
+      right: 2%;
+      top: 48%;
+      animation-delay: -4s;
+    }
+    .fireflies i:nth-child(3) {
+      top: 67%;
+      animation-delay: -8s;
+    }
+    .day .fireflies {
+      opacity: 0.5;
+    }
+    .screen:active .fireflies i,
+    .screen[data-visible="false"] .fireflies i,
+    .motion-paused .fireflies i {
+      animation-play-state: paused;
+    }
+    @keyframes firefly-drift {
+      0%,
+      100% {
+        transform: translate(0, 0);
+        opacity: 0.25;
+      }
+      35% {
+        transform: translate(3px, -10px);
+        opacity: 0.8;
+      }
+      70% {
+        transform: translate(-3px, -4px);
+        opacity: 0.4;
+      }
+    }
+    .screen .failure-symbol {
+      width: 76px;
+      height: 76px;
+      color: var(--text);
+      background: var(--surface);
+      border: 2px solid var(--accent);
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+    }
+    .screen .failure-symbol svg {
+      width: 44px;
+      height: 44px;
+    }
+    .screen.small .failure-symbol {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+    }
+    .screen.small .failure-symbol svg {
+      width: 28px;
+      height: 28px;
+    }
+    .clock-halo {
+      position: absolute;
+      left: 20%;
+      right: 20%;
+      top: 16%;
+      height: 240px;
+      border-radius: 50%;
+      border: 1px solid var(--accent);
+      opacity: 0.18;
+      z-index: -1;
+    }
+    .small .clock-halo {
+      height: 132px;
+      top: 9%;
+    }
+    .clock-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 12px;
+    }
+    .small .clock-top {
+      padding-top: 0;
+    }
+    .clock .clock-time {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      flex: 1;
+      border-radius: var(--radius);
+      background: transparent;
+    }
+    .clock .digits {
+      font-size: 100px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -5px;
+      line-height: 1;
+      color: var(--text);
+    }
+    .clock .digits i {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .clock .edit-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--caption);
+      color: var(--muted);
+    }
+    .clock .edit-label svg {
+      width: 16px;
+      height: 16px;
+    }
+    .small .clock .digits {
+      font-size: 60px;
+      letter-spacing: -3px;
+    }
+    .small .clock .clock-time {
+      gap: 3px;
+    }
+    .clock .actions {
+      margin-top: 0;
+    }
+    .clock .actions button {
+      flex-direction: column;
+      gap: 6px;
+      border: 1px solid var(--muted);
+      background: var(--bg);
+    }
+    .clock .child-art {
+      width: 160px;
+      height: 160px;
+      object-fit: cover;
+      border-radius: 50%;
+      align-self: center;
+    }
+    .small .clock .child-art {
+      width: 68px;
+      height: 68px;
+    }
+    .clock.child .clock-time {
+      flex: 0;
+      min-height: 0;
+      pointer-events: none;
+    }
+    .clock.child .actions button {
+      min-height: 110px;
+    }
+    .small .clock.child .actions button {
+      min-height: 77px;
+    }
+    .clock.child .edit-label {
+      display: none;
+    }
+    .screen .nav {
+      align-items: center;
+    }
+    .nav .nav-header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav .dial {
+      height: 182px;
+      width: 182px;
+      margin: 3px 0;
+      position: relative;
+    }
+    .nav .dial svg {
+      height: 100%;
+      width: 100%;
+      stroke-width: 1.2;
+    }
+    .nav .dial .north {
+      position: absolute;
+      top: 3px;
+      width: 100%;
+      text-align: center;
+      font-size: var(--caption);
+      color: var(--muted);
+    }
+    .nav .nav-value {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .nav .unit {
+      font-size: var(--title);
+    }
+    .nav .nav-reading {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: var(--caption);
+      color: var(--muted);
+    }
+    .nav .nav-status {
+      text-align: center;
+      max-width: 100%;
+      font-size: var(--caption);
+      line-height: 1.3;
+    }
+    .nav .actions {
+      width: 100%;
+    }
+    .small .nav {
+      gap: 4px;
+    }
+    .small .nav .dial {
+      height: 63px;
+      width: 63px;
+      margin: 0;
+    }
+    .small .nav .dial .north {
+      font-size: 10px;
+      top: 0;
+    }
+    .small .nav .nav-header {
+      font-size: 12px;
+    }
+    .small .nav .value {
+      font-size: 32px;
+    }
+    .small .nav .unit {
+      font-size: 16px;
+    }
+    .small .nav .nav-reading {
+      font-size: 12px;
+    }
+    .small .nav .nav-status {
+      font-size: 12px;
+    }
+    .screen .lumar {
+      width: 180px;
+      height: 180px;
+      object-fit: cover;
+      border-radius: 50%;
+      align-self: center;
+    }
+    .screen.small .lumar {
+      width: 78px;
+      height: 78px;
+    }
+    .screen .empty {
+      text-align: center;
+      align-items: center;
+      justify-content: center;
+    }
+    .screen .empty .actions {
+      width: 100%;
+    }
+    .screen .empty .title {
+      font-size: 36px;
+    }
+    .screen.small .empty {
+      gap: 5px;
+    }
+    .screen.small .empty .title {
+      font-size: 21px;
+    }
+    .screen .mesh-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .mesh .link-art {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 14px 0;
+    }
+    .mesh .link-art svg {
+      width: 36px;
+      height: 36px;
+    }
+    .mesh .link-path {
+      height: 1px;
+      background: var(--line);
+      flex: 1;
+      position: relative;
+    }
+    .mesh .link-path:after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      left: 62%;
+      top: -4px;
+      box-shadow: 0 0 18px var(--amber);
+    }
+    .mesh .link-node {
+      width: 68px;
+      height: 68px;
+      border: 1px solid var(--muted);
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+    }
+    .mesh .node-name {
+      font-size: var(--title);
+      line-height: 1.2;
+    }
+    .mesh .message {
+      margin-top: 10px;
+      border-left: 3px solid var(--accent);
+      padding: 0 0 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .mesh .message-text {
+      font-size: 30px;
+      line-height: 1.28;
+    }
+    .small .mesh {
+      gap: 5px;
+    }
+    .small .mesh .link-art {
+      height: 26px;
+      margin: 0;
+      gap: 10px;
+    }
+    .small .mesh .link-art svg {
+      width: 22px;
+      height: 22px;
+    }
+    .small .mesh .link-node {
+      width: 26px;
+      height: 26px;
+    }
+    .small .mesh .message {
+      padding-left: 9px;
+      margin-top: 3px;
+      gap: 4px;
+    }
+    .small .mesh .message-text {
+      font-size: 18px;
+    }
+    .small .mesh .node-name {
+      font-size: 16px;
+    }
+    .small .mesh .sub.sender {
+      display: none;
+    }
+    .screen .details {
+      font-size: var(--caption);
+      line-height: 1.45;
+    }
+    .details dl {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin: 6px 0;
+    }
+    .details dd {
+      margin: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .details dt {
+      color: var(--muted);
+    }
+    .small .details {
+      font-size: 12px;
+      gap: 5px;
+    }
+    .small .details dl {
+      gap: 4px;
+      margin: 0;
+    }
+    .screen .setup .step-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .screen .setup .progress {
+      display: flex;
+      gap: 5px;
+    }
+    .screen .setup .progress i {
+      width: 12px;
+      height: 3px;
+      border-radius: 3px;
+      background: var(--muted);
+      opacity: 0.35;
+    }
+    .screen .setup .progress i.active {
+      background: var(--accent);
+      opacity: 1;
+    }
+    .screen .setup .entry {
+      text-align: center;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+    }
+    .screen .setup .entry .value {
+      font-size: 80px;
+    }
+    .screen.small .setup {
+      gap: 6px;
+    }
+    .screen.small .setup .entry {
+      gap: 3px;
+    }
+    .screen.small .setup .entry .value {
+      font-size: 36px;
+    }
+    .screen .stepper {
+      display: flex;
+      gap: var(--gap);
+    }
+    .screen .stepper button {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--muted);
+      border-radius: var(--radius);
+      font-size: 36px;
+    }
+    .screen .setup .actions {
+      margin-top: 0;
+    }
+    .screen .setup .setup-menu {
+      display: flex;
+      flex-direction: column;
+      gap: var(--gap);
+      flex: 1;
+      justify-content: center;
+    }
+    .screen .setup .setup-menu button {
+      text-align: left;
+      padding: 14px 18px;
+      border: 1px solid var(--muted);
+      border-radius: var(--radius);
+      background: var(--surface);
+      font-size: var(--title);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .screen.small .setup .setup-menu button {
+      padding: 8px;
+      font-size: 18px;
+    }
+    .screen .setup .summary {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      flex: 1;
+      justify-content: center;
+    }
+    .screen.small .setup .summary {
+      gap: 6px;
+    }
+    .screen .setup .code {
+      font-variant-numeric: tabular-nums;
+      font-size: 38px;
+      letter-spacing: 4px;
+    }
+    .screen.small .setup .code {
+      font-size: 24px;
+      letter-spacing: 2px;
+    }
+    .code u {
+      color: var(--text);
+      text-underline-offset: 8px;
+      text-decoration-color: var(--accent);
+    }
+    .code span {
+      color: var(--muted);
+    }
+    .screen .pending-symbol {
+      width: 90px;
+      height: 90px;
+      align-self: center;
+      border: 2px solid var(--muted);
+      border-top: 4px solid var(--accent);
+      border-radius: 50%;
+    }
+    .screen.small .pending-symbol {
+      width: 40px;
+      height: 40px;
+    }
+    .screen .complete-symbol {
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+    .complete-symbol svg {
+      color: var(--green);
+    }
+    .screen.day .complete-symbol svg {
+      color: var(--ink);
+    }
+    .screen .home-only {
+      width: 100%;
+    }
+    footer {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--cocoa);
+      border-top: 1px solid var(--sage);
+      margin-top: 24px;
+    }
+    footer a {
+      color: inherit;
+    }
+    .screen [aria-live] {
+      min-height: 1em;
+    }
+    @media (max-width: 640px) {
+      header,
+      main,
+      footer {
+        padding: 20px 14px;
+      }
+      .intro {
+        display: block;
+        padding-top: 26px;
+      }
+      .intro p {
+        margin-top: 20px;
+      }
+      .gallery {
+        display: flex;
+        flex-direction: column;
+      }
+      .toolbar .note {
+        margin-left: 0;
+      }
+      .edition {
+        display: none;
+      }
+      h1 {
+        letter-spacing: -1.5px;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .fireflies {
+        display: none;
+      }
+      *,
+      *:before,
+      *:after {
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+    @media print {
+      .toolbar,
+      footer,
+      .state-control {
+        display: none;
+      }
+      .gallery {
+        display: flex;
+        flex-wrap: wrap;
+      }
+      .frame {
+        break-inside: avoid;
+      }
+      body {
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+  <style>
+    header,
+    main,
+    footer {
+      max-width: 1920px;
+    }
+    .nav-core {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .nav .dial {
+      height: 154px;
+      width: 154px;
+    }
+    .small .nav-core {
+      flex-direction: row;
+      justify-content: space-around;
+      width: 100%;
+      gap: 8px;
+    }
+    .small .nav .dial {
+      width: 88px;
+      height: 88px;
+      flex-shrink: 0;
+    }
+    .small .nav .value {
+      font-size: 40px;
+    }
+    .small .nav .nav-value {
+      gap: 4px;
+    }
+    .message-body {
+      overflow: auto;
+      min-height: 0;
+      flex: 1;
+      scrollbar-width: thin;
+    }
+    .screen.day .actions button {
+      border: 1px solid var(--muted);
+    }
+    .screen.small .setup {
+      gap: 4px;
+    }
+    .screen .node-actions button {
+      font-size: var(--caption);
+    }
+    .screen .receipt .lumar {
+      width: 110px;
+      height: 110px;
+    }
+    .screen.small .receipt .lumar {
+      width: 50px;
+      height: 50px;
+    }
+    .screen .receipt .title {
+      font-size: var(--title);
+    }
+    .screen.small .receipt .value {
+      font-size: 32px;
+    }
+  </style>
+  <header>
+    <div class="masthead">
+      <div class="wordmark">Attadipa<b>°</b></div>
+      <div class="edition">Design study 01 · V2 · September 2026</div>
+    </div>
+    <div class="intro">
+      <h1>A little light.<br /><em>Always with you.</em></h1>
+      <p>
+        Time, direction and a connection to your people.<br />A quieter watch,
+        with moments worth noticing.
+      </p>
+    </div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <label
+        >Display
+        <select id="size">
+          <option value="large">410 × 502</option>
+          <option value="small">240 × 240</option>
+        </select></label
+      >
+      <label
+        >Theme
+        <select id="theme">
+          <option value="night">Night</option>
+          <option value="day">Day</option>
+        </select></label
+      >
+      <label
+        >Language
+        <select id="locale">
+          <option value="ru">Русский</option>
+          <option value="en">English</option>
+        </select></label
+      >
+      <label><input id="child" type="checkbox" /> Child clock</label>
+      <label
+        ><input id="motion" type="checkbox" checked /><span id="motion-label"
+          >Fireflies</span
+        ></label
+      >
+      <span class="note"
+        >Interactive concept · sample data · 1 CSS pixel = 1 display pixel</span
+      >
+    </div>
+    <div class="review-bar">
+      <p id="review-notice" role="status"></p>
+      <button id="export-review" disabled></button>
+    </div>
+    <div id="gallery" class="gallery"></div>
+  </main>
+  <footer>
+    Design prototype, not firmware. All values and outcomes are simulated; no
+    watch, radio or device storage is accessed. Review notes are stored only in
+    this browser, not sent to an agent. Export them to share. Use the controls
+    inside each screen. State selectors belong to this review page, not the
+    product. The 240 px layout is composed separately, never scaled.<br /><a
+      href="../DESIGN_DIRECTION_2026-09-07.md"
+      >Design decisions and implementation handoff</a
+    >
+    · <a href="../DESIGN_SYSTEM.md">Canonical design system</a>
+  </footer>
+  <script>
+    "use strict";
+    const strings = {
+      en: {
+        clock: "Clock",
+        nav: "To node",
+        mesh: "Mesh",
+        setup: "Set up",
+        date: "MON, 7 SEP",
+        edit: "Set time",
+        navigate: "Direction",
+        connected: "Connected",
+        details: "Details",
+        home: "Clock",
+        north: "N",
+        bearing: "057° NE · north-up",
+        distance: "2.1",
+        km: "km",
+        fresh: "Node position · 3 s ago",
+        stale: "Last position · 2 min ago",
+        freshAge: "3 s",
+        staleAge: "2 min",
+        nofix: "Finding your position",
+        otherScreen: "Other screen",
+        outdoors: "Move into open sky.",
+        unknown: "No node position",
+        unknownHint: "Waiting for its coordinates.",
+        absent: "No node yet",
+        absentHint: "Your clock still works.",
+        connect: "Set up node",
+        reconnect: "Connection lost",
+        reconnectHint: "Last received data stays available.",
+        refused: "Different node",
+        refusedHint: "Check its identity before reconnecting.",
+        node: "Ridge companion",
+        message: "At the ridge.\nHeading down.",
+        received: "Last message",
+        delivery: "Delivered",
+        last: "Last received",
+        sender: "Ridge companion",
+        read: "Read message",
+        readTitle: "Message",
+        fix: "Node fix",
+        unconfirmed: "Unconfirmed",
+        heading: "Heading",
+        northup: "North-up",
+        age: "Position age",
+        peers: "Reported peers",
+        snr: "SNR",
+        snrValue: "7.25 dB",
+        mtu: "MTU",
+        identity: "Node key",
+        saved: "Saved",
+        cancel: "Cancel",
+        back: "Back",
+        next: "Next",
+        save: "Save time",
+        time: "Local time",
+        pair: "Node passkey",
+        later: "Later",
+        day: "Day",
+        month: "Month",
+        year: "Year",
+        hour: "Hours",
+        minute: "Minutes",
+        zone: "UTC offset",
+        review: "Check the time",
+        local: "Local",
+        utc: "UTC",
+        timeSet: "Time is set",
+        timeNote: "The node can wait.",
+        done: "Go to clock",
+        codeSaved: "Passkey saved",
+        codeNote: "Connection is still being checked.",
+        digit: "Digit",
+        codeHint: "Six digits shown by your node.",
+        submit: "Save code",
+        pending: "Saving passkey",
+        pendingHint: "Waiting for the node service.",
+        failed: "Could not save",
+        failedHint: "The code has not been confirmed.",
+        retry: "Try again",
+        step: "Time",
+        ready: "Ready",
+        keep: "Keep node",
+        forget: "Forget node",
+        forgetTitle: "Forget this node?",
+        forgetHint: "Its bond and saved identity will be removed.",
+        forgotten: "Node forgotten",
+        forgottenHint: "Use the new code shown by the node.",
+        confirmForget: "Forget",
+        noChange: "Nothing changed",
+        stop: "Close",
+        clockMissing: "Set the clock",
+        clockHint: "Date and time are not set.",
+        clockOld: "Time needs checking",
+        clockOldHint: "Last known time",
+        childHint: "Your little light",
+        codeStep: "Node",
+        notLinked: "Passkey stored ≠ connected",
+        longMessage:
+          "At the ridge. Heading down. We will meet at the old bridge beside the river. Wait there if the signal drops.",
+      },
+      ru: {
+        clock: "Часы",
+        nav: "К узлу",
+        mesh: "Меш",
+        setup: "Настройка",
+        date: "ПН, 7 СЕН",
+        edit: "Настроить время",
+        navigate: "Направление",
+        connected: "На связи",
+        details: "Подробнее",
+        home: "Часы",
+        north: "С",
+        bearing: "057° СВ · от севера",
+        distance: "2,1",
+        km: "км",
+        fresh: "Позиция узла · 3 с назад",
+        stale: "Последняя позиция · 2 мин",
+        freshAge: "3 с",
+        staleAge: "2 мин",
+        nofix: "Ищем вашу позицию",
+        otherScreen: "Другой экран",
+        outdoors: "Выйдите под открытое небо.",
+        unknown: "Нет позиции узла",
+        unknownHint: "Ждём его координаты.",
+        absent: "Пока без узла",
+        absentHint: "Часы уже работают.",
+        connect: "Настроить узел",
+        reconnect: "Связь потеряна",
+        reconnectHint: "Последние данные сохранены.",
+        refused: "Другой узел",
+        refusedHint: "Проверьте, что это ваш узел.",
+        node: "Узел на хребте",
+        message: "На хребте.\nСпускаюсь.",
+        received: "Сообщение",
+        delivery: "Доставлено",
+        last: "Последнее сообщение",
+        sender: "Узел на хребте",
+        read: "Читать",
+        readTitle: "Сообщение",
+        fix: "Фиксация узла",
+        unconfirmed: "Не подтверждена",
+        heading: "Ориентация",
+        northup: "Север сверху",
+        age: "Возраст позиции",
+        peers: "Известные узлы",
+        snr: "ОСШ",
+        snrValue: "7,25 дБ",
+        mtu: "MTU",
+        identity: "Ключ узла",
+        saved: "Сохранено",
+        cancel: "Отмена",
+        back: "Назад",
+        next: "Далее",
+        save: "Сохранить",
+        time: "Местное время",
+        pair: "Код узла",
+        later: "Позже",
+        day: "День",
+        month: "Месяц",
+        year: "Год",
+        hour: "Часы",
+        minute: "Минуты",
+        zone: "Сдвиг UTC",
+        review: "Проверьте время",
+        local: "Местное",
+        utc: "UTC",
+        timeSet: "Время настроено",
+        timeNote: "Узел можно добавить позже.",
+        done: "К часам",
+        codeSaved: "Код сохранён",
+        codeNote: "Связь ещё проверяется.",
+        digit: "Цифра",
+        codeHint: "Шесть цифр с экрана узла.",
+        submit: "Сохранить код",
+        pending: "Сохраняем код",
+        pendingHint: "Ждём ответа службы узла.",
+        failed: "Не удалось сохранить",
+        failedHint: "Сохранение кода не подтверждено.",
+        retry: "Повторить",
+        step: "Время",
+        ready: "Готово",
+        keep: "Оставить",
+        forget: "Забыть узел",
+        forgetTitle: "Забыть этот узел?",
+        forgetHint: "Его привязка и ключ будут удалены.",
+        forgotten: "Узел забыт",
+        forgottenHint: "Введите новый код с экрана узла.",
+        confirmForget: "Забыть",
+        noChange: "Ничего не изменено",
+        stop: "Закрыть",
+        clockMissing: "Настройте часы",
+        clockHint: "Дата и время не заданы.",
+        clockOld: "Проверьте время",
+        clockOldHint: "Последнее известное",
+        childHint: "Твой маленький свет",
+        codeStep: "Узел",
+        notLinked: "Код сохранён ≠ есть связь",
+        longMessage:
+          "На хребте. Спускаюсь. Встретимся у старого моста рядом с рекой. Если связь пропадёт, ждите там.",
+      },
+    };
+    const icons = {
+      clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>',
+      nav: '<path d="m12 3 7 18-7-5-7 5Z"/>',
+      mesh: '<circle cx="5" cy="12" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><path d="m7 11 9-5M7 13l9 5"/>',
+      back: '<path d="m14 5-7 7 7 7"/>',
+      edit: '<path d="m4 16 11-11 4 4-11 11-5 1Zm9-9 4 4"/>',
+      check: '<circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/>',
+      warning: '<path d="m12 3 10 18H2ZM12 9v5m0 3v.1"/>',
+    };
+    const icon = (name) =>
+      `<svg aria-hidden="true" viewBox="0 0 24 24">${icons[name]}</svg>`;
+    const t = (key) =>
+      strings[document.querySelector("#locale").value][key] || key;
+    const escapeText = (value) =>
+      String(value).replace(
+        /[&<>"']/g,
+        (c) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[c],
+      );
+    const cards = [
+      {
+        id: "clock",
+        title: "Clock",
+        note: "Time takes the lead. Light frames it; two large destinations make the next action visible.",
+        states: ["ready", "unprovisioned", "stale"],
+      },
+      {
+        id: "nav",
+        title: "Navigation",
+        note: "A direction to a coordinate, with north fixed at the top. This is not turn-by-turn navigation.",
+        states: ["ready", "stale", "no-fix", "node-unknown"],
+      },
+      {
+        id: "mesh",
+        title: "Mesh",
+        note: "People and their words first. Signal measurements and identity live one tap away.",
+        states: ["ready", "suspended", "absent", "refused"],
+      },
+      {
+        id: "setup",
+        title: "Setup",
+        note: "Local time, generous controls and a confirmation before saving. Node setup is a separate task.",
+        states: [
+          "menu",
+          "time",
+          "passkey",
+          "pending",
+          "failed",
+          "done",
+          "code-saved",
+          "node",
+          "forgotten",
+        ],
+      },
+    ];
+    const views = Object.fromEntries(
+      cards.map((c) => [c.id, { page: c.id, state: c.states[0] }]),
+    );
+    const initialTime = [7, 9, 2026, 10, 9, 180];
+    const wizards = Object.fromEntries(
+      cards.map((c) => [
+        c.id,
+        {
+          step: 0,
+          values: [...initialTime],
+          digit: 0,
+          code: [0, 0, 0, 0, 0, 0],
+          saved: false,
+          clockState: "ready",
+          nodeReturn: { page: "setup", state: "menu" },
+          passkeyReturn: { page: "setup", state: "menu" },
+        },
+      ]),
+    );
+    const savedClocks = {};
+    // Bump the namespace when the design changes: approval must not carry forward.
+    const reviewPrefix = "attadipa-study-01-review-v2/";
+    const reviews = new Map();
+    const unreadableReviews = new Map();
+    let reviewStorageFailed = false;
+    function loadReviews() {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!/^attadipa-study-01-review-v[12]\//.test(key)) continue;
+          const raw = localStorage.getItem(key);
+          try {
+            const entry = JSON.parse(raw);
+            if (
+              !entry ||
+              !["pending", "approved", "changes"].includes(entry.status) ||
+              !["context", "note", "preview"].every(
+                (field) => typeof entry[field] === "string",
+              )
+            ) {
+              throw new Error("Invalid stored review");
+            }
+            reviews.set(key, entry);
+          } catch {
+            unreadableReviews.set(key, raw);
+            reviewStorageFailed = true;
+          }
+        }
+      } catch {
+        reviewStorageFailed = true;
+      }
+    }
+    loadReviews();
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    const reviewCopy = () =>
+      document.querySelector("#locale").value === "ru"
+        ? {
+            status: "Решение по этому варианту",
+            note: "Что изменить?",
+            pending: "Ещё не согласовано",
+            approved: "Согласовано",
+            changes: "Нужны изменения",
+            scope: "Только показанный вариант",
+            export: "Скачать замечания",
+            notice:
+              "V2 · Заметки сохраняются в этом браузере. Отзывы V1 остались в выгрузке, но не согласуют новый дизайн.",
+            failed:
+              "Ошибка чтения или сохранения заметок. Скачайте файл до закрытия страницы; повреждённые записи включены как исходный текст и защищены от перезаписи.",
+          }
+        : {
+            status: "Decision on this variant",
+            note: "What should change?",
+            pending: "Not reviewed",
+            approved: "Approved",
+            changes: "Changes requested",
+            scope: "Only the displayed variant",
+            export: "Download review",
+            notice:
+              "V2 · Notes stay in this browser. V1 feedback remains in the export but does not approve the new design.",
+            failed:
+              "Browser storage failed to read or save notes. Download before closing; unreadable entries are included as raw text and protected from overwrite.",
+          };
+    function reviewContext(id) {
+      const view = views[id],
+        wizard = wizards[id];
+      return [
+        id,
+        ...["size", "theme", "locale"].map(
+          (key) => document.querySelector(`#${key}`).value,
+        ),
+        view.page === "clock"
+          ? document.querySelector("#child").checked
+            ? "child"
+            : "adult"
+          : "",
+        motionEnabled(view) ? "fireflies" : "still",
+        view.page,
+        view.state,
+        view.page !== "setup"
+          ? ""
+          : view.state === "time"
+            ? `field-${wizard.step + 1}`
+            : view.state === "passkey"
+              ? `digit-${wizard.digit + 1}`
+              : view.state === "done"
+                ? wizard.saved
+                  ? "time-saved"
+                  : "code-saved"
+                : "",
+      ]
+        .filter(Boolean)
+        .join(" / ");
+    }
+    function renderReview(id) {
+      const copy = reviewCopy(),
+        panel = document.querySelector(`#review-${id}`);
+      const context = reviewContext(id),
+        key = reviewPrefix + context;
+      const entry = reviews.get(key);
+      panel.dataset.key = key;
+      panel.querySelector(".review-context").textContent =
+        `${copy.scope}: ${context}`;
+      panel.querySelector(".review-status-label").textContent = copy.status;
+      panel.querySelector(".review-note-label").textContent = copy.note;
+      panel
+        .querySelectorAll("option")
+        .forEach((option) => (option.textContent = copy[option.value]));
+      panel.querySelector("select").value = entry?.status || "pending";
+      panel.querySelector("textarea").value = entry?.note || "";
+      panel
+        .querySelectorAll("select,textarea")
+        .forEach((input) => (input.disabled = unreadableReviews.has(key)));
+    }
+    function renderReviewNotice() {
+      const copy = reviewCopy();
+      const count =
+        [...reviews.values()].filter(
+          (entry) => entry.note.trim() || entry.status !== "pending",
+        ).length + unreadableReviews.size;
+      const notice = document.querySelector("#review-notice");
+      const message = copy[reviewStorageFailed ? "failed" : "notice"];
+      if (notice.textContent !== message) notice.textContent = message;
+      const button = document.querySelector("#export-review");
+      button.textContent = `${copy.export} · ${count}`;
+      button.disabled = count === 0;
+    }
+    function saveReview(event) {
+      const panel = event.target.closest(".review-panel");
+      if (!panel) return;
+      const id = panel.id.replace("review-", "");
+      const entry = {
+        context: reviewContext(id),
+        status: panel.querySelector("select").value,
+        note: panel.querySelector("textarea").value,
+        preview: document.querySelector(`#screen-${id}`).innerText,
+      };
+      reviews.set(panel.dataset.key, entry);
+      try {
+        // One key per variant avoids overwriting another tab's unrelated notes.
+        localStorage.setItem(panel.dataset.key, JSON.stringify(entry));
+      } catch {
+        reviewStorageFailed = true;
+      }
+      renderReviewNotice();
+    }
+    function exportReview() {
+      // ponytail: a local review file; add shared accounts only for multi-user review.
+      return [
+        "ATTADIPA — DESIGN STUDY 01 / REVIEW V2",
+        "Only the listed variants are reviewed. Not firmware acceptance.",
+        ...[...reviews.entries()]
+          .filter(
+            ([, entry]) => entry.note.trim() || entry.status !== "pending",
+          )
+          .map(
+            ([key, entry]) =>
+              `\nRevision: ${key.startsWith(reviewPrefix) ? "V2" : "V1 (previous design)"}\n${entry.context}\nDecision: ${entry.status}\n\n${entry.note}\n\nScreen text when reviewed:\n${entry.preview}`,
+          ),
+        ...[...unreadableReviews].map(
+          ([key, raw]) =>
+            `\nUNREADABLE SAVED ENTRY — recovery copy\n${key}\n${raw}`,
+        ),
+      ].join("\n");
+    }
+    const fields = ["day", "month", "year", "hour", "minute", "zone"];
+    const pad = (n) => String(n).padStart(2, "0");
+    const offsetText = (n) =>
+      `${n < 0 ? "−" : "+"}${pad(Math.floor(Math.abs(n) / 60))}:${pad(Math.abs(n) % 60)}`;
+    const localTime = (w) => `${pad(w.values[3])}:${pad(w.values[4])}`;
+    const dateText = (w) =>
+      `${pad(w.values[0])}.${pad(w.values[1])}.${w.values[2]}`;
+    const utcDate = (w) =>
+      new Date(
+        Date.UTC(
+          w.values[2],
+          w.values[1] - 1,
+          w.values[0],
+          w.values[3],
+          w.values[4],
+        ) -
+          w.values[5] * 60000,
+      );
+    function action(label, command, primary = false) {
+      return `<button data-action="${command}" class="${primary ? "primary" : ""}">${escapeText(label)}</button>`;
+    }
+    function home() {
+      return `<button class="home" data-action="home" aria-label="${t("home")}">${icon("clock")}</button>`;
+    }
+    function imageLumar() {
+      return '<img class="lumar" src="lumar-study.png" alt="">';
+    }
+    function clock(view, id) {
+      const child = document.querySelector("#child").checked;
+      const saved = savedClocks[id];
+      const time = saved
+        ? `${pad(saved[3])}<i>:</i>${pad(saved[4])}`
+        : "10<i>:</i>09";
+      const date = saved
+        ? new Intl.DateTimeFormat(document.querySelector("#locale").value, {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            timeZone: "UTC",
+          })
+            .format(new Date(Date.UTC(saved[2], saved[1] - 1, saved[0])))
+            .toUpperCase()
+        : t("date");
+      if (view.state === "unprovisioned")
+        return empty("clockMissing", "clockHint", "time", "edit");
+      return `<div class="clock-halo"></div><div class="content clock ${child ? "child" : ""}"><div class="clock-top"><span class="kicker">${escapeText(date)}</span>${view.state === "stale" ? icon("warning") : ""}</div><button class="clock-time" data-action="menu" aria-label="${t("edit")}" ${child ? "disabled" : ""}><span class="digits">${time}</span><span class="edit-label">${view.state === "stale" ? t("clockOld") : t("edit")}${icon("edit")}</span></button>${child ? '<img class="child-art" src="lumar-study.png" alt="Lumar">' : ""}<div class="actions">${action(t("navigate"), "nav")}${action(t("mesh"), "mesh")}</div></div>`;
+    }
+    function empty(title, hint, command = "home", label = "home") {
+      return `<div class="content empty">${imageLumar()}<h3 class="title">${t(title)}</h3><p class="sub">${t(hint)}</p><div class="actions">${action(t(label), command, true)}</div></div>`;
+    }
+    function nav(view) {
+      if (view.state === "no-fix") return empty("nofix", "outdoors");
+      if (view.state === "node-unknown") return empty("unknown", "unknownHint");
+      return `<div class="content nav"><div class="nav-header"><span class="kicker">${t("nav")}</span><span class="sub">${view.state === "stale" ? icon("warning") : "↗"}</span></div><div class="nav-core"><div class="dial"><span class="north">${t("north")}</span><svg viewBox="0 0 180 180" aria-label="${t("bearing")}"><circle cx="90" cy="90" r="70" stroke="var(--muted)"/><path d="M90 27v7M153 90h-7M90 153v-7M27 90h7" stroke="var(--muted)"/><path d="M90 90 137 60" stroke="var(--text)" stroke-dasharray="2 5"/><circle cx="90" cy="90" r="4" fill="var(--text)" stroke="none"/><circle cx="137" cy="60" r="13" fill="var(--accent)" fill-opacity=".15" stroke="none"/><circle cx="137" cy="60" r="6" fill="var(--accent)" stroke="var(--text)"/></svg></div><div class="nav-value"><span class="value">${t("distance")}</span><span class="unit">${t("km")}</span></div></div><div class="nav-reading">${t("bearing")}</div><p class="nav-status ${view.state === "stale" ? "warning" : "sub"}">${t(view.state === "stale" ? "stale" : "fresh")}</p><div class="actions">${home()}${action(t("details"), "nav-details")}</div></div>`;
+    }
+    function mesh(view) {
+      if (view.state === "absent")
+        return empty("absent", "absentHint", "passkey", "connect");
+      if (view.state === "refused")
+        return empty("refused", "refusedHint", "node", "details");
+      const offline = view.state === "suspended";
+      return `<div class="content mesh"><div class="mesh-top"><span class="kicker">${t("mesh")}</span><span class="pill">${offline ? icon("warning") : '<i class="dot"></i>'}${t(offline ? "reconnect" : "connected")}</span></div><div class="link-art">${icon("clock")}<div class="link-path"></div><div class="link-node">${icon("mesh")}</div></div><div class="node-name">${t("node")}</div><div class="message"><div class="kicker">${t(offline ? "last" : "received")}</div><p class="message-text">${t("message").replace("\n", "<br>")}</p><div class="sub sender">${t("sender")} · ${t("delivery")}</div></div><div class="actions">${home()}${action(t("read"), "message", true)}${action(t("details"), "mesh-details")}</div></div>`;
+    }
+    function details(kind, state) {
+      const navDetails = kind === "nav-details";
+      const rows = navDetails
+        ? [
+            [t("heading"), t("northup")],
+            [t("age"), t(state === "stale" ? "staleAge" : "freshAge")],
+            [t("fix"), t("unconfirmed")],
+          ]
+        : [
+            [t("identity"), "4c9a2f7b"],
+            [t("peers"), "3"],
+            [t("snr"), t("snrValue")],
+            [t("mtu"), "244"],
+          ];
+      return `<div class="content details"><h3 class="title">${t("details")}</h3><dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>${navDetails ? `<p class="sub warning">${t("unconfirmed")}</p>` : ""}<div class="actions">${action(t("back"), navDetails ? "nav" : "mesh")}</div></div>`;
+    }
+    function setup(view, wizard) {
+      let state = view.state;
+      if (state === "done" && wizard.saved)
+        return `<div class="content empty receipt">${imageLumar()}<h3 class="title">${t("timeSet")}</h3><div class="value">${localTime(wizard)}</div><p class="sub">${t("timeNote")}</p><div class="actions">${action(t("done"), "home", true)}</div></div>`;
+      if (state === "done")
+        return empty("codeSaved", "codeNote", "home", "done");
+      if (state === "forgotten")
+        return empty("forgotten", "forgottenHint", "passkey", "pair");
+      if (state === "failed")
+        return `<div class="content empty failure"><div class="failure-symbol">${icon("warning")}</div><h3 class="title">${t("failed")}</h3><p class="sub">${t("failedHint")}</p><div class="actions">${action(t("retry"), "retry")}</div></div>`;
+      if (state === "pending")
+        return `<div class="content empty"><div class="pending-symbol"></div><h3 class="title">${t("pending")}</h3><p class="sub" aria-live="polite">${t("pendingHint")}</p><div class="actions">${action(t("stop"), "home")}</div></div>`;
+      let content = "";
+      if (state === "menu")
+        content = `<div class="setup-menu">${action(t("time"), "time")}${action(t("pair"), "node")}</div><div class="actions">${action(t("back"), "home")}</div>`;
+      if (state === "time") {
+        const i = wizard.step;
+        content = `<div class="entry"><div class="value" aria-live="polite">${i === 5 ? offsetText(wizard.values[i]) : i === 2 ? wizard.values[i] : pad(wizard.values[i])}</div><div class="sub">${dateText(wizard)} · ${localTime(wizard)}</div></div><div class="stepper">${action("−", "minus")}${action("+", "plus")}</div><div class="actions">${action(t("back"), "previous")}${action(t(i === 5 ? "review" : "next"), "next", true)}</div>`;
+      }
+      if (state === "review") {
+        const utc = utcDate(wizard);
+        content = `<div class="summary"><div class="sub">${dateText(wizard)} · UTC${offsetText(wizard.values[5])}</div><div class="value">${localTime(wizard)}</div><div class="sub">${t("utc")}: ${utc.toISOString().slice(0, 10)} ${pad(utc.getUTCHours())}:${pad(utc.getUTCMinutes())}</div></div><div class="actions">${action(t("back"), "edit-time")}${action(t("save"), "save-time", true)}</div>`;
+      }
+      if (state === "node")
+        content = `<div class="summary"><span class="sub">${t("node")}</span><span class="value" style="font-size:var(--title)">4c9a2f7b</span><div class="sub">${t("identity")}</div></div><div class="stepper node-actions">${action(t("forget"), "confirm-forget")}${action(t("keep"), "node-back")}</div><div class="actions">${action(t("back"), "node-back")}</div>`;
+      if (state === "confirm-forget")
+        content = `<div class="summary"><h3 class="title">${t("forgetTitle")}</h3><p class="sub warning">${t("forgetHint")}</p></div><div class="actions">${action(t("cancel"), "node")}${action(t("confirmForget"), "forget", true)}</div>`;
+      if (state === "passkey")
+        content = `<div class="entry"><div class="code" aria-live="polite">${wizard.code.map((v, i) => (i === wizard.digit ? `<u>${v}</u>` : `<span>${v}</span>`)).join("")}</div><div class="sub">${t("codeHint")}</div></div><div class="stepper">${action("−", "minus-code")}${action("+", "plus-code")}</div><div class="actions">${action(t("back"), "previous-code")}${action(t(wizard.digit === 5 ? "submit" : "next"), "next-code", true)}</div>`;
+      const heading =
+        state === "time"
+          ? `${t(fields[wizard.step])} · ${wizard.step + 1}/6`
+          : state === "review"
+            ? t("review")
+            : state === "passkey"
+              ? `${t("pair")} · ${wizard.digit + 1}/6`
+              : t("setup");
+      return `<div class="content setup"><div class="step-head"><h3 class="title">${heading}</h3></div>${content}</div>`;
+    }
+    function renderCard(id) {
+      const screen = document.querySelector(`#screen-${id}`),
+        view = views[id];
+      const focused = screen.contains(document.activeElement)
+        ? document.activeElement.dataset.action
+        : null;
+      const small = document.querySelector("#size").value === "small";
+      screen.className = `screen ${small ? "small" : ""} ${document.querySelector("#theme").value}`;
+      screen.lang = document.querySelector("#locale").value;
+      screen.dataset.page = view.page;
+      const scenario = document.querySelector(`[data-card="${id}"]`);
+      scenario.querySelector('[value=""]').textContent = t("otherScreen");
+      scenario.value =
+        view.page === id
+          ? view.state === "done" && !wizards[id].saved
+            ? "code-saved"
+            : view.state
+          : "";
+      if (scenario.selectedIndex < 0) scenario.value = "";
+      if (view.page === "clock") screen.innerHTML = clock(view, id);
+      else if (view.page === "nav") screen.innerHTML = nav(view);
+      else if (view.page === "mesh") screen.innerHTML = mesh(view);
+      else if (view.page.endsWith("-details"))
+        screen.innerHTML = details(view.page, view.state);
+      else if (view.page === "message")
+        screen.innerHTML = `<div class="content details"><h3 class="title">${t("readTitle")}</h3><div class="sub">${t("sender")}</div><div class="message-body" tabindex="0">${t("longMessage")}</div><div class="actions">${action(t("back"), "mesh")}</div></div>`;
+      else screen.innerHTML = setup(view, wizards[id]);
+      screen.insertAdjacentHTML(
+        "afterbegin",
+        `<div class="scene-art" aria-hidden="true"></div>${motionEnabled(view) ? '<div class="fireflies" aria-hidden="true"><i></i><i></i><i></i></div>' : ""}`,
+      );
+      renderReview(id);
+      if (focused)
+        (
+          screen.querySelector(`[data-action="${focused}"]`) ||
+          screen.querySelector("button:not(:disabled)")
+        )?.focus({ preventScroll: true });
+    }
+    function render() {
+      document.querySelector("#motion").disabled = reducedMotion.matches;
+      document.querySelector("#motion-label").textContent =
+        document.querySelector("#locale").value === "ru"
+          ? reducedMotion.matches
+            ? "Светлячки: движение отключено системой"
+            : "Светлячки"
+          : reducedMotion.matches
+            ? "Fireflies: system reduced motion"
+            : "Fireflies";
+      document
+        .querySelector("#gallery")
+        .classList.toggle(
+          "small-gallery",
+          document.querySelector("#size").value === "small",
+        );
+      cards.forEach((c) => renderCard(c.id));
+      renderReviewNotice();
+    }
+    function motionEnabled(view) {
+      return (
+        document.querySelector("#motion").checked &&
+        !reducedMotion.matches &&
+        view.state !== "failed"
+      );
+    }
+    function go(
+      id,
+      page,
+      state = page === "clock" ? wizards[id].clockState : "ready",
+    ) {
+      if (page === "clock") wizards[id].clockState = state;
+      views[id] = { page, state };
+      renderCard(id);
+    }
+    function changeValue(wizard, delta) {
+      const i = wizard.step,
+        v = wizard.values;
+      const days = new Date(Date.UTC(v[2], v[1], 0)).getUTCDate();
+      const bounds = [
+        [1, days],
+        [1, 12],
+        [2000, 2099],
+        [0, 23],
+        [0, 59],
+        [-720, 840],
+      ][i];
+      const step = i === 5 ? 15 : 1;
+      v[i] = Math.min(bounds[1], Math.max(bounds[0], v[i] + delta * step));
+      if (i === 1 || i === 2)
+        v[0] = Math.min(v[0], new Date(Date.UTC(v[2], v[1], 0)).getUTCDate());
+    }
+    function handle(id, command) {
+      const v = views[id],
+        wizard = wizards[id];
+      if (command === "home") return go(id, "clock");
+      if (command === "node-back")
+        return go(id, wizard.nodeReturn.page, wizard.nodeReturn.state);
+      if (command === "nav" || command === "mesh")
+        return go(
+          id,
+          command,
+          v.page.startsWith(command) || v.page === "message"
+            ? v.state
+            : "ready",
+        );
+      if (command.endsWith("-details") || command === "message")
+        return go(id, command, v.state);
+      if (["menu", "node", "passkey", "confirm-forget"].includes(command)) {
+        if (command === "node" && v.state !== "confirm-forget")
+          wizard.nodeReturn = { ...v };
+        if (command === "passkey") {
+          wizard.digit = 0;
+          wizard.saved = false;
+          wizard.passkeyReturn = { ...v };
+        }
+        return go(id, "setup", command);
+      }
+      if (command === "time") {
+        wizard.step = 0;
+        wizard.values = [...(savedClocks[id] || initialTime)];
+        return go(id, "setup", "time");
+      }
+      if (command === "edit-time") {
+        wizard.step = 5;
+        return go(id, "setup", "time");
+      }
+      if (command === "minus" || command === "plus")
+        changeValue(wizard, command === "plus" ? 1 : -1);
+      if (command === "previous") {
+        if (wizard.step === 0) return go(id, "setup", "menu");
+        wizard.step--;
+      }
+      if (command === "next") {
+        if (wizard.step === 5) return go(id, "setup", "review");
+        wizard.step++;
+      }
+      if (command === "save-time") {
+        wizard.saved = true;
+        wizard.clockState = "ready";
+        savedClocks[id] = [...wizard.values];
+        return go(id, "setup", "done");
+      }
+      if (command === "minus-code" || command === "plus-code")
+        wizard.code[wizard.digit] =
+          (wizard.code[wizard.digit] + (command === "plus-code" ? 1 : 9)) % 10;
+      if (command === "previous-code") {
+        if (wizard.digit === 0)
+          return go(id, wizard.passkeyReturn.page, wizard.passkeyReturn.state);
+        wizard.digit--;
+      }
+      if (command === "next-code") {
+        if (wizard.digit < 5) wizard.digit++;
+        else {
+          wizard.saved = false;
+          go(id, "setup", "pending");
+          const pending = views[id];
+          setTimeout(() => {
+            if (views[id] === pending) go(id, "setup", "done");
+          }, 1500);
+          return;
+        }
+      }
+      if (command === "retry") return go(id, "setup", "passkey");
+      if (command === "forget") {
+        wizard.code.fill(0);
+        return go(id, "setup", "forgotten");
+      }
+      renderCard(id);
+    }
+    document.querySelector("#gallery").innerHTML = cards
+      .map(
+        (c, i) =>
+          `<article><div class="card-heading"><h2><span class="index">0${i + 1}</span>${c.title}</h2><select class="state-control" aria-label="${c.title} scenario" data-card="${c.id}"><option value="" disabled>${t("otherScreen")}</option>${c.states.map((s) => `<option>${s}</option>`).join("")}</select></div><div class="frame"><section class="screen" id="screen-${c.id}" aria-label="${c.title} prototype"></section></div><p class="caption">${c.note}</p><div class="review-panel" id="review-${c.id}"><p class="review-context"></p><label class="review-status-label" for="decision-${c.id}"></label><select id="decision-${c.id}"><option value="pending"></option><option value="approved"></option><option value="changes"></option></select><label class="review-note-label" for="note-${c.id}"></label><textarea id="note-${c.id}" maxlength="10000"></textarea></div></article>`,
+      )
+      .join("");
+    document.querySelector("#gallery").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (button && !button.disabled)
+        handle(
+          button.closest(".screen").id.replace("screen-", ""),
+          button.dataset.action,
+        );
+    });
+    document.querySelector("#gallery").addEventListener("change", (event) => {
+      const id = event.target.dataset.card;
+      if (id) {
+        const wizard = wizards[id];
+        wizard.step = 0;
+        wizard.digit = 0;
+        wizard.saved = event.target.value === "done";
+        wizard.nodeReturn = { page: "setup", state: "menu" };
+        wizard.passkeyReturn = { page: "setup", state: "menu" };
+        if (event.target.value === "time")
+          wizard.values = [...(savedClocks[id] || initialTime)];
+        go(
+          id,
+          id,
+          event.target.value === "code-saved" ? "done" : event.target.value,
+        );
+      }
+      if (event.target.matches(".review-panel select")) saveReview(event);
+    });
+    document.querySelector("#gallery").addEventListener("input", (event) => {
+      if (event.target.matches(".review-panel textarea")) saveReview(event);
+    });
+    document.querySelector("#export-review").addEventListener("click", () => {
+      const url = URL.createObjectURL(
+        new Blob([exportReview()], { type: "text/plain;charset=utf-8" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "attadipa-design-review.txt";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    document
+      .querySelectorAll(".toolbar select,.toolbar input")
+      .forEach((el) => el.addEventListener("change", render));
+    const params = new URLSearchParams(location.search);
+    for (const key of ["size", "theme", "locale"]) {
+      const el = document.querySelector("#" + key);
+      if ([...el.options].some((o) => o.value === params.get(key)))
+        el.value = params.get(key);
+    }
+    if (params.get("motion") === "off")
+      document.querySelector("#motion").checked = false;
+    reducedMotion.addEventListener("change", render);
+    document.addEventListener("visibilitychange", () =>
+      document.body.classList.toggle("motion-paused", document.hidden),
+    );
+    document.body.classList.toggle("motion-paused", document.hidden);
+    const visibility = new IntersectionObserver((entries) => {
+      entries.forEach(
+        (entry) =>
+          (entry.target.dataset.visible = String(entry.isIntersecting)),
+      );
+    });
+    document
+      .querySelectorAll(".screen")
+      .forEach((screen) => visibility.observe(screen));
+    render();
+  </script>
+</html>
