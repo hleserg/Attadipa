@@ -11,7 +11,9 @@ Run: python3 tools/docs/check_docs.py [root]
 
 from __future__ import annotations
 
+import hashlib
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -945,7 +947,39 @@ def check_question_ids(root: str) -> list[str]:
     return sorted(problems)
 
 
+def check_prototype_assets(root: str) -> list[str]:
+    """Keep the docs-only study's bundled assets tied to their canonical inputs."""
+    pairs = (
+        ("NunitoSans.ttf", "tools/font/generate_ui_fonts.py"),
+        ("OFL.txt", "assets/fonts/OFL.txt"),
+        ("clock_meadow_night_410x502.png",
+         "ui/assets/source/backgrounds/clock_meadow_night_410x502.png"),
+    )
+    problems = []
+    for name, source in pairs:
+        bundled = f"docs/ui/prototype/{name}"
+        try:
+            payload = Path(root, bundled).read_bytes()
+            canonical = Path(root, source).read_bytes()
+            if name == "NunitoSans.ttf":
+                pin = re.search(r'^TTF_SHA256 = "([0-9a-f]{64})"$',
+                                canonical.decode("utf-8"), re.MULTILINE)
+                if pin is None:
+                    problems.append(f"{source}: missing or invalid TTF_SHA256 pin")
+                    continue
+                matches = hashlib.sha256(payload).hexdigest() == pin.group(1)
+            else:
+                matches = payload == canonical
+        except (OSError, UnicodeError) as error:
+            problems.append(f"{bundled} / {source}: {error}")
+            continue
+        if not matches:
+            problems.append(f"{bundled}: differs from {source}; refresh the bundled copy")
+    return problems
+
+
 CHECKS = (
+    ("Prototype asset drift", "check_prototype_assets"),
     ("Broken relative links", "check_links"),
     ("Unclosed inline code spans", "check_code_spans"),
     ("Duplicate owner-decision numbers", "check_decision_ids"),

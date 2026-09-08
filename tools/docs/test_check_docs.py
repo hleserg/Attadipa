@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -573,6 +576,49 @@ def main() -> int:
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
         )
+
+    # Exercise the shipping CLI with the real bundled bytes, then mutate each
+    # copy/source. Loading an image in the browser cannot detect this drift.
+    repository = Path(__file__).resolve().parents[2]
+    bundled = (
+        "docs/ui/prototype/NunitoSans.ttf",
+        "docs/ui/prototype/OFL.txt",
+        "docs/ui/prototype/clock_meadow_night_410x502.png",
+    )
+    sources = (
+        "tools/font/generate_ui_fonts.py",
+        "assets/fonts/OFL.txt",
+        "ui/assets/source/backgrounds/clock_meadow_night_410x502.png",
+    )
+    with tempfile.TemporaryDirectory() as root:
+        for name in bundled + sources:
+            target = Path(root, name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(repository / name, target)
+
+        def run_checker():
+            return subprocess.run(
+                [sys.executable, check_docs.__file__, root],
+                capture_output=True, text=True, check=False,
+            )
+
+        case("bundled assets pass the shipping CLI", "check_prototype_assets",
+             run_checker().returncode == 0)
+        for name in bundled + sources:
+            target = Path(root, name)
+            original = target.read_bytes()
+            changed = (re.sub(rb'TTF_SHA256 = "[0-9a-f]{64}"',
+                              b'TTF_SHA256 = "' + b"0" * 64 + b'"', original)
+                       if name == sources[0] else original + b"drift")
+            target.write_bytes(changed)
+            result = run_checker()
+            case(f"CLI rejects drift in {name}", "check_prototype_assets",
+                 result.returncode == 1 and name in result.stderr)
+            target.unlink()
+            result = run_checker()
+            case(f"CLI rejects missing {name}", "check_prototype_assets",
+                 result.returncode == 1 and name in result.stderr)
+            target.write_bytes(original)
 
     missing = {function for _title, function in check_docs.CHECKS} - called
     if missing:
