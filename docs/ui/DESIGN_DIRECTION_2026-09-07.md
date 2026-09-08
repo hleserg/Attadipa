@@ -33,7 +33,9 @@ The bundled TTF is an unchanged export of `tools/font/fetch_ttf.py`; the bundled
 clock raster is an unchanged copy of
 `ui/assets/source/backgrounds/clock_meadow_night_410x502.png`. Their canonical
 sources and the canonical licence in `assets/fonts/OFL.txt` stay in place.
-To refresh these copies from the repository root:
+The existing documentation check rejects missing or changed copies, including
+a font that no longer matches the generator's SHA-256 pin. To refresh these
+copies from the repository root:
 
 ```sh
 rtk python3 tools/font/fetch_ttf.py --out docs/ui/prototype/NunitoSans.ttf
@@ -278,7 +280,7 @@ the no-fix scenario after leaving and returning, without synthetic change events
 With Chromium and `agent-browser` available:
 
 ```sh
-rtk npm exec --yes --package=agent-browser -- agent-browser --executable-path /usr/bin/chromium --session attadipa-design open http://127.0.0.1:8476/docs/ui/prototype/
+rtk npm exec --yes --package=agent-browser -- agent-browser --executable-path /usr/bin/chromium --session attadipa-design open http://127.0.0.1:8476/ui/prototype/
 rtk npm exec --yes --package=agent-browser -- agent-browser --session attadipa-design eval '(async () => eval(await (await fetch("selftest.js")).text()))()'
 ```
 
