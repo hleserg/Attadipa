@@ -860,7 +860,7 @@ esp_err_t start_twatch_ui() {
   // buys this. It costs nothing a reader can mistake for a fix: whatever the
   // pin does while BLDO1 is still down -- unmeasured, and this comment does
   // not guess -- it is not framed NMEA, and
-  // `gnss/include/attadipa/gnss/nmea_receiver.h:172` --
+  // `gnss/include/attadipa/gnss/nmea_receiver.h:188` --
   // "    std::uint32_t discarded() const { return discarded_; }" -- counts
   // what frames and fails its checksum, while anything that never framed is
   // `unframed_`. Neither becomes a position. `local_gnss_start()` stamps

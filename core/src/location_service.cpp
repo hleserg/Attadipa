@@ -99,12 +99,17 @@ void LocationService::poll()
     //
     // It shows the moment a producer states quality. `gnss::NmeaReceiver` reads
     // a receiver directly and reports a real `FixType`, a satellite count and an
-    // HDOP per epoch, and a receiver that loses its fix keeps publishing the last
-    // coordinate while correctly downgrading the verdict beside it -- 3D, then
-    // 2D, then `NoFix`, all at bytes that never moved. Discarding that sample
-    // whole kept `ThreeD` and `Valid` on a screen the receiver had already
-    // disowned, and `format_navigation()` went on printing `Ready` and a
-    // distance from it (#470). Freshness and quality are separate questions
+    // HDOP per epoch. Whether a receiver that loses its fix keeps publishing the
+    // last coordinate while downgrading the verdict beside it -- 3D, then 2D,
+    // then `NoFix`, all at bytes that never moved -- is `UNKNOWN` for the
+    // receiver this project ships with, and this rule does not rest on it:
+    // `docs/adr/0011-gnss-integrity.md:374` — "That last sentence is `UNKNOWN` as a hardware fact and this decision does not"
+    // -- the other possibility empties the fields, which every path here already
+    // reads as silence. So the retained coordinate is the only case that needs a
+    // rule, and where it does happen, discarding that sample whole kept `ThreeD`
+    // and `Valid` on a screen the receiver had already disowned, and
+    // `format_navigation()` went on printing `Ready` and a distance from it
+    // (#470). Freshness and quality are separate questions
     // here exactly as they are everywhere else in this tree, so the repeat
     // answers only the first of them.
     //

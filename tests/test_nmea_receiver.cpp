@@ -812,6 +812,17 @@ void a_downgrade_at_an_unchanged_coordinate_reaches_the_readout()
     // GGA quality 0 and GSA mode 1: the receiver says it cannot solve. The
     // coordinate is still on the wire and is still the same bytes, and the
     // distance drawn from it has to go.
+    //
+    // THIS EPOCH IS COMPOSED, NOT CAPTURED. Reaching `NoFix` while a position is
+    // still present needs RMC to claim a valid fix in the same second GGA claims
+    // none, and no capture in this repository shows that pairing. The one no-fix
+    // epoch it holds empties every field instead --
+    // `tests/gnss/bench-epochs.nmea:24` — "$GNGGA,,,,,,0,00,99.99,,,,,,*56" --
+    // and that is a cold start rather than a lost fix, so it does not settle the
+    // question either way. This drives the worst case the rule is written for,
+    // not a shape any bench run has observed; the `TwoD` leg above needs no such
+    // caveat, because a two-dimensional solution carries a coordinate by
+    // definition.
     publish_epoch(0, 1);
     const core::LocationState lost = location.state(g_now);
     CHECK(lost.fix_type == core::FixType::NoFix);

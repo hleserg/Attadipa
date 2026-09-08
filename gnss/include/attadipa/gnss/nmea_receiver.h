@@ -24,7 +24,7 @@
 //
 // **So `age_at_source_ms` stays empty for this provider too**, and
 // `core::LocationService`'s rule that no producer states an observation age
-// (`core/include/attadipa/core/location_service.h:192` — "    // How old the coordinate was when its source sampled it. **Always empty in")
+// (`core/include/attadipa/core/location_service.h:203` — "    // How old the coordinate was when its source sampled it. **Always empty in")
 // still holds. Writing that field from RMC's own UTC would need a wall clock
 // trusted before the fix that is supposed to establish it.
 //
@@ -88,11 +88,18 @@
 // The age, and *only* the age. Everything this driver states about the epoch —
 // the `FixType` the three sentences agreed on, the satellite count, the
 // dilution — is adopted on a repeated coordinate like any other sample. That is
-// not a nicety: a receiver losing its fix goes on publishing the coordinate it
-// last solved and downgrades the verdict beside it, so 3D → 2D → `NoFix` at
-// bytes that never move is the ordinary shape of a lost fix on this wire rather
-// than an edge case. Until #470 the whole sample was discarded on the repeat and
-// that downgrade never reached a screen.
+// not a nicety, and it is written for a shape this repository has **not**
+// established. Whether a receiver losing its fix goes on publishing the
+// coordinate it last solved, downgrading the verdict beside it so that
+// 3D → 2D → `NoFix` arrives at bytes that never move, is `UNKNOWN` for the
+// receiver this project ships with:
+// `docs/adr/0011-gnss-integrity.md:374` — "That last sentence is `UNKNOWN` as a hardware fact and this decision does not"
+// — and nothing in `VERIFIED_FACTS.md` settles it. The rule is written for that
+// shape anyway, for the ADR's own reason: a receiver that instead empties the
+// fields produces no position at all, which every path here already reads as
+// silence, so the retained coordinate is the harder of the two possibilities and
+// the only one that needs a rule. Until #470 the whole sample was discarded on
+// the repeat, so where it does happen that downgrade never reached a screen.
 //
 // It is left alone because the measurement says it does not happen here: over
 // the 6.5 MB of bench capture from both modules, exact epoch-to-epoch repeats
