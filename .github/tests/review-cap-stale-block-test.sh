@@ -280,7 +280,7 @@ say '...while the ledger account, which converge writes as, still clears' \
     "$(T_BLOCK_ACTOR='github-actions[bot]' verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" cleared
 reset
 say 'a timeline that will not say who applied it holds the block' \
-    "$(T_BLOCK_ACTOR= verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" held
+    "$(T_BLOCK_ACTOR='' verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" held
 
 # THE ROUND THE LEDGER NEVER CAUGHT UP WITH. `review-published.sh` answers
 # `unknown`, converge is skipped, and the round that ran still labelled the head
