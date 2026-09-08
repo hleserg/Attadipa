@@ -732,8 +732,8 @@ to every unit of the same model.
   not a GNSS requirement, and assisted GNSS, when designed, is u-blox
   AssistNow. What DC4 does feed on this board is **UNKNOWN**.
 - **What the rail attribution does *not* license.** BLDO1 was found already
-  enabled, the bit was never cleared to watch the module go silent, and the
-  `GPS_LDO` enable net on FPC pin 3 sits in the same path and was never
+  enabled, the bit was never cleared to watch the module go silent, and
+  `GPS_LDO` on FPC pin 3 is that same supply crossing, not a gate, and was never
   exercised. So **nothing here shows that toggling BLDO1 controls the module** —
   which is exactly what a power gate or a sleep path would assume. Anything that
   proposes to switch this rail at runtime owes that experiment first.
@@ -947,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2058`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2181`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1119,6 +1119,129 @@ is sourced to the drawing itself.
 - **Impact:** this was previously an argument from absence in a vendor feature
   table, which is weak. It is now an argument from the schematic, which is the
   right kind of evidence for a negative. All compass work stays architectural.
+
+### The MIA-M10Q's backup domain is fed from `V_IO`, not from `V_BCKP`
+
+- **Claim:** `V_BCKP` (ball `J5`) is optional and supplies the backup domain
+  **only when `V_IO` is gone**. With the rail up, `V_IO` maintains BBR, RTC and
+  orbit data by itself. The data sheet gives the switchover as a `V_IO`
+  threshold, `V_IOSWITCH` = 1.45 V typical: *"V_IO voltage threshold to switch
+  an internal supply for the backup domain from V_IO to V_BCKP"*. The
+  integration manual states the failure directly: *"A power interruption at
+  V_IO will erase the battery-backed RAM (BBR) unless there is an external
+  supply connected to V_BCKP."*
+- **Source:** MIA-M10Q data sheet **UBX-22015849 R08**, pin table (`J5`
+  `V_BCKP`, *"Backup voltage supply. Leave open if no external backup supply."*)
+  and the operating-conditions table; integration manual **UBX-21028173 R05**
+  §4.1.2, §4.1.3.
+- **Impact:** it splits the `V_BCKP` question in two, and only one half was ever
+  load-bearing. Any mode that **keeps `BLDO1` up** retains everything regardless
+  of how the daughterboard wires `J5`. Only cutting the rail depends on it. That
+  is why the receiver power policy could be decided without rendering sheet S4 —
+  [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md).
+
+### `UBX-CFG-RST` cannot report what it did; software standby has a message
+
+- **Claim:** the interface description says of `UBX-CFG-RST` (`0x06 0x04`):
+  *"Do not expect this message to be acknowledged by the receiver. • Newer FW
+  version will not acknowledge this message at all."* There is no status message
+  for the stopped engine either, so the only postcondition of a controlled stop
+  is NMEA ceasing. `UBX-RXM-PMREQ` software standby has one: `UBX-MON-RXR`
+  (`0x0a 0x21`), *"sent when the receiver changes from or to backup mode"*,
+  carrying `flags` bit 0 `awake`.
+- **Source:** u-blox **M10 SPG 5.10** interface description **UBX-21035062 R03**
+  §3.10.2.1 and §3.14.7. SPG 5.10 is the firmware the bench unit reported on
+  2026-09-05 — [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md).
+- **Impact:** an engine state published from a `CFG-RST` write is published from
+  the request, not from the receiver — the class of claim
+  [ADR-0011](../adr/0011-gnss-integrity.md) exists to forbid. `MON-RXR` is a
+  positive report and its default output rate on UART1 is **0**
+  (`CFG-MSGOUT-UBX_MON_RXR_UART1` `0x20910188`), so it must be enabled on the
+  **RAM** layer first; no configuration save is required and none may be used.
+  What is documented is that the message exists and when the receiver sends it;
+  whether that RAM-layer enable survives to emission on either edge is
+  **unverified** — entering standby clears RAM, and the data sheet's Table 11
+  turns `TXD` (`G1`) into an input pull-up there. The asymmetry with `CFG-RST`
+  holds regardless: one mechanism has a report to look for, the other has none.
+
+### The step worth taking is engine-to-standby, not rail-off
+
+- **Claim:** on a 3.0 V supply, default `GPS+GAL+BDS B1I`, continuous tracking
+  draws 10.5 mA at `VCC` plus 2.4 mA at `V_IO`. Software standby draws 46 µA at
+  `V_IO` (3.3 V) plus 120 nA at `VCC`. Hardware backup, with the rail off and
+  `V_BCKP` supplied, draws 28 µA. Entering software standby *"clears the RAM
+  memory including the receiver configuration"*, and *"the 'force' flag must be
+  set in UBX-RXM-PMREQ"*; the wake sources are *"UART RX and/or EXTINT pin"*.
+- **Source:** data sheet **UBX-22015849 R08** Tables 16 and 18; integration
+  manual **UBX-21028173 R05** §3.6.3.2. **All figures are vendor typicals at
+  25 °C — NOT MEASURED on this board.**
+- **Impact:** 12.85 mA of the 12.9 mA the rail carries is bought by the first step,
+  which needs no wiring fact; the rail cut below it is worth 18 µA on the module
+  before board-side terms that are `UNKNOWN`. It also carries a hazard the
+  standby does not: *"In hardware backup mode (VCC = 0 V and V_IO = 0 V), PIOs
+  must not be driven"*, and the 13-pin FPC has no buffers, so a rail cut must
+  release ESP32 GPIO 42 — the module's `RXD`, ball `H1` — first.
+
+### The `MS412FE` does reach `V_BCKP`, and `VDD3V3` charges it through `D1` and `R3`
+
+- **Claim:** on the GNSS daughterboard, ball `J5` (`V_BCKP`) of the `MIA-M10Q`
+  carries the net named `VRTC`, and the `MS412FE` cell (`J2`, pin 1) is on that
+  same net. `VRTC` is reached from `VDD3V3` through `D1` (`1N4148`) and then
+  `R3` (`1K`), in that order, with the diode's **anode at `VDD3V3`** — so the
+  rail can charge the cell and the cell cannot back-feed the rail. `C1`
+  (`100 nF`) decouples `VRTC` to `GND`. Ball `J4` (`V_IO`) and ball `B1` (`VCC`)
+  are both on `VDD3V3`, and `J6` (`VIO_SEL`) is an open stub, which is what the
+  data sheet requires for a 3.3 V `V_IO`. Three more balls on that edge are read
+  the same way and are used elsewhere: `A4` (`RTC_I`) and `A6` (`EXTINT`) are
+  **open stubs** — no wire leaves either — and `A5` (`RTC_O`) is a **junction on
+  the ground bus**.
+- **Source:** `Xinyuan-LilyGO/LilyGoLib`,
+  `schematic/T-Watch-S3-Plus-GPS V1.0 2025-04-29.pdf` (one sheet, blob
+  `4a92090b`, local sha256 `7f06c578…`). Read by extracting the page's stroked
+  vector segments, dropping component body rectangles, and joining segments only
+  where an endpoint of one lies **on** another — so a crossing without a
+  junction stays two nets. `A5` is a junction on the ground bus and not a
+  crossing of it because the vertical bus at `x = 293.27` is **split** at exactly
+  that stub's `y = 228.90`, along with each of the seven other connected stubs —
+  and an exporter splits a wire at a junction, never at a crossing.
+
+  What ties a label to a ball is measured rather than eyeballed: within each edge
+  the designator-to-stub offset is uniform — 2.631 to 2.803 pt on the top edge,
+  2.861 to 2.935 pt on the left — against a 5.28 pt pitch, and the first
+  designator has no stub before it while the last has none after it, so a
+  one-slot shift would move every offset by ±5.28. Function labels then land on
+  their own stubs to within **0.3 pt**; the worst two are `GND`/`J9` at 0.170 pt
+  on the top edge and `GND`/`A1` at 0.295 pt on the left. *An earlier version of
+  this entry said 0.15 pt, which neither edge meets.* The 128 nets also check
+  themselves: the three `GND` balls on the top edge (`J9`, `J8`, `H8`) land on
+  one net, and `VIO_SEL` (`J6`), `LNA_EN` (`H9`) and five of the six `RESERVED`
+  balls on `U1` (`J7`, `J3`, `J2`, `J1`, `G9`) are singleton stubs — *the
+  earlier version counted five `RESERVED` balls and there are six*; the sixth,
+  `G7`, is on a 14-segment net running to `R1` (`0R`). The diode's polarity is
+  read from the symbol geometry — base at `y = 158.06` toward `VDD3V3`, apex
+  and cathode bar at `y = 163.21` toward the cell — not from the picture, and
+  `B1` (`VCC`) the same way: its stub ends in a filled left-pointing power-port
+  arrow (apex `x = 244.36`, base `x = 249.64`) drawn under the word `VDD3V3`.
+- **Impact:** resolves D23. Hardware backup would retain BBR on this board, so
+  the rail-off row of
+  [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md) is no longer
+  `UNKNOWN` for retained data. It does **not** change the recommendation: the
+  step is still worth only 18 µA module-side, the PIO-isolation hazard is
+  unchanged, and cutting `BLDO1` also cuts the charge path, so the hold is now
+  bounded by the cell rather than by the rail. **The cell's capacity, its charge
+  window, and whether `3.3 V` minus the diode drop across `1 K` actually charges
+  it are UNKNOWN** — no `MS412FE` data sheet has been read. Nothing here was
+  measured on hardware.
+
+  Two further consequences fall out of the left edge. `RTC_I` open with `RTC_O`
+  grounded is the integration manual's Figure 28 — *"An RTC may be omitted for
+  the lowest-cost designs. If an RTC is not used, the RTC_I pin is left
+  unconnected and the RTC_O pin is connected to GND as shown in Figure 28"*
+  (UBX-21028173 R05), and the data sheet asks for the same pin by pin — so **the
+  daughterboard carries no external RTC crystal**. And `A6` open means the
+  module's `EXTINT` wake source **does not exist on this board**, which is what
+  leaves UART RX as the only wake in
+  [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md).
 
 ### The GNSS PPS signal never reaches the SoC
 
@@ -2672,7 +2795,7 @@ ones that heading states.
   and its bit is clear. This says nothing about BLE, which lives in the SoC and has
   no rail of its own. It therefore does **not** answer the Waveshare entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2595` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2718` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
