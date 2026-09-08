@@ -14,21 +14,35 @@ It does not change firmware, application state machines or the canonical palette
 From the repository root:
 
 ```sh
-rtk python3 tools/font/fetch_ttf.py --out artifacts/ui/NunitoSans.ttf
-rtk python3 -m http.server 8476 --bind 127.0.0.1
+rtk python3 -m http.server 8476 --bind 127.0.0.1 --directory docs
 ```
 
-Open `http://127.0.0.1:8476/docs/ui/prototype/`. Display, theme and language are
+Open `http://127.0.0.1:8476/ui/prototype/`. Display, theme and language are
 review controls. Every watch surface is native-sized: 410 × 502 or 240 × 240 CSS
 pixels, with no transform or zoom. Use browser zoom 100% for the pixel inspection;
 physical millimetres still depend on the monitor. Values and outcomes are sample
 data, and nothing connects to a watch, writes a credential or changes a clock.
 
-The only downloaded runtime input is the project's already-pinned Nunito Sans
-font. The page has no framework, package installation, external request
-or service requirement once the font is present. Its licence is already in
-`assets/fonts/`. Query parameters `size=small`, `theme=day` and `locale=en` select
-a repeatable review configuration.
+All runtime assets are bundled beside the page, including the project's pinned
+Nunito Sans font and its [SIL OFL licence](prototype/OFL.txt). No framework,
+package installation or external request is required. Serving only `docs/`
+matches GitHub Pages and exposes accidental dependencies outside that root;
+run `prototype/selftest.js` in a freshly loaded page's browser context to check it.
+
+The bundled TTF is an unchanged export of `tools/font/fetch_ttf.py`; the bundled
+clock raster is an unchanged copy of
+`ui/assets/source/backgrounds/clock_meadow_night_410x502.png`. Their canonical
+sources and the canonical licence in `assets/fonts/OFL.txt` stay in place.
+To refresh these copies from the repository root:
+
+```sh
+rtk python3 tools/font/fetch_ttf.py --out docs/ui/prototype/NunitoSans.ttf
+rtk cp assets/fonts/OFL.txt docs/ui/prototype/OFL.txt
+rtk cp ui/assets/source/backgrounds/clock_meadow_night_410x502.png docs/ui/prototype/
+```
+
+Query parameters `size=small`, `theme=day` and `locale=en` select a repeatable
+review configuration.
 Add `motion=off` for a reproducible still review. The Fireflies checkbox controls
 decorative movement; the operating system's reduced-motion preference overrides it.
 

@@ -1,4 +1,5 @@
-// Run in the review page's browser context; exercises its actual DOM controls.
+// Serve docs/ as the web root; reload the page before each run in its browser context.
+// This exercises the actual controls and catches assets outside the Pages package.
 (async () => {
   const failures = [];
   let checks = 0;
@@ -72,7 +73,7 @@
   for (const source of [
     "glade-day-v2.png",
     "glade-night-v2.png",
-    "../../../ui/assets/source/backgrounds/clock_meadow_night_410x502.png",
+    "clock_meadow_night_410x502.png",
   ]) {
     const image = new Image();
     image.src = source;
