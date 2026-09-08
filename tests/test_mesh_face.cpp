@@ -17,6 +17,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <vector>
 
@@ -260,6 +261,89 @@ void the_layout_uses_the_whole_panel(const platform::BoardProfile &board) {
   face.clear();
 }
 
+// The first row the name does not own, which is the row's own bottom and not
+// the next thing drawn. The row's top is 312 and it is set to one
+// `attadipa_nunito_sans_16` line, whose `.line_height` is 19, so it ends at
+// 331; the rule under it is at 352. Those twenty-one rows are painted by
+// nothing, and a second row of the same font is nineteen -- so a band starting
+// at the rule was blind to exactly the two-row name that fits between them.
+// That is the slack the message guard was carrying when it started at 452
+// instead of the meta row's own bottom, one round earlier and one row down.
+// On 240 the name is not drawn at all.
+std::uint32_t below_node_name() { return 331; }
+
+// A PEER'S OWN NAME MAY NOT PUSH THE REST OF THE SCREEN AROUND.
+//
+// `MeshStatus::node_name` is the node's advertised name off
+// `RESP_CODE_SELF_INFO`: its length and its bytes are chosen elsewhere, and a
+// line break in it is the shape that grows the row even when the text is short.
+// The label was created bare -- content height, `LV_LABEL_LONG_WRAP` -- so that
+// second row landed on the rule and the message heading below it. The two rows
+// under this one had the identical defect and were fixed first; this one
+// survived because every fixture name in this file is one short word.
+void a_named_node_cannot_grow_its_row(const platform::BoardProfile &board,
+                                      l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus status = linked();
+  face.build(lv_screen_active(), config_for(board),
+             apps::format_mesh(status, locale));
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> before = *g_frame;
+
+  // THE WORST NAME A PEER CAN ACTUALLY SEND, NOT A LONG ONE.
+  //
+  // A long name is not the test; a line break is, and the length is spent on
+  // breaks rather than letters. `kMeshPeerNameBytes` is 32 and `put` is a bare
+  // `snprintf`, so a peer may spend the whole budget on them -- sixteen breaks,
+  // seventeen rows, straight down the screen. One break would fail this guard
+  // too now that the band is the row's own bottom; it did not when the band was
+  // the rule, and that pair is what the band comment above is about.
+  std::memset(status.node_name.data(), 'N', status.node_name.size() - 1);
+  status.node_name[status.node_name.size() - 1] = '\0';
+  for (std::size_t at = 1; at < status.node_name.size() - 1; at += 2) {
+    status.node_name[at] = '\n';
+  }
+  face.update(apps::format_mesh(status, locale));
+  lv_refr_now(display);
+
+  // On 240 the name is not drawn at all, so nothing anywhere may move; on the
+  // big panel nothing at or below the rule may.
+  const std::size_t from =
+      big ? static_cast<std::size_t>(below_node_name()) * w * 2 : 0;
+  int moved = 0;
+  for (std::size_t at = from; at < before.size(); ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++moved;
+    }
+  }
+  check(moved == 0,
+        big ? "a peer's name moves nothing below its own row"
+            : "a peer's name moves nothing on a panel that hides it",
+        __LINE__);
+  if (moved != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed from y=%u\n", w,
+                 board.display.height_px, moved, big ? below_node_name() : 0);
+  }
+
+  // The counter-check, and it only exists on the panel that draws the row: on
+  // 240 the assertion above is the whole test, and demanding a change here
+  // would demand the hidden label draw.
+  if (big) {
+    int drew = 0;
+    for (std::size_t at = 0; at < from; ++at) {
+      if (before[at] != (*g_frame)[at]) {
+        ++drew;
+      }
+    }
+    check(drew != 0, "the name row itself did change, so the frames differ",
+          __LINE__);
+  }
+}
+
 // THE SCREEN A FACE IS GIVEN BELONGS TO THAT FACE.
 //
 // Page turning hands every face the same `lv_screen_active()` and deletes
@@ -294,6 +378,85 @@ void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
   check(lv_obj_get_child_count(screen) == mine,
         "the face is the only thing left on the screen it was built onto",
         __LINE__);
+
+  face.clear();
+}
+
+// The first row that belongs to neither the message nor the sender line under
+// it. On the tall panel that is 441: the meta row's top is 424 and its height
+// is one `tiny_font` line, 17. The measurements begin eleven rows lower, at
+// 452, and nothing paints between -- so starting the band at the meta row's own
+// bottom costs nothing and catches an overflowing sender line from its first
+// pixel rather than its twelfth. Starting at 452 left the guard passing on any
+// wrap that stayed inside those eleven rows. 240 px draws no meta row at all
+// and spends its last rows on the measurements.
+std::uint32_t below_message(bool big) { return big ? 441 : 192; }
+
+// Text off the air is ellipsised on its own row, not run through what is under it.
+//
+// `LV_LABEL_LONG_DOT` puts the dots in only where the height is FIXED, and the
+// height this label was first given was content -- so a message longer than the
+// fixture's grew downwards over the measurement row and the sender line, and a
+// screenshot was the only thing that caught it. Nothing below the message's own
+// line may depend on how long the message is, and that is what this asserts:
+// two frames differing in the message alone, compared from the first row the
+// message does not own.
+void a_long_message_stays_on_its_line(const platform::BoardProfile &board,
+                                      l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus status = linked();
+  // A sender to start from, so the meta row exists in both frames and the
+  // comparison is about its *length* rather than about it appearing.
+  const char *const kShortName = "Ridge";
+  std::memcpy(status.last_sender.data(), kShortName, std::strlen(kShortName));
+  face.build(lv_screen_active(), config_for(board),
+             apps::format_mesh(status, locale));
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> before = *g_frame;
+
+  // BOTH FIELDS AT ONCE, BECAUSE BOTH COME OFF THE LINK AND EITHER CAN GROW.
+  //
+  // `MeshText::message` carries the whole of what arrived -- the buffer no
+  // longer truncates -- and `sender` is a peer's advertised name, up to
+  // `kMeshPeerNameBytes`, which the meta row joins with the delivery word. The
+  // message row was fixed first and the row under it had the identical defect;
+  // filling only one of them would have left the other's growth uncaught, which
+  // is exactly how the second one survived the first fix.
+  std::memset(status.last_message.data(), 'M', status.last_message.size() - 1);
+  status.last_message[status.last_message.size() - 1] = '\0';
+  std::memset(status.last_sender.data(), 'S', status.last_sender.size() - 1);
+  status.last_sender[status.last_sender.size() - 1] = '\0';
+  face.update(apps::format_mesh(status, locale));
+  lv_refr_now(display);
+
+  const std::size_t from =
+      static_cast<std::size_t>(below_message(big)) * w * 2;
+  int moved = 0;
+  for (std::size_t at = from; at < before.size(); ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++moved;
+    }
+  }
+  check(moved == 0, "a full-length message moves nothing under its line",
+        __LINE__);
+  if (moved != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed below y=%u\n", w,
+                 board.display.height_px, moved, below_message(big));
+  }
+
+  // And the counter-check: the message row itself DID change, or the comparison
+  // above was made between two identical frames and proves nothing.
+  int drew = 0;
+  for (std::size_t at = 0; at < from; ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++drew;
+    }
+  }
+  check(drew > 0, "the longer message is drawn somewhere", __LINE__);
 
   face.clear();
 }
@@ -345,6 +508,14 @@ int main() {
     an_unnamed_node_draws_no_link(*board);
     a_linked_node_draws_one(*board);
     the_layout_uses_the_whole_panel(*board);
+    // BOTH LANGUAGES, BECAUSE THE OVERFLOW IS A LENGTH.
+    // `ui/AGENTS.md:10` -- "410 × 502 and 240 × 240 — and both locales" --
+    // and Russian is the longer of the two, so an English-only guard checks
+    // the band against the shorter string and calls the wider one covered.
+    a_long_message_stays_on_its_line(*board, l10n::Locale::En);
+    a_long_message_stays_on_its_line(*board, l10n::Locale::Ru);
+    a_named_node_cannot_grow_its_row(*board, l10n::Locale::En);
+    a_named_node_cannot_grow_its_row(*board, l10n::Locale::Ru);
     a_build_owns_the_screen_it_is_given(*board);
     an_unchanged_readout_is_not_redrawn(*board);
   }
