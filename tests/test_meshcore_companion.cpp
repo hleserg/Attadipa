@@ -303,11 +303,19 @@ void test_a_drain_nobody_answers_expires()
     CHECK(client.receive(waiting, sizeof(waiting), at(15099)));
     CHECK(!client.next_tx(frame));
 
-    // At the bound it does not, and the next push starts a drain again.
+    // AT THE BOUND IT DOES NOT -- AND THE TICK THAT DROPS IT PAYS BACK THE
+    // PUSH THE DRAIN SWALLOWED, without a further push arriving to prompt it.
+    // That ordering is the point of the check: the sync below is the sweep
+    // spending the 15099 push, so a `tick()` that dropped the flag and left
+    // the bit set would leave `next_tx` empty here.
     client.tick(at(15100));
-    CHECK(client.receive(waiting, sizeof(waiting), at(15100)));
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    // And a push arriving into the drain the sweep just started is coalesced
+    // into it, exactly as one arriving into any other drain is.
+    CHECK(client.receive(waiting, sizeof(waiting), at(15100)));
+    CHECK(!client.next_tx(frame));
 }
 
 // A notification too long to copy is dropped before receive() ever sees it, so
