@@ -272,9 +272,12 @@ void ProvisionFace::update() {
   // The palette has no red in either theme and inventing one is the owner's
   // decision, not this file's (`ui/src/color.cpp` — "  //   - `Danger` has no
   // value in either theme."). Warning is the strongest thing that is actually
-  // defined, and it marks the key by the field it sits on rather than by the
-  // word printed on it: the same "Forget" key is ordinary on `Node`, where it
-  // only opens the question, and answers it on `ForgetConfirm`.
+  // defined, and what it marks is the field, not the word. `EntryText::acting`
+  // names the key that does the thing, and only on `ForgetConfirm` is that
+  // thing destructive. The word "Forget" appears on both frames and is not
+  // what decides: the key wearing it on `Node` merely opens the question, and
+  // the key wearing it on the confirmation is a different key in a different
+  // slot -- which is the whole of why a second tap cannot answer it.
   //
   // **Only night separates the two colours, and this is the honest extent of
   // the marking.** Warning is orange in day and undefined in night, where a

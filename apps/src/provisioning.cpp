@@ -429,6 +429,7 @@ void ProvisioningEntry::press(EntryKey key)
                 enter_node_half();
                 return;
             }
+            left_from_ = field_;
             field_ = EntryField::Exit;
             return;
         case EntryKey::Plus:
@@ -454,6 +455,7 @@ void ProvisioningEntry::press(EntryKey key)
             }
             return;
         case EntryKey::Leave:
+            left_from_ = field_;
             field_ = EntryField::Exit;
             return;
         default:
@@ -514,6 +516,7 @@ void ProvisioningEntry::press(EntryKey key)
     case EntryKey::Leave:
         // Out, with nothing in flight. Nothing has been written that was not
         // already reported on a receipt, so there is nothing left to say.
+        left_from_ = field_;
         field_ = EntryField::Exit;
         return;
     }
@@ -671,10 +674,17 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
     out.finished = field_ == EntryField::Exit;
     out.waiting  = waiting();
     out.seeded   = seeded_;
-    if (out.finished) { return out; }
 
-    out.title       = l10n::tr(title_of(field_), locale);
-    out.instruction = instruction_of(field_, locale);
+    // `Exit` is not a screen, it is the absence of one, and the caller is what
+    // takes the screen away -- on its own tick, up to a second later. This used
+    // to return an empty text there, so that second was a bare panel. What it
+    // returns instead is the frame the holder left, so a repaint in the gap
+    // shows the last true thing rather than nothing. Only the words: the keys
+    // are refused below, for the reason the waiting frame refuses them.
+    const EntryField shown = out.finished ? left_from_ : field_;
+
+    out.title       = l10n::tr(title_of(shown), locale);
+    out.instruction = instruction_of(shown, locale);
 
     // --- the verdict line -------------------------------------------------
     switch (verdict_) {
@@ -717,7 +727,7 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
     const int sign = offset_minutes_ < 0 ? -1 : 1;
     const unsigned offset_abs = static_cast<unsigned>(offset_minutes_ * sign);
     int written = 0;
-    switch (field_) {
+    switch (shown) {
     case EntryField::Day:
         written = std::snprintf(out.value, sizeof out.value, "%u", day_);
         break;
@@ -766,9 +776,9 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
     // draft stops at the receipt the save produced rather than at the task.
     // For the two narrow tasks this is exactly what the task test was.
     const bool on_clock =
-        task_ != EntryTask::NodePasskey && field_ != EntryField::Node &&
-        field_ != EntryField::ForgetConfirm && field_ != EntryField::Passkey &&
-        !(field_ == EntryField::Receipt &&
+        task_ != EntryTask::NodePasskey && shown != EntryField::Node &&
+        shown != EntryField::ForgetConfirm && shown != EntryField::Passkey &&
+        !(shown == EntryField::Receipt &&
           receipt_of_ != EntryField::TimeReview);
     if (on_clock) {
         const bool iso = locale == l10n::Locale::En;
@@ -808,7 +818,7 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
     }
 
     // --- which step of how many -------------------------------------------
-    switch (field_) {
+    switch (shown) {
     case EntryField::Day:    out.step = 1; out.steps = kTimeSteps; break;
     case EntryField::Month:  out.step = 2; out.steps = kTimeSteps; break;
     case EntryField::Year:   out.step = 3; out.steps = kTimeSteps; break;
@@ -828,6 +838,12 @@ EntryText ProvisioningEntry::text(l10n::Locale locale) const
     // A key with no label is a key the face does not draw. That is the whole
     // of the rule: nothing here is decided by which field it is except through
     // these six strings, so a face cannot draw `Next` on the step that saves.
+    // Two frames draw no key at all, for one reason: a key drawn as live that
+    // is not is worse than no key. On a finished frame every key is dead --
+    // the holder has already left and `press()` refuses -- so the words stay
+    // and the pad goes.
+    if (out.finished) { return out; }
+
     out.leave = l10n::tr(StringId::ProvisionKeyLeave, locale);
     if (out.waiting) {
         // Nothing else does anything while the radio has the request, and a

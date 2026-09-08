@@ -227,6 +227,12 @@ private:
     core::Provisioner& sink_;
     const EntryTask    task_;
     EntryField         field_;
+    // The field the holder was looking at when they left. `Exit` draws no
+    // screen of its own, and a caller learns the entry is over on its own next
+    // tick -- a second on the board, two and a half in the simulator -- so a
+    // text with nothing in it made that gap a bare panel. `text()` returns this
+    // frame's words instead, with no keys on it.
+    EntryField         left_from_ = EntryField::Exit;
     EntryVerdict       verdict_ = EntryVerdict::None;
 
     // The draft. Local civil time plus the offset that turns it into UTC.

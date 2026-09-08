@@ -889,6 +889,63 @@ void test_the_node_task_never_writes_the_clock()
     CHECK(board.clocks == 0);
 }
 
+// The key the acting fill lands on, for a face that must not name it itself.
+static const char *drawn(const EntryText &text, EntryKey key)
+{
+    switch (key) {
+    case EntryKey::Minus:    return text.minus;
+    case EntryKey::Plus:     return text.plus;
+    case EntryKey::Forget:   return text.forget;
+    case EntryKey::Previous: return text.previous;
+    case EntryKey::Next:     return text.next;
+    case EntryKey::Leave:    return text.leave;
+    }
+    return "";
+}
+
+// `EntryText::acting` is the only thing telling a face which key does the
+// thing, and a face cannot check it: it draws what it is given. So the model
+// owes it two properties, and both are silent when broken -- the screen keeps
+// working and one key is filled wrong, which is exactly the class of defect a
+// screenshot is needed to see. Delete the assignment on the confirmation and
+// this is the check that goes red.
+//
+//   1. The acting key is drawn. A fill on a hidden key marks nothing.
+//   2. On the confirmation it is a key the frame that asked does not draw --
+//      the property that makes a second tap of the asking slot harmless, and
+//      the one the fix for round 2 turns on.
+void test_the_acting_key_is_drawn_and_never_the_one_that_asked()
+{
+    FakeBoard board;
+    board.pinned = true;
+    ProvisioningEntry entry(board, EntryTask::NodePasskey);
+
+    CHECK(entry.field() == EntryField::Node);
+    const EntryText node = entry.text(Locale::En);
+    CHECK(node.acting == EntryKey::Next);
+    CHECK(!eq(drawn(node, node.acting), ""));
+
+    entry.press(EntryKey::Forget);
+    CHECK(entry.field() == EntryField::ForgetConfirm);
+    const EntryText ask = entry.text(Locale::En);
+    CHECK(!eq(drawn(ask, ask.acting), ""));
+    // Not stated as "is Minus": what matters is that the node screen has no
+    // key there, so any future move that keeps that true keeps this green.
+    CHECK(eq(drawn(node, ask.acting), ""));
+
+    // The receipt of the forget, and the passkey behind it: acting is drawn on
+    // every frame, not only the two the confirmation is between.
+    entry.press(EntryKey::Minus);
+    board.forget_worker();
+    CHECK(entry.poll() && entry.field() == EntryField::Receipt);
+    const EntryText receipt = entry.text(Locale::En);
+    CHECK(!eq(drawn(receipt, receipt.acting), ""));
+    entry.press(EntryKey::Next);
+    CHECK(entry.field() == EntryField::Passkey);
+    const EntryText passkey = entry.text(Locale::En);
+    CHECK(!eq(drawn(passkey, passkey.acting), ""));
+}
+
 // A watch pinned to no node has nothing to keep or forget, and no field to
 // show it in.
 void test_an_unpinned_watch_starts_at_the_passkey()
@@ -1042,6 +1099,54 @@ void test_leaving_a_wait_says_the_answer_is_lost()
 // of both tasks has a way out that asks nothing of the holder -- except the
 // confirmation, where the neighbouring key is the destructive one and Leave is
 // Back instead.
+// The frame after the last press, which no test used to look at.
+//
+// `Exit` is not a screen; it is the absence of one, and the thing that takes
+// the screen away is the caller, on its own tick -- a second on the board, two
+// and a half in the simulator. Something repaints in that gap, and what it
+// repaints is whatever `text()` says. It used to say nothing at all, so the
+// gap was a bare panel on a product image. It says the frame the holder left,
+// with the whole keypad gone: the words are still true and every key is dead.
+void test_the_finished_frame_keeps_the_words_and_drops_the_keys()
+{
+    auto no_keys = [](const EntryText &t) {
+        return eq(t.minus, "") && eq(t.plus, "") && eq(t.forget, "") &&
+               eq(t.previous, "") && eq(t.next, "") && eq(t.leave, "");
+    };
+
+    // Left from the first step of the clock: its title, and no pad.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime);
+        const EntryText before = entry.text(Locale::En);
+        CHECK(!eq(before.title, "") && !eq(before.leave, ""));
+        entry.press(EntryKey::Leave);
+        CHECK(entry.finished());
+        const EntryText after = entry.text(Locale::En);
+        CHECK(after.finished);
+        CHECK(eq(after.title, before.title));
+        CHECK(no_keys(after));
+    }
+
+    // Left from the receipt the walk ends on, which is the frame a holder
+    // actually leaves from: the answer stays up until the caller tears it down.
+    {
+        FakeBoard board;
+        ProvisioningEntry entry(board, EntryTask::LocalTime);
+        for (unsigned i = 0; i < 6; ++i) { entry.press(EntryKey::Next); }
+        entry.press(EntryKey::Next);
+        CHECK(entry.field() == EntryField::Receipt && board.clocks == 1);
+        const EntryText receipt = entry.text(Locale::En);
+        CHECK(!eq(receipt.verdict, ""));
+        entry.press(EntryKey::Next);
+        CHECK(entry.finished());
+        const EntryText after = entry.text(Locale::En);
+        CHECK(eq(after.title, receipt.title));
+        CHECK(eq(after.verdict, receipt.verdict));
+        CHECK(no_keys(after));
+    }
+}
+
 void test_leave_is_never_a_trap()
 {
     const EntryKey walk_time[] = {EntryKey::Next, EntryKey::Next, EntryKey::Next,
@@ -1163,10 +1268,12 @@ int main()
     test_a_refused_clock_does_not_end_the_board_walk();
     test_the_receipt_way_on_is_drawn_on_no_other_receipt();
     test_the_node_task_never_writes_the_clock();
+    test_the_acting_key_is_drawn_and_never_the_one_that_asked();
     test_an_unpinned_watch_starts_at_the_passkey();
     test_every_forget_ending_gets_its_own_sentence();
     test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one();
     test_leaving_a_wait_says_the_answer_is_lost();
+    test_the_finished_frame_keeps_the_words_and_drops_the_keys();
     test_leave_is_never_a_trap();
     test_both_locales_print_the_whole_instant();
     test_the_passkey_step_names_the_digit_under_the_cursor();

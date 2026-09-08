@@ -402,11 +402,13 @@ ru = "невозможно"
 
 # --- The provisioning entry screen (ADR-0018, OD-26, #469) -----------------
 #
-# What a holder sets on the watch with a finger, and one of two things at a
-# time: the local clock, or the MeshCore node's passkey. Nothing here is
-# typed — every value is stepped — so there is no "that is not a date" to
-# report and no digit keys to label. What is left to say is what is being
-# set, what the six keys do to it, and what the board answered.
+# What a holder sets on the watch with a finger: the local clock, the MeshCore
+# node's passkey, or -- under `EntryTask::All`, which is the only task a board
+# constructs today -- both in that order, the clock's receipt being a waypoint
+# rather than the end. The same six keys and the same strings serve all three.
+# Nothing here is typed — every value is stepped — so there is no "that is not
+# a date" to report and no digit keys to label. What is left to say is what is
+# being set, what the six keys do to it, and what the board answered.
 #
 # The answer lines are the part that has to stay honest. A board's `Rejected`
 # and its `Failed` describe two different watches: one changed nothing, the
