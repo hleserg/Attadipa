@@ -473,6 +473,7 @@
     }
     .night .clock-top .kicker,
     .night .nav-header .kicker,
+    .night .nav-header .sub,
     .night .mesh-top .kicker,
     .night .mesh-top .pill,
     .night .step-head .title {
@@ -1472,6 +1473,8 @@
           digit: 0,
           code: [0, 0, 0, 0, 0, 0],
           saved: false,
+          clockState: "ready",
+          nodeReturn: { page: "setup", state: "menu" },
           passkeyReturn: { page: "setup", state: "menu" },
         },
       ]),
@@ -1744,7 +1747,7 @@
         content = `<div class="summary"><div class="sub">${dateText(wizard)} · UTC${offsetText(wizard.values[5])}</div><div class="value">${localTime(wizard)}</div><div class="sub">${t("utc")}: ${utc.toISOString().slice(0, 10)} ${pad(utc.getUTCHours())}:${pad(utc.getUTCMinutes())}</div></div><div class="actions">${action(t("back"), "edit-time")}${action(t("save"), "save-time", true)}</div>`;
       }
       if (state === "node")
-        content = `<div class="summary"><span class="sub">${t("node")}</span><span class="value" style="font-size:var(--title)">4c9a2f7b</span><div class="sub">${t("identity")}</div></div><div class="stepper node-actions">${action(t("forget"), "confirm-forget")}${action(t("keep"), "passkey")}</div><div class="actions">${action(t("back"), "menu")}</div>`;
+        content = `<div class="summary"><span class="sub">${t("node")}</span><span class="value" style="font-size:var(--title)">4c9a2f7b</span><div class="sub">${t("identity")}</div></div><div class="stepper node-actions">${action(t("forget"), "confirm-forget")}${action(t("keep"), "node-back")}</div><div class="actions">${action(t("back"), "node-back")}</div>`;
       if (state === "confirm-forget")
         content = `<div class="summary"><h3 class="title">${t("forgetTitle")}</h3><p class="sub warning">${t("forgetHint")}</p></div><div class="actions">${action(t("cancel"), "node")}${action(t("confirmForget"), "forget", true)}</div>`;
       if (state === "passkey")
@@ -1814,7 +1817,12 @@
         view.state !== "failed"
       );
     }
-    function go(id, page, state = "ready") {
+    function go(
+      id,
+      page,
+      state = page === "clock" ? wizards[id].clockState : "ready",
+    ) {
+      if (page === "clock") wizards[id].clockState = state;
       views[id] = { page, state };
       renderCard(id);
     }
@@ -1839,6 +1847,8 @@
       const v = views[id],
         wizard = wizards[id];
       if (command === "home") return go(id, "clock");
+      if (command === "node-back")
+        return go(id, wizard.nodeReturn.page, wizard.nodeReturn.state);
       if (command === "nav" || command === "mesh")
         return go(
           id,
@@ -1850,6 +1860,8 @@
       if (command.endsWith("-details") || command === "message")
         return go(id, command, v.state);
       if (["menu", "node", "passkey", "confirm-forget"].includes(command)) {
+        if (command === "node" && v.state !== "confirm-forget")
+          wizard.nodeReturn = { ...v };
         if (command === "passkey") {
           wizard.digit = 0;
           wizard.saved = false;
@@ -1878,6 +1890,7 @@
       }
       if (command === "save-time") {
         wizard.saved = true;
+        wizard.clockState = "ready";
         savedClocks[id] = [...wizard.values];
         return go(id, "setup", "done");
       }
@@ -1929,6 +1942,7 @@
         wizard.step = 0;
         wizard.digit = 0;
         wizard.saved = event.target.value === "done";
+        wizard.nodeReturn = { page: "setup", state: "menu" };
         wizard.passkeyReturn = { page: "setup", state: "menu" };
         if (event.target.value === "time")
           wizard.values = [...(savedClocks[id] || initialTime)];

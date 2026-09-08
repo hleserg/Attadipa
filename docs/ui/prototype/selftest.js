@@ -38,6 +38,15 @@
           getComputedStyle(screen).backgroundColor,
         `${context}: secondary text has its token reading surface`,
       );
+    const navGlyph = screen.querySelector(".nav-header .sub");
+    if (screen.classList.contains("night") && navGlyph)
+      assert(
+        getComputedStyle(navGlyph).boxShadow !== "none" &&
+          getComputedStyle(navGlyph).boxShadow ===
+            getComputedStyle(screen.querySelector(".nav-header .kicker"))
+              .boxShadow,
+        `${context}: navigation header uses matching soft reading surfaces`,
+      );
     for (const button of screen.querySelectorAll("button:not(:disabled)")) {
       const rect = button.getBoundingClientRect();
       assert(
@@ -138,6 +147,55 @@
           text("setup").includes("4c9a2f7b"),
           "Cancel forget must retain node",
         );
+        for (const id of ["setup", "mesh"]) {
+          for (const exit of ["keep", "back"]) {
+            scenario(id, id === "mesh" ? "refused" : "menu");
+            const origin = text(id);
+            click(id, "node");
+            click(id, "confirm-forget");
+            click(id, "node");
+            const label =
+              exit === "keep"
+                ? locale === "ru"
+                  ? "Оставить"
+                  : "Keep node"
+                : locale === "ru"
+                  ? "Назад"
+                  : "Back";
+            [...document.querySelectorAll(`#screen-${id} button`)]
+              .find((button) => button.textContent === label)
+              .click();
+            assert(
+              text(id) === origin &&
+                !document.querySelector(`#screen-${id} .code`),
+              `${id}: ${exit} leaves node unchanged and returns to its source`,
+            );
+          }
+        }
+        for (const state of ["unprovisioned", "stale"]) {
+          scenario("clock", state);
+          const origin = text("clock");
+          if (state === "stale") click("clock", "menu");
+          click("clock", "time");
+          click("clock", "plus");
+          click("clock", "previous");
+          click("clock", "home");
+          assert(
+            text("clock") === origin,
+            `${state}: cancelled setup preserves the originating clock state`,
+          );
+          scenario("clock", state);
+          if (state === "stale") click("clock", "menu");
+          click("clock", "time");
+          for (let step = 0; step < 6; step++) click("clock", "next");
+          click("clock", "save-time");
+          click("clock", "home");
+          assert(
+            document.querySelector("#screen-clock .digits") &&
+              !document.querySelector("#screen-clock .clock-top svg"),
+            `${state}: a successful Save makes the clock ready`,
+          );
+        }
       }
     }
   }

@@ -159,11 +159,22 @@ only commit point. Until then Back/Close discards the draft. Existing valid
 values should seed production entry; an unknown clock must not silently seed
 the sample date from this study.
 
-The prototype limits years to 2000–2099 and offsets to −12:00…+14:00 in 15-minute
-steps as a **proposal**, not a fact about the current model. Claude must use the
-existing supported range, report any disagreement, and test UTC date rollover,
-leap days and changing from a longer month into a shorter month. Local timezone
-rules are not inferred: this is a fixed offset, not an automatic DST feature.
+Years 2000–2099 and offsets −12:00…+14:00 match the current application model,
+as checked with Claude in [the integration contract](https://github.com/hleserg/Attadipa/issues/476#issuecomment-5586036185).
+Quarter-hour entry is a UI decision, not a restriction on stored offsets or the
+shared API. Production must preserve an existing `+05:07` until this field is
+deliberately changed; plus first moves to `+05:15`, minus to `+05:00`, then each
+press advances 15 minutes within the bounds. The signed value crosses zero
+through the same two buttons; no separate sign control is needed. The browser
+uses an on-grid sample, not a legacy-storage integration test. Claude must test
+unchanged legacy values, both edit directions, UTC rollover, leap days and
+shorter-month clamping. This is a fixed offset, not an automatic DST feature.
+
+Cancellation preserves the originating clock's missing/stale state; only a
+successful Save makes it ready. A failed write must not promise rollback:
+production shows “Time save not confirmed.” / “Сохранение времени не подтверждено.”
+and retains the draft for Retry/Back without success art. The browser's `failed`
+scenario is a passkey failure, not evidence of this production time-write path.
 
 A passkey is edited one digit at a time. Leading zeros survive; Back edits the
 previous digit; submitting six digits enters Pending. A stored passkey produces
@@ -175,6 +186,8 @@ credential persistence and radio success.
 
 For an existing node, Keep and Forget are explicit actions. Forget requires a
 second confirmation naming the consequence. Cancel keeps both bond and identity.
+Keep and Back leave the credential unchanged and return to the entry context,
+including refused-node Mesh details; neither opens the passkey editor.
 The subsequent outcome must preserve `MeshForgetOutcome` distinctions; the
 browser's simple success example is not a replacement for that state machine.
 
@@ -229,7 +242,7 @@ font, decodable raster files, localised Mesh details, both success receipts,
 distinct failure art and moving/stopped fireflies. It is evidence about the
 prototype, not the production caller.
 
-V2 passed 1,727 assertions with motion available and 1,723 with system reduced
+V2 passed 1,799 assertions with motion available and 1,795 with system reduced
 motion (the four particle-dependent assertions are skipped). A separate page reload
 restored a valid note alongside a corrupt record and kept the latter exportable;
 temporary browser test records were removed afterward. A deliberately missing
@@ -240,6 +253,10 @@ The check also covers secondary-text reading surfaces, including empty/pending
 instructions, Details qualifications and full-message senders, and moving
 fireflies after navigation with keyboard focus retained. A real
 pointer down/up check verified pause while held and resumption after release.
+The matrix also covers unchanged Keep/Back exits, refused-node return, cancelled
+missing/stale clocks, successful Save and matching night navigation-header
+reading surfaces. Both geometries, themes and locales were opened after these
+journeys; the committed overview captures were refreshed with fireflies enabled.
 
 With Chromium and `agent-browser` available:
 
