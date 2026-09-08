@@ -2871,9 +2871,10 @@ ones that heading states.
   **2.19–2.35 W per sample** on average — 780.7 mW × 242 847 minus
   778.9 mW × 242 554, over 293. A current-only exclusion has a voltage the
   filter would otherwise accept (`V > 4.0`) and a current of at least 1.0 A, so
-  it carries more than 4 W by itself; both fields are decoded as **unsigned**
-  32-bit counts, so no excluded sample can carry negative power to make room
-  for it. **At most 172 of the 293 can be current-only** — at most **110** if
+  it carries more than 4 W by itself; upstream decodes both fields as
+  **unsigned** 32-bit counts, so no excluded sample can carry negative power to
+  make room for it — the pinned copy is the caveat in the bullet below.
+  **At most 172 of the 293 can be current-only** — at most **110** if
   they sit at the quoted ≈1.27 A and this run's mean 4.930 V — and therefore
   **at least 121 of them are voltage-class exclusions**, which is the kind that
   has structural evidence. The bound is arithmetic on rounded published
@@ -2887,10 +2888,12 @@ ones that heading states.
   that number a bound from below; the filter makes it a bound on a set the
   filter chose, and **peak or transient envelope must not be sized from it**.
   **p99 is the robust one and stays quotable.** 293 samples is 0.121 % of the
-  capture, so even if every one of them sat above the full set's p99, that
-  percentile would land at the 99.12th percentile of the retained set — between
-  the published 949.1 mW and the retained maximum, so **949.1 mW is wrong by at
-  most 37.8 mW and only upward**. Median, floor and burst split move less
+  capture, so the exclusion cannot move the 99th percentile far in either
+  direction. Upward, with every one of them above it, it lands at the 99.12th
+  percentile of the retained set — between the published 949.1 mW and the
+  retained maximum, so **wrong by at most 37.8 mW**. Downward, with every one
+  of them a `V = 0` sample, it moves by **under three samples' worth of rank in
+  242 554**. Median, floor and burst split move less
   still. This is why the entry's own instruction to quote the **mean** for
   anything integrated over time is unaffected.
 - **What would settle the classification needs the capture, not the bench, and
