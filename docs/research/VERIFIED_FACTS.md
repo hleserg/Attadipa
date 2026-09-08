@@ -2807,11 +2807,22 @@ ones that heading states.
   exactly what it was, an unruled-out share of unknown size**, neither the
   leading suspect nor demoted from it. The discriminator — power the watch off
   with a long press while inline and read what remains — is still what settles
-  it, and is still `NOT EXECUTED — HARDWARE REQUIRED`. **What the burst structure now has a named candidate for is
-  the receiver**: ~1.15 s onsets with a 300 ms median are the shape of a 1 Hz
-  navigation epoch and the parse behind it. That is a candidate and not a
+  it, and is still `NOT EXECUTED — HARDWARE REQUIRED`. **The burst structure has
+  a named candidate in the receiver, and the argument is size, not rhythm**:
+  the bursts sit 131.7 mW above the floor, which at 4.930 V is **~26.7 mA held
+  for a median 300 ms** — the price of a powered module doing something, not of
+  a log line. An earlier revision argued from the ~1.15 s cadence instead, and
+  that argument does not survive its own numbers: a 1 Hz navigation epoch is
+  disciplined by the receiver's own oscillator and repeats at 1.000 s, while
+  what lands 15 % late is a *relative* periodic that runs late — and this build
+  has more than one of those (`firmware/main/twatch_board.cpp:50` —
+  "constexpr std::uint32_t kGnssTickMs = 1000;" — and the 1 s `alive` heartbeat
+  this entry sets aside above, `firmware/main/attadipa_main.cpp:357` —
+  "        vTaskDelay(pdMS_TO_TICKS(1000));"). The cadence fits both, so it
+  discriminates neither; the 27 mA does. That is still a candidate and not a
   finding — nothing instrumented the firmware during the run, so **the cause
-  stays `UNKNOWN`** and only the list of suspects got shorter.
+  stays `UNKNOWN`**, and the suspect list is shorter by magnitude rather than
+  by timing.
   The vendor's published sleep figures above — light sleep 2.38 mA, deep sleep
   460–530 µA — are three orders of magnitude below this and describe states this
   run never entered, so nothing here contradicts them.
