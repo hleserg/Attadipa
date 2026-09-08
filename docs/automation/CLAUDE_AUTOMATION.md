@@ -24,9 +24,9 @@ write-capable agent do something?**
    `maintain` or `admin`. A drive-by issue saying `@claude delete everything`
    fails here. The `producer:` field in a task marker is *data* and proves
    nothing — see [AI_TASK_PROTOCOL](AI_TASK_PROTOCOL.md#task-marker).
-2. **The action's own check.** `anthropics/claude-code-action@v1` performs the
-   same check independently, and `allowed_non_write_users` is left empty so
-   there is no bypass list to get onto.
+2. **The action's own check.** The pinned `anthropics/claude-code-action`
+   performs the same check independently, and `allowed_non_write_users` is
+   left empty so there is no bypass list to get onto.
 3. **Named bots only, and they are this repository's own.** On a public
    repository `'*'` would let any installed GitHub App drive a write-capable
    agent with a prompt it controls, so the list is never a star. It is also not
@@ -234,8 +234,12 @@ So every Claude step in this repository names its tools explicitly:
 | `claude-agent.yml` | `Read,Glob,Grep,Edit,Write,Bash,WebFetch,WebSearch,TodoWrite,Task` | it implements; its boundary is the job's `permissions:` and its branch |
 | `claude-ci-repair.yml` | `Read,Glob,Grep,Edit,Write,Bash,TodoWrite` | same, narrower — it fixes one failure |
 
-Verified against `anthropics/claude-code-action` at the `v1` tag (v1.0.198,
-`3f854a8`). Two facts from that reading are worth keeping:
+Verified against `anthropics/claude-code-action` at `3f854a8`, release
+**v1.0.198**. **That reading predates the commit these workflows execute** —
+`docs/research/DEPENDENCIES.md:106` — "`d75b94d5ad426cb8546e6628b6f5f19b84e5cce1`, 2026-09-04" —
+which is release v1.0.216 — and it has not been repeated against it. The check
+that binds that row to the workflow tree reads one ledger and does not reach
+this page, so the two facts below are as old as the reading that found them:
 
 - `grep -rn "addLabels" src/` returns nothing. **The action has no label
   feature.** `ai-review:pass` and `ai-review:blocking` exist only because the
