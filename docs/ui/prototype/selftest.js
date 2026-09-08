@@ -32,12 +32,11 @@
       content.scrollHeight <= content.clientHeight + 1,
       `${context}: vertical overflow ${content.scrollHeight}/${content.clientHeight}`,
     );
-    const hint = screen.querySelector(".empty .sub");
-    if (hint)
+    for (const hint of screen.querySelectorAll(".sub"))
       assert(
         getComputedStyle(hint).backgroundColor ===
           getComputedStyle(screen).backgroundColor,
-        `${context}: the state instruction has its token reading surface`,
+        `${context}: secondary text has its token reading surface`,
       );
     for (const button of screen.querySelectorAll("button:not(:disabled)")) {
       const rect = button.getBoundingClientRect();

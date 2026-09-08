@@ -229,15 +229,16 @@ font, decodable raster files, localised Mesh details, both success receipts,
 distinct failure art and moving/stopped fireflies. It is evidence about the
 prototype, not the production caller.
 
-V2 passed 1,567 assertions with motion available and 1,563 with system reduced
-motion (the four movement-only assertions are skipped). A separate page reload
+V2 passed 1,727 assertions with motion available and 1,723 with system reduced
+motion (the four particle-dependent assertions are skipped). A separate page reload
 restored a valid note alongside a corrupt record and kept the latter exportable;
 temporary browser test records were removed afterward. A deliberately missing
 font produced the expected failed assertion instead of accepting fallback type.
 Failure and passkey-success screens were also opened on both geometries, and
 two animated frames were compared for the restrained edge-light movement.
-The check also covers instruction reading surfaces in every empty/pending state
-and moving fireflies after navigation with keyboard focus retained. A real
+The check also covers secondary-text reading surfaces, including empty/pending
+instructions, Details qualifications and full-message senders, and moving
+fireflies after navigation with keyboard focus retained. A real
 pointer down/up check verified pause while held and resumption after release.
 
 With Chromium and `agent-browser` available:
