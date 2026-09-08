@@ -36,10 +36,16 @@ authority this file points at rather than repeats.
   so a night ratio is always a surface or page one.) An accepted state is a ring or a check, not green text.
   And the spacing family is itself unverified at the small size:
   `docs/ui/DESIGN_SYSTEM.md:225` — "**proposed** and none has been checked at 240 × 240."
-- **LVGL's two label traps, both already paid for once.**
+- **LVGL's three label traps, all three already paid for.**
   `LV_LABEL_LONG_DOT` ellipsises only where the height is FIXED — with the
   height left at content the label grows downward through whatever is beneath
   it: `ui/lvgl/mesh_face.cpp:314` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
+  **A label created bare is that same trap with nothing to read.** There is no
+  long-mode call to find, and the default is content height with
+  `LV_LABEL_LONG_WRAP`, so one line break in text that arrived off the link
+  grows the row — a short name, not a long one:
+  `ui/lvgl/mesh_face.cpp:272` — "    // content height and `LV_LABEL_LONG_WRAP`, so a name carrying a line break".
+  This is the one that was missing here, and #475 paid for it a third time.
   `LV_LABEL_LONG_CLIP` on a centred label clips *both* ends, which is why the
   provisioning hints lose their first word as well as their last:
   `ui/lvgl/provision_face.cpp:121` — "  lv_label_set_long_mode(hint_, large ? LV_LABEL_LONG_WRAP".

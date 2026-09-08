@@ -109,13 +109,17 @@ python3 tools/ui/make_mockups.py --font artifacts/ui/NunitoSans.ttf --out artifa
 
 - **Mesh is done.** [#465](https://github.com/hleserg/Attadipa/issues/465)
   closed with [#466](https://github.com/hleserg/Attadipa/pull/466), merged as
-  `53f59261`. **Both** air-fed rows — the message and the sender line under it —
-  are now bounded to one line with an ellipsis, and one rendered regression test
-  on both panels guards them together. The sender row was the same defect one
-  row down, found in review of this handover: `LV_LABEL_LONG_DOT` with a width
-  and no height, fed by a peer's advertised name of up to 32 bytes, growing over
-  the measurements at y=452. Look for that shape anywhere a label carries text
-  off the link.
+  `53f59261`. **Three** air-fed rows are bounded to one line with an ellipsis,
+  and two rendered regression tests guard them on both panels: the message and
+  the sender line under it together since `53f59261`, and the node's own name in
+  [#475](https://github.com/hleserg/Attadipa/pull/475). The sender row was the
+  same defect one row down, found in review of
+  this handover: `LV_LABEL_LONG_DOT` with a width and no height, fed by a peer's
+  advertised name of up to 32 bytes, growing over the measurements at y=452. The
+  name row was that shape a third time, and it outlived two reviews because
+  every fixture name in this repository is one short word. Look for it anywhere
+  a label carries text off the link — including where no long mode is set at
+  all, which is the same defect with nothing to notice.
 - **The clock and navigation faces are designed and the navigation one was
   accepted by the owner.** Provisioning is the last screen still in its
   prototype shape.

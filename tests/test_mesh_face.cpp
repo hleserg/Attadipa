@@ -261,21 +261,16 @@ void the_layout_uses_the_whole_panel(const platform::BoardProfile &board) {
   face.clear();
 }
 
-// THE SCREEN A FACE IS GIVEN BELONGS TO THAT FACE.
-//
-// Page turning hands every face the same `lv_screen_active()` and deletes
-// nothing, so arriving at the mesh screen from the entry screen left the
-// provisioning keypad still parented to it: invisible under the new paint,
-// still `LV_OBJ_FLAG_CLICKABLE`, and swallowing the tap that turns the page.
-// `MeshFace::clear()` cleans the screen the face is holding, which on a first
-// build is none at all, so it never reached this.
-//
-// The count is taken from a build onto an empty screen rather than written
-// down, because the number is the layout's business and this is not a test of
-// how many widgets the layout has.
-// The rule sits at y=352 on the big panel and is the first row under the
-// node name that the name does not own. On 240 the name is not drawn at all.
-std::uint32_t below_node_name() { return 352; }
+// The first row the name does not own, which is the row's own bottom and not
+// the next thing drawn. The row's top is 312 and it is set to one
+// `attadipa_nunito_sans_16` line, whose `.line_height` is 19, so it ends at
+// 331; the rule under it is at 352. Those twenty-one rows are painted by
+// nothing, and a second row of the same font is nineteen -- so a band starting
+// at the rule was blind to exactly the two-row name that fits between them.
+// That is the slack the message guard was carrying when it started at 452
+// instead of the meta row's own bottom, one round earlier and one row down.
+// On 240 the name is not drawn at all.
+std::uint32_t below_node_name() { return 331; }
 
 // A PEER'S OWN NAME MAY NOT PUSH THE REST OF THE SCREEN AROUND.
 //
@@ -301,11 +296,12 @@ void a_named_node_cannot_grow_its_row(const platform::BoardProfile &board,
 
   // THE WORST NAME A PEER CAN ACTUALLY SEND, NOT A LONG ONE.
   //
-  // One line break is not the test: two rows still fit the 40 px between this
-  // row at y=312 and the rule at y=352, so a name with a single break passes
-  // against the unbounded label and proves nothing. `kMeshPeerNameBytes` is 32
-  // and `put` is a bare `snprintf`, so a peer may spend the whole budget on
-  // breaks -- sixteen of them, seventeen rows, straight down the screen.
+  // A long name is not the test; a line break is, and the length is spent on
+  // breaks rather than letters. `kMeshPeerNameBytes` is 32 and `put` is a bare
+  // `snprintf`, so a peer may spend the whole budget on them -- sixteen breaks,
+  // seventeen rows, straight down the screen. One break would fail this guard
+  // too now that the band is the row's own bottom; it did not when the band was
+  // the rule, and that pair is what the band comment above is about.
   std::memset(status.node_name.data(), 'N', status.node_name.size() - 1);
   status.node_name[status.node_name.size() - 1] = '\0';
   for (std::size_t at = 1; at < status.node_name.size() - 1; at += 2) {
@@ -325,7 +321,7 @@ void a_named_node_cannot_grow_its_row(const platform::BoardProfile &board,
     }
   }
   check(moved == 0,
-        big ? "a peer's name moves nothing at or below the rule"
+        big ? "a peer's name moves nothing below its own row"
             : "a peer's name moves nothing on a panel that hides it",
         __LINE__);
   if (moved != 0) {
@@ -348,6 +344,18 @@ void a_named_node_cannot_grow_its_row(const platform::BoardProfile &board,
   }
 }
 
+// THE SCREEN A FACE IS GIVEN BELONGS TO THAT FACE.
+//
+// Page turning hands every face the same `lv_screen_active()` and deletes
+// nothing, so arriving at the mesh screen from the entry screen left the
+// provisioning keypad still parented to it: invisible under the new paint,
+// still `LV_OBJ_FLAG_CLICKABLE`, and swallowing the tap that turns the page.
+// `MeshFace::clear()` cleans the screen the face is holding, which on a first
+// build is none at all, so it never reached this.
+//
+// The count is taken from a build onto an empty screen rather than written
+// down, because the number is the layout's business and this is not a test of
+// how many widgets the layout has.
 void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
   lv_display_t *display = open_panel(board);
   lv_obj_t *screen = lv_screen_active();
