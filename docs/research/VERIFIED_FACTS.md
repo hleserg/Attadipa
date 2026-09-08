@@ -2502,7 +2502,7 @@ ones that heading states.
   above is the vendor's documented default and not a measurement of this board.
   `espefuse.py summary` is read-only and would settle it.
 
-## Measured at the USB input with an inline meter (S16)
+## Measured at the USB input with an inline meter (S16, S17)
 
 ### The Waveshare board draws 413 mW at its USB input in one named idle state
 
@@ -2674,9 +2674,10 @@ ones that heading states.
   open question above
   (`docs/research/VERIFIED_FACTS.md:2595` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
-- **Source:** a FNIRSI **FNB-58** — the same meter as S16 above, but **not**
-  that source and **not**, as far as anything here establishes, the same
-  decoder. S16 records its own decode as
+- **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
+  separate source with its own row in the register
+  (`docs/research/HARDWARE_MATRIX.md:554` — "| S17 | **the bench T-Watch S3 Plus, measured at its micro-USB input"),
+  and **not**, as far as anything here establishes, the same decoder. S16 records its own decode as
   `baryluk/fnirsi-usb-power-data-logger` at an `UNKNOWN` revision with the
   working copy not kept; this run used a copy fetched **2026-09-07**, two days
   after S16, pinned as `~/attadipa-bench/fnirsi_logger.py` sha256
@@ -2783,9 +2784,10 @@ ones that heading states.
   display bring-up on this board is not measurable as a difference against this
   number** — that difference is ≈0. What the number bounds is the opposite
   thing: an idle T-Watch with its panel lit, nothing dimming it, **and a GNSS
-  receiver powered and searching indoors**. That last clause is not decoration:
+  receiver powered, in an `UNKNOWN` state**. That last clause is not decoration:
   budget a screen-on T-Watch from this figure and the budget is over by a whole
-  module whose draw nobody here measured.
+  module whose draw nobody here measured — and by an amount this entry cannot
+  bound, because what the receiver was *doing* was not recorded either.
   It does not compete with the Waveshare's 413 mW either, and the reason is no
   longer the display. Four differences remain and any one of them dominates:
   that board is screen-on at its **measured 5 % visible floor** while this one
@@ -2794,11 +2796,18 @@ ones that heading states.
   MIA-M10Q and that one has no GNSS to power**
   (`docs/research/HARDWARE_MATRIX.md:29` — "| GNSS | yes — **two possible modules** | **absent** |"); and the two panels are different
   technologies at different sizes. 158 mA for an undimmed 240×240 IPS with an
-  ESP32-S3 at 160 MHz, PSRAM up and a searching MIA-M10Q on BLDO1 is
-  unremarkable — it was a *UART* this entry used to price, and a UART is not
-  what draws — so the charge current this entry cannot rule out no longer has
-  an anomaly to explain. It stays open as a composition question, not as the
-  leading suspect. **What the burst structure now has a named candidate for is
+  ESP32-S3 at 160 MHz, PSRAM up and a **powered** MIA-M10Q on BLDO1 is not on
+  its face anomalous — it was a *UART* this entry used to price, and a UART is
+  not what draws. **That is as far as it goes, and an earlier revision went
+  further than it could.** It said the charge current "no longer has an anomaly
+  to explain", which needed the receiver to be in its most expensive state; the
+  same entry writes that state `UNKNOWN` and its share "unmeasured in size *and*
+  unbounded in direction", and a premise cannot be `UNKNOWN` in the Claim and
+  load-bearing here. So the demotion is withdrawn: **the charge current stays
+  exactly what it was, an unruled-out share of unknown size**, neither the
+  leading suspect nor demoted from it. The discriminator — power the watch off
+  with a long press while inline and read what remains — is still what settles
+  it, and is still `NOT EXECUTED — HARDWARE REQUIRED`. **What the burst structure now has a named candidate for is
   the receiver**: ~1.15 s onsets with a 300 ms median are the shape of a 1 Hz
   navigation epoch and the parse behind it. That is a candidate and not a
   finding — nothing instrumented the firmware during the run, so **the cause
