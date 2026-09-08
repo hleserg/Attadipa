@@ -14,8 +14,8 @@ What is actually on each board, and how it is wired.
 Everything below is `VERIFIED` against vendor documentation, vendor board
 support code, or the published schematic, unless the row says otherwise.
 **Some of this now rests on a bench**: the source list below reaches the
-physical unit, most recently the power measurement S16. GNSS performance,
-interference and every other power state stay in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+physical unit, most recently the power measurements S16 and S17. GNSS
+performance, interference and every other power state stay in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 Sources are listed at the bottom.
 
@@ -551,5 +551,7 @@ a typed descriptor rather than a flag.
 
 | S16 | **the received Waveshare unit, measured at its USB-C input 2026-09-05** by a FNIRSI **FNB-58** inline power meter — sold as an FNB-C5, but the USB identity is `2e3c:5558` `FNIRSI`/`FNB-58`, one of the four the `baryluk/fnirsi-usb-power-data-logger` protocol covers. **Data comes off the HID interface; the `ttyACM` the meter also exposes returns nothing, passively or to the vendor's start sequence.** The meter measures the *input*, upstream of the AXP2101: conversion losses are inside the number and rail-level draw is not. The **cell was disconnected**, which is the only reason the reading is board consumption rather than board-plus-charger. Trigger and PD were kept off at plain 5 V — AXP2101 datasheet V1.4 §5.1 Table 5-1 puts `VBUS` absolute maximum at **12 V**, and §6.5.4.3 "Power Off" says *"When VSYS<VOFF or VBUS>7V, AXP2101 will be powered off"*; the SWcharge V1.0 datasheet carries both unchanged. The meter's rated accuracy is `UNKNOWN`; a **2.484 mA** zero offset, self-measured with the output open, was subtracted. Raw logs are bench-only and not committed, and are pinned by sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), which is also where the figure, its residual unknowns and the conditions live |
 
+| S17 | **the bench T-Watch S3 Plus, measured at its micro-USB input 2026-09-08** by the same FNIRSI **FNB-58** meter as S16, reached through a USB-C-to-micro-USB adapter the owner fitted that day. **A separate source from S16, deliberately**: different unit, different port, three days apart, and a **different decoder copy** — S16 records its decode as `baryluk/fnirsi-usb-power-data-logger` at an `UNKNOWN` revision with the working copy not kept, while this run used a copy fetched 2026-09-07 and pinned by sha256 `388061ae…` (bench-only, and its own upstream revision is `UNKNOWN` for the same reason), so **whether the two decoders agree is `UNKNOWN` and is not claimed**. Like S16 it measures the *input*, upstream of the AXP2101: conversion losses are inside the number and rail-level draw is not. **Unlike S16 the cell state is `UNKNOWN`** — whether a cell was in the watch was never established, so an unknown share of the reading may be charge current, and **no zero offset was subtracted**; S16's self-measured 2.484 mA was not re-measured for this run and is carried as a known 1.6 % bias rather than silently applied. The unit was **not** factory at the time: it had run this repository's own firmware since 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)). Raw capture is bench-only and not committed, pinned by sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), which is also where the figure, its conditions and its residual unknowns live |
+
 S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 and S14 on
-2026-08-23; S15 on 2026-08-28; S16 on 2026-09-05.
+2026-08-23; S15 on 2026-08-28; S16 on 2026-09-05; S17 on 2026-09-08.
