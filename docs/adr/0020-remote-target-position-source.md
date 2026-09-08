@@ -36,7 +36,7 @@ whichever path fetched it, the coordinate is the last one the receiver solved.
 
 **2. Path C's bytes are already in a frame this repository parses and
 discards.** `RESP_CODE_CONTACT` is 148 bytes and the session already demands all
-148 — `link/src/meshcore_companion.cpp:587` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+148 — `link/src/meshcore_companion.cpp:687` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 then reads the key and the name and drops bytes 132–147, which are the advert
 timestamp, the coordinate at ×10⁶, and a modification stamp.
 
@@ -174,11 +174,11 @@ button, and nothing on this path says whether a receiver is on.
 command, and sixteen bytes of a frame whose `RESP_CODE_CONTACT` arm already
 length-checks it. **The four arms it adds — `0x80`, `0x8A`, `0x8F` and `0x90` —
 each carry their own guard**, because the
-dispatcher owns no shared one — `link/src/meshcore_companion.cpp:482` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
+dispatcher owns no shared one — `link/src/meshcore_companion.cpp:582` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
 only an empty or over-long frame, and nothing after it inherits a bound: an arm
 that reads a fixed-size field checks its own length, the one arm with no
 fixed-size field at all passes the length through instead —
-`link/src/meshcore_companion.cpp:628` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
+`link/src/meshcore_companion.cpp:725` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
 that reads nothing past the opcode checks nothing.
 `REMOTE_TARGET_POSITION_FROM_MESHCORE.md` §9.1 states all four bounds and §12.1
 tests them. It costs no
@@ -206,11 +206,11 @@ than a map, for the reason `NODE_POSITION_FROM_MESHCORE.md` §6 already gives.
 
 **A ceiling on enumeration, and only on enumeration.** This watch retains
 sixteen peers —
-`link/include/attadipa/link/meshcore_companion.h:162` — "    static constexpr std::size_t kRetainedPeers = 16;" —
+`link/include/attadipa/link/meshcore_companion.h:176` — "    static constexpr std::size_t kRetainedPeers = 16;" —
 against a contact table that is 350 on the T114 build. It does **not** gate the
 read: `accept_contact` parses the whole 148-byte frame and copies key and name
 out before the cap is consulted at all, and the cap then decides storage alone —
-`link/src/meshcore_companion.cpp:314` — "    if (peer_count_ < peers_.size()) {". The primary read is
+`link/src/meshcore_companion.cpp:355` — "    if (peer_count_ < peers_.size()) {". The primary read is
 `CMD_GET_CONTACT_BY_KEY`, which answers with its own frame and never consults
 `peers_`. So a target beyond the sixteenth is readable; what the ceiling limits
 is which targets can be *offered* to choose from, and target selection is the

@@ -63,7 +63,15 @@ public:
     // of through receive(). Dropping and counting -- rather than tearing the
     // link down -- is what keeps one malformed frame from a peer we do not
     // trust (MESHCORE_PARSER_BOUNDS.md §5) out of the recovery path.
-    void drop_oversize_frame() { ++malformed_frames_; }
+    // A dropped notification can be the answer to an outstanding drain
+    // request, and nothing downstream will ever see it -- this path bypasses
+    // receive() by construction. So the drop is where that drain has to end:
+    // otherwise the node's backlog waits out `draining_since_` below for no
+    // reason. Clearing it when the dropped frame was something else costs one
+    // duplicate CMD_SYNC_NEXT_MESSAGE, which the node answers like any other.
+    // The push that was coalesced into that drain is not lost with it:
+    // `pending_push_` outlives the flag and `tick()` spends it.
+    void drop_oversize_frame() { ++malformed_frames_; draining_ = false; }
 
     // WHICH NODE THIS IS, AND WHETHER IT IS THE RIGHT ONE.
     //
@@ -95,14 +103,20 @@ public:
     // It latches until the next session, so a poll that happens after
     // `disconnected()` still sees why.
     //
-    // This class acts on it in exactly one way: `receive()` drops every frame
-    // that arrives after it latches. That is not the link being torn down --
-    // this class does not own the link, and one that tore it down would tear it
-    // down again on the reconnect that follows -- it is this class declining to
-    // answer. Round 2 of #388 measured what "acts on it in no way" cost:
+    // This class acts on it by declining to answer, and in two places rather
+    // than one. `receive()` drops every frame that arrives after it latches,
+    // which covers every ask that leaves from inside the dispatcher; and
+    // `tick()` withholds the `pending_push_` sweep below, which is the one ask
+    // that does not. That is not the link being torn down -- this class does
+    // not own the link, and one that tore it down would tear it down again on
+    // the reconnect that follows -- it is this class declining to answer.
+    // Round 2 of #388 measured what "acts on it in no way" cost:
     // `kPushMessageWaiting` enqueued CMD_SYNC_NEXT_MESSAGE unconditionally, so
     // the watch could ask a node it had just refused for its queued messages
-    // and put the reply on the mesh screen.
+    // and put the reply on the mesh screen. A push the node sends *before* it
+    // identifies itself is how that reaches the sweep: it is remembered while a
+    // drain is outstanding, the refusal arrives, and the deadline then hands
+    // the bit to a `tick()` that `receive()`'s guard never sees.
     bool wrong_node() const { return wrong_node_; }
 
     // THE COORDINATE THE NODE PUTS IN ITS OWN ADVERTISEMENT, and when this
@@ -210,8 +224,11 @@ private:
     void accept_contact(const std::uint8_t* data, std::size_t size);
     void accept_self_position(const std::uint8_t* data, core::MonotonicTime now);
     void accept_custom_vars(const std::uint8_t* data, std::size_t size);
-    void accept_message(const std::uint8_t* data, std::size_t size, bool v3);
-    void accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
+    bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
+    bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
+    bool request_next_message(core::MonotonicTime now);
+    bool spend_pending_push(core::MonotonicTime now);
+    void drain_after(bool accepted, core::MonotonicTime now);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
 
     // Liveness zero: disabled. BLE reports connection and disconnection, so a
@@ -239,6 +256,48 @@ private:
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
+    // A CMD_SYNC_NEXT_MESSAGE is outstanding, so the node is already going
+    // to hand over what it has and a second ask would only fill the ring
+    // with commands whose answers are on their way. Cleared by
+    // `reset_session()` with the rest of the session, which is what starts
+    // a fresh drain after a reconnect rather than resuming a dead one.
+    //
+    // `draining_since_` bounds it, and the bound is not tidiness: every other
+    // path that clears this flag runs in the dispatcher, on a frame that
+    // reached it *and* was accepted. An answer the node never sends, one a
+    // full ring refuses, or one dropped before receive() sees it would leave
+    // the flag latched with no request outstanding -- and from then on every
+    // PUSH_CODE_MSG_WAITING is coalesced into a request that is never going to
+    // be answered, so the whole backlog strands for the life of the session.
+    // The timestamp is read only while `draining_` is true, so the stale value
+    // the deadline leaves behind is never consulted.
+    bool draining_ = false;
+    core::MonotonicTime draining_since_{};
+    // WHAT THE COALESCING COSTS, AND WHO PAYS IT BACK.
+    //
+    // Swallowing a push while `draining_` is true is only free if the drain
+    // ends the way the node ends it. `RESP_CODE_NO_MORE_MESSAGES` proves the
+    // queue was empty when that sync was processed, so a message queued
+    // before the swallowed push had already been handed over and one queued
+    // after it pushes again behind the terminator -- there, and only there,
+    // the push is genuinely spent and this bit is cleared.
+    //
+    // Every other way a drain ends leaves the node holding messages: an
+    // answer this build cannot parse, one that never arrived, one
+    // `drop_oversize_frame()` threw away, a full ring, or a RESP_CODE_ERR
+    // belonging to some other command. Before the coalescing every push
+    // enqueued its own request and none of that mattered; after it, a push
+    // dropped in one of those windows is a backlog nobody asks for again,
+    // because nothing in this repository establishes that the node emits a
+    // second PUSH_CODE_MSG_WAITING for a message it has already announced.
+    //
+    // So the push is remembered rather than dropped, and `tick()` spends it
+    // whenever no request is outstanding. `tick()` rather than each of those
+    // five sites: two of them have no `now` to stamp a request with, the
+    // worker calls `tick()` unconditionally on every event and every poll
+    // timeout, and one place that asks "the node has a message and we are not
+    // asking for it" cannot be added to and forgotten the way five can.
+    bool pending_push_ = false;
     core::Position node_position_{};
     core::MonotonicTime node_position_at_{};
     bool has_node_position_ = false;

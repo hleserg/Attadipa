@@ -103,3 +103,7 @@ Testing/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Another agent's `git worktree` of this repository. Its tree is not ours to
+# commit, and `git add -A` from here would sweep the whole of it in.
+.worktrees/

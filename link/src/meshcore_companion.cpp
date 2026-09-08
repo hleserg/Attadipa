@@ -134,6 +134,9 @@ void MeshCoreCompanion::reset_session()
     device_info_seen_ = false;
     self_info_seen_ = false;
     contacts_complete_ = false;
+    draining_ = false;
+    draining_since_ = {};
+    pending_push_ = false;
     // THE COORDINATE IS SESSION STATE, like the identity above and for the same
     // reason. A reconnect re-reads RESP_CODE_SELF_INFO, so carrying the last
     // session's coordinate would let a node that has gone away keep answering.
@@ -227,6 +230,44 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     if (awaiting_custom_vars_ &&
         core::elapsed(custom_vars_since_, now) >= kMaxAckWait) {
         awaiting_custom_vars_ = false;
+    }
+    // AND THE DRAIN GETS ONE, because it is the only way the flag comes down
+    // without the node's cooperation. The five other clearing paths are all in
+    // the dispatcher and all need an answer that arrived and was accepted, so
+    // an answer the node never sent -- or one `drop_oversize_frame()` threw
+    // away before receive() -- used to latch the coalescing on with nothing
+    // outstanding, and `kPushMessageWaiting` then swallowed every later push
+    // for the session. Fifteen seconds is the same budget a send gets, and
+    // giving up is cheap in the case it is wrong about: a merely slow node
+    // answers the duplicate request as it would any other.
+    if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
+        draining_ = false;
+    }
+    // AND THE PUSH THAT DRAIN SWALLOWED IS SPENT HERE. This is the one place
+    // that asks the question rather than the five places that end a drain,
+    // because two of those have no `now` and all five are easy to add a sixth
+    // to. It costs one branch per tick and, when it fires, exactly one
+    // CMD_SYNC_NEXT_MESSAGE per push the node sent: the bit is set once by a
+    // push and cleared by the request that goes out for it or by the
+    // terminator that proves it was already answered, so there is no way to
+    // spend it twice and no way for it to poll.
+    //
+    // AND NOT TO A NODE THIS WATCH HAS REFUSED. Every other ask leaves from
+    // inside `receive()`, behind the one guard that stops a refused session
+    // dead, so this sweep is the only ask that guard does not reach -- and a
+    // push the node sent *before* it identified itself outlives the refusal in
+    // `pending_push_`. Without this the deadline above would end the drain and
+    // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
+    // node, which is the thing the refusal exists to stop: "nothing is sent
+    // through it" is what the latch below claims for itself
+    // (`link/src/meshcore_companion.cpp:633` -- "            wrong_node_ = true;").
+    //
+    // Withheld, not discarded. `unpin()` un-latches a refusal inside the
+    // session, and a message the node announced before it was refused is still
+    // waiting on the other side of that; the bit is session state and
+    // `reset_session()` drops it with everything else.
+    if (!wrong_node_ && !draining_) {
+        (void)spend_pending_push(now);
     }
     update_availability();
 }
@@ -330,7 +371,64 @@ MeshCoreCompanion::find_peer_prefix(const std::uint8_t* prefix) const
     return nullptr;
 }
 
-void MeshCoreCompanion::accept_message(const std::uint8_t* data,
+// ONE QUEUED MESSAGE PER COMMAND, SO A BACKLOG IS READ BY ASKING AGAIN.
+//
+// The node hands over exactly one message per CMD_SYNC_NEXT_MESSAGE and keeps
+// the rest until asked, until it answers RESP_CODE_NO_MORE_MESSAGES
+// (`docs/research/MESHCORE_COMPANION_PROTOCOL.md:282` -- "one per command, until").
+// A push is what starts a drain, never a substitute for one: before this,
+// reconnecting to a node holding three messages read the oldest and left the
+// other two on the node with the link reporting ready.
+//
+// `draining_` is what keeps a burst of MSG_WAITING pushes costing one request
+// instead of one each -- while a request is outstanding the node is already
+// going to hand over everything it has.
+bool MeshCoreCompanion::request_next_message(core::MonotonicTime now)
+{
+    const std::uint8_t sync[] = {kSyncNextMessage};
+    if (!enqueue(sync, sizeof(sync))) {
+        // A full ring is the one way a drain stops with the node still holding
+        // messages. Clearing the flag is what lets the next push start it
+        // again; leaving it set would strand the backlog for the session.
+        draining_ = false;
+        return false;
+    }
+    draining_ = true;
+    draining_since_ = now;
+    return true;
+}
+
+// Turns a remembered PUSH_CODE_MSG_WAITING into the one request that answers
+// it. False is a full ring and leaves the bit set, so the next tick tries
+// again -- which is what the push arm used to have no way of doing: a push
+// that arrived with the ring full was counted malformed and forgotten.
+bool MeshCoreCompanion::spend_pending_push(core::MonotonicTime now)
+{
+    if (!pending_push_) {
+        return true;
+    }
+    if (!request_next_message(now)) {
+        return false;
+    }
+    pending_push_ = false;
+    return true;
+}
+
+// A frame that did not decode ends the drain instead of provoking another
+// request. A node answering every ask with a frame this client cannot read
+// would otherwise trade frames with it for the life of the session; the next
+// MSG_WAITING push is the cheaper way back in, and `malformed_frames_` has
+// already counted what happened.
+void MeshCoreCompanion::drain_after(bool accepted, core::MonotonicTime now)
+{
+    if (accepted) {
+        (void)request_next_message(now);
+    } else {
+        draining_ = false;
+    }
+}
+
+bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
                                        std::size_t size, bool v3)
 {
     const std::size_t prefix = v3 ? 4 : 1;
@@ -338,12 +436,12 @@ void MeshCoreCompanion::accept_message(const std::uint8_t* data,
     std::size_t text = v3 ? 16 : 13;
     if (size < text) {
         ++malformed_frames_;
-        return;
+        return false;
     }
     if (data[text_type] == 2) {
         if (size < text + 4) {
             ++malformed_frames_;
-            return;
+            return false;
         }
         text += 4;  // signed messages carry a four-byte signature before text
     }
@@ -359,9 +457,10 @@ void MeshCoreCompanion::accept_message(const std::uint8_t* data,
     }
     status_.message_truncated =
         copy_text(status_.last_message, &data[text], size - text);
+    return true;
 }
 
-void MeshCoreCompanion::accept_channel_message_v3(const std::uint8_t* data,
+bool MeshCoreCompanion::accept_channel_message_v3(const std::uint8_t* data,
                                                    std::size_t size)
 {
     // RESP_CODE_CHANNEL_MSG_RECV_V3: code, SNR, two reserved bytes, channel,
@@ -370,13 +469,14 @@ void MeshCoreCompanion::accept_channel_message_v3(const std::uint8_t* data,
     constexpr std::size_t kTextOffset = 11;
     if (size < kTextOffset || data[6] != 0) {
         ++malformed_frames_;
-        return;
+        return false;
     }
     status_.has_snr = true;
     status_.snr_quarter_db = static_cast<std::int8_t>(data[1]);
     status_.last_sender.fill('\0');
     status_.message_truncated =
         copy_text(status_.last_message, &data[kTextOffset], size - kTextOffset);
+    return true;
 }
 
 void MeshCoreCompanion::accept_self_position(const std::uint8_t* data,
@@ -590,12 +690,9 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
         contacts_complete_ = true;
-        {
-            const std::uint8_t sync[] = {kSyncNextMessage};
-            if (!enqueue(sync, sizeof(sync))) {
-                ++malformed_frames_;
-                return false;
-            }
+        if (!request_next_message(now)) {
+            ++malformed_frames_;
+            return false;
         }
         // AND THE ONE QUESTION THIS SESSION ASKS ABOUT THE NODE'S RECEIVER,
         // here and nowhere earlier. The contacts iteration is over by the time
@@ -664,14 +761,18 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             awaiting_confirm_ = false;
         }
         break;
-    case kPushMessageWaiting: {
-        const std::uint8_t sync[] = {kSyncNextMessage};
-        if (!enqueue(sync, sizeof(sync))) {
+    case kPushMessageWaiting:
+        // Remembered first, asked for second. While a request is outstanding
+        // the node is going to hand over everything it has, so the ask is
+        // skipped -- but the fact that the node told us something is waiting
+        // is kept either way, because the drain it is being folded into does
+        // not always end with the node's terminator.
+        pending_push_ = true;
+        if (!draining_ && !spend_pending_push(now)) {
             ++malformed_frames_;
             return false;
         }
         break;
-    }
     case kPushLoginSuccess:
         if (size < 8 || !awaiting_login_ ||
             std::memcmp(&data[2], room_peer_.public_key.data(), 6) != 0) {
@@ -697,19 +798,31 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         status_.delivery = core::MeshDelivery::Failed;
         break;
     case kResponseContactMessage:
-        accept_message(data, size, false);
+        drain_after(accept_message(data, size, false), now);
         break;
     case kResponseContactMessageV3:
-        accept_message(data, size, true);
+        drain_after(accept_message(data, size, true), now);
         break;
     case kResponseChannelMessageV3:
-        accept_channel_message_v3(data, size);
+        drain_after(accept_channel_message_v3(data, size), now);
         break;
     case kResponseNoMoreMessages:
         if (size != 1) { ++malformed_frames_; return false; }
+        // The queue is empty and the drain is over. A later push starts a new
+        // one; nothing here polls the node on a timer.
+        draining_ = false;
+        // AND THIS IS THE ONE ANSWER THAT SPENDS A COALESCED PUSH WITHOUT
+        // ASKING AGAIN. The node processed the sync with an empty queue, so
+        // whatever prompted the push it swallowed had already been handed
+        // over; a message queued after it pushes again behind this frame.
+        pending_push_ = false;
         break;
     case kResponseError: {
         if (size < 2) { ++malformed_frames_; return false; }
+        // Only stops the asking. Which command this error belongs to is decided
+        // below exactly as before -- a drain request is not a claimant and does
+        // not enter that attribution.
+        draining_ = false;
         // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
         // command that fails its guard falls through to RESP_CODE_ERR, so a
         // CMD_SEND_LOGIN for a room the node does not hold arrives here and
