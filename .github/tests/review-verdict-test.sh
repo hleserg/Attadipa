@@ -28,13 +28,22 @@ trap 'rm -rf "$work"' EXIT
 
 pass=0; fail=0
 
-# run PREV FINDINGS FLOOR -> stdout, with the ledger left in $work/ledger.md and
-# the follow-up body in $work/deferred.md (removed first, so its absence means
-# the script chose not to write it).
+# The commit a round is about. Every `run` below reviews this head unless it
+# says otherwise, because that is what the workflow does: the converge step
+# passes the head from the event payload every time it writes a ledger.
+REVIEWED_HEAD=c0ffee1234567890c0ffee1234567890c0ffee12
+
+# run PREV FINDINGS FLOOR [CEILING] [HEAD] -> stdout, with the ledger left in
+# $work/ledger.md and the follow-up body in $work/deferred.md (removed first, so
+# its absence means the script chose not to write it).
+#
+# `${5-...}` and not `${5:-...}`: an explicitly empty fifth argument is a caller
+# that did not name the commit it judged, which is a case with its own
+# assertions below, and it must not silently become the default head.
 run() {
   rm -f "$work/ledger.md" "$work/deferred.md"
   bash "$script" "${1:-}" "${2:-}" "${3:-4}" "$work/ledger.md" "$work/deferred.md" 139 \
-    "${4:-99}"
+    "${4:-99}" "${5-$REVIEWED_HEAD}"
 }
 
 # key KEY -> the value from the last run's stdout, held in $out
@@ -810,6 +819,171 @@ check "a mixed stream counts only the reviewer's own blocks" 2 \
              {\"user\":{\"login\":\"github-actions[bot]\"},\"id\":3,\"body\":\"$LEDGER\"},
              {\"user\":{\"login\":\"claude[bot]\"},\"id\":4,\"body\":\"$FIND\"},
              {\"user\":{\"login\":\"claude[bot]\"},\"id\":5,\"body\":\"no marker here\"}]")"
+
+echo
+echo "Which commit the verdict was reached on, and the cap that reads it back"
+
+# WHY THE LEDGER CARRIES A HEAD AT ALL. `ai-review:blocking` records that a
+# verdict was reached and never what it was reached on. The cap step used to
+# recover that from `.commit.committer.date` on the current head -- a value the
+# author of the commit types -- so a bare re-run against the unchanged blocked
+# head cleared the block whenever that head carried a future date, and a real
+# fix with a backdated one stayed blocked past a ceiling where no round would
+# ever look at it again. Issue #199. The identity is written down here instead,
+# by the round that knows it.
+
+OTHER_HEAD=0decaf1234567890abcdef1234567890abcdef12
+
+f=$(findings fh <<'EOF'
+gnss-trust-source | open | floor | The trust state is claimed with no source
+EOF
+)
+
+out=$(run "" "$f" 4)
+check "the head this round reviewed is reported" "$REVIEWED_HEAD" "$(key head)"
+contains "and written into the ledger's state block" "head_sha=$REVIEWED_HEAD" \
+         "$(cat "$work/ledger.md")"
+
+# Case is a spelling, not an identity. Normalising here is what stops the cap
+# reading one commit as two and clearing a block that is about this one.
+out=$(run "" "$f" 4 99 C0FFEE1234567890C0FFEE1234567890C0FFEE12)
+check "an upper-case head is recorded as the same object id" "$REVIEWED_HEAD" "$(key head)"
+
+# A caller that cannot name the commit it judged records nothing rather than
+# something. The cap reads an absent head as unknown and holds; it would read a
+# repaired one as an answer.
+out=$(run "" "$f" 4 99 "")
+absent "no head named means no head recorded" "head_sha=" "$(cat "$work/ledger.md")"
+absent "and none reported" "head=" "$out"
+out=$(run "" "$f" 4 99 "../../etc/passwd")
+absent "a malformed head is refused rather than trimmed into shape" "head_sha=" \
+       "$(cat "$work/ledger.md")"
+out=$(run "" "$f" 4 99 "c0ffee12")
+absent "and so is an abbreviated one" "head_sha=" "$(cat "$work/ledger.md")"
+
+# NEVER CARRIED FORWARD. A head inherited from an older ledger would say the
+# standing verdict was reached on a commit it was not, and the cap would then
+# clear a block by comparing the current head against the wrong one.
+cat > "$work/headed.md" <<EOF
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=2
+floor=4
+head_sha=$OTHER_HEAD
+gnss-trust-source | 1 | floor | open | The trust state is claimed with no source
+-->
+EOF
+out=$(run "$work/headed.md" "$f" 4)
+contains "a new round overwrites the head with its own" "head_sha=$REVIEWED_HEAD" \
+         "$(cat "$work/ledger.md")"
+absent "and the previous round's head is gone" "$OTHER_HEAD" "$(cat "$work/ledger.md")"
+out=$(run "$work/headed.md" "$f" 4 99 "")
+absent "a round that names no head carries none forward either" "head_sha=" \
+       "$(cat "$work/ledger.md")"
+
+# cap PREV CURRENT [PAID] [ACTOR] -> the one line the workflow reads.
+#
+# The last two are the standing label's provenance, and they default to the
+# automation's own: no round has published past what this ledger records, and
+# the review account applied the label. Every case that omits them is asking
+# about the head. `0` rather than a real count because it cannot exceed any
+# ledger's round, so it never decides a case that is not about it.
+cap() { bash "$script" cap "${1:-}" "${2:-}" "${3-0}" "${4-claude[bot]}"; }
+
+# The head recorded is REVIEWED_HEAD, so a different current head is a moved one.
+out=$(run "" "$f" 4)
+check "a head that is not the one the verdict was reached on is stale" \
+      "STALE $REVIEWED_HEAD $OTHER_HEAD" "$(cap "$work/ledger.md" "$OTHER_HEAD")"
+contains "the same head holds, and the answer says which" \
+         "HOLD the blocking verdict was reached on c0ffee12" \
+         "$(cap "$work/ledger.md" "$REVIEWED_HEAD")"
+
+# THE HEAD MOVING IS NOT THE WHOLE QUESTION. Whose block is standing is the
+# other half, and without it a label a person applied to the current head is
+# stripped as though it were the ledger's own verdict about an older one.
+contains "a block applied by a person is not this ledger's verdict" \
+         "HOLD the standing block was applied by hleserg" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 hleserg)"
+check "the review account's own block still clears on a moved head" \
+      "STALE $REVIEWED_HEAD $OTHER_HEAD" \
+      "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 "claude[bot]")"
+check "so does the ledger account's, which is what converge writes as" \
+      "STALE $REVIEWED_HEAD $OTHER_HEAD" \
+      "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 "github-actions[bot]")"
+contains "a timeline that will not say who applied it holds" \
+         "HOLD who applied the standing block could not be read" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 "")"
+contains "a round published past this ledger holds" \
+         "HOLD 9 round(s) have published findings and this ledger records 1" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" 9 "claude[bot]")"
+contains "a published count that is not a number holds" \
+         "HOLD how many rounds have published findings could not be read" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" "five" "claude[bot]")"
+contains "the same head in upper case is still the same head" \
+         "HOLD the blocking verdict was reached on" \
+         "$(cap "$work/ledger.md" "C0FFEE1234567890C0FFEE1234567890C0FFEE12")"
+check "and it answers on exactly one line, always" 1 \
+      "$(cap "$work/ledger.md" "$OTHER_HEAD" | wc -l | tr -d ' ')"
+
+contains "a current head GitHub did not name holds" \
+         "HOLD the pull request's current head is not a commit object id" \
+         "$(cap "$work/ledger.md" "")"
+contains "and so does a malformed one" \
+         "HOLD the pull request's current head is not a commit object id" \
+         "$(cap "$work/ledger.md" "HEAD")"
+
+# The ordinary case for every pull request open when this field landed.
+out=$(run "" "$f" 4 99 "")
+contains "a ledger with no head recorded holds" \
+         "HOLD the review ledger records no head" \
+         "$(cap "$work/ledger.md" "$REVIEWED_HEAD")"
+contains "no ledger at all holds" \
+         "HOLD there is no review ledger" \
+         "$(cap "$work/no-such-ledger.md" "$REVIEWED_HEAD")"
+contains "and so does an empty path" \
+         "HOLD there is no review ledger" \
+         "$(cap "" "$REVIEWED_HEAD")"
+
+cat > "$work/broken-head.md" <<'EOF'
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=5
+floor=4
+head_sha=../../etc/passwd
+-->
+EOF
+contains "a head the ledger cannot spell holds" \
+         "HOLD the head recorded for the blocking verdict is not a commit object id" \
+         "$(cap "$work/broken-head.md" "$REVIEWED_HEAD")"
+
+# One verdict, one head. Two is a state this script does not write, which is
+# exactly why it may not be resolved by choosing one of them.
+cat > "$work/two-heads.md" <<EOF
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=5
+floor=4
+head_sha=$REVIEWED_HEAD
+head_sha=$OTHER_HEAD
+-->
+EOF
+contains "two recorded heads hold rather than pick one" \
+         "HOLD the review ledger records 2 heads" \
+         "$(cap "$work/two-heads.md" "$OTHER_HEAD")"
+
+# The state block ends at `-->`, so a head below it is outside the ledger and
+# is not the ledger's. This repository is public and anyone may comment.
+cat > "$work/outside.md" <<EOF
+<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=5
+floor=4
+-->
+head_sha=$REVIEWED_HEAD
+EOF
+contains "a head written outside the state block is not read" \
+         "HOLD the review ledger records no head" \
+         "$(cap "$work/outside.md" "$OTHER_HEAD")"
 
 echo
 printf '  %d passed, %d failed\n' "$pass" "$fail"
