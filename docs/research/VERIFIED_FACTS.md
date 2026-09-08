@@ -947,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2115`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2120`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1140,7 +1140,7 @@ is sourced to the drawing itself.
   is why the receiver power policy could be decided without rendering sheet S4 —
   [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md).
 
-### `UBX-CFG-RST` cannot report what it did; software standby reports both edges
+### `UBX-CFG-RST` cannot report what it did; software standby has a message
 
 - **Claim:** the interface description says of `UBX-CFG-RST` (`0x06 0x04`):
   *"Do not expect this message to be acknowledged by the receiver. • Newer FW
@@ -1158,6 +1158,11 @@ is sourced to the drawing itself.
   positive report and its default output rate on UART1 is **0**
   (`CFG-MSGOUT-UBX_MON_RXR_UART1` `0x20910188`), so it must be enabled on the
   **RAM** layer first; no configuration save is required and none may be used.
+  What is documented is that the message exists and when the receiver sends it;
+  whether that RAM-layer enable survives to emission on either edge is
+  **unverified** — entering standby clears RAM, and the data sheet's Table 11
+  turns `TXD` (`G1`) into an input pull-up there. The asymmetry with `CFG-RST`
+  holds regardless: one mechanism has a report to look for, the other has none.
 
 ### The step worth taking is engine-to-standby, not rail-off
 
@@ -1170,7 +1175,7 @@ is sourced to the drawing itself.
 - **Source:** data sheet **UBX-22015849 R08** Tables 16 and 18; integration
   manual **UBX-21028173 R05** §3.6.3.2. **All figures are vendor typicals at
   25 °C — NOT MEASURED on this board.**
-- **Impact:** 12.85 mA of the 12.88 mA available is bought by the first step,
+- **Impact:** 12.85 mA of the 12.87 mA available is bought by the first step,
   which needs no wiring fact; the rail cut below it is worth 18 µA on the module
   before board-side terms that are `UNKNOWN`. It also carries a hazard the
   standby does not: *"In hardware backup mode (VCC = 0 V and V_IO = 0 V), PIOs
@@ -2729,7 +2734,7 @@ ones that heading states.
   and its bit is clear. This says nothing about BLE, which lives in the SoC and has
   no rail of its own. It therefore does **not** answer the Waveshare entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2652` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2657` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register

@@ -18,12 +18,17 @@ schematic fact on the critical path.
 
 It is not on the critical path, and the reason is arithmetic:
 
-| From → to | Saving on the 3.3 V rail | Needs a wiring fact? |
+| From → to | Module draw | Needs a wiring fact? |
 | --- | --- | --- |
 | continuous tracking → software standby | 12.9 mA → 46 µA | **no** |
 | software standby → `BLDO1` off | 46 µA → 28 µA on `V_BCKP` | **yes** |
 
-The first step is **99.6 % of the saving that is available at all**, and it
+The second row's 28 µA is not on the 3.3 V rail at all: that rail is what gets
+cut, and the figure is on `V_BCKP`, the cell's supply. The two rows are not
+subtractable as rail current, which is a second reason the first step is the
+whole of the decision.
+
+The first step is **99.86 % of the saving that is available at all**, and it
 needs no backup cell, no rail sequencing and no reading of sheet S4. The second
 step is worth 18 µA on the module — before any board-side term, all of which are
 `UNKNOWN` — and it costs the whole `V_BCKP` question, a supply-sequencing rule,
@@ -130,7 +135,10 @@ and none may be used.
 The RAM clear on entering standby then resolves the round trip cleanly:
 
 - **entering** — enable `MON-RXR` on the RAM layer, send `PMREQ`, read
-  `awake = 0`. A positive report that the receiver produced.
+  `awake = 0` — **expected, not established.** The enable is a RAM item, and
+  the data sheet's Table 11 turns `TXD` (`G1`) from an output into an input
+  pull-up in software standby mode, so a report on the entry edge has to leave
+  before the pin flips. It is the first thing the bench records.
 - **leaving** — a byte on the UART wakes it; it restarts on its **default**
   configuration, which is the configuration that emits NMEA today with no setup
   at all. The observable is NMEA *resuming*, which is positive content, and it
@@ -151,12 +159,29 @@ off. TTFF is Table 2, same column.
 | --- | --- | --- | --- | --- | --- | --- |
 | **Tracking** (today) | `BLDO1` on; nothing sent | NMEA frames arrive | everything, receiver never stops | — | NOT MEASURED — typ. 10.5 mA `VCC` + 2.4 mA `V_IO` | — |
 | **Acquiring** | `BLDO1` on from off | NMEA arrives, no fix yet | — | — | NOT MEASURED — typ. 12.5 mA + 2.4 mA | NOT MEASURED — typ. 27 s cold |
-| **Cyclic tracking** (option 4) | `CFG-PM` power-save; **not investigated here** | UNKNOWN | UNKNOWN | UNKNOWN | NOT MEASURED — typ. 5.5 mA + 2.1 mA | UNKNOWN |
+| **Cyclic tracking** (option 4) | `CFG-PM-OPERATEMODE`, rail up; an optimisation *inside* Tracking, not a stop | NMEA continues at the configured rate | everything, while it stays in Tracking or POT; RAM cleared only if it drops to "Inactive for search" past the acquisition timeout | none — it never stopped | NOT MEASURED — typ. 5.5 mA `VCC` + 2.1 mA `V_IO` | — |
 | **Engine stop** (option 2) | `UBX-CFG-RST` `0x08`, rail up | **none** — unacknowledged, no status message; NMEA merely stops | RAM and BBR both kept (MAX-M10S integration manual, per #479) | `0x09` start, also unacknowledged | UNKNOWN — no Table 18 row; above standby | UNKNOWN |
-| **Standby** (**recommended**) | `RXM-PMREQ` `backup`+`force`, `wakeupSources.uartrx`, rail up | `MON-RXR` `awake = 0`, then NMEA stops | **BBR, RTC, orbit data — from `V_IO`.** RAM configuration **cleared** | a byte on the UART; NMEA resumes on the default configuration | NOT MEASURED — typ. 46 µA `V_IO` + 120 nA `VCC` | NOT MEASURED — typ. 1 s hot, while orbit data is valid |
+| **Standby** (**recommended**) | `RXM-PMREQ` `backup`+`force`, `wakeupSources.uartrx`, rail up | NMEA stops; `MON-RXR` `awake = 0` too if the enable survives to emission — documented, unverified | **BBR, RTC, orbit data — from `V_IO`.** RAM configuration **cleared** | a byte on the UART; NMEA resumes on the default configuration | NOT MEASURED — typ. 46 µA `V_IO` + 120 nA `VCC` | NOT MEASURED — typ. 1 s hot, while orbit data is valid |
 | **Rail off** (option 3) | `PMREQ` standby, **release GPIO 42**, then `BLDO1` off | none from the module — it is unpowered | **UNKNOWN.** BBR survives only if `V_BCKP` (ball `J5`) is supplied; otherwise erased | `BLDO1` on; cold or hot depending on the above | NOT MEASURED — typ. 28 µA on `V_BCKP` if wired, plus `UNKNOWN` board-side terms | UNKNOWN — 1 s hot if `J5` is fed, else typ. 27 s cold |
 
-Two cells deserve their reasoning in words rather than a footnote.
+Three cells deserve their reasoning in words rather than a footnote.
+
+**Cyclic tracking is in the issue's scope, and it answers a different
+question.** The integration manual §3.6.2 puts PSMCT inside the Tracking state:
+the receiver *"does not shut down completely between fixes, but uses low-power
+tracking instead"*, and in the POT state it *"continues to output position fixes
+according to the `CFG-RATE-*`"*. So it makes tracking cheaper — 7.6 mA against
+12.9 mA typical — without stopping the engine, which means it has no stop/start
+edge to observe and cannot satisfy `engine_observed`. It is orthogonal to the
+contract above and composes with it rather than competing with it.
+
+One consequence of that composition is a contract fact rather than a footnote.
+PSM is enabled with `CFG-PM-OPERATEMODE` and configured through the `CFG-PM`
+group, so on the RAM layer — the only layer this bench may write — **every
+standby entry clears it**, and a policy that alternates standby with cyclic
+tracking must re-send the whole `CFG-PM` group on every wake, alongside the
+`MON-RXR` enable. The manual's own answer to that (*"store the configuration in
+the BBR memory to maintain the settings"*) is a layer the bench rules forbid.
 
 **"while orbit data is valid" is not indefinite.** The integration manual §4.1.3:
 *"the GNSS satellite ephemeris data is typically valid for up to 4 hours for hot
@@ -227,10 +252,13 @@ correction.
    column of Table 16 and Table 2 applies. One `CFG-VALGET` read.
 3. **Every current and every TTFF on this board.** All typicals above are the
    vendor's, at 25 °C, with an antenna that is not this one.
-4. **Whether `MON-RXR` is emitted on the wake edge at all**, given that the RAM
-   clear removes its enable. The contract above deliberately does not depend on
-   it — NMEA resuming is the wake observable — but the bench should record what
-   actually happens.
+4. **Whether `MON-RXR` is emitted on either edge.** On the wake edge the RAM
+   clear has removed its enable. On the entry edge the enable is still live, but
+   `TXD` becomes an input pull-up in standby (data sheet Table 11), so the
+   report has to leave before the pin flips. Both are expectations, not facts.
+   The contract above depends on neither — NMEA stopping and resuming brackets
+   the hold either way — but a `MON-RXR` that does arrive at entry is the
+   positive report `CFG-RST` can never give, so it is the first thing to record.
 
 ## Reuse verdict
 
