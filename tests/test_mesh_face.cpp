@@ -273,6 +273,81 @@ void the_layout_uses_the_whole_panel(const platform::BoardProfile &board) {
 // The count is taken from a build onto an empty screen rather than written
 // down, because the number is the layout's business and this is not a test of
 // how many widgets the layout has.
+// The rule sits at y=352 on the big panel and is the first row under the
+// node name that the name does not own. On 240 the name is not drawn at all.
+std::uint32_t below_node_name() { return 352; }
+
+// A PEER'S OWN NAME MAY NOT PUSH THE REST OF THE SCREEN AROUND.
+//
+// `MeshStatus::node_name` is the node's advertised name off
+// `RESP_CODE_SELF_INFO`: its length and its bytes are chosen elsewhere, and a
+// line break in it is the shape that grows the row even when the text is short.
+// The label was created bare -- content height, `LV_LABEL_LONG_WRAP` -- so that
+// second row landed on the rule and the message heading below it. The two rows
+// under this one had the identical defect and were fixed first; this one
+// survived because every fixture name in this file is one short word.
+void a_named_node_cannot_grow_its_row(const platform::BoardProfile &board,
+                                      l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus status = linked();
+  face.build(lv_screen_active(), config_for(board),
+             apps::format_mesh(status, locale));
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> before = *g_frame;
+
+  // THE WORST NAME A PEER CAN ACTUALLY SEND, NOT A LONG ONE.
+  //
+  // One line break is not the test: two rows still fit the 40 px between this
+  // row at y=312 and the rule at y=352, so a name with a single break passes
+  // against the unbounded label and proves nothing. `kMeshPeerNameBytes` is 32
+  // and `put` is a bare `snprintf`, so a peer may spend the whole budget on
+  // breaks -- sixteen of them, seventeen rows, straight down the screen.
+  std::memset(status.node_name.data(), 'N', status.node_name.size() - 1);
+  status.node_name[status.node_name.size() - 1] = '\0';
+  for (std::size_t at = 1; at < status.node_name.size() - 1; at += 2) {
+    status.node_name[at] = '\n';
+  }
+  face.update(apps::format_mesh(status, locale));
+  lv_refr_now(display);
+
+  // On 240 the name is not drawn at all, so nothing anywhere may move; on the
+  // big panel nothing at or below the rule may.
+  const std::size_t from =
+      big ? static_cast<std::size_t>(below_node_name()) * w * 2 : 0;
+  int moved = 0;
+  for (std::size_t at = from; at < before.size(); ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++moved;
+    }
+  }
+  check(moved == 0,
+        big ? "a peer's name moves nothing at or below the rule"
+            : "a peer's name moves nothing on a panel that hides it",
+        __LINE__);
+  if (moved != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed from y=%u\n", w,
+                 board.display.height_px, moved, big ? below_node_name() : 0);
+  }
+
+  // The counter-check, and it only exists on the panel that draws the row: on
+  // 240 the assertion above is the whole test, and demanding a change here
+  // would demand the hidden label draw.
+  if (big) {
+    int drew = 0;
+    for (std::size_t at = 0; at < from; ++at) {
+      if (before[at] != (*g_frame)[at]) {
+        ++drew;
+      }
+    }
+    check(drew != 0, "the name row itself did change, so the frames differ",
+          __LINE__);
+  }
+}
+
 void a_build_owns_the_screen_it_is_given(const platform::BoardProfile &board) {
   lv_display_t *display = open_panel(board);
   lv_obj_t *screen = lv_screen_active();
@@ -431,6 +506,8 @@ int main() {
     // the band against the shorter string and calls the wider one covered.
     a_long_message_stays_on_its_line(*board, l10n::Locale::En);
     a_long_message_stays_on_its_line(*board, l10n::Locale::Ru);
+    a_named_node_cannot_grow_its_row(*board, l10n::Locale::En);
+    a_named_node_cannot_grow_its_row(*board, l10n::Locale::Ru);
     a_build_owns_the_screen_it_is_given(*board);
     an_unchanged_readout_is_not_redrawn(*board);
   }

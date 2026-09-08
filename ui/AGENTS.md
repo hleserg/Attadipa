@@ -39,7 +39,7 @@ authority this file points at rather than repeats.
 - **LVGL's two label traps, both already paid for once.**
   `LV_LABEL_LONG_DOT` ellipsises only where the height is FIXED — with the
   height left at content the label grows downward through whatever is beneath
-  it: `ui/lvgl/mesh_face.cpp:301` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
+  it: `ui/lvgl/mesh_face.cpp:314` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
   `LV_LABEL_LONG_CLIP` on a centred label clips *both* ends, which is why the
   provisioning hints lose their first word as well as their last:
   `ui/lvgl/provision_face.cpp:121` — "  lv_label_set_long_mode(hint_, large ? LV_LABEL_LONG_WRAP".

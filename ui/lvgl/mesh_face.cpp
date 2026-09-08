@@ -265,6 +265,19 @@ void MeshFace::lay_out(const apps::MeshText &text) {
 
     show(node_key_, text.node_key);
     show(node_name_, text.node_name);
+    // ONE LINE HERE TOO, AND THIS ROW'S TEXT IS A PEER'S OWN CHOICE.
+    //
+    // `node_name` arrives in `RESP_CODE_SELF_INFO`, so its length and its bytes
+    // are decided off the link rather than here. Created bare, the label has
+    // content height and `LV_LABEL_LONG_WRAP`, so a name carrying a line break
+    // draws a second row -- down over the rule at y=352 and the message heading
+    // under it. Every name this file renders in a fixture is one short word,
+    // which is exactly why the two rows below caught this and this one did not.
+    lv_obj_set_width(node_name_, w - margin * 2);
+    lv_obj_set_height(node_name_,
+                      lv_font_get_line_height(
+                          lv_obj_get_style_text_font(node_name_, LV_PART_MAIN)));
+    lv_label_set_long_mode(node_name_, LV_LABEL_LONG_DOT);
     lv_obj_align(node_name_, LV_ALIGN_TOP_LEFT, margin, big ? 312 : 132);
     if (!big) {
       // 240 px has room for the key or the name, not both, and the key is the
