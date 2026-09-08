@@ -253,7 +253,7 @@ reader ends up citing the one that was not updated.
 - **Independently corroborated:** the same arithmetic puts `node_name` at offset
   58, which is where a bench capture found it in a 72-byte frame and where this
   repository's own parser reads it —
-  `link/src/meshcore_companion.cpp:609` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
+  `link/src/meshcore_companion.cpp:624` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
   The coordinate sits between two fields already read correctly.
 - **Not verified:** nothing has read bytes 36–43 off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -335,7 +335,7 @@ reader ends up citing the one that was not updated.
   reads the same ten fields in the same order, naming the last three `advLat`,
   `advLon`, `lastMod`; and this repository already requires all 148 bytes before
   it will read one —
-  `link/src/meshcore_companion.cpp:672` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+  `link/src/meshcore_companion.cpp:687` — "        if (size < 148) { ++malformed_frames_; return false; }" —
   reading the key at 1 and the name at 100 and discarding 132–147.
 - **Not verified:** no contact frame has been read off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -502,7 +502,7 @@ reader ends up citing the one that was not updated.
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
   [`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
-  [`link/src/meshcore_companion.cpp:610`](../../link/src/meshcore_companion.cpp)
+  [`link/src/meshcore_companion.cpp:625`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
   is [`firmware/main/meshcore_ble.cpp:457`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names

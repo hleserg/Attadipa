@@ -251,7 +251,22 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // push and cleared by the request that goes out for it or by the
     // terminator that proves it was already answered, so there is no way to
     // spend it twice and no way for it to poll.
-    if (!draining_) {
+    //
+    // AND NOT TO A NODE THIS WATCH HAS REFUSED. Every other ask leaves from
+    // inside `receive()`, behind the one guard that stops a refused session
+    // dead, so this sweep is the only ask that guard does not reach -- and a
+    // push the node sent *before* it identified itself outlives the refusal in
+    // `pending_push_`. Without this the deadline above would end the drain and
+    // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
+    // node, which is the thing the refusal exists to stop: "nothing is sent
+    // through it" is what the latch below claims for itself
+    // (`link/src/meshcore_companion.cpp:633` -- "            wrong_node_ = true;").
+    //
+    // Withheld, not discarded. `unpin()` un-latches a refusal inside the
+    // session, and a message the node announced before it was refused is still
+    // waiting on the other side of that; the bit is session state and
+    // `reset_session()` drops it with everything else.
+    if (!wrong_node_ && !draining_) {
         (void)spend_pending_push(now);
     }
     update_availability();

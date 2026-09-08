@@ -103,14 +103,20 @@ public:
     // It latches until the next session, so a poll that happens after
     // `disconnected()` still sees why.
     //
-    // This class acts on it in exactly one way: `receive()` drops every frame
-    // that arrives after it latches. That is not the link being torn down --
-    // this class does not own the link, and one that tore it down would tear it
-    // down again on the reconnect that follows -- it is this class declining to
-    // answer. Round 2 of #388 measured what "acts on it in no way" cost:
+    // This class acts on it by declining to answer, and in two places rather
+    // than one. `receive()` drops every frame that arrives after it latches,
+    // which covers every ask that leaves from inside the dispatcher; and
+    // `tick()` withholds the `pending_push_` sweep below, which is the one ask
+    // that does not. That is not the link being torn down -- this class does
+    // not own the link, and one that tore it down would tear it down again on
+    // the reconnect that follows -- it is this class declining to answer.
+    // Round 2 of #388 measured what "acts on it in no way" cost:
     // `kPushMessageWaiting` enqueued CMD_SYNC_NEXT_MESSAGE unconditionally, so
     // the watch could ask a node it had just refused for its queued messages
-    // and put the reply on the mesh screen.
+    // and put the reply on the mesh screen. A push the node sends *before* it
+    // identifies itself is how that reaches the sweep: it is remembered while a
+    // drain is outstanding, the refusal arrives, and the deadline then hands
+    // the bit to a `tick()` that `receive()`'s guard never sees.
     bool wrong_node() const { return wrong_node_; }
 
     // THE COORDINATE THE NODE PUTS IN ITS OWN ADVERTISEMENT, and when this

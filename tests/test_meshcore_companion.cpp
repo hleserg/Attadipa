@@ -418,6 +418,52 @@ void test_a_push_swallowed_by_a_drain_is_paid_back()
     }
 }
 
+// A REFUSED NODE IS NOT ASKED FOR ITS QUEUE, and `tick()` is a way to ask that
+// `receive()`'s refusal does not cover.
+void test_a_refused_node_is_not_asked_by_the_tick_sweep()
+{
+    MeshCoreCompanion client;
+    client.pin(key_of(0x40));
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+    CHECK(!client.next_tx(frame));
+
+    // Two pushes before RESP_CODE_SELF_INFO. Nothing orders a node's pushes
+    // against its answer to CMD_APP_START, so this is the node's choice and not
+    // this client's. The first starts a drain; the second is coalesced into it
+    // and remembered in `pending_push_`.
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(3)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.receive(waiting, sizeof(waiting), at(4)));
+    CHECK(!client.next_tx(frame));
+
+    // And then the node says it is not the pinned one.
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    const core::MeshPeerId stranger = key_of(0x91);
+    std::memcpy(&self[4], stranger.public_key.data(), core::kMeshPublicKeyBytes);
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(5)));
+    CHECK(client.wrong_node());
+
+    // The drain's answer never arrives, because `receive()` drops everything
+    // this node sends from here on. The deadline ends the drain -- and the
+    // remembered push must not then be spent on the node this watch refused.
+    client.tick(at(15005));
+    CHECK(!client.next_tx(frame));
+    for (std::uint64_t ms = 15500; ms <= 60000; ms += 500) {
+        client.tick(at(ms));
+    }
+    CHECK(!client.next_tx(frame));
+}
+
 void test_self_info_carries_the_node_identity()
 {
     MeshCoreCompanion client;
@@ -1652,6 +1698,7 @@ int main()
     test_a_drain_nobody_answers_expires();
     test_a_dropped_notification_ends_the_drain();
     test_a_push_swallowed_by_a_drain_is_paid_back();
+    test_a_refused_node_is_not_asked_by_the_tick_sweep();
     test_self_info_carries_the_node_identity();
     test_the_pinned_node_is_the_one_the_handshake_continues_with();
     test_another_node_answers_and_the_handshake_stops_there();
