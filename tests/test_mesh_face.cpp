@@ -318,7 +318,8 @@ std::uint32_t below_message(bool big) { return big ? 441 : 192; }
 // line may depend on how long the message is, and that is what this asserts:
 // two frames differing in the message alone, compared from the first row the
 // message does not own.
-void a_long_message_stays_on_its_line(const platform::BoardProfile &board) {
+void a_long_message_stays_on_its_line(const platform::BoardProfile &board,
+                                      l10n::Locale locale) {
   const bool big = board.display.width_px >= 320;
   const std::uint32_t w = board.display.width_px;
   lv_display_t *display = open_panel(board);
@@ -330,7 +331,7 @@ void a_long_message_stays_on_its_line(const platform::BoardProfile &board) {
   const char *const kShortName = "Ridge";
   std::memcpy(status.last_sender.data(), kShortName, std::strlen(kShortName));
   face.build(lv_screen_active(), config_for(board),
-             apps::format_mesh(status, l10n::Locale::En));
+             apps::format_mesh(status, locale));
   lv_refr_now(display);
   const std::vector<std::uint8_t> before = *g_frame;
 
@@ -346,7 +347,7 @@ void a_long_message_stays_on_its_line(const platform::BoardProfile &board) {
   status.last_message[status.last_message.size() - 1] = '\0';
   std::memset(status.last_sender.data(), 'S', status.last_sender.size() - 1);
   status.last_sender[status.last_sender.size() - 1] = '\0';
-  face.update(apps::format_mesh(status, l10n::Locale::En));
+  face.update(apps::format_mesh(status, locale));
   lv_refr_now(display);
 
   const std::size_t from =
@@ -424,7 +425,12 @@ int main() {
     an_unnamed_node_draws_no_link(*board);
     a_linked_node_draws_one(*board);
     the_layout_uses_the_whole_panel(*board);
-    a_long_message_stays_on_its_line(*board);
+    // BOTH LANGUAGES, BECAUSE THE OVERFLOW IS A LENGTH.
+    // `ui/AGENTS.md:10` -- "410 × 502 and 240 × 240 — and both locales" --
+    // and Russian is the longer of the two, so an English-only guard checks
+    // the band against the shorter string and calls the wider one covered.
+    a_long_message_stays_on_its_line(*board, l10n::Locale::En);
+    a_long_message_stays_on_its_line(*board, l10n::Locale::Ru);
     a_build_owns_the_screen_it_is_given(*board);
     an_unchanged_readout_is_not_redrawn(*board);
   }

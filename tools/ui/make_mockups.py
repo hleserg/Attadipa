@@ -21,10 +21,11 @@ easy to lose in a rewrite:
 * **The tokens, not eyeballed colour.** Every value below is the night column of
   `ui/src/color.cpp:14` -- "constexpr Rgb kWarmIvory{0xFF, 0xF6, 0xE8};" -- and
   every pair carrying a WORD was checked against the measured table in
-  `docs/ui/DESIGN_SYSTEM.md:225` -- "**proposed** and none has been checked at
-  240 x 240." That table is why an accepted verdict here is a green ring and
-  never a green word: `success` on a night surface measures 3.54:1, under the
-  4.5:1 that body text needs, and comfortably over the 3.0:1 a graphic does.
+  `docs/ui/DESIGN_SYSTEM.md:122` -- "### 3.2 Contrast, measured". That table is
+  why an accepted verdict here is a green ring and never a green word:
+  `docs/ui/DESIGN_SYSTEM.md:151` -- "`color.success` | 3.96 | 3.54" puts
+  `success` on a night surface at 3.54:1, under the 4.5:1 that body text needs
+  and comfortably over the 3.0:1 a graphic does.
   Night has no raised layer at all -- only the day table has that column.
 
 WHAT THESE PICTURES CHANGE FROM TODAY, SAID OUT LOUD. They are proposals, and a
