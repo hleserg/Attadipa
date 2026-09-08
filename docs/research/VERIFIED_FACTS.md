@@ -2612,9 +2612,9 @@ ones that heading states.
 
 ### The T-Watch's USB input carries 779 mW, and an unknown share of that is charge current
 
-- **Claim:** the T-Watch S3 Plus (`DC:B4:D9:18:49:40`), untouched and running
-  this repository's own bring-up firmware — **panel up and the backlight
-  undimmed**, a **GNSS receiver powered and searching**, a 1 s heartbeat, and
+- **Claim:** the T-Watch S3 Plus (`DC:B4:D9:18:49:40`), idle for the run and
+  running this repository's own bring-up firmware — **panel up and the backlight
+  undimmed**, a **GNSS receiver powered**, in an `UNKNOWN` state, a 1 s heartbeat, and
   the LoRa rail down; not a product build, and not as idle as "skeleton"
   suggested — presents a **mean 778.9 mW** at its micro-USB input — a mean
   158.0 mA at a mean 4.930 V. The distribution is **bimodal, not flat**: a floor
@@ -2647,19 +2647,29 @@ ones that heading states.
   and `0x17` is `0b10111`: bit 4 is BLDO1
   (`firmware/main/board_power.cpp:539` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
-  2026-09-05 and recorded above at `docs/research/VERIFIED_FACTS.md:720`, and
-  this image raises that rail on purpose
+  2026-09-05 and recorded above
+  (`docs/research/VERIFIED_FACTS.md:720` — "Claim, on the bench unit, MEASURED 2026-09-05"),
+  and this image raises that rail on purpose
   (`firmware/main/twatch_board.cpp:875` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
-  So for the whole 45 minutes a receiver was powered, indoors, with no sky —
-  a receiver's most expensive state, because it never stops searching — and
-  **nothing here measures what it cost.** The rail is named, not gated: this
+  So for the whole 45 minutes a receiver was powered, and **nothing here
+  measures what it cost.** What state it was in is `UNKNOWN`: a receiver that
+  never sees a satellite searches continuously and costs the most, one with a
+  fix costs less, and the sky the watch had is not recorded for this capture
+  (below). So the GNSS share is unmeasured in size *and* unbounded in
+  direction; this entry claims only that it is inside the 778.9 mW. The rail is named, not gated: this
   entry does not claim that clearing BLDO1 would turn the module off:
   `docs/research/VERIFIED_FACTS.md:734` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
   says why nothing here could show that.
 - **The LoRa radio rail was down for the run.** Bit 3 of that same byte is
-  ALDO4, which on this board is the radio
+  `aldo4 enable`, read off the register's own bit map — AXP2101 datasheet
+  V1.4 §6.13.2.75, `REG 90: LDOS ON/OFF control 0`, which gives bit 3
+  `aldo4 enable`, bit 4 `bldo1 enable`, bits 2 and 1 `aldo3`/`aldo2`. That is
+  the section this tree already names for this register
+  (`firmware/main/board_power.cpp:573` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
+  cited here for the bit rather than for the rail: bits 1, 2 and 4 being
+  sourced does not make bit 3 sourced. ALDO4 on this board is the radio
   (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
-  and it is clear. This says nothing about BLE, which lives in the SoC and has
+  and its bit is clear. This says nothing about BLE, which lives in the SoC and has
   no rail of its own. It therefore does **not** answer the Waveshare entry's
   open question above
   (`docs/research/VERIFIED_FACTS.md:2595` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
@@ -2686,6 +2696,15 @@ ones that heading states.
   none of which a 5 V USB line can present. The filter is `4.0 < V < 5.5` together with
   `0 ≤ I < 1.0`, leaving 242 554 samples; applying it to the capture reproduces
   every number in this entry. Left in, they pull the mean to 780.7 mW.
+- **Where the watch was, and what is not recorded.** The capture is an inline
+  USB reading, so the watch was cabled through the FNB-58 to this host for the
+  whole 2698.8 s — it was on the bench, and could not have been anywhere else
+  while the meter was logging. **Its sky view is `UNKNOWN`**: nothing was
+  written down about the room, the window or the desk on 2026-09-08, and the
+  session that does record such conditions is a different one two days earlier
+  (`docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md:9` — "The capture is from the bench watch on 2026-09-06, indoors, on the desk, with no").
+  Carrying that day's conditions across to this one would be an assumption, so
+  it is not made. Recording the place is one line in the next capture's notes.
 - **No zero offset was subtracted.** The 2.484 mA measured on 2026-09-05 was not
   re-measured for this run and is not silently applied here; it is **1.6 % of
   this reading** and is a known bias in it, not a correction that has been made.

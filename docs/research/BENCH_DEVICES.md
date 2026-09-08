@@ -24,8 +24,7 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | **`0xEF 0x4018` — Winbond, 16 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | LilyGO T-Watch S3 Plus; the shipped firmware's own FQBN is `esp32:esp32:twatchs3:Revision=Radio_SX1262` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **Attadipa bring-up image** — panel up, GNSS rail up, LoRa rail down; not a
-product build and not an idle one — built `Sep  5 2026 22:07:42` and written on or after that — the write itself is not recorded, and the stamp is a compile time; the factory image is backed up and restorable | unchanged; do not write |
+| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **Attadipa bring-up image** — panel up, GNSS rail up, LoRa rail down; not a product build and not an idle one — built `Sep  5 2026 22:07:42` and written on or after that — the write itself is not recorded, and the stamp is a compile time; the factory image is backed up and restorable | unchanged; do not write |
 
 This table said until 2026-09-08 that the T-Watch was **the only one of the
 three whose flash was still exactly as the factory shipped it**, and that
