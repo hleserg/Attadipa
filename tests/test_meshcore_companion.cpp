@@ -82,6 +82,15 @@ void connect_and_handshake(MeshCoreCompanion& client)
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 40);
     CHECK(!client.next_tx(frame));
+
+    // AND THE NODE ANSWERS THE DRAIN REQUEST, because every node does. An empty
+    // queue answers CMD_SYNC_NEXT_MESSAGE with RESP_CODE_NO_MORE_MESSAGES, and
+    // a fixture that takes the command and never replies leaves the client's
+    // drain outstanding for the rest of the test -- which is not what a node
+    // does and would hide the coalescing that keeps a burst of pushes cheap.
+    const std::uint8_t drained[] = {10};
+    CHECK(client.receive(drained, sizeof(drained), at(7)));
+    CHECK(!client.next_tx(frame));
 }
 
 // The node's own key is the only thing on this wire that tells two MeshCore
@@ -117,6 +126,154 @@ void handshake_to_self_info(MeshCoreCompanion& client, const core::MeshPeerId& i
     std::memcpy(&self[4], id.public_key.data(), core::kMeshPublicKeyBytes);
     std::memcpy(&self[58], "Node", 4);
     CHECK(client.receive(self, sizeof(self), at(3)));
+}
+
+// A BACKLOG IS READ TO THE END, NOT SAMPLED.
+//
+// Reconnecting to a node holding three messages used to read the oldest and
+// leave the other two on the node, with the link reporting ready and the screen
+// showing the oldest -- one CMD_SYNC_NEXT_MESSAGE went out per push and none
+// after a message arrived, so nothing ever asked for the second one.
+//
+// The five situations the fix has to survive are all here, because the failure
+// was in how they combine and not in any of them alone.
+void test_a_queued_backlog_is_drained_to_the_end()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    MeshCoreFrame frame{};
+
+    // The node says it has something. That is the start of a drain, not a
+    // delivery: one push, one request.
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(10)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(!client.next_tx(frame));
+
+    // A BURST OF PUSHES WHILE THAT REQUEST IS OUTSTANDING COSTS NOTHING EXTRA.
+    // The node is already going to hand over what it holds, so a second ask
+    // would only fill the ring with commands whose answers are on their way.
+    for (int i = 0; i < 5; ++i) {
+        CHECK(client.receive(waiting, sizeof(waiting), at(11 + i)));
+    }
+    CHECK(!client.next_tx(frame));
+
+    // THREE QUEUED MESSAGES, IN THE THREE FORMS A QUEUE CAN HOLD. The bug was
+    // one missing request per accepted message, so every branch that accepts
+    // one has to be walked or the fix is only proved for whichever form the
+    // fixture happened to pick.
+    //
+    // RESP_CODE_CONTACT_MSG_RECV (7): key at 1, text type at 8, text at 13.
+    std::uint8_t plain[32]{};
+    plain[0] = 7;
+    std::memcpy(&plain[1], peer.id.public_key.data(), 6);
+    std::memcpy(&plain[13], "oldest", 6);
+    CHECK(client.receive(plain, 19, at(20)));
+    CHECK(std::strcmp(client.status().last_message.data(), "oldest") == 0);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(!client.next_tx(frame));
+
+    // RESP_CODE_CONTACT_MSG_RECV_V3 (16): SNR at 1, key at 4, text at 16.
+    std::uint8_t v3[32]{};
+    v3[0] = 16;
+    v3[1] = static_cast<std::uint8_t>(-8);
+    std::memcpy(&v3[4], peer.id.public_key.data(), 6);
+    std::memcpy(&v3[16], "middle", 6);
+    CHECK(client.receive(v3, 22, at(21)));
+    CHECK(std::strcmp(client.status().last_message.data(), "middle") == 0);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(!client.next_tx(frame));
+
+    // RESP_CODE_CHANNEL_MSG_RECV_V3 (17): text at 11, no contact prefix.
+    std::uint8_t channel[16]{};
+    channel[0] = 17;
+    channel[4] = 3;
+    channel[6] = 0;
+    std::memcpy(&channel[11], "room", 4);
+    CHECK(client.receive(channel, sizeof(channel), at(25)));
+    CHECK(std::strcmp(client.status().last_message.data(), "room") == 0);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    // The empty queue ends it. Nothing polls the node afterwards -- not on the
+    // next frame and not on a minute of ticks.
+    const std::uint8_t no_more[] = {10};
+    CHECK(client.receive(no_more, sizeof(no_more), at(26)));
+    CHECK(!client.next_tx(frame));
+    for (std::uint64_t ms = 500; ms <= 60000; ms += 500) {
+        client.tick(at(ms));
+    }
+    CHECK(!client.next_tx(frame));
+
+    // AND A PUSH AFTER THE DRAIN CLOSED STARTS A NEW ONE. Coalescing must not
+    // outlive the drain it was protecting, or the first message of the next
+    // backlog is the one that strands.
+    CHECK(client.receive(waiting, sizeof(waiting), at(61000)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+}
+
+// A drain belongs to its session. Reconnecting must ask again rather than wait
+// for the answer to a request the old link carried away.
+void test_a_reconnect_starts_a_new_drain()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshCoreFrame frame{};
+
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(10)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    // The link drops with that request unanswered, and the answer never comes:
+    // it left with the session.
+    client.disconnected(at(11));
+
+    // A NEW SESSION, DELIBERATELY NOT CARRIED AS FAR AS ITS CONTACT SYNC. The
+    // handshake would ask for a message on its own account, which is why
+    // reaching for it here would prove nothing: the request would go out
+    // whether or not the dead session's state had been cleared. A push arriving
+    // before the sync completes is the case that tells them apart -- a stale
+    // `draining_` swallows it and the backlog waits for a drain that no longer
+    // has a link under it.
+    client.connected(at(12));
+    while (client.next_tx(frame)) {
+    }
+    CHECK(client.receive(waiting, sizeof(waiting), at(13)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+}
+
+// A frame this client cannot read ends the drain instead of provoking another
+// request: a node answering every ask with one would otherwise trade frames
+// with it for the life of the session.
+void test_an_unreadable_message_does_not_spin_the_drain()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshCoreFrame frame{};
+
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(10)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    // Short enough that `accept_message` refuses it.
+    std::uint8_t truncated[12]{};
+    truncated[0] = 16;   // V3 needs 16 bytes before any text; this is 12.
+    CHECK(client.receive(truncated, sizeof(truncated), at(11)));
+    CHECK(!client.next_tx(frame));
+
+    // And the way back in is the next push, not a retry.
+    CHECK(client.receive(waiting, sizeof(waiting), at(12)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
 }
 
 void test_self_info_carries_the_node_identity()
@@ -1347,6 +1504,9 @@ int main()
     test_an_answered_login_does_not_take_a_later_opcode_40s_error();
     test_signed_message_does_not_render_signature_as_text();
     test_channel_message_is_rendered_without_a_contact_prefix();
+    test_a_queued_backlog_is_drained_to_the_end();
+    test_a_reconnect_starts_a_new_drain();
+    test_an_unreadable_message_does_not_spin_the_drain();
     test_self_info_carries_the_node_identity();
     test_the_pinned_node_is_the_one_the_handshake_continues_with();
     test_another_node_answers_and_the_handshake_stops_there();

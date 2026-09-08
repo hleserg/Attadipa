@@ -210,8 +210,10 @@ private:
     void accept_contact(const std::uint8_t* data, std::size_t size);
     void accept_self_position(const std::uint8_t* data, core::MonotonicTime now);
     void accept_custom_vars(const std::uint8_t* data, std::size_t size);
-    void accept_message(const std::uint8_t* data, std::size_t size, bool v3);
-    void accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
+    bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
+    bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
+    bool request_next_message();
+    void drain_after(bool accepted);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
 
     // Liveness zero: disabled. BLE reports connection and disconnection, so a
@@ -239,6 +241,12 @@ private:
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
+    // A CMD_SYNC_NEXT_MESSAGE is outstanding, so the node is already going
+    // to hand over what it has and a second ask would only fill the ring
+    // with commands whose answers are on their way. Cleared by
+    // `reset_session()` with the rest of the session, which is what starts
+    // a fresh drain after a reconnect rather than resuming a dead one.
+    bool draining_ = false;
     core::Position node_position_{};
     core::MonotonicTime node_position_at_{};
     bool has_node_position_ = false;
