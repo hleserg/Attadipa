@@ -55,7 +55,15 @@ worth 18 µA before it was answered and it is worth 18 µA now.
 The fitted part is a `MIA-M10Q` running ROM SPG 5.10, protocol 34.10, read off
 the bench unit on 2026-09-05 —
 [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md). Its supply
-is `BLDO1` at 3300 mV, enable net `GPS_LDO` on FPC pin 3.
+is `BLDO1` at 3300 mV, and FPC pin 3 carries **that supply across the
+connector** rather than an enable line for it. The main board names the net
+`GPS_LDO`, `docs/research/HARDWARE_MATRIX.md:252` — "| 3 | `GPS_LDO` | GNSS supply |" —
+the daughterboard names the same pin `VDD3V3`,
+`docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
+and there it reaches the module's `VCC` and `V_IO` balls with nothing in
+between: `docs/research/VERIFIED_FACTS.md:1192` — "Ball `J4` (`V_IO`) and ball `B1` (`VCC`)".
+The two lists are not mirrored halves: pins 1, 2, 6 and 8 carry the same net in
+both, four independent agreements, so pin 3 is pin 3 on either side.
 
 **That is one unit, and the product is two.**
 `docs/adr/0011-gnss-integrity.md:23` — "- **The T-Watch S3 Plus ships one of two receivers** — a u-blox **MIA-M10Q** or" —
@@ -107,10 +115,13 @@ same section:
    That is the same vector read of sheet S4 that placed `J5`, with the same
    provenance: D23, and
    [VERIFIED_FACTS](VERIFIED_FACTS.md) *"The `MS412FE` does reach `V_BCKP`"*.
-   An earlier version of this line cited a count of six nets on `J1` that no
-   record in this repository holds. So on this board **`wakeupSources.uartrx`
-   is the only wake that exists** — for the `MIA-M10Q`; the LS550G scoping
-   above applies here too.
+   An earlier version of this line cited the six nets on `J1` by issue number
+   and carried no quote, and that form was the defect rather than the count;
+   the count is held — `docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
+   and the wake claim no longer rests on it either way, because ball `A6` is
+   an open stub on the module's own footprint. So on this board
+   **`wakeupSources.uartrx` is the only wake that exists** — for the
+   `MIA-M10Q`; the LS550G scoping above applies here too.
 4. *"As V_IO is supplied, the PIOs can be driven by an external host processor.
    No buffers are required for isolating the PIOs."*
 
@@ -124,7 +135,12 @@ erase the battery-backed RAM (BBR) unless there is an external supply connected
 to V_BCKP."*
 
 **This is the hazard that makes option 3 more than a power question.** The FPC
-is thirteen direct nets with no buffers. Today it is harmless because the
+is direct nets with no buffers, and "no buffers" is the load-bearing half.
+"Thirteen" is the connector's name rather than a count: it is drawn with 15
+pins, `docs/research/HARDWARE_MATRIX.md:261` — "The numbers are the main board's `U20`, which is drawn with" —
+of which the main board's own table lists eight, and six carry a net on the
+daughterboard side, `docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net".
+Today it is harmless because the
 firmware never drives the module: `firmware/main/local_gnss.cpp:413` — "err = uart_set_pin(kPort, UART_PIN_NO_CHANGE, kRxPin," —
 it leaves the transmitter unrouted. **Every option but continuous tracking routes
 TX**, and from that moment ESP32 GPIO 42 drives the module's `H1` `RXD`. A
@@ -200,9 +216,11 @@ supply cut.** What this project has established is the *attribution* — `BLDO1`
 at 3300 mV is the GNSS supply. What it has not established is *control*:
 `docs/research/VERIFIED_FACTS.md:737` — "  exercised. So **nothing here shows that toggling BLDO1 controls the module** —" —
 and `:739` — "  proposes to switch this rail at runtime owes that experiment first." —
-because the bit was found already set and never cleared, and the `GPS_LDO`
-enable net sits unexercised in the same path,
-`docs/research/HARDWARE_MATRIX.md:252` — "| 3 | `GPS_LDO` | GNSS supply / enable |".
+because the bit was found already set and never cleared. There is **one**
+unexercised link here and not two: `GPS_LDO` on FPC pin 3 is that same supply
+on its way to the daughterboard, not a second control in series with it, so
+what is open is the single question of whether clearing the bit takes the pin
+down.
 So "`BLDO1` off" above names the write; the module going dark is its expected
 consequence, not an observed one. **The recommendation is untouched** — software
 standby keeps the rail up and never performs that step — but nothing should lift
@@ -305,8 +323,11 @@ correction.
    the hold either way — but a `MON-RXR` that does arrive at entry is the
    positive report `CFG-RST` can never give, so it is the first thing to record.
 5. **Whether clearing `BLDO1` removes the module's supply at all.** The rail
-   attribution is established; control over it is not, and `GPS_LDO` on FPC
-   pin 3 is in the same path and equally unexercised. One experiment settles it
+   attribution is established; control over it is not. Everything still
+   unproven is **main-board-side** — the path from the register bit to FPC
+   pin 3. Daughterboard-side there is nothing left to prove: the pin is
+   `VDD3V3` and reaches the module's `VCC` and `V_IO` balls directly.
+   One experiment settles it
    and it needs no instrument: clear the bit, watch NMEA stop, set it, watch
    NMEA return. Until then the rail-off row's "release GPIO 42, then `BLDO1`
    off" ordering guards a hazard whose own precondition is unproven.
@@ -335,13 +356,19 @@ open it.
 
 Its scope, if opened, is bounded by what is above:
 
-- **identify the fitted receiver before sending a single UBX byte** — one
+- **identify the fitted receiver before any configuration byte** — one
   `UBX-MON-VER` request, or the absence of an answer to it — because the
   contract above is `MIA-M10Q`-specific and an LS550G unit would take the whole
-  sequence silently and save nothing. The receiver-specific half belongs where
-  the pair already lives, `firmware/main/local_gnss.h:7` —
-  "// per-board defaults, so nothing below names a GPIO and nothing below asks" —
-  and not in the policy layer;
+  sequence silently and save nothing. It cannot come *first*: the request is
+  itself a transmission, so it waits on the TX routing below. Identity is a
+  **runtime** fact and the pair in Kconfig is a build-time default —
+  `firmware/main/local_gnss.h:24` — "pair lives in Kconfig rather than in this file." —
+  so the probe belongs to whatever owns that UART, the file above and its
+  `.cpp`, and what it learns reaches the policy layer in the shape that layer
+  already has:
+  `core/include/attadipa/core/gnss_power.h:63` — "enum class SupportState : std::uint8_t {" —
+  three-valued, so "nobody has looked" stays apart from "we looked and it is
+  not there";
 - route the GNSS UART TX, which `firmware/main/local_gnss.cpp:411` —
   "        // RX only. `UART_PIN_NO_CHANGE` for TX leaves this end's transmitter" —
   currently and deliberately does not;

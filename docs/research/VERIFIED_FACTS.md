@@ -1215,13 +1215,13 @@ is sourced to the drawing itself.
   this entry said 0.15 pt, which neither edge meets.* The 128 nets also check
   themselves: the three `GND` balls on the top edge (`J9`, `J8`, `H8`) land on
   one net, and `VIO_SEL` (`J6`), `LNA_EN` (`H9`) and five of the six `RESERVED`
-  balls (`J7`, `J3`, `J2`, `J1`, `G9`) are singleton stubs — *the earlier
-  version counted five `RESERVED` balls and there are six*; the sixth, `G7`, is
-  on a 14-segment net running to `R1` (`0R`). The diode's polarity is read from
-  the symbol geometry — base at `y = 158.06` toward `VDD3V3`, apex and cathode
-  bar at `y = 163.21` toward the cell — not from the picture, and `B1` (`VCC`)
-  the same way: its stub ends in a filled left-pointing power-port arrow (apex
-  `x = 244.36`, base `x = 249.64`) drawn under the word `VDD3V3`.
+  balls on `U1` (`J7`, `J3`, `J2`, `J1`, `G9`) are singleton stubs — *the
+  earlier version counted five `RESERVED` balls and there are six*; the sixth,
+  `G7`, is on a 14-segment net running to `R1` (`0R`). The diode's polarity is
+  read from the symbol geometry — base at `y = 158.06` toward `VDD3V3`, apex
+  and cathode bar at `y = 163.21` toward the cell — not from the picture, and
+  `B1` (`VCC`) the same way: its stub ends in a filled left-pointing power-port
+  arrow (apex `x = 244.36`, base `x = 249.64`) drawn under the word `VDD3V3`.
 - **Impact:** resolves D23. Hardware backup would retain BBR on this board, so
   the rail-off row of
   [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md) is no longer

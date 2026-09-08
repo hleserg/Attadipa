@@ -249,7 +249,7 @@ board. What matters is what else rides that connector.
 |---|---|---|
 | 1 | `GPIO41 / MTDI` | GNSS UART |
 | 2 | `IO0` | **BOOT button** |
-| 3 | `GPS_LDO` | GNSS supply / enable |
+| 3 | `GPS_LDO` | GNSS supply |
 | 5 | `IO2` | main-board net, unconnected on the daughterboard |
 | 6 | `RST / EN` | **RESET button** |
 | 7 | `IO10` | **main I2C `SDA`** |
