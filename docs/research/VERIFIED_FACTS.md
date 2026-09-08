@@ -2747,8 +2747,8 @@ ones that heading states.
   949.1 mW. The largest **retained** sample is 986.9 mW — not the largest
   sample in the capture, because a filter below discards 293 samples before any
   of these figures, and **it must not be read as a peak**; the bullet that sets
-  out the difference is below. **The figure to quote for
-  anything integrated over time is the mean, 779 mW**; the 754 mW floor is what
+  out the difference is below. **The figure to quote for anything integrated
+  over time is the mean, 779 mW**; the 754 mW floor is what
   a spot reading between bursts returns and it understates consumption by 3.2 %.
   Over the 45 minutes the mean of the **first five minutes** and of the **last
   five minutes** differ by **+0.5 mW** — one window at each end, not five
@@ -2846,10 +2846,10 @@ ones that heading states.
   2026-09-08: the PMU writes in the tree are the rail-enable and rail-voltage
   registers `0x80`, `0x82`, `0x90`, `0x92`, `0x93`, `0x94`, `0x96` and the
   interrupt-status register `0x49`, and the only `0x16` literals anywhere in
-  `firmware/` are a Waveshare panel column offset. So the
-  board's own front end was admitting more than 1.27 A unless something before
-  this image lowered it, which is `UNKNOWN` for exactly the reason `REG 0x62`
-  is: the PMU holds its registers across an ESP32 reset. What the source and
+  `firmware/` are a Waveshare panel column offset. So the board's own front end
+  was admitting more than 1.27 A unless something before this image lowered it,
+  which is `UNKNOWN` for exactly the reason `REG 0x62` is: the PMU holds its
+  registers across an ESP32 reset. What the source and
   the cable on the far side of that micro-USB adapter could deliver was not
   recorded and is **`UNKNOWN` too**. Neither of those makes the samples real —
   they make the magnitude *permitted*, which is all it takes to stop it being
@@ -2873,9 +2873,9 @@ ones that heading states.
   filter would otherwise accept (`V > 4.0`) and a current of at least 1.0 A, so
   it carries more than 4 W by itself; upstream decodes both fields as
   **unsigned** 32-bit counts, so no excluded sample can carry negative power to
-  make room for it — the pinned copy is the caveat in the bullet below.
-  **At most 172 of the 293 can be current-only** — at most **110** if
-  they sit at the quoted ≈1.27 A and this run's mean 4.930 V — and therefore
+  make room for it — the pinned copy is the caveat two bullets below. **At most
+  172 of the 293 can be current-only** — at most **110** if they sit at the
+  quoted ≈1.27 A and this run's mean 4.930 V — and therefore
   **at least 121 of them are voltage-class exclusions**, which is the kind that
   has structural evidence. The bound is arithmetic on rounded published
   figures; it is not a count, and it does not say any current-only sample is
@@ -2893,9 +2893,9 @@ ones that heading states.
   percentile of the retained set — between the published 949.1 mW and the
   retained maximum, so **wrong by at most 37.8 mW**. Downward, with every one
   of them a `V = 0` sample, it moves by **under three samples' worth of rank in
-  242 554**. Median, floor and burst split move less
-  still. This is why the entry's own instruction to quote the **mean** for
-  anything integrated over time is unaffected.
+  242 554**. Median, floor and burst split move less still, which is why the
+  entry's own instruction to quote the **mean** for anything integrated over
+  time is unaffected.
 - **What would settle the classification needs the capture, not the bench, and
   it is NOT EXECUTED.** The logger writes each sample's slot within the 64-byte
   HID report as the second column of its own output — upstream
