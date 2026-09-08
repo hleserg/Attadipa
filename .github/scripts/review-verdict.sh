@@ -664,8 +664,46 @@ attadipa_review_gate() {
 # `authoredDate`, `pushedDate` and `.commit.committer.date` are read nowhere on
 # this path, and re-deriving one takes an edit to two files and a red test.
 #
+# AND THAT IS ONLY THE FIRST OF TWO QUESTIONS. The head's identity says whether
+# *this ledger's verdict* is about the commit being merged. It says nothing
+# about whether the `ai-review:blocking` actually on the pull request right now
+# is that verdict, and the first version of this function assumed it was. It is
+# not, on two paths that both happen:
+#
+#   - A person puts the label back, on the current head, after reading the open
+#     finding. Nothing is pushed. The merge sweep undrafts, the workflow re-runs
+#     and the cap compares this ledger's older head with the current one, calls
+#     the label stale and strips what a person applied minutes earlier -- and
+#     silently, because the `cleared` note was already posted on the push before.
+#   - `review-published.sh` answers `unknown`, so the converge step is skipped
+#     and the ledger is not advanced, while the round that ran still applied
+#     `ai-review:blocking` to the head it reviewed. Four rounds running on #382.
+#     The ledger then sits on an older head and the label belongs to the newer.
+#
+# The second question is answered by two facts GitHub writes about its own
+# objects, and by no clock either: how many rounds have published findings (a
+# count of comments by the review account) and who applied the standing label
+# (`.actor.login` on the timeline event). A contributor can type neither. When
+# the count is ahead of this ledger, the standing label is a round this ledger
+# never converged. When the actor is not the automation, the label is a
+# person's and is not this ledger's verdict at all. Either way the cap holds:
+# a block it cannot prove it owns is not a block it may clear.
+#
+# The comparison the review of this change first proposed -- hold when the
+# label event post-dates the ledger comment's `updated_at` -- cannot be used.
+# The converge step writes the ledger and *then* applies the label
+# (`claude-pr-review.yml`, the `gh api -X PATCH` immediately above the
+# `gh pr edit --add-label`), so its own label always post-dates its own ledger
+# and that rule would hold every block the automation ever applied, clearing
+# none of them. Provenance, not order.
+#
 # PREV_LEDGER    path to the ledger comment body, as everywhere else here.
 # CURRENT_HEAD   the pull request's head object id as GitHub reports it now.
+# PAID           how many review rounds have published a findings block, as the
+#                gate above already counts them. Absent or not a number holds.
+# BLOCK_ACTOR    the login on the newest `labeled ai-review:blocking` timeline
+#                event. Absent holds; anything but the review or ledger account
+#                holds, because that block is a person's and not this ledger's.
 #
 # Prints exactly one line, and there is no path through this that prints nothing:
 #
@@ -680,7 +718,8 @@ attadipa_review_gate() {
 # takes the label off after reading the finding. It heals on its own -- every
 # round from round one writes the field.
 attadipa_review_cap_stale() {
-  local prev="${1:-}" current="${2:-}" block line raw="" seen=0 blocked
+  local prev="${1:-}" current="${2:-}" paid="${3:-}" actor="${4:-}"
+  local block line raw="" seen=0 blocked rest ledger_round=0
 
   if ! current="$(_attadipa_oid "$current")"; then
     echo "HOLD the pull request's current head is not a commit object id, so there is nothing to compare the blocking verdict against"
@@ -693,7 +732,14 @@ attadipa_review_cap_stale() {
 
   block="$(_attadipa_block "$prev" "$ATTADIPA_LEDGER_OPEN")"
   while IFS= read -r line; do
-    case "$line" in head_sha=*) ;; *) continue ;; esac
+    case "$line" in
+      round=*)
+        rest="${line#round=}"
+        _attadipa_is_uint "$rest" && ledger_round="$rest"
+        continue ;;
+      head_sha=*) ;;
+      *) continue ;;
+    esac
     seen=$((seen + 1))
     raw="${line#head_sha=}"
   done <<< "$block"
@@ -720,6 +766,30 @@ attadipa_review_cap_stale() {
     echo "HOLD the blocking verdict was reached on ${current:0:8}, which is still the head being merged"
     return 0
   fi
+
+  # THE HEAD MOVED, AND THAT IS NOT YET A CLEARANCE. Everything above answers
+  # "is this ledger's verdict about the commit being merged". What follows
+  # answers "is the label on the pull request this ledger's verdict", and both
+  # have to be answered before a block comes off. See the second half of the
+  # header. Neither input is a clock and neither is a contributor's to type.
+  if ! _attadipa_is_uint "$paid"; then
+    echo "HOLD how many rounds have published findings could not be read, so whether the standing block is this ledger's verdict is unknown"
+    return 0
+  fi
+  if [ "$paid" -gt "$ledger_round" ]; then
+    echo "HOLD $paid round(s) have published findings and this ledger records $ledger_round, so the standing block is a round this ledger never converged"
+    return 0
+  fi
+  if [ -z "$actor" ]; then
+    echo "HOLD who applied the standing block could not be read, so whether it is this ledger's verdict is unknown"
+    return 0
+  fi
+  if [ "$actor" != "${ATTADIPA_REVIEW_ACTOR:-claude[bot]}" ] &&
+     [ "$actor" != "${ATTADIPA_LEDGER_ACTOR:-github-actions[bot]}" ]; then
+    echo "HOLD the standing block was applied by $actor rather than by the convergence rule, so it is not this ledger's verdict to clear"
+    return 0
+  fi
+
   echo "STALE $blocked $current"
   return 0
 }
@@ -731,7 +801,7 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   # primitives, and a second file is how two readers of one format drift apart.
   case "${1:-}" in
     gate) attadipa_review_gate "${2:-}" "${3:-}" "${4:-}" ;;
-    cap)  attadipa_review_cap_stale "${2:-}" "${3:-}" ;;
+    cap)  attadipa_review_cap_stale "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
     *)    attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" \
             "${6:-}" "${7:-}" "${8:-}" ;;
   esac

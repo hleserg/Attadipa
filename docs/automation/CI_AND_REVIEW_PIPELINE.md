@@ -235,7 +235,7 @@ those blocks come off by hand after somebody reads the finding, and the note on
 the pull request says which case it is rather than leaving a maintainer pushing
 empty commits at a label that will never move.
 
-**No timestamp takes part in that decision.** The first version of it compared
+**No contributor-typed timestamp takes part in that decision.** The first version of it compared
 the label's time against `.commit.committer.date` on the current head, and that
 date is typed by whoever makes the commit: a future one on the *unchanged*
 blocked head cleared the verdict with nothing pushed, and a backdated one on a
@@ -244,6 +244,24 @@ out of the unattended merge sweep — an identity question answered from a clock
 the contributor sets — and #199 is both halves of it. Neither
 `.commit.committer.date` nor `committedDate`, `authoredDate` or `pushedDate` is
 read on either path.
+
+**The head's identity is the first of two questions, and on its own it clears
+the wrong blocks.** It says whether this ledger's verdict is about the commit
+being merged. It does not say whether the `ai-review:blocking` on the pull
+request right now *is* that verdict, and two paths make it something else: a
+person putting the label back on the current head after reading the open
+finding, and a round whose converge step was skipped — `review-published.sh`
+answering `unknown` — applying the label to a head the ledger never caught up
+with. Either way the cap would compare an older recorded head with the current
+one, call a live block stale and strip it without a comment. So it answers the
+second question too, from two more facts GitHub writes about its own objects:
+how many rounds have published a findings block, and the `.actor.login` on the
+newest `labeled` event. It holds when that count is ahead of the ledger, when
+the actor is not the review automation, and when either is unreadable. Ordering
+the label event against the ledger comment's `updated_at` would not work at
+all: the converge step writes the ledger and *then* applies the label, so its
+own block always post-dates its own ledger and that rule would clear nothing
+ever. Provenance, not order.
 
 That is OD-25, and the number is an owner decision —
 `docs/research/OWNER_DECISIONS.md` is where it changes, not this file.

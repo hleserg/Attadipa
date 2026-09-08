@@ -99,9 +99,11 @@ case "$CODE" in
     cat <<'HANDOFF'
 
      .github/workflows/claude-pr-review.yml still carries the rule this file
-     exists to refuse. The replacement step is in the pull request that added
-     `review-verdict.sh cap`, as a diff in its body; apply it with a credential
-     that holds `workflows`. Nothing else in that pull request is waiting on it.
+     exists to refuse: it reads `.commit.committer.date` off the head and
+     compares it with the label's timestamp, which clears a block on an
+     unchanged head that carries a future date. Issue #199 is the whole of it,
+     both halves, and the replacement step is the `review-verdict.sh cap` call
+     this file asserts. Restore it there; nothing else here is waiting.
 HANDOFF
     printf '\n%d passed, %d failed\n' "$pass" "$fail"
     exit 1 ;;
@@ -133,6 +135,10 @@ cat > "$work/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 args="$*"
 case "$args" in
+  # WHO applied the newest block. Asked by the production path; the `when`
+  # case below it is left for the mutant at the end of this file, which is the
+  # old rule and must be able to read the date it was defeated by.
+  *".actor.login"*)               [ -n "${T_BLOCK_ACTOR:-}" ] && echo "$T_BLOCK_ACTOR"; exit 0 ;;
   *"/timeline"*)                  [ -n "${T_BLOCKED_AT:-}" ] && echo "$T_BLOCKED_AT"; exit 0 ;;
   *"--json headRefOid"*)          [ -n "${T_HEAD:-}" ] && echo "$T_HEAD"; exit 0 ;;
   # THE READ THAT MUST NOT HAPPEN. `.commit.committer.date` is typed by whoever
@@ -144,8 +150,15 @@ case "$args" in
   *"--json labels"*)              [ "${T_BLOCKING:-1}" = 1 ] && echo 'ai-review:blocking'; exit 0 ;;
   *"attadipa-review-cap"*)        exit 0 ;;
   *"issues/comments/9001"*)       cat "$T_LEDGER"; exit 0 ;;
+  # ORDER, AND IT WAS WRONG. The `paid` query selects comments that are
+  # *not* the ledger and *do* carry a findings block, so its jq text contains
+  # both markers -- and with the ledger case first this stub answered it with
+  # the ledger's comment id. `paid` was 1 in every scenario in this file, the
+  # gate's second count was never exercised by it, and the tests passed anyway
+  # because `max(round=5, 1)` still reaches the ceiling. The narrower marker
+  # goes first.
+  *"attadipa-review-findings"*)   seq 1 "${T_PAID:-5}"; exit 0 ;;
   *"attadipa-review-ledger -->"*) echo 9001; exit 0 ;;
-  *"attadipa-review-findings"*)   seq 1 5; exit 0 ;;
   "pr edit"*)                     echo "$args" >> "$T_OUT"; exit 0 ;;
   "pr comment"*)                  echo "commented" >> "$T_OUT"; exit 0 ;;
 esac
@@ -161,9 +174,15 @@ chmod +x "$work/bin/gh"
 # The first two are the identities the rule is about. The next two are the
 # timestamps it must ignore -- they are still handed to the stub so that a rule
 # reading them can be caught reading them.
+#
+# `T_BLOCK_ACTOR` and `T_PAID` are the provenance of the standing label, and
+# they default to the automation's own: the review account applied it, and the
+# published rounds match what the ledger recorded. Every case below that does
+# not set them is asking about the head alone.
 verdict() {
   ledger "$1"
   T_HEAD="$2" T_BLOCKED_AT="$3" T_HEAD_AT="$4" T_BLOCKING="$5" \
+  T_BLOCK_ACTOR="${T_BLOCK_ACTOR-claude[bot]}" T_PAID="${T_PAID:-5}" \
   T_LEDGER="$work/ledger.md" T_OUT="$work/out.txt" T_CALLS="$work/calls.txt" \
   PATH="$work/bin:$PATH" \
   GH_TOKEN=stub REPO=owner/repo PR=1 TRUSTED="${T_TRUSTED:-$PWD/.github/scripts}" \
@@ -240,6 +259,46 @@ say 'the same head in upper case is the same head, and holds' \
 reset
 say 'no block on the pull request grants the pass, as before' \
     "$(verdict "$HEAD_A" "$HEAD_A" "" "" 0)" cleared
+
+printf '\n-- the head moved, but whose block is it --\n'
+
+# THE SILENT STRIP. A person reads the open finding, decides the pushed fix is
+# not one, and puts `ai-review:blocking` back -- on the head being merged, with
+# nothing pushed after it. The merge sweep undrafts, this workflow re-runs, and
+# the head-identity rule alone compares the ledger's older head with the current
+# one and takes a live label off. The `cleared` note was already posted on the
+# earlier push, so `said` is non-empty and the step exits before commenting:
+# nothing on the page says it happened.
+reset
+say "a block a person applied to the current head is not the ledger's, and holds" \
+    "$(T_BLOCK_ACTOR=hleserg verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" held
+reset
+say '...and the same is true of any account that is not the review automation' \
+    "$(T_BLOCK_ACTOR='dependabot[bot]' verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" held
+reset
+say '...while the ledger account, which converge writes as, still clears' \
+    "$(T_BLOCK_ACTOR='github-actions[bot]' verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" cleared
+reset
+say 'a timeline that will not say who applied it holds the block' \
+    "$(T_BLOCK_ACTOR= verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" held
+
+# THE ROUND THE LEDGER NEVER CAUGHT UP WITH. `review-published.sh` answers
+# `unknown`, converge is skipped, and the round that ran still labelled the head
+# it reviewed. Four rounds running on #382. The ledger sits on the older head
+# and the block belongs to the newer -- and the actor is the review account, so
+# the check above cannot see it. The count of published findings can.
+reset
+say 'a round published after this ledger was written holds the block' \
+    "$(T_PAID=6 verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" held
+reset
+say '...and a count that agrees with the ledger still clears' \
+    "$(T_PAID=5 verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" cleared
+reset
+say '...and a count behind the ledger is what the gate already handles, and clears' \
+    "$(T_PAID=0 T_BLOCK_ACTOR='claude[bot]' verdict "$HEAD_A" "$HEAD_B" "$AFTER" "$AFTER" 1)" cleared
+reset
+say '...and no commit date was read to decide any of that either' \
+    "$(wc -l < "$work/calls.txt" | tr -d ' ')" 0
 
 printf '\n-- what the note tells a person --\n'
 

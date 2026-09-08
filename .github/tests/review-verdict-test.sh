@@ -881,8 +881,14 @@ out=$(run "$work/headed.md" "$f" 4 99 "")
 absent "a round that names no head carries none forward either" "head_sha=" \
        "$(cat "$work/ledger.md")"
 
-# cap PREV CURRENT -> the one line the workflow reads.
-cap() { bash "$script" cap "${1:-}" "${2:-}"; }
+# cap PREV CURRENT [PAID] [ACTOR] -> the one line the workflow reads.
+#
+# The last two are the standing label's provenance, and they default to the
+# automation's own: no round has published past what this ledger records, and
+# the review account applied the label. Every case that omits them is asking
+# about the head. `0` rather than a real count because it cannot exceed any
+# ledger's round, so it never decides a case that is not about it.
+cap() { bash "$script" cap "${1:-}" "${2:-}" "${3-0}" "${4-claude[bot]}"; }
 
 # The head recorded is REVIEWED_HEAD, so a different current head is a moved one.
 out=$(run "" "$f" 4)
@@ -891,6 +897,28 @@ check "a head that is not the one the verdict was reached on is stale" \
 contains "the same head holds, and the answer says which" \
          "HOLD the blocking verdict was reached on c0ffee12" \
          "$(cap "$work/ledger.md" "$REVIEWED_HEAD")"
+
+# THE HEAD MOVING IS NOT THE WHOLE QUESTION. Whose block is standing is the
+# other half, and without it a label a person applied to the current head is
+# stripped as though it were the ledger's own verdict about an older one.
+contains "a block applied by a person is not this ledger's verdict" \
+         "HOLD the standing block was applied by hleserg" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 hleserg)"
+check "the review account's own block still clears on a moved head" \
+      "STALE $REVIEWED_HEAD $OTHER_HEAD" \
+      "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 "claude[bot]")"
+check "so does the ledger account's, which is what converge writes as" \
+      "STALE $REVIEWED_HEAD $OTHER_HEAD" \
+      "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 "github-actions[bot]")"
+contains "a timeline that will not say who applied it holds" \
+         "HOLD who applied the standing block could not be read" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" 0 "")"
+contains "a round published past this ledger holds" \
+         "HOLD 9 round(s) have published findings and this ledger records 1" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" 9 "claude[bot]")"
+contains "a published count that is not a number holds" \
+         "HOLD how many rounds have published findings could not be read" \
+         "$(cap "$work/ledger.md" "$OTHER_HEAD" "five" "claude[bot]")"
 contains "the same head in upper case is still the same head" \
          "HOLD the blocking verdict was reached on" \
          "$(cap "$work/ledger.md" "C0FFEE1234567890C0FFEE1234567890C0FFEE12")"
