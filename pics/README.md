@@ -64,9 +64,9 @@ and `first-boot-waveshare.gif`, both taken off the Waveshare.
 
 | File | What it shows | SHA-256 | Used by |
 |---|---|---|---|
-| `nav-honest-states.gif` | GIF, the navigation readout stepping through `ready`, `node-stale`, `node-unavailable`, `node-unknown`, `no-fix`, `waiting` | `f8a597a26bdb63c631dbf8aa56de7cdded1986854c70e4ceaf211f25861477d8` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
-| `clock-night.gif` | GIF, the Clock in the night theme, 10 s at 4 fps — the fireflies pulse and the minute turns over | `97ed8058a93e4aee373a7c6c8e539077db844936530345c1c6597e4f28c861fb` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
-| `two-watches-one-codebase.gif` | GIF, the same six states side by side on both panels, composited from two captures onto a plain ground | `39a46096b17e36e0268fb36648a1cff4f6f590165e140405468dfde2f78dc574` | [`../README.md`](../README.md) and [`../README.ru.md`](../README.ru.md) |
+| `nav-honest-states.gif` | GIF, the navigation readout stepping through `ready`, `node-stale`, `node-unavailable`, `node-unknown`, `no-fix`, `waiting` | `f8a597a26bdb63c631dbf8aa56de7cdded1986854c70e4ceaf211f25861477d8` | Historical simulator gallery (retained) |
+| `clock-night.gif` | GIF, the Clock in the night theme, 10 s at 4 fps — the fireflies pulse and the minute turns over | `97ed8058a93e4aee373a7c6c8e539077db844936530345c1c6597e4f28c861fb` | Historical simulator gallery (retained) |
+| `two-watches-one-codebase.gif` | GIF, the same six states side by side on both panels, composited from two captures onto a plain ground | `39a46096b17e36e0268fb36648a1cff4f6f590165e140405468dfde2f78dc574` | Historical simulator gallery (retained) |
 
 Regenerate the two navigation files with
 `python3 tools/pics/make_nav_gifs.py`, which renders the six states on both
@@ -83,3 +83,41 @@ and re-encoding; its frames are not kept.
 `first-boot-waveshare.gif` predates this table: it is a **physical** capture of
 the Waveshare's first boot from flash, and it is the one moving image here that
 is evidence about a board.
+
+## Browser design study captures
+
+Captured **2026-09-09** from [Design Study 01 / V2](../docs/ui/prototype/index.html).
+These twelve PNGs are **browser prototypes with sample data**, not LVGL simulator
+captures, firmware acceptance or physical evidence. Both README languages use
+their matching locale. No image was repainted, retouched or rescaled.
+
+Source checkout: `4fdf3ae9b24242b7c507e7ddb9a4b2d19ad0c7db`.
+The source page last changed in `70145a6144441bfd252dacc3fdc7da9e11aae79c`.
+Capture environment: agent-browser 0.36.0, HeadlessChrome 151.0.0.0 on Linux,
+1400 × 1400 viewport, device pixel ratio 1, bundled Nunito loaded, motion off.
+The filenames identify locale, theme and screen; `small` means 240 × 240.
+Clock, Navigation and Mesh use `ready`; Time uses Setup `time`, first field
+(Day, 1/6, value 07). No real contact, location or device identifier was used.
+
+### Reproduce
+
+1. At the source commit, run `python3 -m http.server 8481 --bind 127.0.0.1 --directory docs/ui`.
+2. Open `http://127.0.0.1:8481/prototype/?size=large&theme=night&locale=en&motion=off` in a 1400 × 1400 browser viewport at device scale 1. Change `size`, `theme` and `locale` to match the filename. Time is `large/day`; small Clock and Mesh are `small/day`.
+3. For Time, choose `time` in the Setup scenario select. Wait for `document.fonts.ready` and verify the painted CSS background has loaded.
+4. Capture only `#screen-clock`, `#screen-nav`, `#screen-mesh` or `#screen-setup` at its original dimensions. Other gallery articles may be hidden to bring the target into view; do not change the screen styles. With agent-browser, settle the page using `window.scrollTo({top:0,left:0,behavior:"instant"})` before `screenshot '#screen-clock' output.png`.
+5. Inspect the resulting PNG, not just its dimensions: the whole screen must be present, with no review-page heading inside the crop. Confirm locale, state and disabled motion. Browser rasterisation differences can change hashes.
+
+| File | Dimensions | SHA-256 |
+|---|---|---|
+| `design-clock-day-small-en.png` | 240 × 240 | `ef63056bade670a368e1ab6c84e714f7c963ce6f4c24fd8406e1f0255fd50409` |
+| `design-clock-day-small-ru.png` | 240 × 240 | `bd177290afc35aef2a17900697d96023a4ffa8e1b98ef96b407fb96b5a49bc28` |
+| `design-clock-night-en.png` | 410 × 502 | `76dcd09ad75a1b66dad2861d93ee1dd80145ffd34f809d34816ff2ee3a335b3d` |
+| `design-clock-night-ru.png` | 410 × 502 | `f7924eb7ccb1870a6929c4ad66b6f0de4eb39b1c21368f5548a869de5119dfbb` |
+| `design-mesh-day-small-en.png` | 240 × 240 | `3360c66f375ce005e7cd62b59a51ece6f5fa9e2df9362d02877bac444b668acc` |
+| `design-mesh-day-small-ru.png` | 240 × 240 | `ea570b657ff97f9b21f5acbfab6b179781b85cf6e0bf9d51a38b618e7dbbb12a` |
+| `design-mesh-night-en.png` | 410 × 502 | `7a86c3a4f128fa26984552247739bd30e629ea6f0ce98692b6706b09547163d0` |
+| `design-mesh-night-ru.png` | 410 × 502 | `59dd4d666e7a0a8c25b1ee01b320f8cd9a15851b84774acffe3dd2c5774cd215` |
+| `design-navigation-night-en.png` | 410 × 502 | `b6ba081a4566c92b55e424019a6eac28f15bd3b9d082a06059f6d502bf842eff` |
+| `design-navigation-night-ru.png` | 410 × 502 | `8cab85af4a1f0f4da625adec6fc51e9e9abddf9c1f3e1fe5ba738909996c8c93` |
+| `design-time-day-en.png` | 410 × 502 | `51d42198c2ae83a5cf5f2651e65b1d2aa1e05496604772fef50d5834f0279549` |
+| `design-time-day-ru.png` | 410 × 502 | `00d79d059dc6569e8e50a66c51e87ae091c723d311ae6e79660078f3e4da58a0` |
