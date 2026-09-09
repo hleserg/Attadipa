@@ -1,10 +1,10 @@
 # Which device is which on the bench
 
-> **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
-> development host.
-> Every value below came from `esptool flash-id` and `udevadm`; nothing here is
-> inferred from a product name — **except** the listing rows of "Two GNSS
-> modules", whose read-off row is evidence, and all of the 2026-09-05 section.
+> **Status:** board USB/flash identification from 2026-08-25 and 2026-08-27;
+> module observations are dated in their own sections.
+> USB/flash values came from `esptool flash-id` and `udevadm`. Module
+> identity and electrical readings use the cited bench evidence; seller
+> listing names and owner-reported delivery dates remain labelled separately.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
@@ -309,7 +309,9 @@ not 5 V tolerant, so the unmeasured TX idle voltage above — and, on the GT-U12
 the unexplained path that keeps it running with `VCC` off — is what stands
 between here and a wire.
 
-## Magnetometer modules and vibration motors, delivered 2026-09-05 — NOT READ OFF
+## Magnetometer modules and vibration motors, delivered 2026-09-05
+
+**Delivery snapshot, 2026-09-05 — historical.**
 
 The owner ordered the two magnetometer candidate modules
 [OD-17](OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not)
@@ -335,6 +337,22 @@ on delivery and is now waiting on an ohmmeter. Every electrical number in
 [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is still a datasheet quote,
 every test in it is still `NOT EXECUTED — HARDWARE REQUIRED`, and no
 magnetometer is fitted to any board.
+
+**Current status, 2026-09-09 — MEASURED.** The AK09911-compatible module
+selected for the first Waveshare integration is now soldered to and read by the
+watch. [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.1 holds the
+verified register source, connection and module-identity evidence, including the
+unconfirmed fuse-mode behavior. The [corrected-image bench record](ak09911-waveshare-2026-09-09/README.md)
+records the exact source/image identity, raw acquisition, power-down and return
+to installed firmware. The delivery snapshot above is historical: its blanket
+no-read-off/no-fitted-module statements no longer describe the selected AK.
+
+This is raw acquisition evidence. Silicon authenticity, fixed mounting,
+QMI-to-watch frame validation, iron calibration, tilt, heading accuracy and
+vibration A/B are not established by it. Motor installation follows a working
+calibrated compass; this update makes no current characterization claim about
+the other candidate modules or motors. Electrical mapping remains traceable
+through [H16](OPEN_QUESTIONS.md) and the linked bench evidence.
 
 ## What this does not say
 

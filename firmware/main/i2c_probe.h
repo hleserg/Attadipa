@@ -17,6 +17,9 @@ namespace attadipa::firmware {
 // answered. Read-only: it writes no register, because on a PMU that keeps its
 // configuration across ESP32 resets a write destroys the very value the scan
 // exists to recover.
+// Exception only when CONFIG_ATTADIPA_AK09911_PROBE is explicitly enabled:
+// after the scan, the shared AK09911 driver performs guarded sensor-mode
+// writes and a bounded raw capture. It still never writes a PMU register.
 void run_i2c_probe();
 
 }  // namespace attadipa::firmware

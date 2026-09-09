@@ -699,3 +699,8 @@ add_executable(test_ui_tokens test_ui_tokens.cpp)
 target_link_libraries(test_ui_tokens PRIVATE attadipa_ui)
 add_test(NAME ui_tokens COMMAND test_ui_tokens)
 set_tests_properties(ui_tokens PROPERTIES LABELS design)
+
+# Exercise the same AK09911 register sequence the physical probe instantiates.
+add_executable(test_ak09911 test_ak09911.cpp)
+target_include_directories(test_ak09911 PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME ak09911 COMMAND test_ak09911)

@@ -9,6 +9,13 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 
+#if CONFIG_ATTADIPA_AK09911_PROBE
+#include "ak09911.h"
+#include "ak09911_i2c.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
+
 namespace attadipa::firmware {
 namespace {
 
@@ -61,6 +68,70 @@ void read_axp2101_charge_voltage(i2c_master_bus_handle_t bus) {
   }
   i2c_master_bus_rm_device(device);
 }
+
+#if CONFIG_ATTADIPA_AK09911_PROBE
+void read_ak09911(i2c_master_bus_handle_t bus) {
+  Ak09911I2c io;
+  const auto opened = io.open(bus, 0x0d);  // this module's CAD-high address
+  if (opened != ESP_OK) {
+    ESP_LOGE(kTag, "AK09911 add device failed: %s", esp_err_to_name(opened));
+    return;
+  }
+  Ak09911<Ak09911I2c> sensor(io);
+  auto result = sensor.start();
+  const auto &info = sensor.info();
+  if (result == Ak09911Result::Ok) {
+    ESP_LOGI(kTag, "AK09911 ID=%02x %02x ASA=%02x %02x %02x fuse_mode=%02x start=%d",
+             info.id[0], info.id[1], info.asa[0], info.asa[1], info.asa[2],
+             info.fuse_mode_readback, static_cast<int>(result));
+  } else {
+    ESP_LOGE(kTag, "AK09911 start failed: result=%d; register diagnostics incomplete",
+             static_cast<int>(result));
+  }
+  if (result == Ak09911Result::Ok && info.fuse_mode_readback != 0x1f)
+    ESP_LOGW(kTag, "AK09911 fuse-mode discrepancy: ASA validity is unknown; "
+                   "raw counts only, no adjusted field units");
+  if (result == Ak09911Result::Ok && !info.asa_consistent)
+    ESP_LOGW(kTag, "AK09911 ASA reads differ; diagnostic only, raw capture continues");
+  unsigned samples = 0, not_ready = 0, overflow = 0, invalid = 0, dor = 0;
+  const auto began = io.now_us();
+  // Policy: a 20-second 10 Hz bring-up, including overflow/not-ready recovery.
+  // The loop is never a replacement for the product's acquisition owner.
+  while (result == Ak09911Result::Ok && io.now_us() - began < 20000000) {
+    Ak09911Sample sample;
+    const auto read = sensor.read(sample);
+    if (read == Ak09911Result::Sample) {
+      ++samples;
+      dor += (sample.st1 & 2) != 0;
+      ESP_LOGI(kTag, "AKRAW,%" PRId64 ",%d,%d,%d,%02x,%02x",
+               sample.received_at_us, sample.raw[0], sample.raw[1], sample.raw[2],
+               sample.st1, sample.st2);
+    } else if (read == Ak09911Result::NotReady) {
+      ++not_ready;
+    } else if (read == Ak09911Result::Overflow) {
+      ++overflow;
+      ESP_LOGW(kTag, "AK09911 overflow ST1=%02x ST2=%02x", sample.st1, sample.st2);
+    } else if (read == Ak09911Result::InvalidData) {
+      ++invalid;
+      ESP_LOGW(kTag, "AK09911 invalid frame");
+    } else {
+      result = read;
+      ESP_LOGE(kTag, "AK09911 acquisition stopped: result=%d", static_cast<int>(read));
+      break;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10) > 0 ? pdMS_TO_TICKS(10) : 1);
+  }
+  const bool power_down_attempted = sensor.identified();
+  const auto stopped = sensor.stop();
+  const auto closed = io.close();
+  ESP_LOGI(kTag, "AK09911 summary duration_us=%" PRId64
+                 " samples=%u not_ready=%u overflow=%u invalid=%u dor=%u"
+                 " result=%d power_down_attempted=%d power_down_result=%d close=%s",
+           io.now_us() - began, samples, not_ready, overflow, invalid, dor,
+           static_cast<int>(result), power_down_attempted, static_cast<int>(stopped),
+           esp_err_to_name(closed));
+}
+#endif
 
 }  // namespace
 
@@ -120,7 +191,12 @@ void run_i2c_probe() {
              kAxp2101Address);
   }
 
-  i2c_del_master_bus(bus);
+#if CONFIG_ATTADIPA_AK09911_PROBE
+  read_ak09911(bus);
+#endif
+  const auto deleted = i2c_del_master_bus(bus);
+  if (deleted != ESP_OK)
+    ESP_LOGE(kTag, "probe bus cleanup failed: %s", esp_err_to_name(deleted));
 }
 
 }  // namespace attadipa::firmware
