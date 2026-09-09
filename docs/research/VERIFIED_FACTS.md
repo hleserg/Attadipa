@@ -2922,11 +2922,8 @@ ones that heading states.
   mean by **1.6195 mW** and p99 by **0.2600 mW**, without establishing their
   validity. The maxima are decoded values, not verified electrical peaks.
 
-  | Decoded set | Count | Mean mW | Median mW | p99 mW | Maximum mW |
-  | --- | ---: | ---: | ---: | ---: | ---: |
-  | Retained | 242554 | 778.9421 | 754.6752 | 949.0924 | 986.9061 |
-  | Retained + current-only | 242626 | 780.5616 | 754.6755 | 949.3524 | 6337.0790 |
-  | All rows | 242847 | 780.6784 | 754.6698 | 949.3853 | 12448.5385 |
+  The complete table and its executable arithmetic assertions have one home
+  in the [S17 reanalysis report](TWATCH_USB_POWER_S17_REANALYSIS_2026-09-09.md#executed-aggregate-results).
 
   Power is calculated per sample as `V × I`; p99 uses linear interpolation
   at zero-based rank `0.99 × (n - 1)` in the sorted set. These decimal places
@@ -2942,10 +2939,12 @@ ones that heading states.
   final group is retained; no original report bytes are available in the CSV.
 
   **All 293 exclusions occupy 293 different reports, one exclusion per
-  report. None of the 72 current-only samples shares a report with a
-  zero/high-binary exclusion** (the 118 zero-voltage and 35 high binary-round
-  voltage samples). This rejects the proposed prediction that the exclusions
-  cluster within reports, roughly 73 reports. It **does not prove transport
+  report.** The absence of co-occurrence between any two exclusion classes
+  follows from that single result; it does not distinguish their causes. The
+  report linked below gives the independent-sample comparison: only about 0.53
+  within-report excluded pairs are expected under that hypothetical model. The
+  observation rejects the proposed clustering into roughly 73 whole reports.
+  It **does not prove transport
   integrity**: corruption of a bit or field can affect just one sample within
   a report. Nor does one exclusion per group rule out a short physical
   disturbance: the CSV alone cannot separate a real input excursion, meter or

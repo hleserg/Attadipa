@@ -15,9 +15,16 @@ Its `--crc` default is False; the CSV has no original report/checksum bytes.
 
 Grouping starts at slot 0 after asserting continuous 0,1,2,3 ordering. There are
 242847 rows, 60711 complete four-slot groups and one final three-slot group.
-All 293 exclusions occupy different groups. No current-only exclusion shares a
-group with a zero/high-binary exclusion. The legacy output key `structural`
-below names only that narrow decoded pattern group, not a proven fault class.
+All 293 exclusions occupy different groups. Consequently, no two exclusion
+classes co-occur in a group; this is not an independent result separating their
+causes. The legacy output key `structural` below names only the narrow
+zero/high-binary decoded pattern group, not a proven fault class.
+
+For comparison, a hypothetical independent per-sample process with exclusion
+probability `293 / 242847` predicts only about 0.53 within-group excluded pairs:
+`(60711 * 6 + 3) * (293 / 242847) ** 2`. Thus zero co-occurrences distinguishes
+the proposed whole-report clustering model, without separating the classes
+from one another or identifying a cause.
 
 This rejects the prediction of excluded samples clustering by whole report.
 It does not rule out one-field transport errors, meter/decoder behavior or a
@@ -43,6 +50,7 @@ residue classes do not establish a single 0.25 mV grid or an ADC resolution.
 | All rows | 242847 | 780.6784 | 754.6698 | 949.3853 | 12448.5385 |
 
 Power is per-sample V × I. p99 interpolates at zero-based rank 0.99 × (n − 1).
+Table power entries round to four decimals, with ties away from zero.
 The all-row mean differs from the retained mean by 1.7362748638 mW,
 0.2229016547% of the retained mean. Extra decimals expose arithmetic, not meter
 accuracy. No decoded maximum is a verified electrical peak.
@@ -121,6 +129,7 @@ assert rows == 242847 and len(kept_power) == 242554
 assert Counter(map(len, reports)) == {4: 60711, 3: 1}
 assert classes == {"zero_voltage": 118, "binary_high": 35, "current_only": 72, "low_2mV": 60, "other_low": 8}
 assert excluded_per_report == {0: 60419, 1: 293}
+# Redundant diagnostic: the singleton histogram already entails this.
 assert overlap == 0
 all_mean, kept_mean = mean(all_power), mean(kept_power)
 print(json.dumps({
@@ -140,14 +149,16 @@ print(json.dumps({
 
 ## Reproduce the three decoded distributions
 
-Execute this block as a Python script after saving the first block. It completed
-with exit status 0 and printed the table's values before rounding.
+Execute this block from the repository root after saving the first block. It
+completed with exit status 0, asserted every table row and both sensitivity
+figures against this report, and printed the values before rounding.
 
 ```python
 from contextlib import redirect_stdout
 from io import StringIO
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from statistics import mean, median
+from pathlib import Path
 import json, runpy
 with redirect_stdout(StringIO()):
     data = runpy.run_path("/tmp/attadipa-s17-recheck.py")
@@ -164,7 +175,15 @@ def describe(values):
     low = int(rank)
     p99 = ordered[low] + (ordered[low + 1] - ordered[low]) * (rank - low)
     return {"count": len(values), "mean_mW": str(mean(values)), "median_mW": str(median(values)), "p99_linear_mW": str(p99), "max_decoded_mW": str(max(values))}
-print(json.dumps({name: describe(values) for name, values in (("all", all_power), ("retained_plus_current_only", with_current), ("retained", retained))}, indent=2))
+results = {name: describe(values) for name, values in (("All rows", all_power), ("Retained + current-only", with_current), ("Retained", retained))}
+report = Path("docs/research/TWATCH_USB_POWER_S17_REANALYSIS_2026-09-09.md").read_text()
+for name, values in results.items():
+    cells = [str(values["count"])] + [str(Decimal(values[key]).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)) for key in ("mean_mW", "median_mW", "p99_linear_mW", "max_decoded_mW")]
+    assert "| " + name + " | " + " | ".join(cells) + " |" in report, (name, cells)
+delta = mean(all_power) - mean(retained)
+assert f"{delta:.10f} mW" in report
+assert f"{delta / mean(retained) * 100:.10f}%" in report
+print(json.dumps(results, indent=2))
 ```
 
 ## Reproduce low-voltage currents and residue classes
