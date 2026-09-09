@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="pics/atta-dipa-banner.png" width="820" alt="Attadipa · Independent by design">
+  <img src="pics/atta-dipa-banner.png" width="820" alt="Atta-dipa · Independent by design">
 </p>
 
 <p align="center"><a href="README.md">English</a> · <b>Русский</b> · <a href="https://hleserg.github.io/Attadipa/?lang=ru">Знакомство с проектом</a></p>
 
-<h1 align="center">Attadipa</h1>
+<h1 align="center">Atta-dipa</h1>
 <p align="center"><b>Открытая операционная система для носимых устройств.</b></p>
-<p align="center">Attadipa — общая основа для часов, персональных меш-нод<br>и приложений, которые хочется носить с собой. Independent by design.</p>
+<p align="center">Atta-dipa — общая основа для часов, персональных меш-нод<br>и приложений, которые хочется носить с собой. Independent by design.</p>
 <p align="center"><sub><i>Attadīpa</i> — «опора на самого себя». <a href="docs/brand/naming.md">О названии</a>.</sub></p>
 <p align="center"><a href="#ос-и-её-архитектура">Архитектура</a> · <a href="#попробовать-на-своём-столе">Запустить симулятор</a> · <a href="#что-работает-сегодня">Состояние разработки</a> · <a href="#чем-помочь">Участвовать</a></p>
 
@@ -34,7 +34,7 @@
 ## ОС и её архитектура
 
 Текущая реализация использует **C++17, ESP-IDF v5.5.5, FreeRTOS и LVGL
-v9.5.0**. Поверх этой основы Attadipa строит системные сервисы носимого
+v9.5.0**. Поверх этой основы Atta-dipa строит системные сервисы носимого
 устройства, слой приложений, модель возможностей и интерфейс.
 
 | Слой | Ответственность |
@@ -62,9 +62,9 @@ v9.5.0**. Поверх этой основы Attadipa строит систем�
 добавляет проекту немного собственного характера.
 
 <p align="center">
-  <img src="pics/design-clock-night-ru.png" width="240" alt="Макет интерфейса Attadipa: Часы">
-  <img src="pics/design-mesh-night-ru.png" width="240" alt="Макет интерфейса Attadipa: Меш">
-  <img src="pics/design-navigation-night-ru.png" width="240" alt="Макет интерфейса Attadipa: Направление">
+  <img src="pics/design-clock-night-ru.png" width="240" alt="Макет интерфейса Atta-dipa: Часы">
+  <img src="pics/design-mesh-night-ru.png" width="240" alt="Макет интерфейса Atta-dipa: Меш">
+  <img src="pics/design-navigation-night-ru.png" width="240" alt="Макет интерфейса Atta-dipa: Направление">
 </p>
 
 Макеты интерфейса: Часы · Меш · Направление. [Исходники изображений](pics/README.md#browser-design-study-captures).
@@ -90,7 +90,7 @@ v9.5.0**. Поверх этой основы Attadipa строит систем�
 
 ## Что работает сегодня
 
-**Активная разработка.** Attadipa запускается на реальных устройствах;
+**Активная разработка.** Atta-dipa запускается на реальных устройствах;
 системные сервисы, интерфейс и радиосвязь развиваются вместе. Цель —
 общая платформа приложений и устройств, а не уже выпущенный магазин
 приложений. Навигация экспериментальная: на неё нельзя полагаться в
