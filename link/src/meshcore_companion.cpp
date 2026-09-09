@@ -375,7 +375,7 @@ MeshCoreCompanion::find_peer_prefix(const std::uint8_t* prefix) const
 //
 // The node hands over exactly one message per CMD_SYNC_NEXT_MESSAGE and keeps
 // the rest until asked, until it answers RESP_CODE_NO_MORE_MESSAGES
-// (`docs/research/MESHCORE_COMPANION_PROTOCOL.md:282` -- "one per command, until").
+// (`docs/research/MESHCORE_COMPANION_PROTOCOL.md:288` -- "one per command, until").
 // A push is what starts a drain, never a substitute for one: before this,
 // reconnecting to a node holding three messages read the oldest and left the
 // other two on the node with the link reporting ready.
@@ -703,7 +703,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         //
         // Once per session. A node that answers RESP_CODE_ERR to it -- every
         // node too old to define opcode 40, and indistinguishable from one that
-        // merely disliked the frame (docs/research/MESHCORE_COMPANION_PROTOCOL.md:520
+        // merely disliked the frame (docs/research/MESHCORE_COMPANION_PROTOCOL.md:526
         // "A client cannot use that error to probe") -- is not asked again and is
         // not an error to the user: the receiver state stays `Unknown`, the
         // coordinate is unaffected, and nothing about the session changes.

@@ -44,10 +44,16 @@ the cited lines:
 | `OFFLINE_QUEUE_SIZE` defaults to 16 | `examples/companion_radio/MyMesh.h:62-63` |
 | the telemetry permission gate and its requester-supplied inverse mask | `examples/companion_radio/MyMesh.cpp:628-672` |
 | `PUSH_CODE_TELEMETRY_RESPONSE` frame layout | `examples/companion_radio/MyMesh.cpp:728-735` |
+| `CMD_GET_BATT_AND_STORAGE` (20) and the 11 bytes of its reply — §5.1 | `examples/companion_radio/MyMesh.cpp:1472-1483` |
+| the three `txt_type` values and which command accepts which — §5.2 | `src/helpers/TxtDataHelpers.h:6-8`; `examples/companion_radio/MyMesh.cpp:1095,1140` |
 
-Ten spot-checks, ten agreements — including one place where the prose needed
-correcting (§4.3, the reserved byte). Everything **not** in that table rests on
-the agents' quoted evidence and has not been independently audited. It is
+The first ten rows are spot-checks against the agent run: ten checks, ten
+agreements, including one place where the prose needed correcting (§4.3, the
+reserved byte). **The last two are not spot-checks.** Nothing in that run
+covered opcode 20 or `TxtDataHelpers.h`, so there was no answer to agree with;
+they were read directly for #490 on 2026-09-09 and became §5.1 and §5.2, both
+named in the note at §5.1's heading. Everything **not** in this table rests
+on the agents' quoted evidence and has not been independently audited. It is
 sourced, which is the project's bar for a fact; it is not double-read, which is
 the bar this document was originally meant to clear.
 
@@ -543,6 +549,93 @@ needs a receive path independent of its request path: `0x80` `ADVERT`,
 5 `FILE_IO_ERROR`, 6 `ILLEGAL_ARG`. `OK` is one byte, `ERR` is two,
 `DISABLED` is one.
 
+### 5.1 `CMD_GET_BATT_AND_STORAGE` (20) — the power and storage reading
+
+> **Added 2026-09-09, [#490](https://github.com/hleserg/Attadipa/issues/490).**
+> This section and §5.2 are **not** from the three-agent run §0 describes: that
+> run never opened opcode 20 or `TxtDataHelpers.h`, so §0's sentence about
+> resting on the agents' quoted evidence does not describe them. Both are a
+> direct reading of the same pinned clone at `d929643`, done for #490, and both
+> are listed in §0's author-verified table — as its only single-read rows. The
+> ten above them are the author's second reading of an agent's first.
+
+Request is the bare opcode. Reply is `RESP_CODE_BATT_AND_STORAGE` (12),
+**11** bytes:
+
+```
+[12][battery_millivolts:2][storage_used_kb:4][storage_total_kb:4]
+```
+
+`examples/companion_radio/MyMesh.cpp:1472-1483` builds it: `uint8_t reply[11]`,
+then `board.getBattMilliVolts()`, `_store->getStorageUsedKb()` and
+`getStorageTotalKb()` `memcpy`'d in that order.
+
+What that `memcpy` establishes is the field order, the three widths, and the
+host's **native** byte order. Native is little-endian on every supported target,
+which is a fact about the targets and not about the frame — §4.1 words the
+identical construct exactly that way, and the row directly under it in the same
+table carries a **big-endian** position over this same protocol. So a client may
+parse these three fields little-endian, and may not conclude that MeshCore is.
+
+The **unit** of the two storage figures is established by nothing at all. It
+rests on the accessor names alone; neither `getStorageUsedKb()` nor
+`getStorageTotalKb()` was read, so kilobytes is `UNKNOWN` on exactly the standard
+item 2 below applies to `getBattMilliVolts()`. Nothing in Attadipa consumes the
+pair, so this costs nothing today; it is recorded rather than closed.
+
+Three things a client must not read into it:
+
+1. **It is millivolts, and only millivolts.** There is no percentage, no
+   chemistry, no full/empty calibration and no charging flag anywhere in the
+   frame. A percentage drawn from this number is a curve the *client* invented;
+   it is not the node's opinion of its own charge, and it must not be presented
+   as one.
+2. **There is no absence signal.** The frame is fixed at 11 bytes and always
+   carries the field. A board with no battery, or no divider fitted, returns
+   whatever its own `getBattMilliVolts()` returns, and no value it can return
+   is distinguishable on the wire from a real reading: `0` reads as a flat
+   cell, anything else reads as a charge. What each board actually returns is
+   not read here and is `UNKNOWN`; the argument does not need it, because the
+   frame has no field in which an absence could be said. "This node has no
+   battery" is therefore a fact the *client* must hold, never one it can infer
+   from this reply.
+3. **The storage pair says nothing about message capacity.** Whatever unit the
+   two figures are in — and this section has just said that is `UNKNOWN` —
+   they measure a *store*, while the offline message queue's own limit is a
+   frame count (§3.1). The point survives without the unit, which is why it is
+   made without one: a store size is not a message count in any unit.
+
+### 5.2 Text message types — three defined, and no command accepts all three
+
+`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`
+**0**, `TXT_TYPE_CLI_DATA` **1**,
+`TXT_TYPE_SIGNED_PLAIN` **2**. What each command accepts is narrower than the
+enum:
+
+| Command | Accepted `txt_type` | Anything else |
+|---|---|---|
+| `CMD_SEND_TXT_MSG` (2) | **0 or 1 only** — `MyMesh.cpp:1095` | `ERR_CODE_UNSUPPORTED_CMD` (`:1129`), *the same error as an unknown recipient is not* — that one is `ERR_CODE_NOT_FOUND` |
+| `CMD_SEND_CHANNEL_TXT_MSG` (3) | **0 only** — `MyMesh.cpp:1140` | `ERR_CODE_UNSUPPORTED_CMD` |
+
+So **`TXT_TYPE_SIGNED_PLAIN` is receive-only**: `queueMessage()` emits it at
+`MyMesh.cpp:542` for an inbound signed message, and no companion command will
+send one.
+
+`TXT_TYPE_CLI_DATA` is a remote-CLI channel rather than a message for a person,
+and it is not interchangeable with plain text: the handler **discards the app's
+timestamp** and substitutes the node's own RTC (`MyMesh.cpp:1103`), commented
+upstream as replay-protection avoidance.
+
+**There is no message type that carries a structured position.** That is an
+enumerated absence — three defined types, all read — and not an `UNKNOWN`. A
+coordinate travelling in a text message travels as characters inside the
+payload, and its bytes come out of the same budget as the words.
+
+This is also a **second instance of the `ERR_CODE_UNSUPPORTED_CMD` ambiguity**
+this section's landmine note above raises: here it answers a perfectly
+well-known opcode carrying a `txt_type` the firmware declines. A client that reports "your node's firmware is too old" on
+error 1 would be wrong in exactly the case where the fault is its own.
+
 ---
 
 ## 6. What this means for Attadipa
@@ -604,3 +697,4 @@ Consequences only. Designs go in ADRs and tasks, not here.
 | Whether the first-party JS and Python clients agree with this reading | not cross-checked; they are the obvious second source and were not consulted |
 | How the numbering differs at other tags | 53's absence proves the numbering has already moved. Any statement about another revision is `UNKNOWN` |
 | Whether a `RESP_CODE_DEVICE_INFO` from a *newer* node is safe to parse at 81 bytes | the reply has grown before; a client must key off length, and no compatibility rule is documented upstream |
+| What unit `getStorageUsedKb()` and `getStorageTotalKb()` actually return | **opened 2026-09-09**, [#490](https://github.com/hleserg/Attadipa/issues/490): the accessor names say kilobytes and neither body was read. §5.1. Nothing in Attadipa consumes the pair, so this is recorded rather than chased |
