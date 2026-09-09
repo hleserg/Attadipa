@@ -221,6 +221,21 @@ actually uses — deliberately chosen, not all of Unicode.
 
 ## 5. Spacing, radius, motion, size
 
+The shared active-screen status reserves one font line plus `space.xs`: 23 px
+at 240 × 240 and 30 px at 410 × 502 with the current generated fonts. Clock,
+navigation, Mesh and provisioning use the remaining ordinary child of the
+screen; the strip is part of screenshots and does not add an input or timer
+owner. Watch power stays unknown until a producer exists. A carried node shows
+reported volts, unknown or explicit old data; an integrated supply has no
+second battery. The link uses connected segments or separated ends.
+
+The small provisioning layout combines field/value and spends outer whitespace
+to preserve its two rows of 74 × 61 px adult keys. The large keys remain
+115 × 87 px. The compact Mesh layout reduces the gap above its state, while
+navigation reduces its ring to keep the Russian caveat visible. These are
+layout choices inspected in the simulator in EN/RU and day/night, not new
+physical-display measurements.
+
 Seeded from the style board's generous spacing and rounded forms; all values are
 **proposed** and none has been checked at 240 × 240.
 

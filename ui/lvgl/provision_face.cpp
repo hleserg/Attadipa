@@ -109,8 +109,12 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
   const lv_font_t *key_font = large ? small_font : &attadipa_nunito_sans_14;
   lv_obj_set_style_text_font(screen, small_font, LV_PART_MAIN);
 
-  const int margin = m.px(dp_of(large ? Space::Md : Space::Sm));
   const int gap = m.px(dp_of(Space::Xs));
+  // Keep both rows of full adult targets when the shared status takes a row.
+  // The small composition spends outer whitespace and combines title/value.
+  const bool compact = !large && config.height_px < 240;
+  const int margin = compact ? gap / 2
+      : m.px(dp_of(large ? Space::Md : Space::Sm));
   const int width = static_cast<int>(config.width_px) - margin * 2;
   const int radius = m.px(dp_of(Radius::Sm));
 
@@ -257,6 +261,19 @@ void ProvisionFace::update() {
   const bool draft_shown = draft[0] != '\0';
   show(instruction_, small_panel_ && draft_shown ? "" : text.instruction);
   show(verdict_, text.verdict);
+  if (small_panel_ && config_.height_px < 240) {
+    const char *value = text.value[0] != '\0' ? text.value : text.node;
+    const char *heading = text.verdict[0] != '\0' ? text.verdict : title;
+    lv_label_set_text_fmt(title_, "%s%s%s", heading,
+                         value[0] != '\0' ? "  " : "", value);
+    lv_obj_remove_flag(title_, LV_OBJ_FLAG_HIDDEN);
+    show(value_, "");
+    show(verdict_, "");
+    const auto colour = color(ColorRole::TextPrimary, config_.theme,
+                              config_.pixel_cost);
+    lv_obj_set_style_text_color(title_,
+        colour ? lv_color_hex(colour->packed()) : lv_color_white(), LV_PART_MAIN);
+  }
 
   const lv_color_t page =
       resolved(ColorRole::BackgroundPrimary, config_.theme, config_.pixel_cost,

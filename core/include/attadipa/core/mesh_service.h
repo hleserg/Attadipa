@@ -37,6 +37,19 @@ enum class MeshDelivery : std::uint8_t {
     Failed,
 };
 
+struct AttachedNodeBattery {
+    // Provider topology, independent of whether a reading is available. An
+    // integrated provider leaves this false: it shares the watch's supply.
+    bool separate_supply = false;
+    // Node-reported voltage, never state of charge or proof a cell is fitted.
+    // The source's sample age and physical accuracy are not reported.
+    std::uint16_t millivolts = 0;
+    Validity validity = Validity::Unknown;
+    // Last successful nonzero reading received in this session. Failed
+    // refreshes retain its value/time but cannot keep it Valid.
+    MonotonicTime received_at{};
+};
+
 struct MeshStatus {
     Availability availability = Availability::Unreachable;
     TransportPhase transport = TransportPhase::Absent;
@@ -52,6 +65,8 @@ struct MeshStatus {
     // visible as one.
     MeshPeerId node_id{};
     bool has_node_id = false;
+    // Belongs to node_id above, not to the selected remote mesh destination.
+    AttachedNodeBattery node_battery{};
     // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY.
     //
     // Unlike `node_id` above, neither is session state, and a disconnect does

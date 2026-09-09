@@ -12,12 +12,15 @@
 #include "attadipa/ui/nav_face.h"
 
 #include "review_keys.h"
+#include "attadipa/ui/status_frame.h"
+#include "mesh_screen.h"
 
 namespace attadipa::sim {
 namespace {
 
 using namespace attadipa;
 
+ui::StatusFrame g_frame;
 ui::NavFace g_face;
 ui::NavFaceConfig g_config;
 apps::NavState g_state;
@@ -201,7 +204,14 @@ void rebuild_nav_screen() {
   // The locale is read at the rebuild, the way the clock reads it, so `L` at
   // runtime switches this screen too.
   g_state.locale = l10n::locale();
-  g_face.build(lv_screen_active(), g_config, apps::format_navigation(g_state));
+  g_face.clear();
+  g_frame.build(lv_screen_active(), {g_config.width_px, g_config.height_px,
+                g_config.theme, g_config.pixel_cost, g_config.metrics});
+  auto content = g_config;
+  content.height_px = g_frame.content_height();
+  g_face.build(g_frame.content(), content, apps::format_navigation(g_state));
+  g_frame.restore_content_geometry();
+  g_frame.update(apps::format_mesh(staged_mesh_status(), l10n::locale()));
 }
 
 } // namespace attadipa::sim

@@ -199,6 +199,10 @@ const char* const kEnSingular[kStringIdCount] = {
     /* ProvisionTitleReview */ "Check it",
     /* ProvisionTitleYear */ "Year",
     /* RadioChipUnknown */ "unknown",
+    /* StatusNodeStale */ "Node old",
+    /* StatusNodeUnknown */ "Node —",
+    /* StatusNodeVoltage */ "Node %u.%03u V",
+    /* StatusWatchUnknown */ "Watch —",
     /* Yes */ "yes",
 };
 
@@ -388,6 +392,10 @@ const char* const kRuSingular[kStringIdCount] = {
     /* ProvisionTitleReview */ "Проверьте",
     /* ProvisionTitleYear */ "Год",
     /* RadioChipUnknown */ "неизвестен",
+    /* StatusNodeStale */ "Нода уст.",
+    /* StatusNodeUnknown */ "Нода —",
+    /* StatusNodeVoltage */ "Нода %u,%03u В",
+    /* StatusWatchUnknown */ "Часы —",
     /* Yes */ "да",
 };
 
@@ -616,6 +624,10 @@ const char* const kStringIdNames[kStringIdCount] = {
     "provision_title_review",
     "provision_title_year",
     "radio_chip_unknown",
+    "status_node_stale",
+    "status_node_unknown",
+    "status_node_voltage",
+    "status_watch_unknown",
     "yes",
 };
 

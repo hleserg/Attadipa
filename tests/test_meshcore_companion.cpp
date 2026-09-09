@@ -200,14 +200,18 @@ void test_a_queued_backlog_is_drained_to_the_end()
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
 
-    // The empty queue ends it. Nothing polls the node afterwards -- not on the
-    // next frame and not on a minute of ticks.
+    // The empty queue ends message polling. The independent, due battery
+    // query must not be mistaken for another backlog request.
     const std::uint8_t no_more[] = {10};
     CHECK(client.receive(no_more, sizeof(no_more), at(26)));
     CHECK(!client.next_tx(frame));
     for (std::uint64_t ms = 500; ms <= 60000; ms += 500) {
         client.tick(at(ms));
     }
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 20);
+    const std::uint8_t battery[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+    CHECK(client.receive(battery, sizeof(battery), at(60001)));
     CHECK(!client.next_tx(frame));
 
     // AND A PUSH AFTER THE DRAIN CLOSED STARTS A NEW ONE. Coalescing must not
@@ -315,6 +319,11 @@ void test_a_drain_nobody_answers_expires()
     // And a push arriving into the drain the sweep just started is coalesced
     // into it, exactly as one arriving into any other drain is.
     CHECK(client.receive(waiting, sizeof(waiting), at(15100)));
+    // One due battery poll follows that sync; there is no second sync.
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 20);
+    const std::uint8_t battery[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+    CHECK(client.receive(battery, sizeof(battery), at(15101)));
     CHECK(!client.next_tx(frame));
 }
 
@@ -753,6 +762,24 @@ void test_a_room_password_never_reaches_the_transcript()
     // over the prefix would pass on the room key's byte values alone; this fails
     // if the prefix grows by one byte or shrinks by one.
     CHECK(std::memcmp(&frame.bytes[printable], canary, canary_len) == 0);
+
+    // Cancellation must erase an unsent login too. A shorter request then
+    // reuses that same ring slot; inspect its full storage, not just its size.
+    MeshCoreCompanion cancelled;
+    connect_and_handshake(cancelled);
+    const std::uint8_t receiver_hint[] = {21};
+    CHECK(cancelled.receive(receiver_hint, sizeof(receiver_hint), at(8)));
+    CHECK(cancelled.send_room(room, canary, "never sent", WallTime{1000}));
+    cancelled.tick(at(100));
+    cancelled.tick(at(15100));
+    CHECK(cancelled.status().delivery == MeshDelivery::Failed);
+    CHECK(!cancelled.send_busy());
+    CHECK(cancelled.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 20);
+    for (std::size_t i = frame.size; i < frame.bytes.size(); ++i) {
+        CHECK(frame.bytes[i] == 0);
+    }
+
 }
 
 // The other half of the same rule. #316 asks for redaction of the credential
@@ -1676,8 +1703,321 @@ void test_a_short_self_info_is_refused_before_anything_reads_it()
     CHECK(!client.next_tx(frame));
 }
 
+void test_attached_node_battery_uses_the_live_queue_and_public_status()
+{
+    const std::uint8_t hint[] = {21};
+    const std::uint8_t voltage[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+    const std::uint8_t zero[] = {12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const std::uint8_t error[] = {1, 1};
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0xe8, 3, 0, 0};
+    const std::uint8_t confirmed[] = {0x82, 1, 2, 3, 4, 0, 0, 0, 0};
+    MeshCoreFrame frame{};
+
+    // Real handshake -> poll -> dispatcher -> app-facing MeshService snapshot.
+    // A second consumer does not own a timer or cause another query.
+    {
+        MeshCoreCompanion client;
+        MeshService screen(client), other_screen(client);
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        CHECK(screen.status().node_battery.separate_supply);
+        CHECK(screen.status().node_battery.validity == core::Validity::Unknown);
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.size == 1 && frame.bytes[0] == 20);
+        CHECK(!client.next_tx(frame));
+        std::uint8_t extended[sizeof(voltage) + 1]{};
+        std::memcpy(extended, voltage, sizeof(voltage));
+        extended[sizeof(voltage)] = 0xff; // opaque extension, not a charge flag
+        CHECK(client.receive(extended, sizeof(extended), at(11)));
+        CHECK(client.malformed_frames() == 0);
+        CHECK(screen.status().node_battery.millivolts == 3700);
+        CHECK(screen.status().node_battery.validity == core::Validity::Valid);
+        CHECK(screen.status().node_battery.received_at.ms == 11);
+        CHECK(other_screen.status().node_battery.received_at.ms == 11);
+        CHECK(!client.next_tx(frame));
+        client.tick(at(60009));
+        CHECK(!client.next_tx(frame));
+        client.tick(at(60010));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.receive(zero, sizeof(zero), at(60011)));
+        CHECK(screen.status().node_battery.validity == core::Validity::Stale);
+        CHECK(screen.status().node_battery.millivolts == 3700);
+        CHECK(screen.status().node_battery.received_at.ms == 11);
+        client.tick(at(120010));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(!client.receive(voltage, sizeof(voltage) - 1, at(120011)));
+        CHECK(screen.status().node_battery.received_at.ms == 11);
+        client.tick(at(180010));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.receive(voltage, sizeof(voltage), at(180011)));
+        client.tick(at(360011));
+        CHECK(screen.status().node_battery.validity == core::Validity::Stale);
+        CHECK(screen.status().node_battery.received_at.ms == 180011);
+        client.disconnected(at(360012));
+        CHECK(screen.status().node_battery.separate_supply);
+        CHECK(screen.status().node_battery.validity == core::Validity::Unknown);
+        CHECK(screen.status().node_battery.millivolts == 0);
+        CHECK(screen.status().node_battery.received_at.ms == 0);
+        CHECK(!client.next_tx(frame));
+    }
+
+    // A foreground send prevents a due poll through its radio confirmation.
+    // A prompt poll refusal cannot be mistaken for the send queued behind it.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        MeshPeer peer{};
+        CHECK(client.peer(0, peer));
+        CHECK(client.send_private(peer.id, "first", WallTime{1}));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(sent, sizeof(sent), at(11)));
+        CHECK(!client.next_tx(frame));
+        CHECK(client.receive(confirmed, sizeof(confirmed), at(12)));
+        client.tick(at(13));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.send_private(peer.id, "second", WallTime{2}));
+        client.tick(at(14));
+        CHECK(!client.next_tx(frame));
+        CHECK(client.receive(error, sizeof(error), at(15)));
+        CHECK(client.status().delivery == MeshDelivery::Queued);
+        CHECK(client.send_busy());
+        client.tick(at(16));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(17)));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+    }
+
+    // Timeout frees transmission, not the ability to attribute a late ERR.
+    // Typed confirmation still succeeds; a genuinely unanswered send still
+    // fails by its existing deadline, even after a later successful poll.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        MeshPeer peer{};
+        CHECK(client.peer(0, peer));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.send_private(peer.id, "after poll", WallTime{1}));
+        client.tick(at(12));
+        CHECK(!client.next_tx(frame));
+        client.tick(at(5010));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(5011)));
+        CHECK(client.status().delivery == MeshDelivery::Queued);
+        CHECK(client.receive(sent, sizeof(sent), at(5012)));
+        CHECK(client.receive(error, sizeof(error), at(5013)));
+        CHECK(client.status().delivery == MeshDelivery::Accepted);
+        CHECK(client.receive(confirmed, sizeof(confirmed), at(5014)));
+        CHECK(client.status().delivery == MeshDelivery::Confirmed);
+        client.tick(at(60010));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.receive(voltage, sizeof(voltage), at(60011)));
+        CHECK(client.send_private(peer.id, "no reply", WallTime{2}));
+        client.tick(at(60012));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(60013)));
+        CHECK(client.send_busy());
+        client.tick(at(75012));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+    }
+
+    // A finite error count cannot identify its claimant: a new send's ERR
+    // can arrive before the old poll's single delayed ERR. Neither names it.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        MeshPeer peer{};
+        CHECK(client.peer(0, peer));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        client.tick(at(5010));
+        CHECK(client.send_private(peer.id, "A", WallTime{1}));
+        client.tick(at(5011));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(5012))); // A's refusal
+        CHECK(client.send_busy());
+        client.tick(at(20011));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(client.send_private(peer.id, "B", WallTime{2}));
+        client.tick(at(20012));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(20013))); // old poll
+        CHECK(client.status().delivery == MeshDelivery::Queued);
+        CHECK(client.receive(sent, sizeof(sent), at(20014)));
+        CHECK(client.receive(confirmed, sizeof(confirmed), at(20015)));
+        CHECK(client.status().delivery == MeshDelivery::Confirmed);
+    }
+
+    // A continuing receive drain gives the due poll one FIFO slot. Its own
+    // NO_MORE_MESSAGES response must not cancel the battery wait.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        const std::uint8_t waiting[] = {0x83};
+        const std::uint8_t drained[] = {10};
+        for (std::uint64_t start : {10ULL, 60011ULL, 120012ULL}) {
+            CHECK(client.receive(waiting, sizeof(waiting), at(start)));
+            client.tick(at(start + 1));
+            CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
+            CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+            CHECK(!client.next_tx(frame));
+            if (start == 120012) {
+                // The earlier sync can fail while the battery reply is pending.
+                CHECK(client.receive(error, sizeof(error), at(start + 2)));
+            } else {
+                CHECK(client.receive(drained, sizeof(drained), at(start + 2)));
+            }
+            CHECK(client.receive(voltage, sizeof(voltage), at(start + 3)));
+            CHECK(client.status().node_battery.received_at.ms == start + 3);
+            CHECK(!client.next_tx(frame));
+        }
+    }
+
+    // A queued poll has no transport-independent deadline of its own. If the
+    // pump stalls, private text and room login must expire without later TX.
+    for (bool room : {false, true}) {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        const std::uint8_t waiting[] = {0x83};
+        CHECK(client.receive(waiting, sizeof(waiting), at(9)));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
+        MeshPeer peer{};
+        CHECK(client.peer(0, peer));
+        if (room) {
+            CHECK(client.send_room(peer.id.public_key, "password", "stalled pump", WallTime{1}));
+        } else {
+            CHECK(client.send_private(peer.id, "stalled pump", WallTime{1}));
+        }
+        // Retained drain work after the operation tests FIFO compaction too.
+        const std::uint8_t drained[] = {10};
+        CHECK(client.receive(drained, sizeof(drained), at(11)));
+        CHECK(client.receive(waiting, sizeof(waiting), at(12)));
+        client.tick(at(13));
+        CHECK(client.send_busy());
+        client.tick(at(15013));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.receive(voltage, sizeof(voltage), at(15014)));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
+        CHECK(!client.next_tx(frame)); // no expired text or login remains
+        CHECK(client.receive(drained, sizeof(drained), at(15015)));
+        CHECK(client.send_private(peer.id, "new", WallTime{2}));
+        client.tick(at(15016));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(std::memcmp(&frame.bytes[13], "new", 3) == 0);
+        CHECK(client.receive(sent, sizeof(sent), at(15017)));
+        CHECK(client.receive(confirmed, sizeof(confirmed), at(15018)));
+        CHECK(client.status().delivery == MeshDelivery::Confirmed);
+    }
+
+    // Forget between FIFO selection of the drain and the queued poll drops
+    // opcode 20 before it can cross the transport, not merely on its reply.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        const std::uint8_t waiting[] = {0x83};
+        CHECK(client.receive(waiting, sizeof(waiting), at(9)));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
+        client.unpin();
+        CHECK(!client.next_tx(frame));
+        CHECK(!client.receive(voltage, sizeof(voltage), at(11)));
+        CHECK(client.status().node_battery.validity == core::Validity::Unknown);
+    }
+
+    // An in-connection identity replacement/forget cannot inherit a voltage
+    // or relabel an old untagged reply. A new handshake enables polling again.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.receive(voltage, sizeof(voltage), at(11)));
+        std::uint8_t replacement[62]{};
+        replacement[0] = 5;
+        const auto replacement_key = key_of(10);
+        std::memcpy(&replacement[4], replacement_key.public_key.data(),
+                    core::kMeshPublicKeyBytes);
+        CHECK(client.receive(replacement, sizeof(replacement), at(12)));
+        CHECK(client.status().node_id == replacement_key);
+        CHECK(client.status().node_battery.validity == core::Validity::Unknown);
+        CHECK(client.status().node_battery.millivolts == 0);
+        client.tick(at(60010));
+        CHECK(!client.next_tx(frame));
+        CHECK(!client.receive(voltage, sizeof(voltage), at(60011)));
+        client.unpin();
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        client.pin(key_of(20));
+        CHECK(!client.receive(voltage, sizeof(voltage), at(11)));
+        CHECK(client.status().node_battery.validity == core::Validity::Unknown);
+        client.unpin();
+        client.tick(at(60010));
+        CHECK(!client.next_tx(frame));
+    }
+}
+
+void test_typed_battery_failure_does_not_create_err_ambiguity()
+{
+    const std::uint8_t hint[] = {21};
+    const std::uint8_t voltage[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+    const std::uint8_t error[] = {1, 1};
+    for (bool previous_timeout : {false, true}) {
+        for (bool late : {false, true}) {
+            MeshCoreCompanion client;
+            connect_and_handshake(client);
+            CHECK(client.receive(hint, sizeof(hint), at(8)));
+            MeshPeer peer{};
+            CHECK(client.peer(0, peer));
+            MeshCoreFrame frame{};
+            client.tick(at(10));
+            CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+            const std::uint64_t started = previous_timeout ? 60010 : 10;
+            if (previous_timeout) {
+                client.tick(at(5010));
+                client.tick(at(started));
+                CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+            }
+            const std::uint64_t reply_at = started + (late ? 5000 : 1);
+            CHECK(!client.receive(voltage, late ? sizeof(voltage) : 3, at(reply_at)));
+            CHECK(client.status().node_battery.validity == core::Validity::Unknown);
+            CHECK(client.status().node_battery.millivolts == 0);
+            CHECK(client.status().node_battery.received_at.ms == 0);
+            CHECK(client.send_private(peer.id, "after typed reply", WallTime{1}));
+            client.tick(at(reply_at + 1));
+            CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+            CHECK(client.receive(error, sizeof(error), at(reply_at + 2)));
+            CHECK(client.send_busy() == previous_timeout);
+            CHECK(client.status().delivery == (previous_timeout ? MeshDelivery::Queued
+                                                               : MeshDelivery::Failed));
+            if (previous_timeout) {
+                client.tick(at(reply_at + 15001));
+                CHECK(client.status().delivery == MeshDelivery::Failed);
+                CHECK(!client.send_busy());
+            }
+        }
+    }
+}
+
 int main()
 {
+    test_typed_battery_failure_does_not_create_err_ambiguity();
+    test_attached_node_battery_uses_the_live_queue_and_public_status();
     test_handshake_contacts_and_service_boundary();
     test_room_send_does_not_wait_for_contact_sync();
     test_send_and_receive();
