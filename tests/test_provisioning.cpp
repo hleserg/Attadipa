@@ -1037,6 +1037,92 @@ void test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one()
     CHECK(!verdict_is(entry, "forgotten; set its new passkey"));
 }
 
+// The sentence a person reads BEFORE the destructive key, held against what
+// the key does. It used to promise "its bond and its passkey, both" and the
+// operation does neither unconditionally: the passkey is kept on purpose --
+// `firmware/main/meshcore_node_forget.h:108` — "    // The passkey itself is deliberately retained. This marker is therefore" --
+// and a bond goes only where `take_forget()` had one recorded stale (#504).
+// Consent given to the old sentence was consent to a different operation.
+//
+// Two boards reach the identical question, differing only in whether a stale
+// bond is on record -- which is the whole of the difference between the two
+// endings, and is not knowable when the confirmation is drawn. So the same
+// sentence has to be true of both, and the `Unpinned` half is the
+// counterexample that keeps a universal erase claim from coming back.
+//
+// Being the same sentence in two languages is not the same thing as being
+// true in two languages, so the receipts are read in both as well: it is the
+// Russian pair that a lost restriction breaks first, because that ending's
+// own receipt says the pairing was kept.
+void test_the_forget_confirmation_promises_only_what_forget_does()
+{
+    // The Russian is written out rather than escaped, the one place in this
+    // file that is: it is the text under test, and a reader has to be able to
+    // read it to see whether it is true.
+    static const char* const kEn =
+        "the node and only a stale pairing; then new digits";
+    static const char* const kRu =
+        "узел и только устаревшее сопряжение; потом новый код";
+
+    const bool recorded[] = {false, true};
+    const char* lines[2] = {};
+    const char* ru_lines[2] = {};
+    for (unsigned i = 0; i < 2; ++i) {
+        const bool stale = recorded[i];
+        FakeBoard board;
+        board.pinned = true;
+        board.pin_on_flash = true;
+        if (stale) { board.stale_bond(); }
+        ProvisioningEntry entry(board, EntryTask::NodePasskey);
+        entry.press(EntryKey::Forget);
+        CHECK(entry.field() == EntryField::ForgetConfirm);
+
+        // One question, both locales, and nothing asked of the board yet.
+        CHECK(eq(entry.text(Locale::En).instruction, kEn));
+        CHECK(eq(entry.text(Locale::Ru).instruction, kRu));
+        CHECK(board.forgets == 0 && board.deletes == 0);
+        // The restriction, in whatever words this sentence is next written
+        // in. Without it the claim is a conjunction -- the node AND the
+        // pairing -- which the `Unpinned` receipt below denies.
+        CHECK(std::strstr(entry.text(Locale::En).instruction, "only") != nullptr);
+        CHECK(std::strstr(entry.text(Locale::Ru).instruction, "только") != nullptr);
+
+        entry.press(EntryKey::Minus);
+        board.forget_worker();
+        CHECK(entry.poll() && entry.field() == EntryField::Receipt);
+        lines[i] = entry.text(Locale::En).verdict;
+        ru_lines[i] = entry.text(Locale::Ru).verdict;
+
+        // What the sentence said would always happen, did.
+        CHECK(!board.pinned && !board.pin_on_flash);
+        // What it said was conditional, was: the bond store is touched only
+        // for the board that had a stale record, and the other keeps the
+        // pairing the confirmation never promised to take.
+        CHECK(board.deletes == (stale ? 1 : 0));
+        CHECK(entry.forget_outcome() ==
+              (stale ? MeshForgetOutcome::Forgotten
+                     : MeshForgetOutcome::Unpinned));
+        // And the passkey is still on flash. `Ops` has no eraser for it at
+        // all -- the marker is what stands in place of one, and it is left
+        // standing so the old digits are not replayed at the next boot. Which
+        // is why the confirmation asks for digits rather than promising the
+        // stored ones will do: kept is not the same as usable.
+        CHECK(board.reprovision_pending);
+        CHECK(board.passkeys == 0);
+    }
+
+    // The two endings stay two sentences. A confirmation that had named one
+    // of them in advance would have been wrong on the other board.
+    CHECK(eq(lines[0], "node dropped; the pairing stayed, set its new passkey"));
+    CHECK(eq(lines[1], "forgotten; set its new passkey"));
+    CHECK(!eq(lines[0], lines[1]));
+    // And the Russian pair, which is where a dropped restriction shows: this
+    // receipt says the pairing was kept, so a confirmation that had promised
+    // it would go said the opposite of the screen after it.
+    CHECK(eq(ru_lines[0], "узел сброшен; сопряжение сохранено, введите код"));
+    CHECK(eq(ru_lines[1], "узел забыт; введите новый код"));
+}
+
 // --- leaving --------------------------------------------------------------
 
 // Leaving with the radio still holding the request is neither "set up" nor
@@ -1308,6 +1394,7 @@ int main()
     test_an_unpinned_watch_starts_at_the_passkey();
     test_every_forget_ending_gets_its_own_sentence();
     test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one();
+    test_the_forget_confirmation_promises_only_what_forget_does();
     test_leaving_a_wait_says_the_answer_is_lost();
     test_the_finished_frame_keeps_the_words_and_drops_the_keys();
     test_leave_is_never_a_trap();
