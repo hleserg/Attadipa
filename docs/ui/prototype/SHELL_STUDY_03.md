@@ -26,6 +26,8 @@ explain the reading in node details. An integrated-source example has only the
 watch battery. “Low” explicitly means the **watch's** simulated 8% charge; it
 does not infer a node charge threshold from voltage. No universal SOC curve,
 live polling, BLE, sending or receiver validity calculation exists here.
+The watch's accessible name explicitly announces its low state and charge,
+independently of the node's reading and connection state.
 
 Display theme and motion controls affect the actual prototype, but do not
 persist across reload. System reduced-motion preference always wins. Decorative
@@ -44,6 +46,9 @@ to the Dp family, with their arithmetic and layout cost in
 [Design system §10](../DESIGN_SYSTEM.md#10-shell-study-03-browser-only-geometry-proposal).
 Settings shows an aria-hidden scrollability cue only when its rows overflow;
 it promises neither more content below nor a physical gesture binding.
+Checks, row chevrons and the scroll cue are inline SVG icons, not characters
+missing from the embedded font subset. This does not expand that subset or
+claim that these browser icons are already firmware assets.
 Panels and local reading surfaces protect text without blurring the artwork.
 This review is adult-only, **not Child Mode acceptance**.
 

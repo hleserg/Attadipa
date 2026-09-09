@@ -15,7 +15,7 @@
       now: 'На экране', boundary: 'Это веб-прототип, не прошивка. Он не подключается к BLE и ничего не отправляет. Батареи и время — примеры; настройки действуют только до перезагрузки страницы.',
       previous: 'Ранее согласованные экраны ↗', footer: 'Красота — в спокойствии. Ясность — в каждом состоянии.',
       clock: 'Циферблат', apps: 'Приложения', settings: 'Настройки', connection: 'Связь и нода', display: 'Экран', about: 'Об устройстве', navigation: 'Навигация',
-      back: 'Назад', watch: 'Часы', node: 'Нода', motto: 'Приключение рядом', needPosition: 'Нужна позиция', needNode: 'Подключите ноду',
+      back: 'Назад', watch: 'Часы', watchLow: 'Батарея часов разряжена', node: 'Нода', motto: 'Приключение рядом', needPosition: 'Нужна позиция', needNode: 'Подключите ноду',
       noTarget: 'Цель не выбрана', noPosition: 'Нет подтверждённой позиции.', noDirection: 'Без позиции и цели расстояние и направление не показаны.',
       connected: 'Нода подключена', lost: 'Нет связи с нодой', staleReading: 'Батарея: данные устарели', unknownReading: 'Батарея: нет данных',
       freshAge: 'Получено 3 с назад', staleAge: 'Последнее: 4,02 В · 5 мин назад', volts: '4,02 В',
@@ -42,7 +42,7 @@
       now: 'On the display', boundary: 'A browser prototype, not firmware. No BLE connection or message sending. Battery and time values are examples; settings last only until page reload.',
       previous: 'Previously approved screens ↗', footer: 'Quiet beauty. Clarity in every state.',
       clock: 'Watch face', apps: 'Applications', settings: 'Settings', connection: 'Connection & node', display: 'Display', about: 'About', navigation: 'Navigation',
-      back: 'Back', watch: 'Watch', node: 'Node', motto: 'A little light, always', needPosition: 'Position needed', needNode: 'Connect your node',
+      back: 'Back', watch: 'Watch', watchLow: 'Watch battery low', node: 'Node', motto: 'A little light, always', needPosition: 'Position needed', needNode: 'Connect your node',
       noTarget: 'No target selected', noPosition: 'No verified position.', noDirection: 'Without position and target, distance and direction are not shown.',
       connected: 'Node connected', lost: 'Node disconnected', staleReading: 'Battery data is stale', unknownReading: 'Battery data unavailable',
       freshAge: 'Received 3 s ago', staleAge: 'Last: 4.02 V · 5 min ago', volts: '4.02 V',
@@ -80,10 +80,13 @@
     connection: '<rect x="8" y="3" width="8" height="18" rx="3"/><rect x="3" y="8" width="18" height="8" rx="3"/>',
     display: '<rect x="5" y="2" width="14" height="20" rx="4"/><path d="M10 18h4"/>',
     about: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v1"/>',
+    check: '<path d="m5 12 4 4 10-10"/>',
+    chevron: '<path d="m3 5 6 7-6 7"/>',
+    scroll: '<path d="m8 7 4-4 4 4M12 3v18m-4-4 4 4 4-4"/>',
   };
-  const icon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${shapes[name]}</svg>`;
+  const icon = (name, viewBox = '0 0 24 24') => `<svg class="icon" viewBox="${viewBox}" aria-hidden="true">${shapes[name]}</svg>`;
   const button = (go, label, kind = '') => `<button type="button" data-go="${go}" class="${kind}">${label}</button>`;
-  const row = (go, label, subtitle = '') => button(go, `${icon(go)}<span class="row-label">${label}${subtitle ? `<small>${subtitle}</small>` : ''}</span><span class="chevron" aria-hidden="true">›</span>`);
+  const row = (go, label, subtitle = '') => button(go, `${icon(go)}<span class="row-label">${label}${subtitle ? `<small>${subtitle}</small>` : ''}</span><span class="chevron" aria-hidden="true">${icon('chevron', '0 0 12 24')}</span>`);
   const heading = title => `<h2 tabindex="-1"><span>${title}</span></h2>`;
   const scroll = body => `<div class="scroll detail" tabindex="0">${body}</div>`;
   const back = () => button('back', t('back'));
@@ -91,9 +94,9 @@
     const scenario = value('scenario');
     const low = scenario === 'low';
     const charge = low ? '8%' : '82%';
-    const watch = `<span class="watch-status">${low ? '! ' : ''}${t('watch')} <span class="battery ${low ? 'low' : ''}" aria-hidden="true"><i></i></span> ${charge}</span>`;
+    const watch = `<span class="watch-status" role="img" aria-label="${t(low ? 'watchLow' : 'watch')} · ${charge}">${low ? '! ' : ''}${t('watch')} <span class="battery ${low ? 'low' : ''}" aria-hidden="true"><i></i></span> ${charge}</span>`;
     const recent = scenario === 'fresh' || scenario === 'low';
-    const mark = recent ? '✓' : scenario === 'disconnected' ? '×' : '!';
+    const mark = recent ? icon('check') : scenario === 'disconnected' ? '×' : '!';
     const description = `${t('node')}: ${t(recent ? 'fresh' : scenario)}${recent ? ` · ${t('volts')} · ${t('freshAge')}` : ''}`;
     status.innerHTML = watch + (scenario === 'integrated' ? '' : `<span class="node-status" role="img" aria-label="${description}"><span class="${recent ? 'link-mark' : 'attention'}" aria-hidden="true">${mark}</span> ${t('node')} ${recent ? t('volts') : '—'}</span>`);
   }
@@ -124,7 +127,7 @@
     } else if (page === 'settings') {
       content.innerHTML = `${heading(t('settings'))}<div class="scroll rows">${row('connection', t('connection'))}${row('display', t('display'))}${row('about', t('about'))}</div>${back()}`;
       const rows = content.querySelector('.rows');
-      if (rows.scrollHeight > rows.clientHeight + 1) content.querySelector('h2 > span').insertAdjacentHTML('beforeend', '<span aria-hidden="true"> ↕</span>');
+      if (rows.scrollHeight > rows.clientHeight + 1) content.querySelector('h2 > span').insertAdjacentHTML('beforeend', `<span class="scroll-cue" aria-hidden="true"> ${icon('scroll')}</span>`);
     } else if (page === 'connection') {
       content.innerHTML = `${heading(t('node'))}${scroll(connectionBody())}${back()}`;
     } else if (page === 'display') {

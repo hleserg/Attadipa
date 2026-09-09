@@ -102,6 +102,8 @@ body > footer { display: flex; gap: 20px; justify-content: space-between; font-s
 .rows button:last-child { border-bottom: 0; }
 .rows button .chevron { margin-left: auto; font-weight: 400; }
 .icon { width: var(--icon); height: var(--icon); flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.status .icon, .scroll-cue .icon { width: 1em; height: 1em; vertical-align: -.12em; stroke-width: 2; }
+.chevron .icon { width: .35em; height: .7em; stroke-width: 2; }
 .row-label { text-align: left; }
 .row-label small { display: block; font-size: var(--type-caption); font-weight: 500; margin-top: 2px; }
 .clock-hero { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }

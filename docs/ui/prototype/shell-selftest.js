@@ -44,6 +44,10 @@
     const screen = document.querySelector('#watch-shell');
     const bounds = screen.getBoundingClientRect();
     const target = parseFloat(getComputedStyle(screen).getPropertyValue('--target'));
+    check(!/[›✓↕]/u.test(screen.textContent), `${context}: watch markers do not depend on missing embedded glyphs`);
+    for (const marker of screen.querySelectorAll('.chevron, .link-mark, .scroll-cue')) {
+      check(!!marker.querySelector('svg path'), `${context}: watch marker is drawn as an icon`);
+    }
     const content = screen.querySelector('.content');
     check(content.scrollHeight <= content.clientHeight + 1, `${context}: no page overflow`);
     const status = screen.querySelector('.status');
@@ -86,6 +90,10 @@
         document.querySelector('#restart').click();
         page('clock'); fit(`${context}/clock`);
         connectedContrast(context);
+        const watchAnnouncement = document.querySelector('.watch-status');
+        check(watchAnnouncement.getAttribute('role') === 'img' &&
+          watchAnnouncement.getAttribute('aria-label')?.includes('82%'),
+        'Watch battery has its own accessible name and charge');
         document.querySelector('#locale').focus();
         check(!escape() && document.activeElement.id === 'locale', 'Escape leaves review controls focused and unconsumed');
         page('clock');
@@ -130,7 +138,12 @@
               connectedContrast(`${context}/low`);
               check(node.getAttribute('aria-label') === freshAnnouncement,
                 'A low watch battery does not change the connected node announcement');
-              check(document.querySelector('.watch-status').textContent.includes('8%'), 'Low battery belongs to the watch');
+              const watchStatus = document.querySelector('.watch-status');
+              check(watchStatus.textContent.includes('8%'), 'Low battery belongs to the watch');
+              check(watchStatus.getAttribute('role') === 'img' &&
+                watchStatus.getAttribute('aria-label')?.includes('8%') &&
+                watchStatus.getAttribute('aria-label')?.includes(locale === 'ru' ? 'разряжена' : 'low'),
+              'Low watch battery is explicitly announced, not only punctuation');
             }
             check(!node.textContent.includes('%'), `${state}: no fabricated SOC`);
             if (['stale', 'unknown', 'disconnected'].includes(state))
