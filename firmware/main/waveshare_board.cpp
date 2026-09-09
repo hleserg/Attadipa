@@ -59,6 +59,8 @@
 #include "meshcore_passkey.h" // plain C++, no NimBLE behind it: every image
 
 #include "physical_input.h"
+#include "brightness_store.h"
+#include "esp_system.h"
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
 #include "attadipa/debug/bridge.h"
@@ -190,18 +192,23 @@ struct BoardBrightness final : attadipa::apps::BrightnessPort {
   bool apply(std::uint8_t percent) override {
     return attadipa::firmware::board_power_preview_brightness(percent) == ESP_OK;
   }
-  bool store(std::uint8_t percent) override {
-    if (state.metadata_storage != ESP_OK) return false;
-    nvs_handle_t handle{};
-    esp_err_t err = nvs_open("attadipa_screen", NVS_READWRITE, &handle);
-    if (err != ESP_OK) return false;
-    err = nvs_set_u8(handle, "brightness", percent);
-    if (err == ESP_OK) err = nvs_commit(handle);
-    nvs_close(handle);
-    if (err != ESP_OK) return false;
-    attadipa::firmware::board_power_remember_brightness(percent);
-    return true;
+  attadipa::apps::BrightnessWrite store(std::uint8_t percent) override {
+    using attadipa::apps::BrightnessWrite;
+    if (state.metadata_storage != ESP_OK) return BrightnessWrite::Failed;
+    struct Write {
+      nvs_handle_t handle{};
+      bool open() { return nvs_open("attadipa_screen", NVS_READWRITE, &handle) == ESP_OK; }
+      bool write(std::uint8_t value) { return nvs_set_u8(handle, "brightness", value) == ESP_OK; }
+      bool commit() { return nvs_commit(handle) == ESP_OK; }
+      void close() { nvs_close(handle); }
+    } write;
+    const auto result = attadipa::firmware::store_brightness(write, percent);
+    if (result == BrightnessWrite::Saved) {
+      attadipa::firmware::board_power_remember_brightness(percent);
+    }
+    return result;
   }
+  void restart() override { esp_restart(); }
 } brightness_port;
 attadipa::apps::BrightnessSettings brightness(
     brightness_port, kBrightnessDefault, kBrightnessDefault, 5);
@@ -909,7 +916,7 @@ void refresh_clock(lv_timer_t *timer) {
 }
 
 // The one place a page changes, and the only one that tears the outgoing face
-// down. All four `clear()` calls are idempotent, so calling them all is
+// down. All face `clear()` calls are idempotent, so calling them all is
 // cheaper than asking which face was up -- but they are not all harmless.
 // `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
 // `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:515` — "    lv_obj_clean(screen_);"

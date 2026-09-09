@@ -52,7 +52,8 @@ lv_obj_t *SettingsFace::button(Action action, const char *text,
   lv_obj_set_style_radius(button, config_.metrics.px(dp_of(Radius::Sm)), LV_PART_MAIN);
   lv_obj_set_style_bg_color(button, ink(ColorRole::BackgroundSurface, config_), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(button, LV_OPA_90, LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(button, LV_OPA_70, LV_PART_MAIN | LV_STATE_PRESSED);
+  lv_obj_set_style_bg_opa(button, LV_OPA_70,
+      static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
   lv_obj_set_user_data(button, reinterpret_cast<void *>(static_cast<std::uintptr_t>(action)));
   lv_obj_add_event_cb(button, clicked, LV_EVENT_CLICKED, this);
   lv_obj_t *label = lv_label_create(button);
@@ -64,7 +65,10 @@ lv_obj_t *SettingsFace::button(Action action, const char *text,
 
 void SettingsFace::draw() {
   lv_obj_clean(screen_);
-  bare(screen_);
+  // The shared frame owns this object's position. Internal page changes
+  // redraw children without erasing its offset below the status strip.
+  lv_obj_remove_flag(screen_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(screen_, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_size(screen_, config_.width_px, config_.height_px);
   lv_obj_set_style_bg_color(screen_, ink(ColorRole::BackgroundPrimary, config_), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, LV_PART_MAIN);
@@ -109,7 +113,7 @@ void SettingsFace::draw() {
   const int row_gap = gap / 2;
   const int slider_y = footer - target - row_gap;
   const int values_y = slider_y - target - row_gap;
-  button(Action::Minus, "−", margin, values_y, target, target);
+  button(Action::Minus, "-", margin, values_y, target, target);
   button(Action::Plus, "+", margin + width - target, values_y, target, target);
   value_ = lv_label_create(screen_);
   bare(value_);
@@ -119,14 +123,18 @@ void SettingsFace::draw() {
   lv_obj_set_size(value_, width - 2 * (target + gap), target);
   lv_obj_set_style_text_align(value_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_set_style_pad_top(value_, (target - (large ? 64 : 28)) / 2, LV_PART_MAIN);
-  slider_ = lv_slider_create(screen_);
+  lv_obj_t *slider_row = lv_obj_create(screen_);
+  bare(slider_row);
+  lv_obj_set_pos(slider_row, margin, slider_y);
+  lv_obj_set_size(slider_row, width, target);
+  slider_ = lv_slider_create(slider_row);
   lv_obj_remove_style_all(slider_);
   lv_obj_remove_flag(slider_, LV_OBJ_FLAG_SCROLLABLE);
-  // The actual widget is a full target, including its unpainted padding.
-  lv_obj_set_pos(slider_, margin, slider_y);
-  lv_obj_set_size(slider_, width, target);
-  lv_obj_set_style_pad_ver(slider_, (target - gap) / 2, LV_PART_MAIN);
-  lv_obj_set_style_pad_hor(slider_, target / 2, LV_PART_MAIN);
+  // A thin native slider with a full-height hit area. Its parent clips the
+  // extended horizontal hit box to this row, so it cannot steal nearby keys.
+  lv_obj_set_size(slider_, width - gap * 4, gap);
+  lv_obj_center(slider_);
+  lv_obj_set_ext_click_area(slider_, (target - gap + 1) / 2);
   lv_obj_set_style_bg_color(slider_, ink(ColorRole::BackgroundSurface, config_), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(slider_, LV_OPA_90, LV_PART_MAIN);
   lv_obj_set_style_radius(slider_, LV_RADIUS_CIRCLE, LV_PART_MAIN);
@@ -152,12 +160,14 @@ void SettingsFace::update() {
   case apps::BrightnessError::Load: title = StringId::BrightnessNotLoaded; break;
   case apps::BrightnessError::Apply: title = StringId::BrightnessNotApplied; break;
   case apps::BrightnessError::Save: title = StringId::BrightnessNotSaved; break;
+  case apps::BrightnessError::Uncertain: title = StringId::BrightnessRestartCheck; break;
   case apps::BrightnessError::None: break;
   }
   lv_label_set_text(title_, word(title));
   lv_label_set_text_fmt(value_, "%u%%", brightness_->value());
   lv_slider_set_value(slider_, brightness_->value(), LV_ANIM_OFF);
-  lv_label_set_text(save_label_, word(brightness_->error() == apps::BrightnessError::Save
+  lv_label_set_text(save_label_, word(brightness_->error() == apps::BrightnessError::Uncertain
+      ? StringId::BrightnessRestart : brightness_->error() == apps::BrightnessError::Save
       ? StringId::ProvisionKeyRetry : StringId::ProvisionKeySave));
 }
 
@@ -176,6 +186,10 @@ void SettingsFace::act(Action action) {
     page_ = Page::Display;
     break;
   case Action::Save:
+    if (brightness_->error() == apps::BrightnessError::Uncertain) {
+      brightness_->restart();
+      return;
+    }
     if (!brightness_->save()) { update(); return; }
     page_ = Page::Display;
     break;

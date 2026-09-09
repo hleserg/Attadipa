@@ -17,11 +17,11 @@ void BrightnessSettings::load() {
 bool BrightnessSettings::preview(int percent) {
   // Validate before narrowing: e.g. 261 must never become a valid 5% request.
   if (!valid(percent) || !port_.apply(static_cast<std::uint8_t>(percent))) {
-    error_ = BrightnessError::Apply;
+    if (error_ != BrightnessError::Uncertain) error_ = BrightnessError::Apply;
     return false;
   }
   draft_ = static_cast<std::uint8_t>(percent);
-  error_ = BrightnessError::None;
+  if (error_ != BrightnessError::Uncertain) error_ = BrightnessError::None;
   return true;
 }
 
@@ -31,8 +31,13 @@ bool BrightnessSettings::adjust(int direction) {
 }
 
 bool BrightnessSettings::save() {
-  if (!port_.store(draft_)) {
-    error_ = BrightnessError::Save;
+  // Flash may have changed before its write returned an error. Do not retry
+  // into that state or promise that Cancel can undo its durable outcome.
+  if (error_ == BrightnessError::Uncertain) return false;
+  const auto result = port_.store(draft_);
+  if (result != BrightnessWrite::Saved) {
+    error_ = result == BrightnessWrite::Uncertain ? BrightnessError::Uncertain
+                                                 : BrightnessError::Save;
     return false;
   }
   saved_ = draft_;
@@ -40,6 +45,15 @@ bool BrightnessSettings::save() {
   return true;
 }
 
-bool BrightnessSettings::cancel() { return preview(saved_); }
+bool BrightnessSettings::cancel() {
+  const bool applied = preview(saved_);
+  // Restore visible brightness, but keep the restart notice on screen until
+  // boot has recovered storage and read which request actually survived.
+  return applied && error_ != BrightnessError::Uncertain;
+}
+
+void BrightnessSettings::restart() {
+  if (error_ == BrightnessError::Uncertain) port_.restart();
+}
 
 } // namespace attadipa::apps

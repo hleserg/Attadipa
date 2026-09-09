@@ -2562,7 +2562,7 @@ ones that heading states.
   would make the second call see a different partition.
 - **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
   re-reads it.
-- **Consequence:** `firmware/main/waveshare_board.cpp:332` —
+- **Consequence:** `firmware/main/waveshare_board.cpp:339` —
   "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
   the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
   cannot contradict it (ADR-0014).
@@ -2583,7 +2583,7 @@ ones that heading states.
 - **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
   header: a third member of the family would make the boot log recommend the
   wrong recovery for it.
-- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:335` —
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:342` —
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.
@@ -2875,7 +2875,7 @@ ones that heading states.
   with `firmware/main/physical_input.cpp:44` — "constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;".
   Searching only the first helper is how an earlier revision of this list
   missed it. The only `0x16` literals anywhere in `firmware/` are a Waveshare
-  panel column offset, `firmware/main/waveshare_board.cpp:75` — "constexpr int kPanelGapX = 0x16;".
+  panel column offset, `firmware/main/waveshare_board.cpp:77` — "constexpr int kPanelGapX = 0x16;".
   The actual `REG 0x16` setting during this capture was not recorded and
   remains **`UNKNOWN`**; the power-on default is not a measurement of it.
   What the source and cable could deliver through the micro-USB adapter was

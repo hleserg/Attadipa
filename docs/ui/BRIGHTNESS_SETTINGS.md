@@ -14,8 +14,20 @@ Reconnection updates status without displacing an active editor.
 
 Missing state uses the default without writing. Invalid or unreadable state
 uses the default and shows “Using default”. Failed application keeps the prior
-displayed request; failed saving keeps the editor open with “Not saved” and
-Retry. Cancel remains available. No NVS erase or automatic brightness control.
+displayed request. A failure before the brightness setter keeps the editor open
+with “Not saved” and Retry. A setter or commit failure instead shows “Restart
+to check”: NVS may have written before reporting failure. Further brightness
+writes stop; Cancel restores the previous visible request but retains this
+notice. The explicit Restart action reboots through normal NVS recovery and
+loads whichever valid value survived. It does not promise that an uncertain
+write was undone. No NVS erase or automatic brightness control.
+
+This distinction follows ESP-IDF v5.5.5's
+[NVS setter contract](https://github.com/espressif/esp-idf/blob/v5.5.5/components/nvs_flash/include/nvs.h)
+for `ESP_ERR_NVS_REMOVE_FAILED` and its
+[native fault tests](https://github.com/espressif/esp-idf/blob/v5.5.5/components/nvs_flash/host_test/nvs_host_test/main/test_nvs.cpp),
+which accept either the old or new value after `ESP_ERR_FLASH_OP_FAIL`.
+Readback before recovery cannot prove which value a restart will recover.
 
 ## Current Waveshare policy and evidence
 
@@ -34,12 +46,15 @@ Retry. Cancel remains available. No NVS erase or automatic brightness control.
 
 The same face is built by the simulator at both native geometries. Its storage
 is deliberately volatile and its apply callback does not control a monitor.
-Host tests exercise the shipping application model, including failed storage
-and application, invalid values, cancellation, and a new instance loading the
-committed request. They are not a native NVS or physical panel test.
+Host tests exercise the shipping application model and native write transaction,
+including a setter that changes storage before returning failure. The actual
+simulator Settings caller checks page transitions, saved/cancelled values,
+theme/locale changes, header pixels and all four corners of the full slider hit
+row. Reintroducing the production redraw defect makes this test fail. These
+are not physical panel tests or an executed IDF flash-fault experiment.
 
-Native firmware build, rendered interaction, real NVS reboot/wake and physical
-readability acceptance are pending at this checkpoint:
+The initial `fdae291` checkpoint built in pinned ESP-IDF5.5.5 HIL. Real NVS
+reboot/wake and physical readability acceptance remain pending:
 **NOT EXECUTED — HARDWARE REQUIRED** for hardware outcomes.
 The current T-Watch native backlight backend is binary on/off; its normalized
 brightness application and native Settings entry remain pending. A 240 × 240

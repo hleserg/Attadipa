@@ -955,3 +955,11 @@ ru = "Не применено"
 [brightness_not_saved]
 en = "Not saved"
 ru = "Не сохранено"
+
+[brightness_restart_check]
+en = "Restart to check"
+ru = "Нужен перезапуск"
+
+[brightness_restart]
+en = "Restart"
+ru = "Перезапуск"

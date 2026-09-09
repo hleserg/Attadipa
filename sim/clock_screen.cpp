@@ -44,7 +44,11 @@ struct SimBrightness final : apps::BrightnessPort {
     return apps::BrightnessRead::Present;
   }
   bool apply(std::uint8_t) override { return true; }
-  bool store(std::uint8_t value) override { stored = value; return true; }
+  apps::BrightnessWrite store(std::uint8_t value) override {
+    stored = value;
+    return apps::BrightnessWrite::Saved;
+  }
+  void restart() override {} // This port cannot have an uncertain flash write.
 } g_brightness_port;
 apps::BrightnessSettings g_brightness(g_brightness_port, 5, 5, 5);
 ui::SettingsFace g_settings_face;

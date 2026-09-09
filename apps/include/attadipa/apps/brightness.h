@@ -5,7 +5,8 @@
 namespace attadipa::apps {
 
 enum class BrightnessRead { Present, Missing, Failed };
-enum class BrightnessError { None, Load, Apply, Save };
+enum class BrightnessWrite { Saved, Failed, Uncertain };
+enum class BrightnessError { None, Load, Apply, Save, Uncertain };
 
 // Requested percent, never a claim about measured light output. Implemented
 // by the board composition root and the simulator; applications see neither.
@@ -14,7 +15,8 @@ struct BrightnessPort {
   virtual BrightnessRead load(std::uint8_t &percent) = 0;
   virtual bool apply(std::uint8_t percent) = 0;
   // Success includes remembering the committed level for the next wake.
-  virtual bool store(std::uint8_t percent) = 0;
+  virtual BrightnessWrite store(std::uint8_t percent) = 0;
+  virtual void restart() = 0;
 };
 
 class BrightnessSettings {
@@ -30,6 +32,7 @@ public:
   bool save();
   // Back, Cancel and wake all restore the last successfully saved request.
   bool cancel();
+  void restart();
 
   std::uint8_t value() const { return draft_; }
   std::uint8_t saved() const { return saved_; }
