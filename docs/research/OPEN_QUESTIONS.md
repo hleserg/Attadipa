@@ -386,9 +386,9 @@ is the record of what was true at `144459f` and what changed it:
   `provision_time()`, whose one instantiation was inside the
   `#if CONFIG_ATTADIPA_WATCH_CONTROL` block. #356's first change made the
   sequence compile in every image; its second gave a product image the caller:
-  `firmware/main/waveshare_board.cpp:468` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
+  `firmware/main/waveshare_board.cpp:505` — "class BoardProvisioner final : public attadipa::core::Provisioner {"
   is ungated and is reached from the entry screen a long press on the clock
-  opens (`firmware/main/waveshare_board.cpp:1044` — "void long_press(lv_event_t *) {").
+  opens (`firmware/main/waveshare_board.cpp:1085` — "void long_press(lv_event_t *) {").
   A board off the shelf still shows whatever its RTC powered up with until
   somebody holding it enters the date and time — which is what ADR-0018 chose.
 - **The timezone could not be kept,** for the same reason, and for the same
@@ -403,9 +403,9 @@ is the record of what was true at `144459f` and what changed it:
   the passkey key. #356's first change made boot replay a stored passkey
   through the same `Configure` event, and its second lets the entry screen's
   passkey field store one -- reached on a board by the walk a long press opens
-  (`firmware/main/waveshare_board.cpp:1082` —
+  (`firmware/main/waveshare_board.cpp:1129` —
   "  state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);"):
-  `firmware/main/waveshare_board.cpp:499` — "set_mesh_passkey(std::uint32_t passkey) override {".
+  `firmware/main/waveshare_board.cpp:536` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
   `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock

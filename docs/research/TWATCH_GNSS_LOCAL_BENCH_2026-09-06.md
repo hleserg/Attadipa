@@ -77,7 +77,7 @@ supply.
 
 **It does not say the enable write is what raised BLDO1, and an earlier report
 already refused that step.** The logged value is the argument of the write, not
-a read-back — `firmware/main/board_power.cpp:541` — "           aldo | 0x10);"
+a read-back — `firmware/main/board_power.cpp:552` — "           aldo | 0x10);"
 — which prints `0x17` whether bit 4 was clear before it or already standing, and
 the register is not read again afterwards. On this same watch one day earlier
 the bit was found already set, and the register is battery-backed, so a reflash

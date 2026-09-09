@@ -2562,7 +2562,7 @@ ones that heading states.
   would make the second call see a different partition.
 - **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
   re-reads it.
-- **Consequence:** `firmware/main/waveshare_board.cpp:295` —
+- **Consequence:** `firmware/main/waveshare_board.cpp:332` —
   "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
   the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
   cannot contradict it (ADR-0014).
@@ -2583,7 +2583,7 @@ ones that heading states.
 - **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
   header: a third member of the family would make the boot log recommend the
   wrong recovery for it.
-- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:298` —
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:335` —
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.
@@ -2769,9 +2769,9 @@ ones that heading states.
 - **A powered GNSS receiver is inside this number, and its share is
   `UNKNOWN`.** The boot log's own byte says so. `LDO enable 0x17 -> 0x17` prints
   the register **as read, before the write** —
-  `firmware/main/board_power.cpp:578` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
+  `firmware/main/board_power.cpp:589` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
   and `0x17` is `0b10111`: bit 4 is BLDO1
-  (`firmware/main/board_power.cpp:539` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
+  (`firmware/main/board_power.cpp:550` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
   2026-09-05 and recorded above
   (`docs/research/VERIFIED_FACTS.md:720` — "Claim, on the bench unit, MEASURED 2026-09-05"),
@@ -2791,7 +2791,7 @@ ones that heading states.
   V1.4 §6.13.2.75, `REG 90: LDOS ON/OFF control 0`, which gives bit 3
   `aldo4 enable`, bit 4 `bldo1 enable`, bits 2 and 1 `aldo3`/`aldo2`. That is
   the section this tree already names for this register
-  (`firmware/main/board_power.cpp:573` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
+  (`firmware/main/board_power.cpp:584` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
   cited here for the bit rather than for the rail: bits 1, 2 and 4 being
   sourced does not make bit 3 sourced. ALDO4 on this board is the radio
   (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
@@ -2875,7 +2875,7 @@ ones that heading states.
   with `firmware/main/physical_input.cpp:44` — "constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;".
   Searching only the first helper is how an earlier revision of this list
   missed it. The only `0x16` literals anywhere in `firmware/` are a Waveshare
-  panel column offset, `firmware/main/waveshare_board.cpp:73` — "constexpr int kPanelGapX = 0x16;".
+  panel column offset, `firmware/main/waveshare_board.cpp:75` — "constexpr int kPanelGapX = 0x16;".
   The actual `REG 0x16` setting during this capture was not recorded and
   remains **`UNKNOWN`**; the power-on default is not a measurement of it.
   What the source and cable could deliver through the micro-USB adapter was
@@ -3002,7 +3002,7 @@ ones that heading states.
   this build (`firmware/main/twatch_board.cpp:69` —
   "constexpr gpio_num_t kBacklight = GPIO_NUM_45;"), fed by
   a rail the firmware writes to a fixed 3.3 V
-  (`firmware/main/board_power.cpp:576` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
+  (`firmware/main/board_power.cpp:587` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
   So "screen on" here means undimmed, unlike the Waveshare figure above, which
   is at that board's measured 5 % visible floor.
 

@@ -38,6 +38,7 @@
 #include "attadipa/apps/clock.h"
 #include "attadipa/apps/mesh.h"
 #include "attadipa/apps/navigation.h"
+#include "attadipa/apps/brightness.h"
 #include "attadipa/apps/provisioning.h"
 #include "attadipa/core/capability_registry.h"
 #include "attadipa/core/time_service.h"
@@ -46,6 +47,7 @@
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/ui/clock_face.h"
 #include "attadipa/ui/status_frame.h"
+#include "attadipa/ui/settings_face.h"
 #include "attadipa/ui/mesh_face.h"
 #include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
@@ -71,7 +73,9 @@ constexpr char kBoardProfileId[] = "waveshare-amoled-206";
 constexpr int kWidth = 410;
 constexpr int kHeight = 502;
 constexpr int kPanelGapX = 0x16;
-constexpr int kBrightnessPercent = 5;
+// 5% restored the owner's visible bench swatches (BRINGUP_2026-08-25).
+// This is a recovery policy, not a universal measured readability floor.
+constexpr std::uint8_t kBrightnessDefault = 5;
 
 constexpr gpio_num_t kLcdCs = GPIO_NUM_12;
 constexpr gpio_num_t kLcdClock = GPIO_NUM_11;
@@ -105,8 +109,7 @@ constexpr std::uint8_t kRows[] = {0x00, 0x00, 0x01, 0xF5};
 
 // The exact panel sequence used by the known-working vendor implementation,
 // except display-on is delayed until the black UI objects exist. Brightness
-// starts at zero and is raised to the measured 5% visible floor only after
-// that.
+// starts at zero and is raised to the saved request only after that.
 constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
     {0x11, nullptr, 0, 120},
     {0xC4, kC4, sizeof(kC4), 0},
@@ -122,7 +125,7 @@ constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
 // Which of the four faces is on the screen. `Entry` is a page like the rest:
 // it cleans the screen too, and forgetting that is how a long press used to
 // strand the clock's timer.
-enum class Page { Clock, Entry, Mesh, Nav };
+enum class Page { Clock, Entry, Mesh, Nav, Settings };
 
 struct BoardState {
   // Every handle boot creates, kept so that boot can un-create it. A null is
@@ -140,6 +143,7 @@ struct BoardState {
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
   attadipa::ui::StatusFrame status_frame;
+  attadipa::ui::SettingsFace settings_face;
   attadipa::ui::ClockFace clock_face;
   attadipa::ui::ProvisionFace provision_face;
   // Present while the entry screen is up; a fresh one for each visit, so a
@@ -168,6 +172,39 @@ struct BoardState {
 };
 
 BoardState state;
+
+struct BoardBrightness final : attadipa::apps::BrightnessPort {
+  attadipa::apps::BrightnessRead load(std::uint8_t &percent) override {
+    using attadipa::apps::BrightnessRead;
+    if (state.metadata_storage != ESP_OK) return BrightnessRead::Failed;
+    nvs_handle_t handle{};
+    esp_err_t err = nvs_open("attadipa_screen", NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return BrightnessRead::Missing;
+    if (err != ESP_OK) return BrightnessRead::Failed;
+    err = nvs_get_u8(handle, "brightness", &percent);
+    nvs_close(handle);
+    return err == ESP_OK ? BrightnessRead::Present
+        : err == ESP_ERR_NVS_NOT_FOUND ? BrightnessRead::Missing
+                                      : BrightnessRead::Failed;
+  }
+  bool apply(std::uint8_t percent) override {
+    return attadipa::firmware::board_power_preview_brightness(percent) == ESP_OK;
+  }
+  bool store(std::uint8_t percent) override {
+    if (state.metadata_storage != ESP_OK) return false;
+    nvs_handle_t handle{};
+    esp_err_t err = nvs_open("attadipa_screen", NVS_READWRITE, &handle);
+    if (err != ESP_OK) return false;
+    err = nvs_set_u8(handle, "brightness", percent);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    if (err != ESP_OK) return false;
+    attadipa::firmware::board_power_remember_brightness(percent);
+    return true;
+  }
+} brightness_port;
+attadipa::apps::BrightnessSettings brightness(
+    brightness_port, kBrightnessDefault, kBrightnessDefault, 5);
 #if CONFIG_BT_NIMBLE_ENABLED
 std::atomic_bool mesh_screen_requested{false};
 #endif
@@ -884,6 +921,8 @@ void show_page(Page next) {
   }
   state.clock_face.clear();
   state.nav_face.clear();
+  if (state.page == Page::Settings) (void)brightness.cancel();
+  state.settings_face.clear();
   state.provision_face.clear();
   state.mesh_face.clear();
   state.entry.reset();
@@ -1041,7 +1080,15 @@ void build_clock_screen() {
 // object, which both faces share, so it needs adding once; the clock face
 // leaves its children unclickable and the press lands here, while the
 // keypad's buttons take theirs and never let one through.
+void enter_settings();
+
 void long_press(lv_event_t *) {
+  // Node pages already use short tap for their page turn. Holding either
+  // keeps Settings reachable after the first connection takes over Clock.
+  if (state.page == Page::Mesh || state.page == Page::Nav) {
+    enter_settings();
+    return;
+  }
   if (state.page != Page::Clock) {
     return;
   }
@@ -1092,6 +1139,20 @@ void long_press(lv_event_t *) {
   state.status_frame.restore_content_geometry();
 }
 
+void enter_settings() {
+  show_page(Page::Settings);
+  build_status_frame();
+  state.settings_face.build(state.status_frame.content(),
+      {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
+       attadipa::ui::PixelCost::PerPixel, attadipa::ui::Metrics::for_dpi(panel_dpi())},
+      brightness, [] { show_page(Page::Clock); build_clock_screen(); });
+  state.status_frame.restore_content_geometry();
+}
+
+void open_settings(lv_event_t *) {
+  if (state.page == Page::Clock) enter_settings();
+}
+
 void refresh_ui(lv_timer_t *timer) {
   // FIRST, AND ABOVE EVERY EARLY RETURN BELOW. The UART ring is filled by
   // hardware whatever page is showing, and a receiver only read while its own
@@ -1106,6 +1167,11 @@ void refresh_ui(lv_timer_t *timer) {
   // than a missing feature.
   refresh_node_link();
   refresh_status();
+  // A reconnect can update the header, but cannot discard an active editor.
+  if (state.page == Page::Settings) {
+    state.settings_face.update();
+    return;
+  }
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
     // The node pages clean the LVGL screen under whatever is on it. An entry
@@ -1261,6 +1327,7 @@ esp_err_t initialize_touch() {
 }
 
 void create_ui() {
+  lv_obj_add_event_cb(lv_screen_active(), open_settings, LV_EVENT_SHORT_CLICKED, nullptr);
   build_clock_screen();
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
@@ -1414,6 +1481,7 @@ esp_err_t start_waveshare_ui() {
   // Every failure inside says so itself, and the clock runs without the
   // metadata either way.
   (void)restore_time_metadata();
+  brightness.load();
   const attadipa::apps::ClockState clock = read_clock_state();
   ESP_LOGI(kTag, "PCF85063: %s",
            clock.availability == attadipa::core::Availability::Ready
@@ -1455,7 +1523,10 @@ esp_err_t start_waveshare_ui() {
   // sleep work in a production image that has no transport at all (#346).
   const esp_err_t physical_result =
       start_physical_input(state.touch, state.pmu, state.panel,
-                           kBrightnessPercent, [] { refresh_ui(nullptr); });
+                           brightness.saved(), [] {
+                             (void)brightness.cancel();
+                             refresh_ui(nullptr);
+                           });
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   const esp_err_t watch_control_result =
       physical_result != ESP_OK ? ESP_OK
@@ -1485,6 +1556,7 @@ esp_err_t start_waveshare_ui() {
     // `clear()` deletes the timer and the transient animation and removes the
     // handler. It deletes no LVGL object, so the face stays drawn.
     lv_obj_remove_event_cb(lv_screen_active(), long_press);
+    lv_obj_remove_event_cb(lv_screen_active(), open_settings);
 #if CONFIG_BT_NIMBLE_ENABLED
     lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);
 #endif
@@ -1517,7 +1589,7 @@ esp_err_t start_waveshare_ui() {
   // is what talks to it next, and ADR-0016 §4 is what it does with a refusal.
   err = esp_lcd_panel_disp_on_off(state.panel, true);
   if (err == ESP_OK) {
-    err = esp_lcd_panel_co5300_set_brightness(state.panel, kBrightnessPercent);
+    err = attadipa::firmware::board_power_preview_brightness(brightness.saved());
   }
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "CO5300 did not turn on (%s): the UI runs on a dark panel",
@@ -1530,7 +1602,7 @@ esp_err_t start_waveshare_ui() {
   // undo it and `boot_rollback.h` is untouched.
   (void)attadipa::firmware::local_gnss_start();
   ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%%, touch %s, RTC %s",
-           kBrightnessPercent, state.touch != nullptr ? "present" : "absent",
+           brightness.saved(), state.touch != nullptr ? "present" : "absent",
            state.rtc != nullptr ? "present" : "absent");
   return ESP_OK;
 }

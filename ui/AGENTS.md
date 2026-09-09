@@ -65,7 +65,7 @@ authority this file points at rather than repeats.
   in either is invisible to it and the check stays green. Its silence is not
   evidence; read the diff.
 - **Rendered tests are rare, so add one rather than assume it exists.**
-  `tests/CMakeLists.txt:362` — "    add_executable(test_mesh_face test_mesh_face.cpp)" — is the only face that
+  `tests/CMakeLists.txt:366` — "    add_executable(test_mesh_face test_mesh_face.cpp)" — is the only face that
   renders into memory and counts pixels. Clock, nav and provisioning have no
   such test. These live in a simulator build (`-DATTADIPA_BUILD_SIMULATOR=ON`),
   because LVGL is only configured there.
