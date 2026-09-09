@@ -1,6 +1,6 @@
 # A little light — design study 01, revision V2
 
-[Open the interactive study](prototype/index.html). Work and acceptance criteria
+[Study 01](prototype/index.html) · [Shell Study 03](prototype/shell.html). Work and acceptance criteria
 live in [#476](https://github.com/hleserg/Attadipa/issues/476). This is a design
 deliverable for the existing Clock, Navigation, Mesh and provisioning features.
 It does not change firmware, application state machines or the canonical palette.
