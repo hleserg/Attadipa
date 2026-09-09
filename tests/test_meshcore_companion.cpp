@@ -1705,7 +1705,11 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         client.tick(at(10));
         CHECK(client.next_tx(frame) && frame.size == 1 && frame.bytes[0] == 20);
         CHECK(!client.next_tx(frame));
-        CHECK(client.receive(voltage, sizeof(voltage), at(11)));
+        std::uint8_t extended[sizeof(voltage) + 1]{};
+        std::memcpy(extended, voltage, sizeof(voltage));
+        extended[sizeof(voltage)] = 0xff; // opaque extension, not a charge flag
+        CHECK(client.receive(extended, sizeof(extended), at(11)));
+        CHECK(client.malformed_frames() == 0);
         CHECK(screen.status().node_battery.millivolts == 3700);
         CHECK(screen.status().node_battery.validity == core::Validity::Valid);
         CHECK(screen.status().node_battery.received_at.ms == 11);
@@ -1816,11 +1820,36 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
             CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
             CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
             CHECK(!client.next_tx(frame));
-            CHECK(client.receive(drained, sizeof(drained), at(start + 2)));
+            if (start == 120012) {
+                // The earlier sync can fail while the battery reply is pending.
+                CHECK(client.receive(error, sizeof(error), at(start + 2)));
+            } else {
+                CHECK(client.receive(drained, sizeof(drained), at(start + 2)));
+            }
             CHECK(client.receive(voltage, sizeof(voltage), at(start + 3)));
             CHECK(client.status().node_battery.received_at.ms == start + 3);
             CHECK(!client.next_tx(frame));
         }
+    }
+
+    // A queued poll has no transport-independent deadline of its own. If the
+    // pump stalls after the sync write, a user send must still fail by budget.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        const std::uint8_t waiting[] = {0x83};
+        CHECK(client.receive(waiting, sizeof(waiting), at(9)));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
+        MeshPeer peer{};
+        CHECK(client.peer(0, peer));
+        CHECK(client.send_private(peer.id, "stalled pump", WallTime{1}));
+        client.tick(at(11));
+        CHECK(client.send_busy());
+        client.tick(at(15011));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
     }
 
     // Forget between FIFO selection of the drain and the queued poll drops

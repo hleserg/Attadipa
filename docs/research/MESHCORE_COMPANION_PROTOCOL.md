@@ -622,7 +622,10 @@ queued backlog sync can precede it, so sustained incoming messages do not
 suppress every poll. Foreground sends prevent a new poll. A send queued behind
 an issued poll waits at most its 5-second reply budget before its own deadline
 starts. The reply budget starts when the transport pump takes the command.
-Only the fixed 11-byte response is accepted; storage fields are ignored.
+At least the documented 11-byte prefix is required; storage and any trailing
+bytes are ignored. A merely queued poll does not withhold the send deadline.
+An untagged error during an active drain cannot conclusively fail the poll;
+its typed reply or 5-second timeout resolves the wait.
 
 The public `MeshStatus.node_battery` belongs to the snapshot's `node_id` and
 carries reported millivolts, validity, last successful receipt and separate
@@ -635,8 +638,11 @@ until a new session, because an old reply has no identity field.
 After a timed-out or malformed poll, an untagged ERR cannot safely be assigned
 to a later send. For the rest of that connection, typed responses/confirmations
 and the existing send deadline determine delivery; an ambiguous ERR cannot
-fail it directly. Idle periodic retries continue. The policy uses receipt age,
-not a claim about sample age at the node. These intervals are chosen software
+fail it directly. Consequently, a later rejected send with no typed response
+can remain queued until its existing 15-second deadline, instead of failing
+immediately on ERR. An internal sequence or an arbitrary expiry cannot
+identify an old wire response. Idle periodic retries continue. The age here is
+receipt age, not sample age at the node. These intervals are chosen software
 limits. Actual voltage accuracy, polling power cost and native BLE acceptance:
 **NOT EXECUTED — HARDWARE REQUIRED**. Host checks exercise the actual Companion
 queue/dispatcher and public MeshService snapshot; shared UI is still the
@@ -664,8 +670,10 @@ timestamp** and substitutes the node's own RTC (`MyMesh.cpp:1103`), commented
 upstream as replay-protection avoidance.
 
 The three text types above share the **absence of structured position fields
-recorded in §4.4**. A coordinate sent as text spends the same payload budget as
-words; it does not add a protocol-level position type.
+recorded in §4.4**. This is an enumerated absence: all three definitions in
+`TxtDataHelpers.h:6-8` were read, so it is not an `UNKNOWN`. A coordinate sent
+as text spends the same payload budget as words; it does not add a
+protocol-level position type.
 
 This is also a **second instance of the `ERR_CODE_UNSUPPORTED_CMD` ambiguity**
 this section's landmine note above raises: here it answers a perfectly

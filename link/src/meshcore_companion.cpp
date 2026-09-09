@@ -261,7 +261,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     if (!send_busy()) {
         op_budget_ = core::Millis{};
     } else if (op_budget_.value == 0 &&
-               battery_request_ == BatteryRequest::Idle) {
+               battery_request_ != BatteryRequest::Waiting) {
         op_since_ = now;
         op_budget_ = kMaxAckWait;
     } else if (op_budget_.value != 0 &&
@@ -818,7 +818,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         // Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].
         // No percentage, charging flag, absence signal or source timestamp.
-        if (size != 11) {
+        if (size < 11) {
             ++malformed_frames_;
             fail_battery_request(true);
             return false;
@@ -931,12 +931,13 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseError: {
         if (size < 2) { ++malformed_frames_; return false; }
-        // Only stops the asking. Which command this error belongs to is decided
-        // below exactly as before -- a drain request is not a claimant and does
-        // not enter that attribution.
+        // A concurrent drain may own this untagged error. Keep the poll alive
+        // for its typed reply or bounded timeout; do not discard a good reply
+        // merely because the older sync failed. Other attribution stays below.
+        const bool drain_was_active = draining_;
         draining_ = false;
         if (battery_request_ == BatteryRequest::Waiting) {
-            fail_battery_request(false);
+            if (!drain_was_active) fail_battery_request(false);
             break;
         }
         // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
