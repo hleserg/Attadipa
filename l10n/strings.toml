@@ -449,9 +449,13 @@ ru = "Результат"
 
 # The node (#411): shown only on a watch that is pinned to one, as the first
 # eight hex digits of its key, so it can be held against the node's own
-# screen. Forget drops it with its bond, behind a confirmation, and what the
-# radio answers is one of six things — the line names the one that happened
-# rather than the first that started.
+# screen. Forget takes the pin, and of the trust behind it only a bond the
+# watch had already recorded as stale — a good pairing survives it, and the
+# passkey survives it on purpose:
+# `firmware/main/meshcore_node_forget.h:108` — "    // The passkey itself is deliberately retained. This marker is therefore"
+# So the confirmation below promises neither of those two (#504), and what
+# the radio answers afterwards is one of six things — the line names the one
+# that happened rather than the first that started.
 [provision_title_node]
 en = "Node"
 ru = "Узел"
@@ -484,9 +488,21 @@ ru = "Сохранить запишет в часы строку UTC"
 en = "Next goes on to the passkey"
 ru = "Далее — к коду узла"
 
+# Three clauses because the operation has three: the pin always goes, a
+# pairing goes only where one was recorded stale, and the passkey does not go
+# at all. The old line promised "its bond and its passkey, both", and
+# `Unpinned` — the ordinary ending on a watch with no stale bond recorded —
+# does neither (#504).
+#
+# Two wrapped lines is the budget, and it was measured rather than guessed:
+# the 240 px panel draws a third line under the keys, which is where the
+# Russian of the old line was already disappearing. So the fourth thing that
+# is true — that the retained passkey is not replayed until new digits replace
+# it — is left to the passkey field and its receipt, which are the next two
+# screens either way. A clause drawn under a button says nothing at all.
 [provision_hint_forget]
-en = "its bond and its passkey, both. Nothing is sent until you confirm"
-ru = "и связь, и код. Пока не подтвердите, ничего не отправляется"
+en = "the node goes, only a stale pairing; the passkey stays"
+ru = "сбросятся узел и устаревшее сопряжение; код останется"
 
 [provision_hint_passkey]
 en = "six digits from the node's own screen"
