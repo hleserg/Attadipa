@@ -51,8 +51,8 @@ The first ten rows are spot-checks against the agent run: ten checks, ten
 agreements, including one place where the prose needed correcting (§4.3, the
 reserved byte). **The last two are not spot-checks.** Nothing in that run
 covered opcode 20 or `TxtDataHelpers.h`, so there was no answer to agree with;
-they were read directly for #490 on 2026-09-09 and became §5.1 and §5.2, which
-carry the same note at their own heading. Everything **not** in this table rests
+they were read directly for #490 on 2026-09-09 and became §5.1 and §5.2, both
+named in the note at §5.1's heading. Everything **not** in this table rests
 on the agents' quoted evidence and has not been independently audited. It is
 sourced, which is the project's bar for a fact; it is not double-read, which is
 the bar this document was originally meant to clear.
@@ -556,8 +556,8 @@ needs a receive path independent of its request path: `0x80` `ADVERT`,
 > run never opened opcode 20 or `TxtDataHelpers.h`, so §0's sentence about
 > resting on the agents' quoted evidence does not describe them. Both are a
 > direct reading of the same pinned clone at `d929643`, done for #490, and both
-> are listed in §0's author-verified table. Single-read, like every row in that
-> table — nothing here has had a second reader.
+> are listed in §0's author-verified table — as its only single-read rows. The
+> ten above them are the author's second reading of an agent's first.
 
 Request is the bare opcode. Reply is `RESP_CODE_BATT_AND_STORAGE` (12),
 **11** bytes:

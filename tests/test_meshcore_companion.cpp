@@ -911,7 +911,7 @@ void test_bad_frames_and_disconnect_fail_closed()
 // The frames a hostile or broken node can put on the wire, at the seam the BLE
 // transport actually hands over.
 //
-// MESHCORE_COMPANION_PROTOCOL.md:169-173 is the reason this is one test rather
+// MESHCORE_COMPANION_PROTOCOL.md:175-177 is the reason this is one test rather
 // than a reassembly test: "No length prefix, no delimiter, no checksum, no
 // chunking and no reassembly code anywhere in the repository. One GATT
 // operation carries one whole companion frame." So a frame that arrives split
@@ -946,7 +946,7 @@ void test_hostile_frames_are_bounded_and_the_session_survives()
     CHECK(client.status().availability == Availability::Ready);
 
     // A garbage first byte. The payload's own first byte is the response code
-    // (MESHCORE_COMPANION_PROTOCOL.md:171). One this build does not know is
+    // (MESHCORE_COMPANION_PROTOCOL.md:177). One this build does not know is
     // counted and refused, never accepted by silence.
     for (const std::uint8_t code : {std::uint8_t{0x00}, std::uint8_t{0x7f},
                                     std::uint8_t{0xa5}, std::uint8_t{0xff}}) {
