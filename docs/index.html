@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#FFF6E8">
   <meta name="color-scheme" content="light dark">
   <title>Atta-dipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS</title>
-  <meta name="description" content="Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.">
+  <meta name="description" content="Open-source ESP32-S3 smartwatch project for time, MeshCore messaging and offline navigation. Explore the design and dated hardware results. Early development, not a finished consumer watch.">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href="https://hleserg.github.io/Attadipa/">
   <link rel="alternate" type="text/html" hreflang="x-default" href="https://hleserg.github.io/Attadipa/">
@@ -16,7 +16,7 @@
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="ru_RU">
   <meta property="og:title" content="Atta-dipa — open-source ESP32-S3 smartwatch firmware">
-  <meta property="og:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.">
+  <meta property="og:description" content="LoRa MeshCore and offline GNSS are part of the direction. Explore a warm, glanceable watch interface, try the browser studies, and help build Atta-dipa. Early development.">
   <meta property="og:url" content="https://hleserg.github.io/Attadipa/">
   <meta property="og:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
   <meta property="og:image:type" content="image/jpeg">
@@ -26,7 +26,7 @@
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Atta-dipa — open-source ESP32-S3 smartwatch firmware">
-  <meta name="twitter:description" content="LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.">
+  <meta name="twitter:description" content="LoRa MeshCore and offline GNSS are part of the direction. Explore a warm, glanceable watch interface, try the browser studies, and help build Atta-dipa. Early development.">
   <meta name="twitter:image" content="https://hleserg.github.io/Attadipa/assets/og-card.jpg">
   <meta name="twitter:image:alt" content="The Atta-dipa firefly mark to the left of the wordmark Atta-dipa, with the line Independent by design beneath it.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -65,7 +65,7 @@
         "@id": "https://hleserg.github.io/Attadipa/#website",
         "url": "https://hleserg.github.io/Attadipa/",
         "name": "Atta-dipa",
-        "description": "Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.",
+        "description": "Open-source ESP32-S3 smartwatch project for time, MeshCore messaging and offline navigation. Explore the design and dated hardware results. Early development, not a finished consumer watch.",
         "inLanguage": ["en", "ru"],
         "publisher": { "@id": "https://github.com/hleserg#person" }
       },
@@ -80,7 +80,7 @@
         "@id": "https://hleserg.github.io/Attadipa/#source",
         "name": "Atta-dipa",
         "alternateName": "Atta-dipa smartwatch firmware platform",
-        "description": "Firmware and application platform for ESP32-S3 smartwatches. Board differences live behind a capability registry, so an application asks what the device can do rather than which device it is. Targets the LilyGO T-Watch S3 Plus and the Waveshare ESP32-S3-Touch-AMOLED-2.06. Early implementation: the host libraries and a two-geometry simulator build and pass their tests, and the firmware boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.",
+        "description": "Open-source firmware and application platform for ESP32-S3 watches, with a capability-based architecture and LVGL interface. Targets LilyGO T-Watch S3 Plus and Waveshare ESP32-S3-Touch-AMOLED-2.06. Dated bench evidence includes Waveshare Clock and MeshCore reception; browser studies are not firmware acceptance. Complete remote-contact navigation and a physical compass remain unverified.",
         "codeRepository": "https://github.com/hleserg/Attadipa",
         "url": "https://hleserg.github.io/Attadipa/",
         "programmingLanguage": [
@@ -125,6 +125,7 @@
        left a hero and empty space. That was the case being claimed as fixed.
        Found in review; the class inversion is the actual fix. -->
   <noscript><style>.reveal,.js-reveal .reveal{opacity:1;transform:none}</style></noscript>
+  <noscript><style>.lang-switch{display:none}html:not([lang="ru"]) .lang-ru,html[lang="ru"] .lang-en{display:block!important}</style></noscript>
 </head>
 <body>
   <a class="skip-link" href="#main">
@@ -140,9 +141,9 @@
       </a>
       <nav class="nav-links" aria-label="Primary">
         <a href="#why"><span class="lang-en">Why</span><span class="lang-ru">Зачем</span></a>
-        <a href="#platform"><span class="lang-en">Platform</span><span class="lang-ru">Платформа</span></a>
-        <a href="#hardware"><span class="lang-en">Hardware</span><span class="lang-ru">Железо</span></a>
-        <a href="#ideas"><span class="lang-en">App ideas</span><span class="lang-ru">Идеи приложений</span></a>
+        <a href="#design"><span class="lang-en" lang="en">Design</span><span class="lang-ru" lang="ru">Дизайн</span></a>
+        <a href="#status"><span class="lang-en" lang="en">What works</span><span class="lang-ru" lang="ru">Что работает</span></a>
+        <a href="#ideas"><span class="lang-en" lang="en">Join in</span><span class="lang-ru" lang="ru">Участвовать</span></a>
       </nav>
       <div class="nav-actions">
         <div class="lang-switch" role="group" aria-label="Language">
@@ -156,259 +157,176 @@
     </div>
   </header>
 
+
   <main id="main">
     <section class="hero shell">
       <div class="hero-copy reveal">
-        <div class="eyebrow">
-          <span class="pulse-dot"></span>
-          <span class="lang-en" lang="en">Open-source wearable platform · ESP32-S3</span>
-          <span class="lang-ru" lang="ru">Открытая платформа для носимых устройств · ESP32-S3</span>
-        </div>
-        <h1>
-          <span class="lang-en" lang="en">Useful when your phone isn't.</span>
-          <span class="lang-ru" lang="ru">Часы, которые полезны без телефона.</span>
-        </h1>
-        <p class="hero-lead lang-en" lang="en">Atta-dipa is an open-source firmware and application platform being built for ESP32-S3 smartwatches: LoRa mesh messaging over MeshCore, offline GNSS navigation, clean app APIs over LVGL and FreeRTOS, and a UI meant to feel like a real product.</p>
-        <p class="hero-lead lang-ru" lang="ru">Atta-dipa — открытая прошивка и платформа приложений для умных часов на ESP32-S3: LoRa mesh-связь через MeshCore, офлайн-навигация по GNSS, чистые API для приложений поверх LVGL и FreeRTOS и интерфейс, который должен ощущаться как настоящий продукт.</p>
-        <p class="project-name-note lang-en" lang="en"><em>Atta-dipa</em> comes from Pāli <em>attadīpa</em>: “self-reliant; one’s own island or refuge.” It is a quiet reminder that the essentials should work without a phone or cloud.</p>
-        <p class="project-name-note lang-ru" lang="ru"><em>Atta-dipa</em> — от палийского <em>attadīpa</em>: «опирающийся на себя; собственный остров или прибежище». Это ненавязчивое напоминание: главное должно работать без телефона и облака.</p>
+        <div class="eyebrow"><span class="pulse-dot" aria-hidden="true"></span><span class="lang-en" lang="en">Independent by design · In development</span><span class="lang-ru" lang="ru">Independent by design · В разработке</span></div>
+        <h1><span class="lang-en" lang="en">An open watch.<br>A world to explore.</span><span class="lang-ru" lang="ru">Открытые часы.<br>Большой мир впереди.</span></h1>
+        <p class="hero-lead lang-en" lang="en">An open-source watch project for keeping time, finding direction and staying in touch beyond cellular coverage. Built to work locally. Designed to feel like yours.</p>
+          <p class="hero-lead lang-ru" lang="ru">Открытый проект часов, чтобы следить за временем, находить направление и оставаться на связи вне сотовой сети. Работа без облака. Интерфейс, который хочется носить.</p>
         <div class="hero-actions">
-          <a class="btn primary" href="https://github.com/hleserg/Attadipa" target="_blank" rel="noreferrer">
-            <span class="lang-en">View on GitHub</span><span class="lang-ru">Открыть GitHub</span>
-            <span aria-hidden="true">↗</span>
-          </a>
-          <a class="btn secondary" href="https://github.com/hleserg/Attadipa/issues" target="_blank" rel="noreferrer">
-            <span class="lang-en">Open work</span><span class="lang-ru">Текущая работа</span>
-          </a>
+          <a class="btn primary" href="ui/prototype/"><span class="lang-en" lang="en">Try the design</span><span class="lang-ru" lang="ru">Попробовать дизайн</span> <span aria-hidden="true">↗</span></a>
+          <a class="btn secondary" href="https://github.com/hleserg/Attadipa"><span class="lang-en" lang="en">Explore the source</span><span class="lang-ru" lang="ru">Посмотреть код</span></a>
         </div>
-        <div class="hero-meta" aria-label="Project facts">
-          <span>GPL-3.0-or-later</span><i></i><span>ESP-IDF / FreeRTOS</span><i></i><span>MeshCore</span><i></i><span>EN + RU</span>
+        <p class="hero-note"><span class="lang-en" lang="en">Early development, not a finished consumer watch. The pictures are browser studies with sample data.</span><span class="lang-ru" lang="ru">Ранняя разработка, не готовые потребительские часы. На картинках — браузерные макеты с примерными данными.</span></p>
+        <div class="hero-meta"><span>Open source</span><i aria-hidden="true"></i><span>ESP32-S3</span><i aria-hidden="true"></i><span>MeshCore</span><i aria-hidden="true"></i><span>EN / RU</span></div>
+      </div>
+      <figure class="hero-art reveal reveal-delay">
+        <div class="watch-triptych">
+          <div class="watch-shot side-shot">
+            <img class="lang-en" lang="en" src="assets/design-navigation-night-en.png" width="410" height="502" alt="Browser study: direction, 2.1 km and a position-age note over a night trail." decoding="async" >
+            <img class="lang-ru" lang="ru" src="assets/design-navigation-night-ru.png" width="410" height="502" alt="Браузерный макет: направление, 2,1 км и возраст позиции над ночной тропой." decoding="async" >
+          </div>
+          <div class="watch-shot main-shot">
+            <img class="lang-en" lang="en" src="assets/design-clock-night-en.png" width="410" height="502" alt="Browser study: 10:09 clock above a painted night meadow." decoding="async" fetchpriority="high">
+            <img class="lang-ru" lang="ru" src="assets/design-clock-night-ru.png" width="410" height="502" alt="Браузерный макет: часы 10:09 над нарисованным ночным лугом." decoding="async" fetchpriority="high">
+          </div>
+          <div class="watch-shot side-shot">
+            <img class="lang-en" lang="en" src="assets/design-mesh-night-en.png" width="410" height="502" alt="Browser study: a received Mesh message over a night landscape." decoding="async" >
+            <img class="lang-ru" lang="ru" src="assets/design-mesh-night-ru.png" width="410" height="502" alt="Браузерный макет: полученное меш-сообщение на фоне ночного пейзажа." decoding="async" >
+          </div>
         </div>
-      </div>
-      <div class="hero-art reveal reveal-delay" aria-label="Atta-dipa brand banner">
-        <img src="assets/banner.webp" width="1774" height="887" fetchpriority="high" decoding="async"
-             alt="The Atta-dipa wordmark beside a firefly, over the line Independent by design.">
-        <span class="glow g1"></span><span class="glow g2"></span><span class="glow g3"></span>
-      </div>
+        <figcaption><span class="lang-en" lang="en">Clock · Direction · Mesh</span><span class="lang-ru" lang="ru">Часы · Направление · Меш</span><br><span><span class="lang-en" lang="en">Design Study 01 · not firmware screenshots</span><span class="lang-ru" lang="ru">Design Study 01 · не скриншоты прошивки</span></span></figcaption>
+      </figure>
     </section>
 
     <section class="section shell" id="why">
       <div class="section-heading narrow reveal">
-        <span class="kicker lang-en">Why Atta-dipa exists</span>
-        <span class="kicker lang-ru">Зачем появился Atta-dipa</span>
-        <h2 class="lang-en" lang="en">I wanted a smartwatch that still makes sense when the network disappears.</h2>
-        <h2 class="lang-ru" lang="ru">Мне нужны были часы, которые не теряют смысл вместе с мобильной сетью.</h2>
-        <p class="lang-en" lang="en">I could find open smartwatch firmware, mesh projects, navigation tools, and polished commercial ecosystems — but not one open platform that put the pieces together the way I wanted: hardware-aware, mesh-native, extensible with useful apps, independent of a phone, and pleasant enough to wear every day. So Atta-dipa started there.</p>
-        <p class="lang-ru" lang="ru">Я нашёл открытые прошивки для часов, mesh-проекты, навигационные инструменты и отполированные коммерческие экосистемы — но не нашёл одной открытой платформы, где всё это было бы собрано так, как хотелось: с пониманием реального железа, mesh изначально в архитектуре, нормальным каркасом для полезных приложений, независимостью от телефона и интерфейсом, которым приятно пользоваться каждый день. С этого и начался Atta-dipa.</p>
+        <span class="kicker"><span class="lang-en" lang="en">A little light on your wrist</span><span class="lang-ru" lang="ru">Немного света на запястье</span></span>
+        <h2><span class="lang-en" lang="en">Less dependence.<br>More of your own world.</span><span class="lang-ru" lang="ru">Меньше зависимостей.<br>Больше своего мира.</span></h2>
+        <p class=" lang-en" lang="en">Time, a direction, a few words from your people. The essentials should not depend on a cloud account. That is the product we are building — openly, one real capability at a time.</p>
+          <p class=" lang-ru" lang="ru">Время, направление, несколько слов от своих. Главное не должно зависеть от облачного аккаунта. Такие часы мы и создаём — открыто, шаг за шагом, на реальном железе.</p>
       </div>
-
       <div class="feature-grid">
-        <article class="feature-card reveal">
-          <div class="feature-icon orange">⌁</div>
-          <h3><span class="lang-en">Offline first</span><span class="lang-ru">Офлайн прежде всего</span></h3>
-          <p class="lang-en">Core watch functions, navigation and mesh should not need a cloud account or a companion phone to remain useful.</p>
-          <p class="lang-ru">Основные функции часов, навигация и mesh не должны требовать облачного аккаунта или телефона-компаньона, чтобы оставаться полезными.</p>
-        </article>
-        <article class="feature-card reveal">
-          <div class="feature-icon amber">⚡</div>
-          <h3><span class="lang-en">Use the silicon properly</span><span class="lang-ru">Использовать железо по-настоящему</span></h3>
-          <p class="lang-en">The goal is to exploit real ESP32-S3 and board capabilities — DMA, peripherals, PSRAM, low-power modes, crypto/RNG and vector/DSP hardware where it genuinely helps — and measure the trade-offs.</p>
-          <p class="lang-ru">Цель — использовать реальные возможности ESP32-S3 и конкретных плат: DMA, периферию, PSRAM, режимы сна, аппаратную криптографию/RNG и DSP/vector-возможности там, где от них действительно есть польза, а компромиссы измерять.</p>
-        </article>
-        <article class="feature-card reveal">
-          <div class="feature-icon teal">⋯</div>
-          <h3><span class="lang-en">Mesh without the cloud</span><span class="lang-ru">Mesh без облака</span></h3>
-          <p class="lang-en">MeshCore interoperability is a first-class path. A capable watch can use local radio; another watch can receive the same service from an Atta-dipa Node.</p>
-          <p class="lang-ru">Совместимость с MeshCore — один из основных сценариев. Часы с подходящим радио используют его локально, а другая модель может получить тот же сервис от Atta-dipa Node.</p>
-        </article>
-        <article class="feature-card reveal">
-          <div class="feature-icon green">↗</div>
-          <h3><span class="lang-en">Navigation that doesn't bluff</span><span class="lang-ru">Навигация без притворства</span></h3>
-          <p class="lang-en">Position, heading, bearing, source, freshness and confidence are separate things. If the watch doesn't know where you are facing, it must say so instead of drawing a confident arrow.</p>
-          <p class="lang-ru">Координаты, направление корпуса, азимут на цель, источник, свежесть и доверие — разные вещи. Если часы не знают, куда вы смотрите, они должны честно это показать, а не рисовать уверенную стрелку.</p>
-        </article>
-        <article class="feature-card reveal">
-          <div class="feature-icon sage">▦</div>
-          <h3><span class="lang-en">Apps, not one giant firmware screen</span><span class="lang-ru">Приложения, а не один огромный монолит</span></h3>
-          <p class="lang-en">A clean lifecycle and stable capability APIs are being built so new first-party and community apps can be added without touching board code. Apps ask for Time, Position, Mesh Messaging or Navigation — not chips and GPIOs.</p>
-          <p class="lang-ru">Чистый lifecycle и стабильные capability API строятся так, чтобы новые встроенные и community-приложения можно было добавлять, не лезя в код конкретной платы. Приложение просит Time, Position, Mesh Messaging или Navigation — а не чипы и GPIO.</p>
-        </article>
-        <article class="feature-card reveal">
-          <div class="feature-icon coral">✦</div>
-          <h3><span class="lang-en">A product, not an engineering demo</span><span class="lang-ru">Продукт, а не инженерная демка</span></h3>
-          <p class="lang-en">Day and night themes, English and Russian from the first real screen, considered motion, haptics, sound, accessibility and a separate Child Mode are part of the definition of done.</p>
-          <p class="lang-ru">Дневная и ночная темы, русский и английский с первого настоящего экрана, осмысленные анимации, вибрация, звук, доступность и отдельный Child Mode входят в определение «готово».</p>
-        </article>
+        <article class="feature-card reveal"><h3><span class="lang-en" lang="en">Useful away from the network</span><span class="lang-ru" lang="ru">Полезны вне сети</span></h3><p class=" lang-en" lang="en">Local operation comes first. MeshCore is the path to radio messaging through a node you carry; the complete wrist messaging journey is still being built.</p>
+          <p class=" lang-ru" lang="ru">Сначала — работа локально. MeshCore даёт путь к радиосвязи через носимую ноду; полный сценарий переписки с запястья ещё разрабатывается.</p></article>
+        <article class="feature-card reveal"><h3><span class="lang-en" lang="en">A glance, not a dashboard</span><span class="lang-ru" lang="ru">Один взгляд, не панель приборов</span></h3><p class=" lang-en" lang="en">Large numbers, painted landscapes and deliberate contrast. Missing or old information stays visible; a beautiful arrow is not a substitute for a reliable direction.</p>
+          <p class=" lang-ru" lang="ru">Крупные цифры, нарисованные пейзажи и продуманный контраст. Отсутствующие или старые данные остаются заметными; красивая стрелка не заменяет достоверное направление.</p></article>
+        <article class="feature-card reveal"><h3><span class="lang-en" lang="en">Room for your ideas</span><span class="lang-ru" lang="ru">Место для ваших идей</span></h3><p class=" lang-en" lang="en">Clock, Navigation, Mesh and Settings belong to one growing interface. Maps, a recorder, phone pairing and community apps are possibilities ahead — not released features or an app SDK.</p>
+          <p class=" lang-ru" lang="ru">Часы, навигация, меш и настройки — один растущий интерфейс. Карта, диктофон, сопряжение с телефоном и приложения сообщества — планы, не готовые функции или SDK.</p></article>
       </div>
     </section>
 
-    <section class="section band" id="platform">
-      <div class="shell split">
+    <section class="section design-band" id="design">
+      <div class="shell">
+        <div class="section-heading reveal">
+          <span class="kicker"><span class="lang-en" lang="en">One world, day and night</span><span class="lang-ru" lang="ru">Один мир — днём и ночью</span></span>
+          <h2><span class="lang-en" lang="en">Small screen.<br>Considered in every detail.</span><span class="lang-ru" lang="ru">Маленький экран.<br>Продуманный в деталях.</span></h2>
+          <p class=" lang-en" lang="en">The 240 × 240 composition is designed separately, not shrunk from the larger screen. Explore both sizes, themes and languages in the interactive browser study.</p>
+          <p class=" lang-ru" lang="ru">Композиция 240 × 240 сделана отдельно, а не уменьшена с большого экрана. В интерактивном макете можно сменить размер, тему и язык.</p>
+        </div>
+        <div class="day-gallery">
+          <figure class="study-tile reveal">
+            <img class="lang-en" lang="en" src="assets/design-clock-day-small-en.png" width="240" height="240" alt="Browser study: small day clock." decoding="async" loading="lazy">
+            <img class="lang-ru" lang="ru" src="assets/design-clock-day-small-ru.png" width="240" height="240" alt="Браузерный макет: дневные часы на маленьком экране." decoding="async" loading="lazy">
+            <figcaption><span class="lang-en" lang="en">Time, at a glance</span><span class="lang-ru" lang="ru">Время с одного взгляда</span><small>240 × 240</small></figcaption>
+          </figure>
+          <figure class="study-tile reveal">
+            <img class="lang-en" lang="en" src="assets/design-mesh-day-small-en.png" width="240" height="240" alt="Browser study: compact day Mesh message." decoding="async" loading="lazy">
+            <img class="lang-ru" lang="ru" src="assets/design-mesh-day-small-ru.png" width="240" height="240" alt="Браузерный макет: компактное дневное меш-сообщение." decoding="async" loading="lazy">
+            <figcaption><span class="lang-en" lang="en">A word from your people</span><span class="lang-ru" lang="ru">Весточка от своих</span><small>240 × 240</small></figcaption>
+          </figure>
+          <figure class="study-tile tall-study reveal">
+            <img class="lang-en" lang="en" src="assets/design-time-day-en.png" width="410" height="502" alt="Browser study: time editor with minus, plus, Back and Next." decoding="async" loading="lazy">
+            <img class="lang-ru" lang="ru" src="assets/design-time-day-ru.png" width="410" height="502" alt="Браузерный макет: установка времени с кнопками минус, плюс, Назад и Далее." decoding="async" loading="lazy">
+            <figcaption><span class="lang-en" lang="en">Set it on the watch</span><span class="lang-ru" lang="ru">Настроить на часах</span><small>410 × 502</small></figcaption>
+          </figure>
+        </div>
+        <div class="design-links reveal">
+          <p class="media-note"><span class="lang-en" lang="en">All values and outcomes shown are simulated. Browser approval is not hardware acceptance.</span><span class="lang-ru" lang="ru">Все значения и результаты на этих изображениях смоделированы. Согласование макета не является аппаратной приёмкой.</span></p>
+          <a class="text-link" href="ui/prototype/shell.html"><span class="lang-en" lang="en">Explore apps &amp; Settings · Shell Study 03</span><span class="lang-ru" lang="ru">Приложения и настройки · Shell Study 03</span> <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/hleserg/Attadipa/blob/main/pics/README.md#browser-design-study-captures"><span class="lang-en" lang="en">Where the images come from</span><span class="lang-ru" lang="ru">Происхождение изображений</span> <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell" id="platform">
+      <div class="split">
         <div class="split-copy reveal">
-          <span class="kicker lang-en">One platform, several shapes</span>
-          <span class="kicker lang-ru">Одна платформа, разное железо</span>
-          <h2 class="lang-en">Apps ask what the device can do — not what is soldered to it.</h2>
-          <h2 class="lang-ru">Приложение спрашивает, что устройство умеет, а не что к нему припаяно.</h2>
-          <p class="lang-en">Atta-dipa is not a Linux-like operating system. It is a single embedded firmware/application platform on ESP-IDF/FreeRTOS. Board-specific details stay below the service boundary, while capabilities can appear or disappear at runtime as local hardware or an Atta-dipa Node becomes available.</p>
-          <p class="lang-ru">Atta-dipa — не Linux-подобная операционная система. Это единая встроенная прошивка и платформа приложений поверх ESP-IDF/FreeRTOS. Особенности конкретной платы остаются ниже сервисного слоя, а возможности могут появляться и исчезать во время работы — например, когда становится доступен локальный модуль или Atta-dipa Node.</p>
-          <a class="text-link" href="https://github.com/hleserg/Attadipa/tree/main/docs/adr" target="_blank" rel="noreferrer">
-            <span class="lang-en">Read the architecture decisions</span><span class="lang-ru">Посмотреть архитектурные решения</span> <span>↗</span>
-          </a>
+          <span class="kicker"><span class="lang-en" lang="en">One experience, different hardware</span><span class="lang-ru" lang="ru">Один интерфейс, разное железо</span></span>
+          <h2><span class="lang-en" lang="en">On your wrist.<br>With a node in your pocket.</span><span class="lang-ru" lang="ru">Часы на руке.<br>Нода в кармане.</span></h2>
+          <p class=" lang-en" lang="en">In the split arrangement, your carried node connects over BLE and handles mesh traffic. It may also supply GNSS observations. It is not the remote person you want to reach.</p>
+          <p class=" lang-ru" lang="ru">В раздельной конфигурации носимая нода подключается по BLE и передаёт меш-трафик. Она также может предоставлять GNSS-наблюдения. Это не тот удалённый человек, к которому вы хотите идти.</p>
+          <p class="media-note"><span class="lang-en" lang="en">Product direction: raw GNSS observations, confidence checks and remote-contact selection still need implementation and validation.</span><span class="lang-ru" lang="ru">Замысел продукта: сырые GNSS-наблюдения, проверка доверия и выбор удалённого контакта ещё требуют реализации и проверки.</span></p>
+          <a class="text-link" href="https://github.com/hleserg/Attadipa/blob/main/docs/adr/0020-remote-target-position-source.md"><span class="lang-en" lang="en">Read the source and target contract</span><span class="lang-ru" lang="ru">Как разделены своя позиция и цель</span> <span aria-hidden="true">↗</span></a>
         </div>
-
-        <div class="architecture reveal reveal-delay" aria-label="Atta-dipa capability architecture">
-          <div class="arch-row apps-row">
-            <span>Clock</span><span>Navigator</span><span>Messages</span><span>Apps…</span>
+        <div class="architecture reveal">
+          <div class="node-flow">
+            <div><small><span class="lang-en" lang="en">Your connection / possible own position</span><span class="lang-ru" lang="ru">Ваша связь / возможный источник своей позиции</span></small><strong><span class="lang-en" lang="en">Carried node → BLE → watch</span><span class="lang-ru" lang="ru">Носимая нода → BLE → часы</span></strong></div>
+            <div><small><span class="lang-en" lang="en">The other person's position and messages</span><span class="lang-ru" lang="ru">Позиция и сообщения другого человека</span></small><strong><span class="lang-en" lang="en">Remote contact → Mesh → carried node → BLE → watch</span><span class="lang-ru" lang="ru">Удалённый контакт → Mesh → носимая нода → BLE → часы</span></strong></div>
           </div>
-          <div class="arch-arrow">↓</div>
-          <div class="arch-core">
-            <small><span class="lang-en">Product services</span><span class="lang-ru">Сервисы продукта</span></small>
-            <strong>Time · Position · Heading · Mesh · Navigation</strong>
-          </div>
-          <div class="arch-arrow">↓</div>
-          <div class="arch-providers">
-            <div><small><span class="lang-en">Local provider</span><span class="lang-ru">Локальный источник</span></small><strong>Board hardware</strong></div>
-            <div><small><span class="lang-en">Remote provider</span><span class="lang-ru">Удалённый источник</span></small><strong>Atta-dipa Node</strong></div>
-          </div>
-          <div class="arch-foot"><span class="pulse-dot"></span><span class="lang-en">Same app API. Different capability source.</span><span class="lang-ru">Один API приложения. Разные источники возможностей.</span></div>
+          <p><span class="lang-en" lang="en">One interface. Hardware behind the service boundary.</span><span class="lang-ru" lang="ru">Один интерфейс. Железо — за границей сервисов.</span></p>
         </div>
       </div>
-    </section>
-
-    <section class="section shell" id="hardware">
-      <div class="section-heading reveal">
-        <span class="kicker lang-en">Targets</span><span class="kicker lang-ru">Целевые устройства</span>
-        <h2><span class="lang-en">ESP32-S3 boards that share almost nothing: built to survive the differences.</span><span class="lang-ru">Платы на ESP32-S3, у которых почти нет ничего общего: архитектура переживает различия.</span></h2>
-        <p class="lang-en">The same product model is intended to span watches with very different displays, radios, GNSS and haptics — without pretending every board has everything.</p>
-        <p class="lang-ru">Одна модель продукта должна работать на часах с очень разными дисплеями, радио, GNSS и вибрацией — без притворства, будто на каждой плате есть всё.</p>
-      </div>
-      <div class="hardware-grid">
+      <div class="hardware-grid" id="hardware">
         <article class="hardware-card reveal">
-          <div class="hw-top"><span class="chip primary-chip">FIRST TARGET</span><span class="hw-dot"></span></div>
-          <h3>LilyGO T-Watch S3 Plus</h3>
-          <p class="lang-en">The first full-product target. Purchase-time radio and GNSS variants exist, so capability is derived from the actual fitted hardware — not from the product name.</p>
-          <p class="lang-ru">Первая целевая модель полного продукта. В продаже встречаются разные варианты радио и GNSS, поэтому возможности выводятся из реально установленного железа, а не из названия часов.</p>
+          <span class="kicker"><span class="lang-en" lang="en">Target boards</span><span class="lang-ru" lang="ru">Целевые устройства</span></span>
+          <h3>Waveshare AMOLED 2.06<br>LilyGO T-Watch S3 Plus</h3>
+          <p class=" lang-en" lang="en">Two different devices, one product direction. The hardware matrix records exact models, revisions and capability limits; support is not inferred from a product name.</p>
+          <p class=" lang-ru" lang="ru">Два разных устройства, один замысел продукта. Точные модели, ревизии и ограничения зафиксированы в матрице железа; поддержка не выводится из названия модели.</p>
+          <a class="text-link" href="https://github.com/hleserg/Attadipa/blob/main/docs/research/HARDWARE_MATRIX.md"><span class="lang-en" lang="en">Hardware matrix</span><span class="lang-ru" lang="ru">Матрица железа</span> ↗</a>
         </article>
         <article class="hardware-card reveal">
-          <div class="hw-top"><span class="chip">SECOND TARGET · ON THE DESK</span><span class="hw-dot teal-dot"></span></div>
-          <h3>Waveshare ESP32-S3 Touch AMOLED 2.06</h3>
-          <p class="lang-en">A larger AMOLED target with no onboard sub-GHz mesh radio and no onboard GNSS. Those capabilities can be supplied by a separate Atta-dipa Node.</p>
-          <p class="lang-ru">Модель с большим AMOLED-дисплеем, но без встроенного sub-GHz mesh-радио и GNSS. Эти возможности может предоставлять отдельный Atta-dipa Node.</p>
-          <p class="lang-en">One unit is here and has answered for itself over its own USB port: factory-default eFuses, 8&nbsp;MB PSRAM on the memory rail, external quad flash, chip revision v0.2. Nothing has been burned. One number has now been measured: 413&nbsp;mW at its USB input, idle on one screen with the cell disconnected.</p>
-          <p class="lang-ru">Одна плата уже здесь и ответила за себя через собственный USB-порт: eFuse на заводских значениях, 8&nbsp;МБ PSRAM на линии памяти, внешняя quad-флеш, ревизия кристалла v0.2. Ничего не прожжено. Одно число уже измерено: 413&nbsp;мВт на входе USB, простой на одном экране с отключённым аккумулятором.</p>
+          <span class="kicker"><span class="lang-en" lang="en">No watch required</span><span class="lang-ru" lang="ru">Можно начать без часов</span></span>
+          <h3><span class="lang-en" lang="en">Run the native simulator</span><span class="lang-ru" lang="ru">Запустите нативный симулятор</span></h3>
+          <p class=" lang-en" lang="en">Work on the real LVGL interface from your desktop. Both screen sizes are available; simulation is not evidence of power, radio or physical display performance.</p>
+          <p class=" lang-ru" lang="ru">Работайте с настоящим интерфейсом LVGL на компьютере. Доступны оба размера экрана; симуляция не доказывает автономность, работу радио или свойства физического дисплея.</p>
+          <a class="text-link" href="https://github.com/hleserg/Attadipa#run-it-on-your-desk"><span class="lang-en" lang="en">Simulator instructions</span><span class="lang-ru" lang="ru">Как запустить симулятор</span> ↗</a>
         </article>
-        <article class="hardware-card node-card reveal">
-          <div class="hw-top"><span class="chip node-chip">COMPANION HARDWARE</span><span class="hw-dot amber-dot"></span></div>
-          <h3>Atta-dipa Node</h3>
-          <p class="lang-en">A dedicated device intended to carry mesh radio, GNSS and potentially other sensors. It is not a phone replacement; it is another capability provider.</p>
-          <p class="lang-ru">Отдельное устройство с mesh-радио, GNSS и, возможно, другими датчиками. Это не замена телефона, а ещё один источник возможностей для часов.</p>
-        </article>
-        <article class="hardware-card sim-card reveal">
-          <div class="hw-top"><span class="chip sim-chip">FIRST-CLASS TARGET</span><span class="hw-dot green-dot"></span></div>
-          <h3>Desktop simulator</h3>
-          <p class="lang-en">UI and capability states can be developed without waiting for hardware. One simulator binary already renders both target geometries and runs headless in CI.</p>
-          <p class="lang-ru">Интерфейс и состояния возможностей можно разрабатывать, не дожидаясь железа. Один бинарник симулятора уже рисует обе целевые геометрии и запускается headless в CI.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="section design-band">
-      <div class="shell design-grid">
-        <div class="design-board reveal">
-          <img src="assets/style-board.webp" width="1448" height="1086" loading="lazy" decoding="async"
-               alt="Atta-dipa design board: the Warm Ivory and Ink Olive palette, the Nunito Sans and Inter type specimens, rounded card shapes and the firefly mark.">
-        </div>
-        <div class="design-copy reveal reveal-delay">
-          <span class="kicker lang-en">Design is architecture too</span><span class="kicker lang-ru">Дизайн — тоже часть архитектуры</span>
-          <h2><span class="lang-en">Warm, glanceable, calm — and still grown-up.</span><span class="lang-ru">Тёплый, понятный с одного взгляда, спокойный — и при этом взрослый.</span></h2>
-          <p class="lang-en">The visual language is intentionally soft without turning the watch into a toy. Semantic design tokens, board-aware spacing, day/night themes, contextual mascot poses and measured asset budgets keep the look consistent without hiding hardware limits.</p>
-          <p class="lang-ru">Визуальный язык намеренно мягкий, но часы не должны превращаться в игрушку. Семантические дизайн-токены, масштабирование под конкретный экран, дневная и ночная темы, уместные состояния маскота и измеряемый бюджет графики позволяют сохранять стиль, не скрывая ограничения железа.</p>
-          <div class="palette" aria-label="Atta-dipa color palette">
-            <span style="--c:#FF8A40" title="Atta-dipa Orange"></span>
-            <span style="--c:#FFC857" title="Glow Amber"></span>
-            <span style="--c:#6FA07A" title="Meadow Green"></span>
-            <span style="--c:#A7B49C" title="Leaf Sage"></span>
-            <span style="--c:#6FB7B5" title="Sky Teal"></span>
-            <span style="--c:#2F3A2E" title="Ink Olive"></span>
-          </div>
-        </div>
       </div>
     </section>
 
     <section class="section shell status-section" id="status">
       <div class="status-card reveal">
         <div class="status-copy">
-          <div class="status-label"><span class="pulse-dot"></span><span class="lang-en">Current milestone: M1</span><span class="lang-ru">Текущий этап: M1</span></div>
-          <h2><span class="lang-en">The foundation is real. The LoRa, GNSS and LVGL firmware on the watch is still early.</span><span class="lang-ru">Фундамент уже работает. Прошивка часов — LoRa, GNSS, LVGL — пока на раннем этапе.</span></h2>
-          <p class="lang-en">The repository builds six libraries, the two-geometry desktop simulator and 24 host tests; screens draw through the design tokens in day and night themes, and CI raises the simulator from a clean machine. The first target board is now on the desk, has been read over its own USB port, and on 2026-08-23 ran bench probes written for this project — ESP-IDF images loaded out of RAM, writing nothing to flash; their source is not in the tree yet (issue #116). So the first hardware measurements exist: the IMU answers at 0x6B and not 0x6A, the touch controller identifies itself after a reset pulse, and the power rails have been read raw. The device firmware itself is still ahead.</p>
-          <p class="lang-ru">В репозитории собираются шесть библиотек, desktop-симулятор двух геометрий и 24 хостовых теста; экраны рисуются через дизайн-токены в дневной и ночной темах, а CI поднимает симулятор с чистой машины. Первая целевая плата уже на столе, прочитана через собственный USB-порт, а 23.08.2026 на ней запускались стендовые пробы, написанные для этого проекта, — образы ESP-IDF, загруженные в RAM, без единой записи во flash; их исходников в дереве пока нет (issue #116). Так что первые аппаратные измерения уже есть: IMU отвечает по адресу 0x6B, а не 0x6A, контроллер тача представляется после импульса сброса, а линии питания прочитаны напрямую. Сама прошивка устройства ещё впереди.</p>
-          <div class="status-actions">
-            <a class="btn primary" href="https://github.com/hleserg/Attadipa/issues" target="_blank" rel="noreferrer"><span class="lang-en">Open work</span><span class="lang-ru">Текущая работа</span> ↗</a>
-            <a class="btn secondary" href="https://github.com/hleserg/Attadipa/blob/main/docs/ROADMAP.md" target="_blank" rel="noreferrer"><span class="lang-en">Roadmap</span><span class="lang-ru">План развития</span></a>
-          </div>
+          <div class="status-label"><span class="lang-en" lang="en">Evidence snapshot · 9 September 2026</span><span class="lang-ru" lang="ru">Срез доказательств · 9 сентября 2026</span></div>
+          <h2><span class="lang-en" lang="en">Real progress.<br>Clear limits.</span><span class="lang-ru" lang="ru">Реальный прогресс.<br>Честные границы.</span></h2>
+          <p class=" lang-en" lang="en">Attadipa has run on real hardware. A browser image, a simulator test and a physical observation still prove different things. This is an early project, not a finished consumer watch.</p>
+          <p class=" lang-ru" lang="ru">Attadipa уже работает на реальном железе. Но картинка в браузере, тест в симуляторе и физическое наблюдение доказывают разное. Это ранний проект, а не готовые потребительские часы.</p>
+          <p class="safety-note"><span class="lang-en" lang="en">Do not rely on it for safety-critical navigation.</span><span class="lang-ru" lang="ru">Не полагайтесь на него в навигации, от которой зависит безопасность.</span></p>
+          <a class="btn secondary" href="https://github.com/hleserg/Attadipa#what-works-today"><span class="lang-en" lang="en">Read the evidence</span><span class="lang-ru" lang="ru">Посмотреть доказательства</span> ↗</a>
         </div>
-        <div class="status-list">
-          <div><span class="ok">✓</span><span class="lang-en">Host libraries &amp; capability model</span><span class="lang-ru">Host-библиотеки и модель возможностей</span></div>
-          <div><span class="ok">✓</span><span class="lang-en">Two-geometry desktop simulator</span><span class="lang-ru">Desktop-симулятор двух геометрий</span></div>
-          <div><span class="ok">✓</span><span class="lang-en">EN/RU localization &amp; font tooling</span><span class="lang-ru">Локализация EN/RU и шрифтовый пайплайн</span></div>
-          <div><span class="ok">✓</span><span class="lang-en">Design tokens, day &amp; night themes</span><span class="lang-ru">Дизайн-токены, дневная и ночная темы</span></div>
-          <div><span class="ok">✓</span><span class="lang-en">First board on the desk, read on silicon</span><span class="lang-ru">Первая плата на столе, прочитана с кремния</span></div>
-          <div><span class="wait">○</span><span class="lang-en">ESP32-S3 device firmware</span><span class="lang-ru">Прошивка для ESP32-S3</span></div>
-          <div><span class="wait">○</span><span class="lang-en">Bring-up: our own firmware driving the board</span><span class="lang-ru">Bring-up: собственная прошивка управляет платой</span></div>
-          <div class="honesty"><strong>NOT EXECUTED — HARDWARE REQUIRED</strong><span class="lang-en"> means exactly that.</span><span class="lang-ru"> здесь означает именно это.</span></div>
+        <div class="evidence-list">
+          <div><strong><span class="lang-en" lang="en">Clock &amp; boot · measured</span><span class="lang-ru" lang="ru">Часы и загрузка · измерено</span></strong><p><span class="lang-en" lang="en">Dated Waveshare bench results: <a href="https://github.com/hleserg/Attadipa/blob/main/docs/hardware/CLOCK_2026-08-26.md">Clock</a> and <a href="https://github.com/hleserg/Attadipa/blob/main/docs/hardware/BRINGUP_2026-08-25.md">boot from flash</a>. Not acceptance of these browser pictures.</span><span class="lang-ru" lang="ru">Стендовые результаты Waveshare: <a href="https://github.com/hleserg/Attadipa/blob/main/docs/hardware/CLOCK_2026-08-26.md">часы</a> и <a href="https://github.com/hleserg/Attadipa/blob/main/docs/hardware/BRINGUP_2026-08-25.md">загрузка из flash</a>. Не приёмка этих браузерных картинок.</span></p></div>
+          <div><strong><span class="lang-en" lang="en">MeshCore · reception measured</span><span class="lang-ru" lang="ru">MeshCore · приём измерен</span></strong><p><span class="lang-en" lang="en">Pairing and received messages on the watch. A debug-command send was confirmed through Heltec V4.3 OLED; T114 delivery was not observed. Not a watch composer. <a href="https://github.com/hleserg/Attadipa/blob/main/docs/research/MESHCORE_T114_FIRST_CONTACT.md">Bench report ↗</a></span><span class="lang-ru" lang="ru">Сопряжение и приём сообщений на часах. Отправка отладочной командой подтверждена через Heltec V4.3 OLED; доставка через T114 не наблюдалась. Это не редактор сообщений. <a href="https://github.com/hleserg/Attadipa/blob/main/docs/research/MESHCORE_T114_FIRST_CONTACT.md">Отчёт ↗</a></span></p></div>
+          <div><strong><span class="lang-en" lang="en">Navigation · not yet established</span><span class="lang-ru" lang="ru">Навигация · ещё не подтверждена</span></strong><p><span class="lang-en" lang="en">Complete remote-contact navigation, a physical compass and an outdoor GNSS fix are not established by the published evidence.</span><span class="lang-ru" lang="ru">Полный путь к удалённому контакту, физический компас и GNSS-фикс на улице опубликованными доказательствами не установлены.</span></p></div>
         </div>
       </div>
     </section>
 
     <section class="section ideas-band" id="ideas">
       <div class="shell ideas-grid">
-        <div class="ideas-art reveal" aria-hidden="true">
-          <img src="assets/mascot.webp" width="660" height="650" loading="lazy" decoding="async" alt="">
-          <div class="idea-orbit o1"></div><div class="idea-orbit o2"></div><div class="idea-orbit o3"></div>
-        </div>
-        <div class="ideas-copy reveal reveal-delay">
-          <span class="kicker lang-en">Community app ideas</span><span class="kicker lang-ru">Идеи приложений от сообщества</span>
-          <h2><span class="lang-en">What should a smartwatch actually do?</span><span class="lang-ru">Что на самом деле должны уметь умные часы?</span></h2>
-          <p class="lang-en">Too many watch apps are phone features squeezed onto a smaller screen. Atta-dipa wants a better question: what is genuinely useful on your wrist — especially when you have seconds to act, no signal, or a group of people to stay connected with?</p>
-          <p class="lang-ru">Слишком многие приложения для часов — это функции телефона, ужатые на маленький экран. Atta-dipa предлагает другой вопрос: что действительно полезно иметь на запястье — особенно когда на действие есть несколько секунд, связи нет или рядом целая группа людей?</p>
-          <p class="lang-en">Meet Lumar, Atta-dipa’s firefly mascot — a small reminder that useful technology can stay warm and human.</p>
-          <p class="lang-ru">Знакомьтесь: Lumar, маскот-светлячок Atta-dipa, — маленькое напоминание, что полезная технология может оставаться тёплой и человечной.</p>
-          <div class="idea-pills">
-            <span><b>↗</b><span class="lang-en">Offline friend coordinates</span><span class="lang-ru">Координаты друзей офлайн</span></span>
-            <span><b>⌖</b><span class="lang-en">Find my camp</span><span class="lang-ru">Вернуться в лагерь</span></span>
-            <span><b>◌</b><span class="lang-en">Group radar</span><span class="lang-ru">Радар группы</span></span>
-            <span><b>＋</b><span class="lang-en">Your idea</span><span class="lang-ru">Ваша идея</span></span>
+        <div class="ideas-art reveal" aria-hidden="true"><img src="assets/mascot.webp" width="660" height="650" loading="lazy" decoding="async" alt=""></div>
+        <div class="ideas-copy reveal">
+          <span class="kicker"><span class="lang-en" lang="en">Built in the open</span><span class="lang-ru" lang="ru">Создаём открыто</span></span>
+          <h2><span class="lang-en" lang="en">Help make it<br>worth wearing.</span><span class="lang-ru" lang="ru">Помогите сделать часы,<br>которые хочется носить.</span></h2>
+          <p class=" lang-en" lang="en">Try the design. Improve a translation. Run the simulator or bring a traceable bench observation. You do not need to own a watch to contribute.</p>
+          <p class=" lang-ru" lang="ru">Попробуйте дизайн. Улучшите перевод. Запустите симулятор или поделитесь проверяемым наблюдением со стенда. Чтобы участвовать, необязательно иметь часы.</p>
+          <div class="hero-actions">
+            <a class="btn primary" href="https://github.com/hleserg/Attadipa/discussions"><span class="lang-en" lang="en">Share an idea</span><span class="lang-ru" lang="ru">Предложить идею</span> ↗</a>
+            <a class="btn secondary" href="https://github.com/hleserg/Attadipa/blob/main/CONTRIBUTING.md"><span class="lang-en" lang="en">How to contribute</span><span class="lang-ru" lang="ru">Как участвовать</span></a>
           </div>
-          <a class="btn primary big" href="https://github.com/hleserg/Attadipa/discussions" target="_blank" rel="noreferrer"><span class="lang-en">Suggest an app in Discussions</span><span class="lang-ru">Предложить приложение в Discussions</span> ↗</a>
-          <p class="queue-note"><span class="lang-en"><strong>Discussions</strong> are the open community space. <strong>Issues</strong> are Atta-dipa's executable engineering queue for maintainers and agents.</span><span class="lang-ru"><strong>Discussions</strong> — открытое место для идей и обсуждений. <strong>Issues</strong> — исполняемая инженерная очередь Atta-dipa для maintainer'ов и агентов.</span></p>
+          <p class="queue-note"><span class="lang-en" lang="en">Discussions are for ideas and questions. Issues are the coordinated work queue; check ownership before starting.</span><span class="lang-ru" lang="ru">Discussions — для идей и вопросов. Issues — согласованная очередь работ; перед началом проверьте, не занята ли задача.</span></p>
+          <a class="text-link" href="https://t.me/skhlebnikov">Telegram · @skhlebnikov ↗</a>
         </div>
       </div>
     </section>
-
-    <section class="section shell contribute">
-      <div class="contribute-card reveal">
-        <div>
-          <span class="kicker lang-en">Built in the open</span><span class="kicker lang-ru">Разработка открыта</span>
-          <h2><span class="lang-en">Research, code, mistakes, measurements — visible.</span><span class="lang-ru">Исследования, код, ошибки и измерения — на виду.</span></h2>
-          <p class="lang-en">Architecture decisions, verified hardware facts, unresolved conflicts, upstream reviews and the roadmap live in the repository. Technical claims are expected to earn their confidence level.</p>
-          <p class="lang-ru">Архитектурные решения, проверенные факты о железе, нерешённые противоречия, upstream-обзоры и план работ живут прямо в репозитории. Техническим утверждениям здесь полагается заслужить свой уровень уверенности.</p>
-          <p class="contact-note lang-en">Want to talk about Atta-dipa, hardware, useful watch apps, or just throw an idea around? I’m happy to chat — <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer">Telegram @skhlebnikov ↗</a></p>
-          <p class="contact-note lang-ru">Хочешь обсудить Atta-dipa, железо, полезные приложения для часов или просто покидаться идеями? Пиши, с удовольствием поболтаю — <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer">Telegram @skhlebnikov ↗</a></p>
-        </div>
-        <div class="contribute-links">
-          <a href="https://github.com/hleserg/Attadipa" target="_blank" rel="noreferrer"><strong>GitHub</strong><span>github.com/hleserg/Attadipa</span><b>↗</b></a>
-          <a href="https://github.com/hleserg/Attadipa/tree/main/docs/research" target="_blank" rel="noreferrer"><strong><span class="lang-en">Research</span><span class="lang-ru">Исследования</span></strong><span>docs/research</span><b>↗</b></a>
-          <a href="https://github.com/hleserg/Attadipa/discussions" target="_blank" rel="noreferrer"><strong>Discussions</strong><span class="lang-en">Ideas & questions</span><span class="lang-ru">Идеи и вопросы</span><b>↗</b></a>
-          <a href="https://t.me/skhlebnikov" target="_blank" rel="noreferrer"><strong>Telegram · @skhlebnikov</strong><span class="lang-en">Come say hi and talk Atta-dipa</span><span class="lang-ru">Написать мне и поболтать про Atta-dipa</span><b>↗</b></a>
-        </div>
+    <section class="section shell closing">
+      <div>
+        <h2><span class="lang-en" lang="en">Make your own light.</span><span class="lang-ru" lang="ru">Свой собственный свет.</span></h2>
+        <p class=" lang-en" lang="en">Attadīpa: relying on oneself, an island and a refuge. Lumar, our firefly, makes its own light.</p>
+          <p class=" lang-ru" lang="ru">Attadīpa: опирающийся на себя, остров и прибежище. Наш светлячок Люмар светит сам.</p>
+        <a class="text-link" href="ui/prototype/"><span class="lang-en" lang="en">Take a look around the watch</span><span class="lang-ru" lang="ru">Посмотреть интерфейс часов</span> ↗</a>
       </div>
+      <img src="assets/banner.webp" width="1774" height="887" loading="lazy" decoding="async" alt="Atta-dipa · Independent by design">
     </section>
   </main>
 
   <footer class="footer">
     <div class="shell footer-inner">
       <div class="footer-brand"><img src="assets/favicon.png" width="28" height="28" alt="" loading="lazy" decoding="async"><span>Atta-dipa</span><small>Independent by design</small></div>
-      <p><span class="lang-en">Open source under GPL-3.0-or-later. Early development — claims on this page describe both current state and explicit product goals as labelled.</span><span class="lang-ru">Открытый проект под лицензией GPL-3.0-or-later. Разработка на раннем этапе: на странице отдельно описаны текущее состояние и заявленные цели продукта.</span></p>
+      <p><span class="lang-en">Open source under <a href="https://github.com/hleserg/Attadipa/blob/main/LICENSE">GPL-3.0-or-later</a>. Early development — claims on this page describe both current state and explicit product goals as labelled.</span><span class="lang-ru">Открытый проект под лицензией <a href="https://github.com/hleserg/Attadipa/blob/main/LICENSE">GPL-3.0-or-later</a>. Разработка на раннем этапе: на странице отдельно описаны текущее состояние и заявленные цели продукта.</span></p>
       <a href="#top"><span class="lang-en">Back to top</span><span class="lang-ru">Наверх</span> ↑</a>
     </div>
   </footer>

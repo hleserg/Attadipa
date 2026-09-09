@@ -6,7 +6,41 @@ repository's own metadata. This file is the record: what the state was, what
 changed, and — the part that matters more — the claims that were **not** made
 because they are not true yet.
 
-## 0. The constraint this whole document works under
+## Current publication — 9 September 2026
+
+The Pages refresh in issue #511 follows the product introduction in README
+PR #512. Its first screen shows the approved Clock, Direction and Mesh browser
+captures, explicitly labelled sample data rather than firmware screenshots.
+The primary action opens the existing interactive study; Shell Study 03 has a
+separate link for applications and Settings.
+
+The current evidence section links dated physical Clock, boot and MeshCore
+reports. It does not promise a complete composer, remote-contact navigation,
+a physical compass, outdoor GNSS fix, recorder, phone pairing or app SDK.
+Static head strings, English JSON-LD and the EN/RU runtime metadata were updated
+together. The canonical URL and English graph policy below are unchanged.
+
+The page now loads the existing local Nunito Sans file with font-display swap;
+this replaces the earlier system-font-only choice. No third-party font service,
+script, analytics or new deployment system was added. The browser may briefly
+show its fallback font. The language CSS hides the inactive locale regardless
+of component display rules; with scripting disabled both languages remain
+readable and the nonfunctional language buttons are hidden.
+
+Twelve unchanged PNG copies in docs/assets are served by Pages, because root
+pics/ is outside its docs/ publishing directory. Their source, dates, hashes
+and native geometry remain canonical in
+[pics/README.md](../../pics/README.md#browser-design-study-captures).
+[The site media note](MEDIA.md) records the copying rule. Existing original
+brand artwork is retained; the banner now appears in the closing section.
+
+Sections 0–6 below preserve the **23 August audit and its rationale**, not the
+current first-screen text or readiness. In particular their old “firmware has
+not run” caveat and “Useful when your phone isn't” headline are historical.
+The file-size/image checks described in section 7 still run against the actual
+files; the redesign does not imply a new hardware PASS.
+
+## 0. The constraint the August audit worked under
 
 Attadipa is at early implementation. Six libraries and a simulator build and
 pass 24 host tests; **the firmware has not run on a board yet — only bench
@@ -373,9 +407,9 @@ Worth recording so nobody "fixes" it:
   pull request that never opened this file. A check that goes red for a true
   statement gets edited until it stops. What this section claims is that the
   page ships a small amount of first-party code; the bound is that claim, and
-  crossing it is a finding rather than a rounding. No web fonts are loaded at all — the type stack
-  is `"Nunito Sans", "Avenir Next", system-ui, …`, so there is no render-blocking
-  font fetch and no CLS from a swap. No third-party scripts, no analytics, no
+  crossing it is a finding rather than a rounding. At audit time no web fonts were loaded — the type stack
+  was `"Nunito Sans", "Avenir Next", system-ui, …`. The September refresh loads
+  the existing local Nunito font with swap, as recorded above. No third-party scripts, no analytics, no
   cookie banner.
 - **Theme.** `color-scheme: light dark` and a `theme-color` are both declared.
 
