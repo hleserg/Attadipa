@@ -50,9 +50,10 @@ void hide(lv_obj_t *object) { lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN); }
 // hand and gets it about right, but it is the arithmetic `Metrics` exists to
 // do, and `tools/ui/check_raw_values.py` cannot see inside a ternary to say so.
 // Integer `Dp` has no way to write 1.5 dp, so the halving is done in pixels
-// after the scaling, which is how `ui/lvgl/provision_face.cpp:110` —
-// "  lv_obj_set_style_text_letter_space(value_, m.px(dp_of(Space::Xs)) / 2,"
-// already writes the same tracking.
+// after the scaling rather than before it -- `m.px()` first, then `/ 2`.
+// This used to cite the same shape in `provision_face.cpp`; that call went
+// with the entry screen's rewrite in #469, so the reason is written here
+// instead of pointed at.
 std::int32_t stroke(const Metrics &m) { return m.px(Dp{3}) / 2; }
 
 std::int32_t tracking_wide(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 2; }
@@ -100,7 +101,7 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   // from the entry screen left the provisioning keypad parented underneath,
   // invisible under the new paint and still CLICKABLE, eating the tap that
   // turns the page. Every other face cleans what it is given for the same
-  // reason (`ui/lvgl/provision_face.cpp:59` — "  lv_obj_clean(screen);").
+  // reason (`ui/lvgl/provision_face.cpp:73` — "  lv_obj_clean(screen);").
   lv_obj_clean(screen_);
 
   // The screen object outlives every face and carries the last one's styles
