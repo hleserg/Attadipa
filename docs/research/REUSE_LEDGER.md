@@ -2547,7 +2547,7 @@ table as source-pinned board data **if and only if** the experiment proves it
 necessary; `REJECT` every vendor BSP as a link-time dependency.
 
 **Reason:** the shipping tree already exposes the right seam —
-`waveshare_board.cpp:131-135` — "esp_lcd_panel_handle_t panel" — hands on an
+`waveshare_board.cpp:132-136` — "esp_lcd_panel_handle_t panel" — hands on an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, and
 `physical_input.cpp:523` — "start_physical_input(esp_lcd_touch_handle_t touch"
 — takes exactly those.
@@ -2855,7 +2855,7 @@ a source, because it is not one.
 **Reason.** This is the rare case where the reuse question answers itself: the
 bytes arrive inside `RESP_CODE_CONTACT`, the session already validates all 148
 of them —
-`link/src/meshcore_companion.cpp:687` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+`link/src/meshcore_companion.cpp:786` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 and reads two fields out of it. Adding a dependency to obtain the other two
 would import a client's failure model to avoid writing an offset. The scaling is
 integer: the wire is `e6` and

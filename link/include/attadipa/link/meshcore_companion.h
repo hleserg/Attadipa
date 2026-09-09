@@ -230,6 +230,8 @@ private:
     bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);
     const core::MeshPeer* find_peer_prefix(const std::uint8_t* prefix) const;
+    void fail_battery_request(bool ambiguous_error);
+    void invalidate_node_battery();
 
     // Liveness zero: disabled. BLE reports connection and disconnection, so a
     // silence timer would only invent a second, worse answer to a question the
@@ -256,6 +258,18 @@ private:
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
+    enum class BatteryRequest : std::uint8_t { Idle, Queued, Waiting };
+    BatteryRequest battery_request_ = BatteryRequest::Idle;
+    core::MonotonicTime battery_started_{};
+    core::MonotonicTime poll_now_{};
+    bool battery_polled_ = false;
+    bool battery_due_ = false;
+    // An identity change within a connection cannot correlate an old voltage
+    // reply. A new transport session is required before polling again.
+    bool battery_identity_blocked_ = false;
+    // ERR carries no request id. After a timeout, typed responses and the
+    // existing send deadline decide delivery until the connection resets.
+    bool battery_errors_ambiguous_ = false;
     // A CMD_SYNC_NEXT_MESSAGE is outstanding, so the node is already going
     // to hand over what it has and a second ask would only fill the ring
     // with commands whose answers are on their way. Cleared by

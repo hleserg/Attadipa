@@ -1,6 +1,7 @@
 #pragma once
 
 #include "attadipa/platform/board_profile.h"
+#include "attadipa/core/mesh_service.h"
 #include "attadipa/ui/color.h"
 
 namespace attadipa::sim {
@@ -18,6 +19,7 @@ namespace attadipa::sim {
 // key identifies one physical node on somebody's bench and does not belong in a
 // public repository, so nothing here is a key that has ever been on the air.
 bool stage_mesh_scenario(const char *name);
+const core::MeshStatus &staged_mesh_status();
 
 // Draw the staged state for this board, in this theme, and say what `T` does.
 void build_mesh_screen_sim(const platform::BoardProfile &board, ui::Theme theme);

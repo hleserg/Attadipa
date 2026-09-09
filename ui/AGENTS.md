@@ -21,13 +21,13 @@ authority this file points at rather than repeats.
   and the price is usually the layout, not the token.** The entry screen used
   to cap its key at the touch minimum and land under it, because fourteen keys
   do not fit a 240 px panel at any cell size. Six do, at the full target:
-  `ui/lvgl/provision_face.cpp:117` — "  // Six keys, not fourteen, so a key can be a full touch target on both".
+  `ui/lvgl/provision_face.cpp:121` — "  // Six keys, not fourteen, so a key can be a full touch target on both".
   Name the constraint that won, in the file that loses -- and check first
   whether the count is what has to lose.
 - **An undefined colour resolves to black, in four separate copies.**
   `ui/src/color.cpp:113` — "    return e.kind == ColorKind::Foreground ? e.day : std::nullopt;" — returns
   no night value for a background on purpose, and most faces' local `resolved()`
-  helper turns that `nullopt` into black: `ui/lvgl/mesh_face.cpp:13` —
+  helper turns that `nullopt` into black: `ui/lvgl/mesh_face.cpp:15` —
   "  return value ? lv_color_hex(value->packed()) : lv_color_black();". So a role you forget to define does not fail
   the build, it paints a black rectangle. The entry screen is the one that
   does not: its helper takes the fallback as an argument, so every caller has
@@ -43,16 +43,16 @@ authority this file points at rather than repeats.
   `docs/ui/DESIGN_SYSTEM.md:143` — "**Night** — there is no raised layer; §3.1 records that gap." —
   so a night ratio is always a surface or page one.) An accepted state is a ring or a check, not green text.
   And the spacing family is itself unverified at the small size:
-  `docs/ui/DESIGN_SYSTEM.md:225` — "**proposed** and none has been checked at 240 × 240."
+  `docs/ui/DESIGN_SYSTEM.md:240` — "**proposed** and none has been checked at 240 × 240."
 - **LVGL's three label traps, all three already paid for.**
   `LV_LABEL_LONG_DOT` ellipsises only where the height is FIXED — with the
   height left at content the label grows downward through whatever is beneath
-  it: `ui/lvgl/mesh_face.cpp:315` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
+  it: `ui/lvgl/mesh_face.cpp:319` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
   **A label created bare is that same trap with nothing to read.** There is no
   long-mode call to find, and the default is content height with
   `LV_LABEL_LONG_WRAP`, so one line break in text that arrived off the link
   grows the row — a short name, not a long one:
-  `ui/lvgl/mesh_face.cpp:273` — "    // content height and `LV_LABEL_LONG_WRAP`, so a name carrying a line break".
+  `ui/lvgl/mesh_face.cpp:277` — "    // content height and `LV_LABEL_LONG_WRAP`, so a name carrying a line break".
   This is the one that was missing here, and #475 paid for it a third time.
   `LV_LABEL_LONG_CLIP` on a centred label clips *both* ends. The entry screen
   used to lose a hint's first word as well as its last that way and now wraps

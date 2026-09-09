@@ -18,12 +18,15 @@
 #include "attadipa/ui/tokens.h"
 
 #include "review_keys.h"
+#include "attadipa/ui/status_frame.h"
+#include "mesh_screen.h"
 
 namespace attadipa::sim {
 namespace {
 
 using namespace attadipa;
 
+ui::StatusFrame g_frame;
 ui::ClockFace g_clock_face;
 ui::ClockFaceConfig g_clock_config;
 apps::ClockState g_clock_state;
@@ -107,7 +110,15 @@ ui::ProvisionFaceConfig g_provision_config;
 
 void rebuild_provision_screen() {
   g_provision_config.locale = l10n::locale();
-  g_provision_face.build(lv_screen_active(), g_provision_config, *g_entry);
+  g_provision_face.clear();
+  g_frame.build(lv_screen_active(), {g_provision_config.width_px,
+                g_provision_config.height_px, g_provision_config.theme,
+                g_provision_config.pixel_cost, g_provision_config.metrics});
+  auto content = g_provision_config;
+  content.height_px = g_frame.content_height();
+  g_provision_face.build(g_frame.content(), content, *g_entry);
+  g_frame.restore_content_geometry();
+  g_frame.update(apps::format_mesh(staged_mesh_status(), l10n::locale()));
 }
 
 // What `T` does to each of the two faces this file owns the config of.
@@ -223,9 +234,16 @@ void build_clock_screen(const platform::BoardProfile &board, ui::Theme theme,
 
 void rebuild_clock_screen() {
   g_clock_state.locale = l10n::locale();
-  g_clock_face.build(
-      lv_screen_active(), g_clock_config,
+  g_clock_face.clear();
+  g_frame.build(lv_screen_active(), {g_clock_config.width_px,
+                g_clock_config.height_px, g_clock_config.theme,
+                g_clock_config.pixel_cost, g_clock_config.metrics});
+  auto content = g_clock_config;
+  content.height_px = g_frame.content_height();
+  g_clock_face.build(g_frame.content(), content,
       apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
+  g_frame.restore_content_geometry();
+  g_frame.update(apps::format_mesh(staged_mesh_status(), l10n::locale()));
 }
 
 void enter_provisioning(apps::EntryTask task) {

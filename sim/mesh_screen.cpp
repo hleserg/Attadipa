@@ -12,12 +12,14 @@
 #include "attadipa/ui/metrics.h"
 
 #include "review_keys.h"
+#include "attadipa/ui/status_frame.h"
 
 namespace attadipa::sim {
 namespace {
 
 using namespace attadipa;
 
+ui::StatusFrame g_frame;
 ui::MeshFace g_face;
 ui::MeshFaceConfig g_config;
 core::MeshStatus g_status;
@@ -58,12 +60,18 @@ void with_session(core::MeshStatus &status) {
   status.has_snr = true;
   status.peers_reported = 3;
   status.mtu = 244;
+  status.node_battery.millivolts = 3700;
+  status.node_battery.validity = core::Validity::Valid;
+  status.node_battery.received_at = core::MonotonicTime{1000};
 }
 
 } // namespace
 
+const core::MeshStatus &staged_mesh_status() { return g_status; }
+
 bool stage_mesh_scenario(const char *name) {
   g_status = core::MeshStatus{};
+  g_status.node_battery.separate_supply = true;
 
   if (std::strcmp(name, "unprovisioned") == 0) {
     g_status.availability = core::Availability::Unprovisioned;
@@ -77,7 +85,11 @@ bool stage_mesh_scenario(const char *name) {
   } else if (std::strcmp(name, "connecting") == 0) {
     g_status.availability = core::Availability::Unreachable;
     g_status.transport = core::TransportPhase::Connecting;
-  } else if (std::strcmp(name, "ready") == 0) {
+  } else if (std::strcmp(name, "battery-unknown") == 0 ||
+             std::strcmp(name, "battery-stale") == 0 ||
+             std::strcmp(name, "battery-low") == 0 ||
+             std::strcmp(name, "integrated") == 0 ||
+             std::strcmp(name, "ready") == 0) {
     g_status.availability = core::Availability::Ready;
     g_status.transport = core::TransportPhase::Ready;
     with_session(g_status);
@@ -103,9 +115,22 @@ bool stage_mesh_scenario(const char *name) {
     std::fprintf(stderr,
                  "unknown --mesh-state '%s'\n"
                  "known: unprovisioned absent attached connecting ready "
-                 "suspended faulted refused\n",
+                 "suspended faulted refused battery-unknown battery-stale "
+                 "battery-low integrated\n",
                  name);
     return false;
+  }
+  if (std::strcmp(name, "battery-unknown") == 0) {
+    g_status.node_battery.millivolts = 0;
+    g_status.node_battery.validity = core::Validity::Unknown;
+    g_status.node_battery.received_at = {};
+  } else if (std::strcmp(name, "battery-stale") == 0) {
+    g_status.node_battery.validity = core::Validity::Stale;
+  } else if (std::strcmp(name, "battery-low") == 0) {
+    // A reported low voltage, not a fabricated state-of-charge threshold.
+    g_status.node_battery.millivolts = 3000;
+  } else if (std::strcmp(name, "integrated") == 0) {
+    g_status.node_battery = {};
   }
   return true;
 }
@@ -127,8 +152,15 @@ void build_mesh_screen_sim(const platform::BoardProfile &board, ui::Theme theme)
 void rebuild_mesh_screen() {
   // The locale is read at the rebuild, the way the clock and the readout do it,
   // so `L` at runtime switches this screen too.
-  g_face.build(lv_screen_active(), g_config,
-               apps::format_mesh(g_status, l10n::locale()));
+  const auto text = apps::format_mesh(g_status, l10n::locale());
+  g_face.clear();
+  g_frame.build(lv_screen_active(), {g_config.width_px, g_config.height_px,
+                g_config.theme, g_config.pixel_cost, g_config.metrics});
+  auto content = g_config;
+  content.height_px = g_frame.content_height();
+  g_face.build(g_frame.content(), content, text);
+  g_frame.restore_content_geometry();
+  g_frame.update(text);
 }
 
 } // namespace attadipa::sim
