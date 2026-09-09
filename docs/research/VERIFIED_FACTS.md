@@ -2875,7 +2875,7 @@ ones that heading states.
   with `firmware/main/physical_input.cpp:44` — "constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;".
   Searching only the first helper is how an earlier revision of this list
   missed it. The only `0x16` literals anywhere in `firmware/` are a Waveshare
-  panel column offset, `firmware/main/waveshare_board.cpp:72` — "constexpr int kPanelGapX = 0x16;".
+  panel column offset, `firmware/main/waveshare_board.cpp:73` — "constexpr int kPanelGapX = 0x16;".
   The actual `REG 0x16` setting during this capture was not recorded and
   remains **`UNKNOWN`**; the power-on default is not a measurement of it.
   What the source and cable could deliver through the micro-USB adapter was
