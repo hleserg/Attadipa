@@ -45,6 +45,7 @@
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/status_frame.h"
 #include "attadipa/ui/mesh_face.h"
 #include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
@@ -138,6 +139,7 @@ struct BoardState {
   esp_lcd_panel_io_handle_t touch_io = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
+  attadipa::ui::StatusFrame status_frame;
   attadipa::ui::ClockFace clock_face;
   attadipa::ui::ProvisionFace provision_face;
   // Present while the entry screen is up; a fresh one for each visit, so a
@@ -888,7 +890,6 @@ void show_page(Page next) {
   state.page = next;
 }
 
-#if CONFIG_BT_NIMBLE_ENABLED
 // The panel's density, for the two faces that ask for it. One lookup, because
 // two copies of it are two places to forget the null check.
 unsigned panel_dpi() {
@@ -897,8 +898,26 @@ unsigned panel_dpi() {
   return profile != nullptr ? profile->display.dpi() : 0;
 }
 
+void refresh_status() {
+  attadipa::core::MeshStatus status{};
+#if CONFIG_BT_NIMBLE_ENABLED
+  status = meshcore_ble_status();
+#endif
+  state.status_frame.update(
+      attadipa::apps::format_mesh(status, attadipa::l10n::locale()));
+}
+
+void build_status_frame() {
+  state.status_frame.build(lv_screen_active(),
+      {kWidth, kHeight, attadipa::ui::Theme::Night,
+       attadipa::ui::PixelCost::PerPixel,
+       attadipa::ui::Metrics::for_dpi(panel_dpi())});
+  refresh_status();
+}
+
+#if CONFIG_BT_NIMBLE_ENABLED
 attadipa::ui::MeshFaceConfig mesh_config() {
-  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+  return {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
           attadipa::ui::PixelCost::PerPixel,
           attadipa::ui::Metrics::for_dpi(panel_dpi())};
 }
@@ -916,7 +935,9 @@ void refresh_mesh() {
   // fact. The four label pointers this replaced were a second copy.
   if (!state.mesh_face.built()) {
     show_page(Page::Mesh);
-    state.mesh_face.build(lv_screen_active(), mesh_config(), text);
+    build_status_frame();
+    state.mesh_face.build(state.status_frame.content(), mesh_config(), text);
+    state.status_frame.restore_content_geometry();
     return;
   }
   state.mesh_face.update(text);
@@ -925,7 +946,7 @@ void refresh_mesh() {
 
 #if CONFIG_BT_NIMBLE_ENABLED
 attadipa::ui::NavFaceConfig nav_config() {
-  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+  return {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
           attadipa::ui::PixelCost::PerPixel,
           attadipa::ui::Metrics::for_dpi(panel_dpi())};
 }
@@ -938,7 +959,7 @@ void refresh_nav() {
   attadipa::apps::NavState nav;
   // The same locale the clock takes, and from the same place, so the two pages
   // of one watch never disagree about their language.
-  nav.locale = attadipa::l10n::Locale::En;
+  nav.locale = attadipa::l10n::locale();
   nav.target = meshcore_ble_location();
   // Two positions, two instances of one class, and neither knows about the
   // other. `own` comes from the receiver on this board's pads and carries a
@@ -958,7 +979,9 @@ void refresh_nav() {
   if (state.nav_face.built()) {
     state.nav_face.update(text);
   } else {
-    state.nav_face.build(lv_screen_active(), nav_config(), text);
+    build_status_frame();
+    state.nav_face.build(state.status_frame.content(), nav_config(), text);
+    state.status_frame.restore_content_geometry();
   }
 }
 
@@ -1003,12 +1026,15 @@ void node_page_turn(lv_event_t *) {
 void build_clock_screen() {
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
-  state.clock_face.build(lv_screen_active(),
-                         {kWidth, kHeight, attadipa::ui::Theme::Night,
+  state.clock_face.clear();
+  build_status_frame();
+  state.clock_face.build(state.status_frame.content(),
+                         {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
                           attadipa::ui::PixelCost::PerPixel,
                           attadipa::ui::Metrics::for_dpi(
                               profile != nullptr ? profile->display.dpi() : 0)},
                          clock_text());
+  state.status_frame.restore_content_geometry();
 }
 
 // A long press on the clock opens the entry screen. It is on the screen
@@ -1054,14 +1080,16 @@ void long_press(lv_event_t *) {
   // this flow had before the model was split, and it goes when the entry
   // screen gets its chooser (#469).
   state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);
+  build_status_frame();
   state.provision_face.build(
-      lv_screen_active(),
-      {kWidth, kHeight, attadipa::ui::Theme::Night,
+      state.status_frame.content(),
+      {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
        attadipa::ui::PixelCost::PerPixel,
        attadipa::ui::Metrics::for_dpi(profile != nullptr ? profile->display.dpi()
                                                           : 0),
-       attadipa::l10n::Locale::En},
+       attadipa::l10n::locale()},
       *state.entry);
+  state.status_frame.restore_content_geometry();
 }
 
 void refresh_ui(lv_timer_t *timer) {
@@ -1077,6 +1105,7 @@ void refresh_ui(lv_timer_t *timer) {
   // NeedsAttention with a node attached, which is a lie about state rather
   // than a missing feature.
   refresh_node_link();
+  refresh_status();
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
     // The node pages clean the LVGL screen under whatever is on it. An entry

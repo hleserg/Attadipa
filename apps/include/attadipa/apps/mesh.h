@@ -98,6 +98,11 @@ struct MeshText {
     bool has_signal  = false;
     bool has_snr     = false;
     bool has_mtu     = false;
+
+    // Shared active-screen status. No watch battery producer is bound yet.
+    // Empty node_power means one integrated supply; unknown is a visible word.
+    char watch_power[24] = "";
+    char node_power[40] = "";
 };
 
 // How many segments the channel is drawn in. Five, because the lit count has to

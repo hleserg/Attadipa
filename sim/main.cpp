@@ -201,6 +201,9 @@ int main(int argc, char **argv) {
   l10n::set_locale_changed_handler(attadipa::sim::rebuild_boot_screen);
   l10n::set_locale(options.locale);
 
+  if (!attadipa::sim::stage_mesh_scenario(options.mesh_state)) {
+    return 2;
+  }
   attadipa::sim::set_theme(options.theme);
   if (options.diagnostic_screen) {
     // The test pattern replaces the capability screen rather than sitting
@@ -218,9 +221,6 @@ int main(int argc, char **argv) {
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_nav_screen);
     attadipa::sim::build_nav_screen(options.board, options.theme);
   } else if (options.mesh_screen) {
-    if (!attadipa::sim::stage_mesh_scenario(options.mesh_state)) {
-      return 2;
-    }
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_mesh_screen);
     attadipa::sim::build_mesh_screen_sim(options.board, options.theme);
   } else if (options.clock_screen || options.provision_screen) {

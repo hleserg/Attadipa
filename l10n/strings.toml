@@ -905,3 +905,21 @@ ru = "доставлено"
 [mesh_delivery_failed]
 en = "failed"
 ru = "не доставлено"
+
+
+# Shared status: no inferred percentage or charging state from node voltage.
+[status_watch_unknown]
+en = "Watch —"
+ru = "Часы —"
+
+[status_node_unknown]
+en = "Node —"
+ru = "Нода —"
+
+[status_node_voltage]
+en = "Node %u.%03u V"
+ru = "Нода %u,%03u В"
+
+[status_node_stale]
+en = "Node old"
+ru = "Нода уст."

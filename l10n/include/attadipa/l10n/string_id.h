@@ -200,9 +200,13 @@ enum class StringId : std::uint16_t {
     ProvisionTitleReview = 182,
     ProvisionTitleYear = 183,
     RadioChipUnknown = 184,
-    Yes = 185,
+    StatusNodeStale = 185,
+    StatusNodeUnknown = 186,
+    StatusNodeVoltage = 187,
+    StatusWatchUnknown = 188,
+    Yes = 189,
 };
-inline constexpr std::uint16_t kStringIdCount = 186;
+inline constexpr std::uint16_t kStringIdCount = 190;
 
 // Counted strings are a separate type on purpose. `tr(StringId)` on an entry
 // that needs a number, or `tr_plural` on one that does not, is then a compile
