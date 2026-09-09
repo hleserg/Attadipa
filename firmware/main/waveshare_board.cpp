@@ -34,13 +34,16 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
+#include "attadipa/apps/app_registry.h"
 #include "attadipa/apps/clock.h"
 #include "attadipa/apps/mesh.h"
 #include "attadipa/apps/navigation.h"
 #include "attadipa/apps/provisioning.h"
+#include "attadipa/core/capability_registry.h"
 #include "attadipa/core/time_service.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
+#include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/ui/clock_face.h"
 #include "attadipa/ui/mesh_face.h"
 #include "attadipa/ui/nav_face.h"
@@ -767,11 +770,105 @@ attadipa::apps::ClockText clock_text() {
   return attadipa::apps::format_clock(clock, false);
 }
 
+// The slowest this board will let its one UI timer run.
+//
+// Not a preference: `refresh_ui()` drains the GNSS UART ring on every tick,
+// above every early return, whatever page is up. So an application's declared
+// cadence is spent through `apps::ui_period()` and clamped here rather than
+// used raw -- a manifest asking for 5 s would leave the ring unread for 5 s,
+// and a manifest asking for nothing at all would stop the timer.
+constexpr attadipa::core::Millis kBoardTickPeriod{1000};
+
+#if CONFIG_BT_NIMBLE_ENABLED
+// The node readout has no manifest, so its cadence stays a board number. It
+// arrived with the first physical contact over BLE (#297) and the navigation
+// page inherited it only by sharing this branch; navigation declares its own
+// 1000 ms and now gets it.
+constexpr attadipa::core::Millis kMeshPagePeriod{500};
+#endif
+
+// This board's capability registry, and the first one in this firmware.
+//
+// `apps::launcher_entry()` needs something to ask, and until now nothing on a
+// device had one: ADR-0007's availability rule was implemented, tested, and
+// unreachable from anything that runs on a board. Static storage, no heap and
+// no new task. It answers null when this build has no profile, because a
+// registry over a profile that is not there would answer confidently about a
+// board it cannot describe.
+attadipa::core::CapabilityRegistry *board_capabilities() {
+  static const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  if (profile == nullptr) {
+    return nullptr;
+  }
+  static attadipa::platform::ProfileInventory inventory(*profile);
+  static attadipa::core::CapabilityRegistry caps(inventory);
+  return &caps;
+}
+
+// What a bound node is worth to the capability layer.
+//
+// No new task, queue or atomic crosses a boundary for this: `meshcore_ble_status()`
+// is already read on the LVGL task by the mesh page, and this is the same read.
+//
+// `provides` is the stable question ADR-0007 splits out -- what a node of this
+// kind can offer at all, not what it managed this second. Messaging, because
+// the link itself is the evidence; and Position, because a MeshCore node
+// reports its own coordinate and `meshcore_ble_location()` is where the nav
+// page already takes it from. Not Heading: nothing reads a compass on the node,
+// and claiming one would be exactly the kind of confident answer about an
+// unknown that this project refuses to give.
+void refresh_node_link() {
+  attadipa::core::CapabilityRegistry *caps = board_capabilities();
+  if (caps == nullptr) {
+    return;
+  }
+  attadipa::core::NodeLink link;
+#if CONFIG_BT_NIMBLE_ENABLED
+  const attadipa::core::MeshStatus status = meshcore_ble_status();
+  link.bound = status.has_pinned || status.has_node_id;
+  link.reachable = status.availability == attadipa::core::Availability::Ready;
+  link.compatible = true;
+  link.provides =
+      attadipa::core::capability_bit(attadipa::core::Capability::MeshMessaging) |
+      attadipa::core::capability_bit(attadipa::core::Capability::Position);
+#endif
+  caps->set_node_link(link);
+}
+
+// ADR-0007 §3, asked of the pages that have a manifest to ask about. The node
+// readout has none yet, and a page with no manifest is not gated on one.
+const attadipa::apps::AppManifest *manifest_for(Page page) {
+  switch (page) {
+  case Page::Clock:
+    return &attadipa::apps::clock_manifest();
+  case Page::Nav:
+    return &attadipa::apps::navigation_manifest();
+  default:
+    return nullptr;
+  }
+}
+
+// Whether this board offers a page at all. False only when a required
+// capability is Unsupported here -- no configuration of this device would
+// change the answer, so opening it would be a promise the hardware cannot keep.
+bool page_is_offered(Page page) {
+  const attadipa::apps::AppManifest *manifest = manifest_for(page);
+  attadipa::core::CapabilityRegistry *caps = board_capabilities();
+  if (manifest == nullptr || caps == nullptr) {
+    return true;
+  }
+  return attadipa::apps::launcher_entry(*manifest, *caps) !=
+         attadipa::apps::LauncherEntry::Hidden;
+}
+
 void refresh_clock(lv_timer_t *timer) {
   state.clock_face.update(clock_text());
   if (timer != nullptr) {
     lv_timer_set_period(timer,
-                        attadipa::apps::clock_manifest().tick_period.value);
+                        attadipa::apps::ui_period(
+                            attadipa::apps::clock_manifest(), kBoardTickPeriod)
+                            .value);
   }
 }
 
@@ -881,9 +978,20 @@ void node_page_turn(lv_event_t *) {
   if (state.page != Page::Mesh && state.page != Page::Nav) {
     return;
   }
-  show_page(state.page == Page::Nav ? Page::Mesh : Page::Nav);
+  const Page next = state.page == Page::Nav ? Page::Mesh : Page::Nav;
+  // The launcher's rule, at the one place a person reaches a second page: a
+  // page this board can never run is not turned to. Refusing here rather than
+  // inside `show_page()` is deliberate -- `refresh_nav()` calls that and then
+  // draws unconditionally, so a refusal in there would leave a face building
+  // onto a screen another face still owns.
+  if (!page_is_offered(next)) {
+    ESP_LOGW(kTag, "%s is not offered on this board", manifest_for(next)->id);
+    return;
+  }
+  show_page(next);
   // Draw here, not on the next tick. `show_page()` has just emptied the screen
-  // and the node pages tick at 500 ms, so returning without drawing shows a
+  // and the node pages tick at half a second or a second, so returning
+  // without drawing shows a
   // bare background for up to half a second -- which on a watch that used to
   // reboot reads as a crash. Both are idempotent: `refresh_mesh()` builds only
   // when its labels are gone, `refresh_nav()` only when the face is not built.
@@ -940,6 +1048,12 @@ void refresh_ui(lv_timer_t *timer) {
   // navigated to it. It is a no-op when the feature is off or the port never
   // opened.
   attadipa::firmware::local_gnss_tick();
+  // And second, for the same reason: what the capability layer knows about the
+  // node has to be true on every page, not only on the one that shows it. A
+  // registry stood up and never told the link state would answer
+  // NeedsAttention with a node attached, which is a lie about state rather
+  // than a missing feature.
+  refresh_node_link();
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
     // The node pages clean the LVGL screen under whatever is on it. An entry
@@ -955,7 +1069,15 @@ void refresh_ui(lv_timer_t *timer) {
       refresh_mesh();
     }
     if (timer != nullptr) {
-      lv_timer_set_period(timer, 500);
+      // Each page's own cadence, rather than one number for both: navigation
+      // declares 1000 ms and had been running at the node readout's 500.
+      lv_timer_set_period(
+          timer, state.page == Page::Nav
+                     ? attadipa::apps::ui_period(
+                           attadipa::apps::navigation_manifest(),
+                           kBoardTickPeriod)
+                           .value
+                     : kMeshPagePeriod.value);
     }
     return;
   }
@@ -1093,8 +1215,14 @@ void create_ui() {
   lv_obj_add_event_cb(lv_screen_active(), node_page_turn,
                       LV_EVENT_SHORT_CLICKED, nullptr);
 #endif
+  // The clock is the first page, so it is the first cadence. Every later
+  // period comes from whichever manifest is on screen, in `refresh_ui()`.
   state.ui_timer = lv_timer_create(
-      refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
+      refresh_ui,
+      attadipa::apps::ui_period(attadipa::apps::clock_manifest(),
+                                kBoardTickPeriod)
+          .value,
+      nullptr);
 }
 
 // One teardown step: issue it, keep the first failure, and null the handle

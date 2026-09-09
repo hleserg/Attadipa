@@ -17,6 +17,15 @@ target_link_libraries(test_capability_registry PRIVATE
 )
 add_test(NAME capability_registry COMMAND test_capability_registry)
 
+# The registry a composition root iterates, and the cadence it spends.
+add_executable(test_app_registry test_app_registry.cpp)
+target_link_libraries(test_app_registry PRIVATE
+    attadipa_platform
+    attadipa_core
+    attadipa_apps
+)
+add_test(NAME app_registry COMMAND test_app_registry)
+
 # ---------------------------------------------------------------------------
 # The layer boundary, checked rather than trusted.
 #
