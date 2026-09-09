@@ -44,10 +44,16 @@ the cited lines:
 | `OFFLINE_QUEUE_SIZE` defaults to 16 | `examples/companion_radio/MyMesh.h:62-63` |
 | the telemetry permission gate and its requester-supplied inverse mask | `examples/companion_radio/MyMesh.cpp:628-672` |
 | `PUSH_CODE_TELEMETRY_RESPONSE` frame layout | `examples/companion_radio/MyMesh.cpp:728-735` |
+| `CMD_GET_BATT_AND_STORAGE` (20) and the 11 bytes of its reply — §5.1 | `examples/companion_radio/MyMesh.cpp:1472-1483` |
+| the three `txt_type` values and which command accepts which — §5.2 | `src/helpers/TxtDataHelpers.h:6-8`; `examples/companion_radio/MyMesh.cpp:1095,1140` |
 
-Ten spot-checks, ten agreements — including one place where the prose needed
-correcting (§4.3, the reserved byte). Everything **not** in that table rests on
-the agents' quoted evidence and has not been independently audited. It is
+The first ten rows are spot-checks against the agent run: ten checks, ten
+agreements, including one place where the prose needed correcting (§4.3, the
+reserved byte). **The last two are not spot-checks.** Nothing in that run
+covered opcode 20 or `TxtDataHelpers.h`, so there was no answer to agree with;
+they were read directly for #490 on 2026-09-09 and became §5.1 and §5.2, which
+carry the same note at their own heading. Everything **not** in this table rests
+on the agents' quoted evidence and has not been independently audited. It is
 sourced, which is the project's bar for a fact; it is not double-read, which is
 the bar this document was originally meant to clear.
 
@@ -545,6 +551,14 @@ needs a receive path independent of its request path: `0x80` `ADVERT`,
 
 ### 5.1 `CMD_GET_BATT_AND_STORAGE` (20) — the power and storage reading
 
+> **Added 2026-09-09, [#490](https://github.com/hleserg/Attadipa/issues/490).**
+> This section and §5.2 are **not** from the three-agent run §0 describes: that
+> run never opened opcode 20 or `TxtDataHelpers.h`, so §0's sentence about
+> resting on the agents' quoted evidence does not describe them. Both are a
+> direct reading of the same pinned clone at `d929643`, done for #490, and both
+> are listed in §0's author-verified table. Single-read, like every row in that
+> table — nothing here has had a second reader.
+
 Request is the bare opcode. Reply is `RESP_CODE_BATT_AND_STORAGE` (12),
 **11** bytes:
 
@@ -554,13 +568,20 @@ Request is the bare opcode. Reply is `RESP_CODE_BATT_AND_STORAGE` (12),
 
 `examples/companion_radio/MyMesh.cpp:1472-1483` builds it: `uint8_t reply[11]`,
 then `board.getBattMilliVolts()`, `_store->getStorageUsedKb()` and
-`getStorageTotalKb()` `memcpy`'d in that order — so all three are
-**little-endian**: the order and the widths are what the `memcpy` establishes.
-The **unit** of the two storage figures is not. It rests on the accessor names
-alone; neither `getStorageUsedKb()` nor `getStorageTotalKb()` was read, so
-kilobytes is `UNKNOWN` on exactly the standard item 2 below applies to
-`getBattMilliVolts()`. Nothing in Attadipa consumes the pair, so this costs
-nothing today; it is recorded rather than closed.
+`getStorageTotalKb()` `memcpy`'d in that order.
+
+What that `memcpy` establishes is the field order, the three widths, and the
+host's **native** byte order. Native is little-endian on every supported target,
+which is a fact about the targets and not about the frame — §4.1 words the
+identical construct exactly that way, and the row directly under it in the same
+table carries a **big-endian** position over this same protocol. So a client may
+parse these three fields little-endian, and may not conclude that MeshCore is.
+
+The **unit** of the two storage figures is established by nothing at all. It
+rests on the accessor names alone; neither `getStorageUsedKb()` nor
+`getStorageTotalKb()` was read, so kilobytes is `UNKNOWN` on exactly the standard
+item 2 below applies to `getBattMilliVolts()`. Nothing in Attadipa consumes the
+pair, so this costs nothing today; it is recorded rather than closed.
 
 Three things a client must not read into it:
 
@@ -578,9 +599,11 @@ Three things a client must not read into it:
    frame has no field in which an absence could be said. "This node has no
    battery" is therefore a fact the *client* must hold, never one it can infer
    from this reply.
-3. **The storage pair says nothing about message capacity.** `used`/`total` are
-   the store's kilobytes; the offline message queue's own limit is a frame
-   count (§3.1) and is unrelated.
+3. **The storage pair says nothing about message capacity.** Whatever unit the
+   two figures are in — and this section has just said that is `UNKNOWN` —
+   they measure a *store*, while the offline message queue's own limit is a
+   frame count (§3.1). The point survives without the unit, which is why it is
+   made without one: a store size is not a message count in any unit.
 
 ### 5.2 Text message types — three defined, and no command accepts all three
 
@@ -674,4 +697,4 @@ Consequences only. Designs go in ADRs and tasks, not here.
 | Whether the first-party JS and Python clients agree with this reading | not cross-checked; they are the obvious second source and were not consulted |
 | How the numbering differs at other tags | 53's absence proves the numbering has already moved. Any statement about another revision is `UNKNOWN` |
 | Whether a `RESP_CODE_DEVICE_INFO` from a *newer* node is safe to parse at 81 bytes | the reply has grown before; a client must key off length, and no compatibility rule is documented upstream |
-| What unit `getStorageUsedKb()` and `getStorageTotalKb()` actually return | the accessor names say kilobytes and neither body was read. §5.1. Nothing in Attadipa consumes the pair, so this is recorded rather than chased |
+| What unit `getStorageUsedKb()` and `getStorageTotalKb()` actually return | **opened 2026-09-09**, [#490](https://github.com/hleserg/Attadipa/issues/490): the accessor names say kilobytes and neither body was read. §5.1. Nothing in Attadipa consumes the pair, so this is recorded rather than chased |

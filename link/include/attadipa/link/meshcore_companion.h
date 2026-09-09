@@ -319,7 +319,7 @@ private:
     // WHICH COMMAND AN UNTAGGED ERROR BELONGS TO IS A QUESTION ONLY THE ORDER
     // ANSWERS. The frame carries no correlation field, and a defined command
     // that fails its own guard is refused with the code an undefined one gets:
-    // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:519` -- "indistinguishable
+    // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:525` -- "indistinguishable
     // from a genuinely unknown opcode". So there is nothing on the wire to read
     // and no flag combination to infer it from; what is left is that the node
     // answers in the order it was asked, and this queue is FIFO, so the order
