@@ -253,7 +253,7 @@ reader ends up citing the one that was not updated.
 - **Independently corroborated:** the same arithmetic puts `node_name` at offset
   58, which is where a bench capture found it in a 72-byte frame and where this
   repository's own parser reads it —
-  `link/src/meshcore_companion.cpp:624` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
+  `link/src/meshcore_companion.cpp:706` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
   The coordinate sits between two fields already read correctly.
 - **Not verified:** nothing has read bytes 36–43 off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -335,7 +335,7 @@ reader ends up citing the one that was not updated.
   reads the same ten fields in the same order, naming the last three `advLat`,
   `advLon`, `lastMod`; and this repository already requires all 148 bytes before
   it will read one —
-  `link/src/meshcore_companion.cpp:687` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+  `link/src/meshcore_companion.cpp:769` — "        if (size < 148) { ++malformed_frames_; return false; }" —
   reading the key at 1 and the name at 100 and discarding 132–147.
 - **Not verified:** no contact frame has been read off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -502,7 +502,7 @@ reader ends up citing the one that was not updated.
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
   [`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
-  [`link/src/meshcore_companion.cpp:625`](../../link/src/meshcore_companion.cpp)
+  [`link/src/meshcore_companion.cpp:707`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
   is [`firmware/main/meshcore_ble.cpp:457`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
@@ -523,7 +523,7 @@ reader ends up citing the one that was not updated.
   and the pin together — and rewrote both comments to say so:
   [`firmware/main/meshcore_ble.cpp:245`](../../firmware/main/meshcore_ble.cpp)
   "What the image has since #411 is the reverse" and
-  [`core/include/attadipa/core/mesh_service.h:61`](../../core/include/attadipa/core/mesh_service.h) "the way out, the entry screen's node field (#411)".
+  [`core/include/attadipa/core/mesh_service.h:76`](../../core/include/attadipa/core/mesh_service.h) "the way out, the entry screen's node field (#411)".
 
 ### A factory-reset MeshCore node shows a new random BLE passkey at every boot
 
@@ -2949,3 +2949,14 @@ ones that heading states.
   The vendor's published sleep figures above — light sleep 2.38 mA, deep sleep
   460–530 µA — are three orders of magnitude below this and describe states this
   run never entered, so nothing here contradicts them.
+
+### Attached-node battery is reported voltage, with no state-of-charge or absence flag
+
+- **Claim/source:** the pinned Companion reply and the actual T114/Heltec V4
+  ADC producers establish intended millivolt scaling. Source identities,
+  producer paths and limits live in
+  [Companion protocol §5.1](MESHCORE_COMPANION_PROTOCOL.md#51-cmd_get_batt_and_storage-20--the-power-and-storage-reading).
+- **Checked:** 2026-09-09, source reading at `d92964352441e53b93e8667b802e04f6e072b39e`.
+- **Not verified:** physical accuracy, absent-cell readings and polling energy.
+  **NOT EXECUTED — HARDWARE REQUIRED**. Client receipt freshness is software
+  state, not evidence about the node's measurement time or battery percentage.

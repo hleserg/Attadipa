@@ -381,7 +381,7 @@ Beyond B and C:
   `MeshSink` or `MeshSinkResult` in any signature at all. That is a stronger
   constraint than a missing caller and it points somewhere else: what #356 adds
   is a seam a product image can compile.
-  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:84` —
+  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:99` —
   "class MeshProvider {" — is four methods — status, peer count, peer, send —
   and not one of them arms a passkey, while
   `core/include/attadipa/core/time_service.h:67` —

@@ -24,6 +24,7 @@ constexpr std::uint8_t kAppStart = 1;
 constexpr std::uint8_t kSendText = 2;
 constexpr std::uint8_t kGetContacts = 4;
 constexpr std::uint8_t kSyncNextMessage = 10;
+constexpr std::uint8_t kGetBatteryAndStorage = 20;
 constexpr std::uint8_t kDeviceQuery = 22;
 constexpr std::uint8_t kGetCustomVars = 40;
 constexpr std::uint8_t kSendLogin = 26;
@@ -37,6 +38,7 @@ constexpr std::uint8_t kResponseSelfInfo = 5;
 constexpr std::uint8_t kResponseSent = 6;
 constexpr std::uint8_t kResponseContactMessage = 7;
 constexpr std::uint8_t kResponseNoMoreMessages = 10;
+constexpr std::uint8_t kResponseBatteryAndStorage = 12;
 constexpr std::uint8_t kResponseCustomVars = 21;
 constexpr std::uint8_t kResponseDeviceInfo = 13;
 constexpr std::uint8_t kResponseContactMessageV3 = 16;
@@ -46,6 +48,12 @@ constexpr std::uint8_t kPushMessageWaiting = 0x83;
 constexpr std::uint8_t kPushLoginSuccess = 0x85;
 constexpr std::uint8_t kPushLoginFail = 0x86;
 constexpr std::uint8_t kAdvertTypeChat = 1;
+
+// Chosen polling policy, not measured power/latency limits. The existing
+// worker calls tick() regardless of the active application or incoming traffic.
+constexpr core::Millis kBatteryPollPeriod{60000};
+constexpr core::Millis kBatteryReplyBudget{5000};
+constexpr core::Millis kBatteryFreshness{180000};
 
 std::uint32_t little_u32(const std::uint8_t* data)
 {
@@ -79,6 +87,26 @@ MeshCoreCompanion::MeshCoreCompanion()
 {
     status_.availability = core::Availability::Unreachable;
     status_.transport = link_.phase();
+    status_.node_battery.separate_supply = true;
+}
+
+void MeshCoreCompanion::fail_battery_request(bool ambiguous_error)
+{
+    battery_request_ = BatteryRequest::Idle;
+    auto& battery = status_.node_battery;
+    battery.validity = battery.millivolts != 0 ? core::Validity::Stale
+                                              : core::Validity::Unknown;
+    battery_errors_ambiguous_ = battery_errors_ambiguous_ || ambiguous_error;
+}
+
+void MeshCoreCompanion::invalidate_node_battery()
+{
+    battery_errors_ambiguous_ = battery_errors_ambiguous_ ||
+                               battery_request_ == BatteryRequest::Waiting;
+    battery_request_ = BatteryRequest::Idle;
+    battery_identity_blocked_ = true;
+    status_.node_battery = {};
+    status_.node_battery.separate_supply = true;
 }
 
 // Every phase of a send down at once, and the Room continuation with it. The
@@ -105,6 +133,13 @@ void MeshCoreCompanion::reset_session()
     // records against.
     status_.node_id = core::MeshPeerId{};
     status_.has_node_id = false;
+    invalidate_node_battery();
+    battery_identity_blocked_ = false;
+    battery_errors_ambiguous_ = false;
+    battery_polled_ = false;
+    battery_due_ = false;
+    battery_started_ = {};
+    poll_now_ = {};
     wrong_node_ = false;
     // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared
     // here. They are the two things on the mesh screen that have to survive the
@@ -203,6 +238,18 @@ void MeshCoreCompanion::fault(core::MonotonicTime now)
 void MeshCoreCompanion::tick(core::MonotonicTime now)
 {
     link_.tick(now);
+    poll_now_ = now;
+    if (battery_request_ == BatteryRequest::Waiting &&
+        core::elapsed(battery_started_, now) >= kBatteryReplyBudget) {
+        fail_battery_request(true);
+    }
+    auto& battery = status_.node_battery;
+    if (battery.validity == core::Validity::Valid &&
+        core::elapsed(battery.received_at, now) >= kBatteryFreshness) {
+        battery.validity = core::Validity::Stale;
+    }
+    battery_due_ = !battery_polled_ ||
+                   core::elapsed(battery_started_, now) >= kBatteryPollPeriod;
     // The node accepted the message, or the login, and then said nothing.
     // Upstream MeshCore does not promise a confirmation for every send -- a
     // packet that is never acknowledged on air produces no
@@ -213,10 +260,12 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // Failed, not a silent release.
     if (!send_busy()) {
         op_budget_ = core::Millis{};
-    } else if (op_budget_.value == 0) {
+    } else if (op_budget_.value == 0 &&
+               battery_request_ == BatteryRequest::Idle) {
         op_since_ = now;
         op_budget_ = kMaxAckWait;
-    } else if (core::elapsed(op_since_, now) >= op_budget_) {
+    } else if (op_budget_.value != 0 &&
+               core::elapsed(op_since_, now) >= op_budget_) {
         status_.delivery = core::MeshDelivery::Failed;
         end_operation();
     }
@@ -319,6 +368,24 @@ bool MeshCoreCompanion::enqueue(const std::uint8_t* data, std::size_t size)
 
 bool MeshCoreCompanion::next_tx(MeshCoreFrame& out)
 {
+    // Only an already-issued battery request can delay a foreground command,
+    // and only for its bounded reply budget. Its wait is not a send timeout.
+    if (battery_request_ == BatteryRequest::Waiting) return false;
+    const bool drain_queued = tx_size_ == 1 &&
+                             tx_[tx_head_].bytes[0] == kSyncNextMessage;
+    if (battery_request_ == BatteryRequest::Idle && battery_due_ &&
+        !battery_identity_blocked_ && !wrong_node_ && link_.ready() &&
+        self_info_seen_ && device_info_seen_ && contacts_complete_ &&
+        !send_busy() && !awaiting_custom_vars_ &&
+        (tx_size_ == 0 || drain_queued) && (!draining_ || drain_queued)) {
+        // A continuing backlog already queued its next sync. Appending one
+        // poll behind it prevents the backlog from starving telemetry; both
+        // still travel through the same bounded FIFO and BLE write owner.
+        const std::uint8_t request[] = {kGetBatteryAndStorage};
+        if (enqueue(request, sizeof(request))) {
+            battery_request_ = BatteryRequest::Queued;
+        }
+    }
     if (tx_size_ == 0) {
         return false;
     }
@@ -330,6 +397,16 @@ bool MeshCoreCompanion::next_tx(MeshCoreFrame& out)
     tx_[tx_head_].size = 0;
     tx_head_ = (tx_head_ + 1) % tx_.size();
     --tx_size_;
+    if (out.bytes[0] == kGetBatteryAndStorage) {
+        if (battery_identity_blocked_) {
+            // At most one poll is queued. Forget/rebind must not transmit it.
+            return next_tx(out);
+        }
+        battery_request_ = BatteryRequest::Waiting;
+        battery_started_ = poll_now_;
+        battery_polled_ = true;
+        battery_due_ = false;
+    }
     return true;
 }
 
@@ -610,6 +687,11 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseSelfInfo:
         if (size < 58) { ++malformed_frames_; return false; }
+        if (status_.has_node_id &&
+            std::memcmp(status_.node_id.public_key.data(), &data[4],
+                        core::kMeshPublicKeyBytes) != 0) {
+            invalidate_node_battery();
+        }
         // Offset 4, 32 bytes, ahead of the name this frame was already being
         // read for: MeshCore's own `docs/companion_protocol.md` gives
         // RESP_CODE_SELF_INFO as type, advert type, tx power, max tx power,
@@ -725,6 +807,36 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         accept_custom_vars(&data[1], size - 1);
         awaiting_custom_vars_ = false;
         break;
+    case kResponseBatteryAndStorage: {
+        if (battery_request_ != BatteryRequest::Waiting ||
+            battery_identity_blocked_ || !status_.has_node_id) {
+            return false; // unsolicited or cancelled-session observation
+        }
+        if (core::elapsed(battery_started_, now) >= kBatteryReplyBudget) {
+            fail_battery_request(true);
+            return false;
+        }
+        // Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].
+        // No percentage, charging flag, absence signal or source timestamp.
+        if (size != 11) {
+            ++malformed_frames_;
+            fail_battery_request(true);
+            return false;
+        }
+        const auto millivolts = static_cast<std::uint16_t>(
+            static_cast<unsigned>(data[1]) |
+            (static_cast<unsigned>(data[2]) << 8U));
+        if (millivolts == 0) {
+            fail_battery_request(false); // cannot establish an empty/absent cell
+            break;
+        }
+        battery_request_ = BatteryRequest::Idle;
+        auto& battery = status_.node_battery;
+        battery.millivolts = millivolts;
+        battery.received_at = now;
+        battery.validity = core::Validity::Valid;
+        break;
+    }
     case kResponseSent:
         if (size < 10 || (!awaiting_send_ && !awaiting_login_)) {
             ++malformed_frames_;
@@ -823,6 +935,10 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // below exactly as before -- a drain request is not a claimant and does
         // not enter that attribution.
         draining_ = false;
+        if (battery_request_ == BatteryRequest::Waiting) {
+            fail_battery_request(false);
+            break;
+        }
         // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
         // command that fails its guard falls through to RESP_CODE_ERR, so a
         // CMD_SEND_LOGIN for a room the node does not hold arrives here and
@@ -878,6 +994,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             awaiting_custom_vars_ = false;
             break;
         }
+        if (battery_errors_ambiguous_) break;
         if (send_busy()) {
             status_.delivery = core::MeshDelivery::Failed;
             end_operation();
@@ -909,6 +1026,9 @@ bool MeshCoreCompanion::peer(std::size_t index, core::MeshPeer& out) const
 
 void MeshCoreCompanion::pin(const core::MeshPeerId& node)
 {
+    if (status_.has_node_id && !(status_.node_id == node)) {
+        invalidate_node_battery();
+    }
     pinned_ = node;
     pinned_set_ = true;
     status_.pinned_id = node;
@@ -917,6 +1037,7 @@ void MeshCoreCompanion::pin(const core::MeshPeerId& node)
 
 bool MeshCoreCompanion::unpin()
 {
+    invalidate_node_battery();
     const bool was_pinned = pinned_set_;
     pinned_set_ = false;
     pinned_ = core::MeshPeerId{};

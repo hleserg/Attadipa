@@ -433,7 +433,7 @@ whether the wearer moved.
   `ADV_LATLON_MASK = 0x10`.
 - **`PAYLOAD_TYPE_TXT_MSG` (0x02) / `GRP_TXT` (0x05) / `GRP_DATA` (0x06)** — **no
   position fields.** The text sub-types are `PLAIN` / `CLI_DATA` / `SIGNED_PLAIN`
-  only; group datagrams carry an opaque blob with no location member defined in
+  only (command acceptance is enumerated in §5.2); group datagrams carry an opaque blob with no location member defined in
   this repository. *A coordinate inside an incoming message is not a MeshCore
   protocol feature at this revision* — if we want one, it is our payload inside
   their datagram, and that is a design decision, not a reading of theirs.
@@ -594,9 +594,9 @@ Three things a client must not read into it:
    carries the field. A board with no battery, or no divider fitted, returns
    whatever its own `getBattMilliVolts()` returns, and no value it can return
    is distinguishable on the wire from a real reading: `0` reads as a flat
-   cell, anything else reads as a charge. What each board actually returns is
-   not read here and is `UNKNOWN`; the argument does not need it, because the
-   frame has no field in which an absence could be said. "This node has no
+   cell, anything else reads as a charge. The T114 and Heltec V4 producers have now been read, as recorded below.
+   Their actual absent-cell return remains `UNKNOWN`: the frame has no field
+   in which absence could be said. "This node has no
    battery" is therefore a fact the *client* must hold, never one it can infer
    from this reply.
 3. **The storage pair says nothing about message capacity.** Whatever unit the
@@ -604,6 +604,43 @@ Three things a client must not read into it:
    they measure a *store*, while the offline message queue's own limit is a
    frame count (§3.1). The point survives without the unit, which is why it is
    made without one: a store size is not a message count in any unit.
+
+**Producer verification, 2026-09-09 (#490).** At the pinned revision,
+[T114Board.h](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/variants/heltec_t114/T114Board.h#L31-L43)
+enables acquisition, waits 10 ms and scales one 12-bit ADC reading by
+`(3000/4096) * 4.9`; its target instantiates that board.
+[HeltecV4Board.cpp](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/variants/heltec_v4/HeltecV4Board.cpp#L43-L63)
+uses eight 10-bit readings and `adc_mult * (3.3/1024) * 1000`; its multiplier
+is configurable. This establishes intended millivolt scaling, not physical
+accuracy, divider values, cell presence or the code in an unidentified bench
+image. Other board implementations remain UNKNOWN. The storage accessors
+above were not examined and their units remain UNKNOWN.
+
+**Attadipa client policy (#490).** The existing Companion worker/FIFO owns
+one battery request, due after accepted handshake and every 60 seconds. A
+queued backlog sync can precede it, so sustained incoming messages do not
+suppress every poll. Foreground sends prevent a new poll. A send queued behind
+an issued poll waits at most its 5-second reply budget before its own deadline
+starts. The reply budget starts when the transport pump takes the command.
+Only the fixed 11-byte response is accepted; storage fields are ignored.
+
+The public `MeshStatus.node_battery` belongs to the snapshot's `node_id` and
+carries reported millivolts, validity, last successful receipt and separate
+supply topology. Zero is unavailable, not 0% or proof of an absent cell. Failed
+refreshes retain the last good value/time as stale; even without a refresh,
+180 seconds makes the receipt stale. Disconnect clears it. Forget/rebind or
+identity replacement within a connection clears it and inhibits further polls
+until a new session, because an old reply has no identity field.
+
+After a timed-out or malformed poll, an untagged ERR cannot safely be assigned
+to a later send. For the rest of that connection, typed responses/confirmations
+and the existing send deadline determine delivery; an ambiguous ERR cannot
+fail it directly. Idle periodic retries continue. The policy uses receipt age,
+not a claim about sample age at the node. These intervals are chosen software
+limits. Actual voltage accuracy, polling power cost and native BLE acceptance:
+**NOT EXECUTED — HARDWARE REQUIRED**. Host checks exercise the actual Companion
+queue/dispatcher and public MeshService snapshot; shared UI is still the
+separate presentation work tracked by #490.
 
 ### 5.2 Text message types — three defined, and no command accepts all three
 
@@ -626,10 +663,9 @@ and it is not interchangeable with plain text: the handler **discards the app's
 timestamp** and substitutes the node's own RTC (`MyMesh.cpp:1103`), commented
 upstream as replay-protection avoidance.
 
-**There is no message type that carries a structured position.** That is an
-enumerated absence — three defined types, all read — and not an `UNKNOWN`. A
-coordinate travelling in a text message travels as characters inside the
-payload, and its bytes come out of the same budget as the words.
+The three text types above share the **absence of structured position fields
+recorded in §4.4**. A coordinate sent as text spends the same payload budget as
+words; it does not add a protocol-level position type.
 
 This is also a **second instance of the `ERR_CODE_UNSUPPORTED_CMD` ambiguity**
 this section's landmine note above raises: here it answers a perfectly
