@@ -60,7 +60,7 @@ this repository, and most of them are not obviously about a clock.
 | which panel, at what density | `platform::BoardProfile`, resolved through `Dp` | `ui/metrics.h` |
 
 **So `Capability::Time` is the clock's source, and it is not local by
-definition.** `sim/main.cpp:101` — "core::Capability::Time" — already lists
+definition.** `sim/main.cpp:103` — "core::Capability::Time" — already lists
 `Capability::Time` among what an attached Attadipa node provides. A watch whose
 own RTC has never been set and
 which has a node attached has a *Ready* time from `Origin::Node`; the same watch
@@ -637,11 +637,11 @@ that the Clock is one of the six minimum screens.
 | geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:269` — "out.board = *found;" |
 | theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:296-310` — "out.theme = ui::Theme::Day;" |
 | locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:281-294` — "out.locale = l10n::Locale::En;" |
-| Adult/Child | **yes** — `--child` | [`sim/options.cpp:201`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:208`](../../sim/main.cpp) — "apps::ClockMode::Child" |
-| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:212`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:210`](../../sim/main.cpp) — "!options.clock_time_set" and passed to `build_clock_screen` as its `live` argument |
+| Adult/Child | **yes** — `--child` | [`sim/options.cpp:201`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:243`](../../sim/main.cpp) — "apps::ClockMode::Child" |
+| a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:212`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:245`](../../sim/main.cpp) — "!options.clock_time_set" and passed to `build_clock_screen` as its `live` argument |
 | **battery / charging** | no injection | final §57 also asks for *"simulated battery"* |
 | node attached / detached | **yes** — `--node` | `sim/options.cpp:142-145` — "out.node_attached = true;" |
-| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:297` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
+| screenshot | **yes**, but the **first frame only** | `sim/main.cpp:332` — "if (options.screenshot != nullptr)" — takes the snapshot, then the frame loop runs |
 
 And the tests that exist are two:
 
@@ -652,7 +652,7 @@ foreach(_board t-watch-s3-plus waveshare-amoled-206)
                      --screenshot ${_attadipa_shot_dir}/${_board}.png)
 ```
 
-— [`tests/CMakeLists.txt:306`](../../tests/CMakeLists.txt) —
+— [`tests/CMakeLists.txt:315`](../../tests/CMakeLists.txt) —
 "foreach(_board t-watch-s3-plus waveshare-amoled-206)". Two boards, EN,
 Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with

@@ -647,7 +647,7 @@ here for the same reason it has none on path A. If UI changes, the
 
 Bench-authorised nodes only, per [TEST_FLEET](TEST_FLEET.md). **Do not flash the
 Home Assistant node, the Room Server or the repeater**, and do not write to the
-MeshCore node on the host — `BENCH_DEVICES.md:81` — "is not ours to write to.** It is a MeshCore node somebody".
+MeshCore node on the host — `BENCH_DEVICES.md:113` — "is not ours to write to.** It is a MeshCore node somebody".
 The free T114 stays on `v1.17.1-d929643`.
 
 Roles: the **free T114** as the connected companion (§10.1 makes it the readable

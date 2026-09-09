@@ -36,12 +36,12 @@ recorded here so that no option is credited with paying them.
    #356's first change removed the second: the sequence is
    `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image. Its second gave the sequence an ungated caller,
-   `firmware/main/waveshare_board.cpp:463` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
-   next to the HIL-only one that `firmware/main/waveshare_board.cpp:619` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   `firmware/main/waveshare_board.cpp:466` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
+   next to the HIL-only one that `firmware/main/waveshare_board.cpp:622` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates,
-   `firmware/main/waveshare_board.cpp:620` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
+   `firmware/main/waveshare_board.cpp:623` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side was always unconditional:
-   `firmware/main/waveshare_board.cpp:289` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
+   `firmware/main/waveshare_board.cpp:292` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
 2. **The passkey was RAM-only when this was decided, and the storage it
@@ -145,7 +145,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:1157` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:1280` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -153,7 +153,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:1156` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:1279` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
@@ -287,7 +287,7 @@ The Waveshare RTC's own rail is not resolved either —
 and the documented backup cell belongs to the other board.
 
 The persisted UTC offset does survive, because it is in NVS rather than in the
-chip: `firmware/main/waveshare_board.cpp:289` — "esp_err_t restore_time_metadata() {".
+chip: `firmware/main/waveshare_board.cpp:292` — "esp_err_t restore_time_metadata() {".
 
 If the RTC does not retain, hand entry is recurring rather than one-time, on the
 path the owner meets first, because GNSS has not landed. That makes GNSS more
@@ -366,7 +366,7 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:620` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  by `firmware/main/waveshare_board.cpp:623` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
   `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is

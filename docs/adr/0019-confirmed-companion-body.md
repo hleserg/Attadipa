@@ -267,7 +267,7 @@ because the position is then a companion's, vouched for by a person rather than
 by a receiver, and the line must keep saying so.
 
 The second state replaces a sentence that is false on this board today —
-`firmware/main/waveshare_board.cpp:857` — "exactly what would change the answer, and the readout still says" —
+`firmware/main/waveshare_board.cpp:954` — "exactly what would change the answer, and the readout still says" —
 because a watch with nothing bound to fill `own` is not waiting for a fix from a
 receiver it does not have bound.
 

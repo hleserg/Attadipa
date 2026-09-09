@@ -315,7 +315,7 @@ outcomes section 1 demands — a good read, a VL-rejected read and a malformed-B
 read — it is exercised on the host at
 `tests/test_time_service.cpp:260` — "CHECK(attadipa::firmware::decode_pcf85063(raw_rtc, rtc) ==",
 and it is consumed by the board layer at
-`firmware/main/waveshare_board.cpp:213` — "*status = attadipa::firmware::decode_pcf85063(raw, *time);"
+`firmware/main/waveshare_board.cpp:216` — "*status = attadipa::firmware::decode_pcf85063(raw, *time);"
 and by `firmware/main/provision_time.h:23` — "pcf85063_time.h". A
 `decode_pcf8563` twin is a few dozen lines of pure function plus a burst read in
 the board file.
@@ -456,7 +456,7 @@ wake source on this board, this is it.
 **With one open dependency, and it is not small.** The pull-up is only as
 always-on as `+3V3`, and `+3V3` is **H8**. `docs/research/HARDWARE_MATRIX.md:205` — "Do not pick" the convenient reading —
 says so about this exact rail, and the fact index carries the same warning:
-`docs/research/VERIFIED_FACTS.md:1200` — "if the schematic is right". If
+`docs/research/VERIFIED_FACTS.md:1323` — "if the schematic is right". If
 ALDO1 is the rail and #367's power owner ever gates it, R288 dies with it, IO17
 floats or is dragged low, and an armed `GPIO_INTR_LOW_LEVEL` fires immediately
 and forever — the failure this section prices for ALDO3 and touch at §3.4 ("and

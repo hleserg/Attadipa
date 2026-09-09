@@ -215,11 +215,53 @@ read is retried and an `unknown` fails the publication step, so a ledger this
 freezes is a red check rather than a green one; the gate keeps both counts,
 because a red run has still converged nothing.
 
-A standing `ai-review:blocking` is the one thing the cap will not clear. The
-invalidation step drops both labels on a push, so a pushed fix reaches the cap
-with no label and gets its pass; a bare workflow re-run reaches it with the
-block still on and leaves it there, because a verdict cleared with no commit in
-between is not a verdict.
+A standing `ai-review:blocking` is cleared by a new head and by nothing else,
+and the cap is what clears it, because nothing else will. The invalidation step
+drops only `ai-review:pass` on a push — a review that has not run yet has said
+nothing that justifies releasing somebody else's hold — and while another round
+is coming that is right, since the round re-decides within minutes. Past the
+ceiling no round is coming, so "wait for the next one" stops being an option and
+the label stands for ever: #445 merged carrying one, blocked at 22:30:26Z and
+fixed at 22:42:37Z, with the cap able only to warn about it.
+
+So the cap asks whether the block is still about the commit being merged, and
+the question is an equality between two commit object ids. The round that
+reached the verdict writes the head it reviewed into the ledger's state block —
+`head_sha=`, beside `round=` — and the cap compares that with the head GitHub
+reports now. Different heads clear the label. The same head holds it, because a
+pass over a standing block with no commit in between is not a verdict. So does
+anything unreadable, and so does a ledger written before `head_sha=` existed:
+those blocks come off by hand after somebody reads the finding, and the note on
+the pull request says which case it is rather than leaving a maintainer pushing
+empty commits at a label that will never move.
+
+**No contributor-typed timestamp takes part in that decision.** The first version of it compared
+the label's time against `.commit.committer.date` on the current head, and that
+date is typed by whoever makes the commit: a future one on the *unchanged*
+blocked head cleared the verdict with nothing pushed, and a backdated one on a
+genuine fix held it for ever. It is the same defect `merge-head-trust.jq` took
+out of the unattended merge sweep — an identity question answered from a clock
+the contributor sets — and #199 is both halves of it. Neither
+`.commit.committer.date` nor `committedDate`, `authoredDate` or `pushedDate` is
+read on either path.
+
+**The head's identity is the first of two questions, and on its own it clears
+the wrong blocks.** It says whether this ledger's verdict is about the commit
+being merged. It does not say whether the `ai-review:blocking` on the pull
+request right now *is* that verdict, and two paths make it something else: a
+person putting the label back on the current head after reading the open
+finding, and a round whose converge step was skipped — `review-published.sh`
+answering `unknown` — applying the label to a head the ledger never caught up
+with. Either way the cap would compare an older recorded head with the current
+one, call a live block stale and strip it without a comment. So it answers the
+second question too, from two more facts GitHub writes about its own objects:
+how many rounds have published a findings block, and the `.actor.login` on the
+newest `labeled` event. It holds when that count is ahead of the ledger, when
+the actor is not the review automation, and when either is unreadable. Ordering
+the label event against the ledger comment's `updated_at` would not work at
+all: the converge step writes the ledger and *then* applies the label, so its
+own block always post-dates its own ledger and that rule would clear nothing
+ever. Provenance, not order.
 
 That is OD-25, and the number is an owner decision —
 `docs/research/OWNER_DECISIONS.md` is where it changes, not this file.

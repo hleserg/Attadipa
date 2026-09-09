@@ -276,9 +276,12 @@ UBX-NAV-SIG      26 signals, 0 with authStatus = Authenticated
 - Whether the single-band limit costs anything here. §4a cannot answer it: the
   two receivers differ in antenna as well as in band, and when co-located their
   position scatter came within 17 %.
-- Whether the `GPS_LDO` enable net on FPC pin 3
-  (`docs/research/HARDWARE_MATRIX.md:103` — "enable net `GPS_LDO` on FPC pin 3")
-  is doing anything the PMU rail is not. Never exercised.
+- ~~Whether the `GPS_LDO` enable net on FPC pin 3 is doing anything the PMU
+  rail is not.~~ **Answered, and the premise was wrong.** Pin 3 carries that
+  supply across the connector rather than gating it
+  (`docs/research/HARDWARE_MATRIX.md:103` — "crosses to the module as `GPS_LDO` on FPC pin 3"),
+  so there is one unexercised link here and not two —
+  `docs/research/GNSS_POWER_POLICY_MIA_M10Q.md:58` — "is `BLDO1` at 3300 mV, and FPC pin 3 carries **that supply across the".
 - What DC4 feeds. §3.
 - Whether the module retains an almanac across a power cycle on this board,
   which is a backup-supply question and was not asked.
