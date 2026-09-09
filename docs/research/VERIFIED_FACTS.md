@@ -2816,24 +2816,22 @@ ones that heading states.
   T-Watch's micro-USB input on **2026-09-08**, reached through a
   USB-C-to-micro-USB adapter the owner fitted that day.
   **242 847 raw samples over 2698.8 s at 89.98 samples/s**, beginning
-  **2026-09-08 10:27:28Z**. Nothing shorter than 11.1 ms is visible to this
-  instrument, so the 986.9 mW largest sample bounds the peak from **below
-  only** — and it is the largest of the 242 554 samples the filter below
-  retained, taken after that filter removed 293 whose own mean power, derived
-  below, is above two watts, so at least one of them is larger than everything
-  it kept. **It is not the capture's maximum and it bounds no peak from
-  above.**
-- **293 samples — 0.121 % — are excluded before every figure above by a filter
-  that is a heuristic, not a classification.** The filter is `4.0 < V < 5.5`
-  together with `0 ≤ I < 1.0`, leaving 242 554 samples; applying it to the
-  capture reproduces every number in this entry, and **every number in this
-  entry is therefore a figure of those 242 554 and is conditional on it.**
-  Left in, the 293 pull the mean from 778.9 mW to 780.7 mW — **1.8 mW,
-  0.23 %**. That sensitivity is published, it is the whole of what the
-  exclusion is load-bearing for in the mean, and it is why the headline
-  **779 mW survives everything below unchanged**. What the exclusion is
-  *not* safe for is the maximum, and that is the bullet the reader is being
-  sent to.
+  **2026-09-08 10:27:28Z**. The nominal sample interval is 11.1 ms, so shorter
+  transients are not resolved by these samples. The 986.9 mW value is the
+  largest of the 242 554 retained decoded samples, after removing 293 whose
+  own mean decoded power exceeds two watts. It is **not the capture's
+  decoded maximum and establishes no physical peak bound**.
+- **293 samples — 0.121 % — are excluded by a heuristic filter, not a
+  classification.** The filter is `4.0 < V < 5.5` together with
+  `0 ≤ I < 1.0`, leaving 242 554 samples. Every power-distribution figure
+  above is calculated from those retained samples and is conditional on the
+  filter; the raw capture totals and the excluded-class counts are separate.
+  Including the 293 changes mean per-sample power from 778.9421 mW to
+  780.6784 mW — **1.7 mW, 0.22 %** relative to the retained mean, calculated
+  before rounding. The headline **779 mW** remains the retained-set mean.
+  Neither the exclusion nor this small mean sensitivity establishes the
+  physical peak; the decoded-set comparison below gives the separate effect
+  of retaining the current-only samples.
 - **Two kinds of sample are inside those 293 and only one kind has evidence.**
   `V = 0.00000` while 150–195 mA flows, and five high voltages that are
   binary-round in millivolts, are **structural**: values the measured quantity
@@ -2875,14 +2873,11 @@ ones that heading states.
   Searching only the first helper is how an earlier revision of this list
   missed it. The only `0x16` literals anywhere in `firmware/` are a Waveshare
   panel column offset, `firmware/main/waveshare_board.cpp:72` — "constexpr int kPanelGapX = 0x16;".
-  So the board's own front end was admitting more than 1.27 A unless something
-  before this image lowered it,
-  which is `UNKNOWN` for exactly the reason `REG 0x62` is: the PMU holds its
-  registers across an ESP32 reset. What the source and
-  the cable on the far side of that micro-USB adapter could deliver was not
-  recorded and is **`UNKNOWN` too**. Neither of those makes the samples real —
-  they make the magnitude *permitted*, which is all it takes to stop it being
-  evidence of corruption.
+  The actual `REG 0x16` setting during this capture was not recorded and
+  remains **`UNKNOWN`**; the power-on default is not a measurement of it.
+  What the source and cable could deliver through the micro-USB adapter was
+  not recorded either. Neither their unknown limits nor the current magnitude
+  establishes corruption or proves these samples physically real.
 
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
@@ -2896,8 +2891,8 @@ ones that heading states.
   **per-sample power**, `mean(V × I)`: 780.6784 mW over all 242 847 and
   778.9421 mW over the retained 242 554. `mean(V) × mean(I)` gives 780.7647 and
   779.0308, which print as 780.8 and 779.0, so the printed figures identify the
-  method rather than leaving it open. The subtraction is therefore an energy,
-  and the excluded set carries **2.218 W per sample** on average. Classifying
+  method rather than leaving it open. Weighting each mean by its sample count
+  and subtracting gives **2.218 W per excluded sample** on average. Classifying
   the 293 from the capture this entry already pins gives, by count: **118** at
   `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
   65.53587 V, binary-round in millivolts as above; **72** current-only, at
@@ -2921,48 +2916,55 @@ ones that heading states.
   revision of this bullet stated it, the rule admits **86**: it drops the **9**
   at 6.14387 V, whose 6144 mV is 3·2^11 and not a bare power of two, and
   reaches the **60** at 2 mV — 35 − 9 + 60.
-- **`986.9 mW` is the largest *retained* sample, and the filter is what makes
-  it the largest.** The filter's own ceiling is 5.5 V × 1.0 A = 5.5 W, and if
-  even
-  one ≈1.27 A sample is a real reading then the capture's largest sample is
-  about **6.3 W** at this run's mean voltage — six times the figure this entry
-  publishes as its maximum. The instrument's 11.1 ms resolution already made
-  that number a bound from below; the filter makes it a bound on a set the
-  filter chose, and **peak or transient envelope must not be sized from it**.
-  **p99 is the robust one and stays quotable.** 293 samples is 0.121 % of the
-  capture, so the exclusion cannot move the 99th percentile far in either
-  direction. Upward, with every one of them above it, it lands at the 99.12th
-  percentile of the retained set — between the published 949.1 mW and the
-  retained maximum, so **wrong by at most 37.8 mW**. Downward the bound is
-  formal rather than a case: 1 % of 242 847 is 2 428.47 and 1 % of 242 554 is
-  2 425.54, so the 99th percentile's rank moves by **2.93 — under three
-  samples' worth in 242 554** whatever power the 293 carry. Stating it as a
-  scenario instead would have to name one the bullet above forbids. Median,
-  floor and burst split move less still, which is why the
-  entry's own instruction to quote the **mean** for anything integrated over
-  time is unaffected.
-- **What would settle the classification needs the capture, not the bench, and
-  it is NOT EXECUTED.** The logger writes each sample's slot within the 64-byte
-  HID report as the second column of its own output — upstream
-  `baryluk/fnirsi-usb-power-data-logger`, `fnirsi_logger.py` read 2026-09-08,
-  which decodes `for i in range(4):` at `offset = 2 + 15 * i` and prints
-  `f"{t:.3f} {i} {voltage:7.5f} {current:7.5f} ..."`. Four samples ride in one
-  report, and the log says which slot each came from. **Transport corruption of
-  a report shows up as a run inside that report; an 11 ms current event on the
-  board has no reason to respect the boundary.** So the test is: for each
-  ≈1.27 A sample, is there a structural exclusion in the same report — and do
-  the 293 group into roughly 73 reports or scatter across 293? That reads the
-  pinned CSV and changes nothing in it. The second question is cheaper still:
-  upstream verifies the report's own checksum byte **only when asked** —
-  `parser.add_argument("--crc", type=str2bool, help="Enable CRC checks", default=False)`
-  — so unless this run passed `--crc`, nothing rejected a corrupt report and
-  corruption is available as an explanation in a way it would not otherwise be.
-  **Whether the pinned copy `388061ae…` matches upstream in either respect is
-  `UNKNOWN`** — its own revision was never recorded, which this entry says
-  above — and one `grep` on the bench settles it. None of this was run here:
-  `~/attadipa-bench/` is not reachable from the machine this entry was edited
-  on, so the counts, the overlap and the report grouping are
-  **NOT EXECUTED — the capture is bench-only** rather than unknowable.
+- **`986.9 mW` is the largest retained decoded sample; the physical peak is
+  `UNKNOWN`.** The following sensitivity was recomputed on 2026-09-09 from
+  the same hash-verified capture. The filter and the floor/burst calculation
+  above are unchanged. Adding back the 72 current-only samples changes the
+  mean by **1.6195 mW** and p99 by **0.2600 mW**, without establishing their
+  validity. The maxima are decoded values, not verified electrical peaks.
+
+  | Decoded set | Count | Mean mW | Median mW | p99 mW | Maximum mW |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | Retained | 242554 | 778.9421 | 754.6752 | 949.0924 | 986.9061 |
+  | Retained + current-only | 242626 | 780.5616 | 754.6755 | 949.3524 | 6337.0790 |
+  | All rows | 242847 | 780.6784 | 754.6698 | 949.3853 | 12448.5385 |
+
+  Power is calculated per sample as `V × I`; p99 uses linear interpolation
+  at zero-based rank `0.99 × (n - 1)` in the sorted set. These decimal places
+  expose the arithmetic, not the meter's accuracy. The actual peak and
+  transient envelope must not be sized from the filtered maximum or treated
+  as established by the larger decoded values.
+- **Report grouping and pinned-decoder inspection: EXECUTED 2026-09-09.**
+  The local analysis verified both full SHA-256 hashes before calculating:
+  the CSV hash recorded below and the logger hash recorded under Source S17
+  above. The 242 847 rows have continuous slot order `0,1,2,3`, ending with
+  `0,1,2`. Starting a group at each slot 0 reconstructs **60 712 reports**:
+  **60 711** groups of four samples and **one** of three. The incomplete
+  final group is retained; no original report bytes are available in the CSV.
+
+  **All 293 exclusions occupy 293 different reports, one exclusion per
+  report. None of the 72 current-only samples shares a report with a
+  structural exclusion** (the 118 zero-voltage and 35 high binary-round
+  voltage samples). This rejects the proposed prediction that the exclusions
+  cluster within reports, roughly 73 reports. It **does not prove transport
+  integrity**: corruption of a bit or field can affect just one sample within
+  a report. The source of individual anomalies remains **`UNKNOWN`**.
+
+  The pinned logger itself decodes four slots at `offset = 2 + 15 * i`,
+  with unsigned voltage/current counts divided by 100000. It writes the slot
+  as the second CSV column. Its `--crc` option defaults to `False`, and
+  checksum rejection is conditional on that option. Whether the original
+  invocation enabled it is **`UNKNOWN`**; the CSV retains no raw report or
+  checksum bytes with which to check it retrospectively. The logger's
+  upstream revision and its equivalence to S16's copy remain **`UNKNOWN`**.
+
+  The exact standard-library reproduction scripts and aggregate output are
+  published in the [hash-checked grouping analysis](https://github.com/hleserg/Attadipa/pull/494#issuecomment-5595467764)
+  and the [decoded-set sensitivity](https://github.com/hleserg/Attadipa/pull/494#issuecomment-5595990274).
+  This is software analysis of the existing private capture, not a new
+  physical measurement. Hardware re-capture is
+  **NOT EXECUTED — HARDWARE REQUIRED**. No raw capture or private logger
+  source is committed.
 - **Where the watch was, and what is not recorded.** The capture is an inline
   USB reading, so the watch was cabled through the FNB-58 to this host for the
   whole 2698.8 s — it was on the bench, and could not have been anywhere else
