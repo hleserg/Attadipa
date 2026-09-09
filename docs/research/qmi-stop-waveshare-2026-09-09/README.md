@@ -12,6 +12,8 @@ The accelerometer was still enabled at the failed count check. The driver disabl
 
 Next diagnostic: preserve full FIFO_STATUS from the existing post-reset read, then observe count/status once after restoration. Two new single-byte reads occur after stop, outside its command sequence; their validity is explicit and they do not replace the failed stop result. This is an observation, not a proposed fix or proof of any of the hypotheses above.
 
+The [follow-up attempt](busy-entry/README.md) executed but returned Busy before acquisition; it therefore did not measure the post-restoration count. A further read-only observation includes CTRL9/STATUSINT and runs after stop even on a refused entry with a complete initial snapshot. Its four reads do not change start/stop commands or verdicts. Ordinary boot alone is not evidence of an admissible QMI entry state.
+
 ## Ordinary boot and limits
 
 The architect's actual handoff is [issue #450 comment 5602884117](https://github.com/hleserg/Attadipa/issues/450#issuecomment-5602884117). After this RAM run, the eight-second raw boot log again shows ELF `2915714b7`, the ordinary image without the USB watch-control endpoint, UI ready at saved brightness 5%, and alive through 6 seconds without panic. The port was closed and fuser reported no opener. No flash-write command was used for this diagnostic. This is boot evidence, not visual acceptance or a claim that normal firmware never writes NVS.

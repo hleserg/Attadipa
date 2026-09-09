@@ -182,11 +182,14 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
 #if CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE
   const auto qmi_stopped = qmi.stop();
   const auto &stop_diag = qmi.stop_diagnostic();
-  // Observe once after restoration (including temporary-accel disable).
-  // These two additional reads do not change the stop sequence or its verdict.
+  // Observe after stop, also when Busy refused ownership. These four read-only
+  // observations do not change start/stop commands or their verdicts.
   std::uint8_t final_count_lo = 0, final_status = 0;
-  const bool final_count_valid = stop_diag.remaining_valid &&
+  const bool final_count_valid = qmi.before().complete &&
       qmi_io.read(0x15, &final_count_lo, 1) && qmi_io.read(0x16, &final_status, 1);
+  std::uint8_t final_command = 0, final_command_status = 0;
+  const bool final_command_valid = qmi.before().complete &&
+      qmi_io.read(0x0a, &final_command, 1) && qmi_io.read(0x2d, &final_command_status, 1);
   const auto qmi_closed = qmi_io.close();
   log_qmi_state("after", qmi.after());
   ESP_LOGI(kTag, "QMI stop_check step=%s remaining_valid=%d remaining_words=%u"
@@ -194,8 +197,10 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
            stop_diag.failed_step, stop_diag.remaining_valid, stop_diag.remaining_words,
            stop_diag.remaining_status, stop_diag.mismatch_valid, stop_diag.mismatch_reg,
            stop_diag.expected, stop_diag.actual);
-  ESP_LOGI(kTag, "QMI stop_final valid=%d count_lo=%02x status=%02x",
-           final_count_valid, final_count_lo, final_status);
+  ESP_LOGI(kTag, "QMI stop_final valid=%d count_lo=%02x status=%02x"
+                 " command_valid=%d command=%02x command_status=%02x",
+           final_count_valid, final_count_lo, final_status,
+           final_command_valid, final_command, final_command_status);
   ESP_LOGI(kTag, "QMI summary samples=%u batches=%u result=%d stop=%d"
                  " discarded_fifo_words=%u close=%s",
            qmi_samples, qmi_batches, static_cast<int>(qmi_result),
