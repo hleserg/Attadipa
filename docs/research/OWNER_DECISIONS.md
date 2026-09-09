@@ -1810,7 +1810,7 @@ place twice over. In this tree `validity` is fix quality and deliberately
 nothing else —
 `core/include/attadipa/core/position.h:179` — "How good a position is *as a position*" —
 and nothing above `NoFix` is reachable out of the companion channel at all:
-`link/src/meshcore_companion.cpp:746` — "path in this repository can reach `PositionValidity::Valid` from it."
+`link/src/meshcore_companion.cpp:763` — "path in this repository can reach `PositionValidity::Valid` from it."
 So a confirmation carried there either leaves `own_ok` false and computes no
 distance, or lifts `validity` and makes the watch assert a fix for a coordinate
 whose source states none — which is this decision's own named failure, arriving

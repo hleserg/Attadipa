@@ -114,6 +114,23 @@ void MeshCoreCompanion::invalidate_node_battery()
 // after the send that owned it had already failed.
 void MeshCoreCompanion::end_operation()
 {
+    // A send can expire before the pump takes it. Remove only its unsent
+    // text/login frames, retaining other commands and their FIFO sequence.
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < tx_size_; ++i) {
+        const std::size_t from = (tx_head_ + i) % tx_.size();
+        const auto opcode = tx_[from].bytes[0];
+        if (opcode == kSendText || opcode == kSendLogin) {
+            tx_[from] = {};
+            continue;
+        }
+        if (kept != i) {
+            tx_[(tx_head_ + kept) % tx_.size()] = tx_[from];
+            tx_[from] = {};
+        }
+        ++kept;
+    }
+    tx_size_ = kept;
     awaiting_send_ = false;
     awaiting_confirm_ = false;
     awaiting_login_ = false;
@@ -309,7 +326,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:633` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:732` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still

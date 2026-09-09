@@ -122,7 +122,7 @@
 // `core::PositionSample` a flag saying its `observed_at` is an observation time
 // rather than an arrival stamp, and let `poll()` refresh on a repeat only for
 // providers that set it. That cannot be done by comparing `observed_at`
-// directly — `link/src/meshcore_companion.cpp:416` — "node_position_at_ = now;"
+// directly — `link/src/meshcore_companion.cpp:610` — "node_position_at_ = now;"
 // — restamps on every accepted frame whether or not the coordinate moved, so a
 // stamp comparison would switch the rule off exactly where it belongs.
 

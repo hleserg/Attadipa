@@ -322,6 +322,8 @@ void test_a_drain_nobody_answers_expires()
     // One due battery poll follows that sync; there is no second sync.
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 20);
+    const std::uint8_t battery[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+    CHECK(client.receive(battery, sizeof(battery), at(15101)));
     CHECK(!client.next_tx(frame));
 }
 
@@ -760,6 +762,24 @@ void test_a_room_password_never_reaches_the_transcript()
     // over the prefix would pass on the room key's byte values alone; this fails
     // if the prefix grows by one byte or shrinks by one.
     CHECK(std::memcmp(&frame.bytes[printable], canary, canary_len) == 0);
+
+    // Cancellation must erase an unsent login too. A shorter request then
+    // reuses that same ring slot; inspect its full storage, not just its size.
+    MeshCoreCompanion cancelled;
+    connect_and_handshake(cancelled);
+    const std::uint8_t receiver_hint[] = {21};
+    CHECK(cancelled.receive(receiver_hint, sizeof(receiver_hint), at(8)));
+    CHECK(cancelled.send_room(room, canary, "never sent", WallTime{1000}));
+    cancelled.tick(at(100));
+    cancelled.tick(at(15100));
+    CHECK(cancelled.status().delivery == MeshDelivery::Failed);
+    CHECK(!cancelled.send_busy());
+    CHECK(cancelled.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 20);
+    for (std::size_t i = frame.size; i < frame.bytes.size(); ++i) {
+        CHECK(frame.bytes[i] == 0);
+    }
+
 }
 
 // The other half of the same rule. #316 asks for redaction of the credential
@@ -1806,6 +1826,35 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         CHECK(!client.send_busy());
     }
 
+    // A finite error count cannot identify its claimant: a new send's ERR
+    // can arrive before the old poll's single delayed ERR. Neither names it.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        CHECK(client.receive(hint, sizeof(hint), at(8)));
+        MeshPeer peer{};
+        CHECK(client.peer(0, peer));
+        client.tick(at(10));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        client.tick(at(5010));
+        CHECK(client.send_private(peer.id, "A", WallTime{1}));
+        client.tick(at(5011));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(5012))); // A's refusal
+        CHECK(client.send_busy());
+        client.tick(at(20011));
+        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(!client.send_busy());
+        CHECK(client.send_private(peer.id, "B", WallTime{2}));
+        client.tick(at(20012));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(client.receive(error, sizeof(error), at(20013))); // old poll
+        CHECK(client.status().delivery == MeshDelivery::Queued);
+        CHECK(client.receive(sent, sizeof(sent), at(20014)));
+        CHECK(client.receive(confirmed, sizeof(confirmed), at(20015)));
+        CHECK(client.status().delivery == MeshDelivery::Confirmed);
+    }
+
     // A continuing receive drain gives the due poll one FIFO slot. Its own
     // NO_MORE_MESSAGES response must not cancel the battery wait.
     {
@@ -1833,8 +1882,8 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
     }
 
     // A queued poll has no transport-independent deadline of its own. If the
-    // pump stalls after the sync write, a user send must still fail by budget.
-    {
+    // pump stalls, private text and room login must expire without later TX.
+    for (bool room : {false, true}) {
         MeshCoreCompanion client;
         connect_and_handshake(client);
         CHECK(client.receive(hint, sizeof(hint), at(8)));
@@ -1844,12 +1893,32 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
         MeshPeer peer{};
         CHECK(client.peer(0, peer));
-        CHECK(client.send_private(peer.id, "stalled pump", WallTime{1}));
-        client.tick(at(11));
+        if (room) {
+            CHECK(client.send_room(peer.id.public_key, "password", "stalled pump", WallTime{1}));
+        } else {
+            CHECK(client.send_private(peer.id, "stalled pump", WallTime{1}));
+        }
+        // Retained drain work after the operation tests FIFO compaction too.
+        const std::uint8_t drained[] = {10};
+        CHECK(client.receive(drained, sizeof(drained), at(11)));
+        CHECK(client.receive(waiting, sizeof(waiting), at(12)));
+        client.tick(at(13));
         CHECK(client.send_busy());
-        client.tick(at(15011));
+        client.tick(at(15013));
         CHECK(client.status().delivery == MeshDelivery::Failed);
         CHECK(!client.send_busy());
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+        CHECK(client.receive(voltage, sizeof(voltage), at(15014)));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
+        CHECK(!client.next_tx(frame)); // no expired text or login remains
+        CHECK(client.receive(drained, sizeof(drained), at(15015)));
+        CHECK(client.send_private(peer.id, "new", WallTime{2}));
+        client.tick(at(15016));
+        CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+        CHECK(std::memcmp(&frame.bytes[13], "new", 3) == 0);
+        CHECK(client.receive(sent, sizeof(sent), at(15017)));
+        CHECK(client.receive(confirmed, sizeof(confirmed), at(15018)));
+        CHECK(client.status().delivery == MeshDelivery::Confirmed);
     }
 
     // Forget between FIFO selection of the drain and the queued poll drops
