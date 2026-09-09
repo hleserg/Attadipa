@@ -489,20 +489,28 @@ en = "Next goes on to the passkey"
 ru = "Далее — к коду узла"
 
 # Three clauses because the operation has three: the pin always goes, a
-# pairing goes only where one was recorded stale, and the passkey does not go
-# at all. The old line promised "its bond and its passkey, both", and
-# `Unpinned` — the ordinary ending on a watch with no stale bond recorded —
-# does neither (#504).
+# pairing goes only where one was recorded stale, and what the owner has to do
+# next is enter digits. The old line promised "its bond and its passkey,
+# both", and `Unpinned` — the ordinary ending on a watch with no stale bond
+# recorded — does neither of those (#504). Both locales carry the restriction:
+# a Russian conjunction that only listed the pairing would contradict its own
+# receipt, which on that ending says сопряжение сохранено.
+#
+# The third clause is an obligation and not a reassurance, and that is the
+# deliberate part. "The passkey stays" is true of the value in NVS and false
+# of anything the owner can do with it — the marker exists so those digits are
+# never replayed, and a node that has been reset shows new ones after every
+# power cycle:
+# `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:340` — "**Must be replaced, not erased:**"
+# So the line says what the next screen says, one press earlier, instead of
+# reassuring the owner out of the six digits they are about to need.
 #
 # Two wrapped lines is the budget, and it was measured rather than guessed:
 # the 240 px panel draws a third line under the keys, which is where the
-# Russian of the old line was already disappearing. So the fourth thing that
-# is true — that the retained passkey is not replayed until new digits replace
-# it — is left to the passkey field and its receipt, which are the next two
-# screens either way. A clause drawn under a button says nothing at all.
+# Russian of the old line was already disappearing.
 [provision_hint_forget]
-en = "the node goes, only a stale pairing; the passkey stays"
-ru = "сбросятся узел и устаревшее сопряжение; код останется"
+en = "the node and only a stale pairing; then new digits"
+ru = "узел и только устаревшее сопряжение; потом новый код"
 
 [provision_hint_passkey]
 en = "six digits from the node's own screen"
