@@ -2743,9 +2743,12 @@ ones that heading states.
   158.0 mA at a mean 4.930 V. The distribution is **bimodal, not flat**: a floor
   of **754.5 mW across 81.4 % of samples**, and bursts averaging **886.2 mW**
   across the other 18.6 %, median burst length **300 ms**, onsets clustered at
-  ~1.15 s and at multiples of it. The median sample is 754.7 mW, p99 is
-  949.1 mW, and the largest single sample is 986.9 mW. **The figure to quote for
-  anything integrated over time is the mean, 779 mW**; the 754 mW floor is what
+  ~1.15 s and at multiples of it. The median sample is 754.7 mW and p99 is
+  949.1 mW. The largest **retained** sample is 986.9 mW — not the largest
+  sample in the capture, because a filter below discards 293 samples before any
+  of these figures, and **it must not be read as a peak**; the bullet that sets
+  out the difference is below. **The figure to quote for anything integrated
+  over time is the mean, 779 mW**; the 754 mW floor is what
   a spot reading between bursts returns and it understates consumption by 3.2 %.
   Over the 45 minutes the mean of the **first five minutes** and of the **last
   five minutes** differ by **+0.5 mW** — one window at each end, not five
@@ -2792,34 +2795,178 @@ ones that heading states.
   cited here for the bit rather than for the rail: bits 1, 2 and 4 being
   sourced does not make bit 3 sourced. ALDO4 on this board is the radio
   (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
-  and its bit is clear. This says nothing about BLE, which lives in the SoC and has
-  no rail of its own. It therefore does **not** answer the Waveshare entry's
+  and its bit is clear. This says nothing about BLE, which lives in the SoC
+  and has no rail of its own. It therefore does **not** answer the Waveshare
+  entry's
   open question above
   (`docs/research/VERIFIED_FACTS.md:2718` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
   (`docs/research/HARDWARE_MATRIX.md:554` — "| S17 | **the bench T-Watch S3 Plus, measured at its micro-USB input"),
-  and **not**, as far as anything here establishes, the same decoder. S16 records its own decode as
-  `baryluk/fnirsi-usb-power-data-logger` at an `UNKNOWN` revision with the
+  and **not**, as far as anything here establishes, the same decoder. S16
+  records its own decode as `baryluk/fnirsi-usb-power-data-logger` at an
+  `UNKNOWN` revision with the
   working copy not kept; this run used a copy fetched **2026-09-07**, two days
   after S16, pinned as `~/attadipa-bench/fnirsi_logger.py` sha256
   `388061aeb580cde0b7306626d87f833dfdbbf1fdf6c17663b49fde557ace250b`
   (bench-only). Its own upstream revision is `UNKNOWN` for the same reason
   S16's is, so **whether the two agree is `UNKNOWN` and is not claimed.**
-  S16 is the Waveshare's USB-C input on 2026-09-05, and this is the T-Watch's micro-USB input on **2026-09-08**,
-  reached through a USB-C-to-micro-USB adapter the owner fitted that day.
+  S16 is the Waveshare's USB-C input on 2026-09-05, and this is the
+  T-Watch's micro-USB input on **2026-09-08**, reached through a
+  USB-C-to-micro-USB adapter the owner fitted that day.
   **242 847 raw samples over 2698.8 s at 89.98 samples/s**, beginning
-  **2026-09-08 10:27:28Z**. Nothing shorter than 11.1 ms is visible to this
-  instrument, so the 986.9 mW largest sample bounds the peak from **below
-  only**.
-- **293 samples — 0.121 % — are decode artefacts and are discarded before every
-  figure above.** They read `V = 0`, or `V` at a whole binary count divided
-  by a thousand (65.536 = 2^16, 32.768 = 2^15, 8.192 = 2^13, 6.144 = 3·2^11 —
-  the first three are powers of two and the fourth is not), or `I ≈ 1.27 A`,
-  none of which a 5 V USB line can present. The filter is `4.0 < V < 5.5` together with
-  `0 ≤ I < 1.0`, leaving 242 554 samples; applying it to the capture reproduces
-  every number in this entry. Left in, they pull the mean to 780.7 mW.
+  **2026-09-08 10:27:28Z**. The nominal sample interval is 11.1 ms, so shorter
+  transients are not resolved by these samples. The 986.9 mW value is the
+  largest of the 242 554 retained decoded samples, after removing 293 whose
+  own mean decoded power exceeds two watts. It is **not the capture's
+  decoded maximum and establishes no physical peak bound**.
+- **293 samples — 0.121 % — are excluded by a heuristic filter, not a
+  classification.** The filter is `4.0 < V < 5.5` together with
+  `0 ≤ I < 1.0`, leaving 242 554 samples. Every power-distribution figure
+  above is calculated from those retained samples and is conditional on the
+  filter; the raw capture totals and the excluded-class counts are separate.
+  Including the 293 changes mean per-sample power from 778.9421 mW to
+  780.6784 mW — **1.7 mW, 0.22 %** relative to the retained mean, calculated
+  before rounding. The headline **779 mW** remains the retained-set mean.
+  Neither the exclusion nor this small mean sensitivity establishes the
+  physical peak; the decoded-set comparison below gives the separate effect
+  of retaining the current-only samples.
+- **Decoded patterns motivate investigation; they do not locate the fault.**
+  `V = 0.00000` paired with 150–195 mA and five high voltages that are
+  binary-round in millivolts form a **zero/high-binary pattern group**. These
+  pairs warrant investigation of the meter, decoder and physical input; their
+  decoded structure alone does not establish which is responsible. The pinned
+  logger decodes
+  voltage as an unsigned 32-bit count over **100 000** and subtracts nothing,
+  so the five are counts 614 387, 819 187, 1 638 387, 3 276 787 and 6 553 587
+  — each **13 below a multiple of 25**, and each a whole number of millivolts
+  once that 13 is added: 6144, 8192, 16 384, 32 768 and 65 536 mV, which are
+  3·2^11 and 2^13 through 2^16 — **11 to 16 low zero bits**. **The −13 is not
+  the signature, and an earlier revision of this bullet said it was.**
+  Calculated over the retained samples, `(raw + 13) mod 25` takes two
+  values, 0 and 13. These are two residue classes, **not one 0.25 mV grid**;
+  neither a unique grid pitch nor an ADC resolution follows from them.
+  The offset alone does not separate the high-voltage group. That also
+  answers the `2^k / 1000` identity this bullet first carried. Four of the
+  five are exactly that — `2^k / 1000` V **is** `2^k` mV — so it was the right
+  observation and is **not withdrawn, only made exact**: it rounded the shared
+  −0.13 mV away, and it missed 6.14387 V, which is 3·2^11 mV and not a bare
+  power of two. **What produces the values is `UNKNOWN`** — a binary-round
+  magnitude is a statement about the decode rather than about the board.
+  **`I ≈ 1.27 A` is not.** An earlier revision of this entry put it in the
+  same list and said a 5 V USB line cannot present it. **That is
+  withdrawn — it is wrong, and this repository already holds the reason.** The
+  AXP2101 this meter sits upstream of limits its own VBUS draw with a register
+  whose power-on default is **1500 mA**
+  (`docs/research/OPEN_QUESTIONS.md:683` — "POR default `100b` = 1500 mA"),
+  and **no revision of this repository has ever written `REG 0x16` in PMU
+  code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
+  firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
+  nothing. That holds whichever tree built the image, which the dated grep it
+  replaces did not — this entry says a few bullets below that which *tree*
+  built the flashed image is `UNKNOWN`, so a grep dated after the compile was
+  never evidence about it. The PMU writes in the tree are the rail-enable
+  and rail-voltage registers `0x80`, `0x82`, `0x90`, `0x92`, `0x93`, `0x94`,
+  `0x96`, the interrupt-status register `0x49` and the interrupt-enable
+  register `0x41` — **two helpers, not one**. `write_reg(pmu, …)` lives in
+  `firmware/main/board_power.cpp`; `0x41` is written only through the other,
+  `firmware/main/physical_input.cpp:126` — "  esp_err_t write_pmu(std::uint8_t reg, std::uint8_t value) const {",
+  with `firmware/main/physical_input.cpp:44` — "constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;".
+  Searching only the first helper is how an earlier revision of this list
+  missed it. The only `0x16` literals anywhere in `firmware/` are a Waveshare
+  panel column offset, `firmware/main/waveshare_board.cpp:72` — "constexpr int kPanelGapX = 0x16;".
+  The actual `REG 0x16` setting during this capture was not recorded and
+  remains **`UNKNOWN`**; the power-on default is not a measurement of it.
+  What the source and cable could deliver through the micro-USB adapter was
+  not recorded either. Neither their unknown limits nor the current magnitude
+  establishes corruption or proves these samples physically real.
+
+  **This document has already declined the same argument once.** S16 above
+  keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
+  treats it as a sample
+  (`docs/research/VERIFIED_FACTS.md:2641` — "The largest single sample is **1282 mA**").
+  The two are separate sources with different decoder copies and **no sample
+  crosses between them**; what cannot differ between them is the standard, and
+  under one standard magnitude alone classifies neither.
+- **So the current-only samples are `UNKNOWN`, and the 293 are counted rather
+  than bounded.** Both means this entry publishes are arithmetic means of
+  **per-sample power**, `mean(V × I)`: 780.6784 mW over all 242 847 and
+  778.9421 mW over the retained 242 554. `mean(V) × mean(I)` gives 780.7647 and
+  779.0308, which print as 780.8 and 779.0, so the printed figures identify the
+  method rather than leaving it open. Weighting each mean by its sample count
+  and subtracting gives **2.218 W per excluded sample** on average. Classifying
+  the 293 from the capture this entry already pins gives, by count: **118** at
+  `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
+  65.53587 V, binary-round in millivolts as above; **72** current-only, at
+  1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at `V =
+  0.00187` paired with **0.15065–0.19241 A**; and **8** between
+  **0.07262 V and 0.08837 V**, paired with **0.14982–0.18332 A**. All 68
+  low-voltage/current pairs warrant investigation too. **153 match the narrow
+  zero/high-binary rule and 140 do not**; that partition does not establish
+  that only 153 are anomalous or that any particular excluded row is valid.
+  Earlier arithmetic bounds are superseded by these exact counts. The
+  exclusion of all 293 remains the original heuristic rather than a proven
+  classification of physical versus corrupted samples, as this entry already
+  calls a heuristic. Reproduce from the pinned capture: apply the filter, then
+  split the remainder on `V == 0`, on `V` inside the band, and on `round(V ×
+  100000) + 13` being 100·N with N a whole number of millivolts carrying **at
+  least 11 low zero bits** — 35 samples. Stated as `25·2^k`, as an earlier
+  revision of this bullet stated it, the rule admits **86**: it drops the **9**
+  at 6.14387 V, whose 6144 mV is 3·2^11 and not a bare power of two, and
+  reaches the **60** at 2 mV — 35 − 9 + 60.
+- **`986.9 mW` is the largest retained decoded sample; the physical peak is
+  `UNKNOWN`.** The following sensitivity was recomputed on 2026-09-09 from
+  the same hash-verified capture. The filter and the floor/burst calculation
+  above are unchanged. Adding back the 72 current-only samples changes the
+  mean by **1.6195 mW** and p99 by **0.2600 mW**, without establishing their
+  validity. The maxima are decoded values, not verified electrical peaks.
+
+  The complete table and its executable arithmetic assertions have one home
+  in the [S17 reanalysis report](TWATCH_USB_POWER_S17_REANALYSIS_2026-09-09.md#executed-aggregate-results).
+
+  Power is calculated per sample as `V × I`; p99 uses linear interpolation
+  at zero-based rank `0.99 × (n - 1)` in the sorted set. These decimal places
+  expose the arithmetic, not the meter's accuracy. The actual peak and
+  transient envelope must not be sized from the filtered maximum or treated
+  as established by the larger decoded values.
+- **Report grouping and pinned-decoder inspection: EXECUTED 2026-09-09.**
+  The local analysis verified both full SHA-256 hashes before calculating:
+  the CSV hash recorded below and the logger hash recorded under Source S17
+  above. The 242 847 rows have continuous slot order `0,1,2,3`, ending with
+  `0,1,2`. Starting a group at each slot 0 reconstructs **60 712 reports**:
+  **60 711** groups of four samples and **one** of three. The incomplete
+  final group is retained; no original report bytes are available in the CSV.
+
+  **All 293 exclusions occupy 293 different reports, one exclusion per
+  report.** The absence of co-occurrence between any two exclusion classes
+  follows from that single result; it does not distinguish their causes. The
+  report linked below gives the independent-sample comparison: only about 0.53
+  within-report excluded pairs are expected under that hypothetical model. The
+  observation rejects the proposed clustering into roughly 73 whole reports.
+  It **does not prove transport
+  integrity**: corruption of a bit or field can affect just one sample within
+  a report. Nor does one exclusion per group rule out a short physical
+  disturbance: the CSV alone cannot separate a real input excursion, meter or
+  decoder behavior, and a transport error in one field. There is no original
+  report or independent voltage trace here. The source of individual anomalies
+  remains **`UNKNOWN`**.
+
+  The pinned logger itself decodes four slots at `offset = 2 + 15 * i`,
+  with unsigned voltage/current counts divided by 100000. It writes the slot
+  as the second CSV column. Its `--crc` option defaults to `False`, and
+  checksum rejection is conditional on that option. Whether the original
+  invocation enabled it is **`UNKNOWN`**; the CSV retains no raw report or
+  checksum bytes with which to check it retrospectively. The logger's
+  upstream revision and its equivalence to S16's copy remain **`UNKNOWN`**.
+
+  The exact standard-library reproduction scripts, aggregate outputs and
+  low-voltage/current pairing check are in the
+  [S17 reanalysis report](TWATCH_USB_POWER_S17_REANALYSIS_2026-09-09.md).
+  This is software analysis of the existing private capture, not a new
+  physical measurement. Hardware re-capture is
+  **NOT EXECUTED — HARDWARE REQUIRED**. No raw capture or private logger
+  source is committed.
 - **Where the watch was, and what is not recorded.** The capture is an inline
   USB reading, so the watch was cabled through the FNB-58 to this host for the
   whole 2698.8 s — it was on the bench, and could not have been anywhere else
