@@ -830,14 +830,14 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             return false; // unsolicited or cancelled-session observation
         }
         if (core::elapsed(battery_started_, now) >= kBatteryReplyBudget) {
-            fail_battery_request(true);
+            fail_battery_request(false); // typed answer; preserve prior ambiguity
             return false;
         }
         // Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].
         // No percentage, charging flag, absence signal or source timestamp.
         if (size < 11) {
             ++malformed_frames_;
-            fail_battery_request(true);
+            fail_battery_request(false); // typed answer; preserve prior ambiguity
             return false;
         }
         const auto millivolts = static_cast<std::uint16_t>(
@@ -985,8 +985,8 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // OWED AN ANSWER. Both parts matter. `op_owed_an_answer()` is what
         // excludes `awaiting_confirm_` above, and excludes an answered login
         // for the same reason. The order then settles which of the two
-        // remaining claimants it is, because the node answers in the order it
-        // was asked and this queue preserves that order.
+        // remaining claimants under FIFO response submission; dropped replies
+        // are not delivery evidence (see protocol report section 5.1).
         //
         // Neither ordering alone would do. A room message sent while the
         // contact burst is still arriving is queued *before* the opcode 40 that

@@ -635,7 +635,7 @@ refreshes retain the last good value/time as stale; even without a refresh,
 identity replacement within a connection clears it and inhibits further polls
 until a new session, because an old reply has no identity field.
 
-After a timed-out or malformed poll, an untagged ERR cannot safely be assigned
+After an unanswered timed-out poll, an untagged ERR cannot safely be assigned
 to a later send. For the rest of that connection, typed responses/confirmations
 and the existing send deadline determine delivery; an ambiguous ERR cannot
 fail it directly. Consequently, a later rejected send with no typed response
@@ -647,6 +647,29 @@ limits. Actual voltage accuracy, polling power cost and native BLE acceptance:
 **NOT EXECUTED — HARDWARE REQUIRED**. Host checks exercise the actual Companion
 queue/dispatcher and public MeshService snapshot; shared UI is still the
 separate presentation work tracked by #490.
+
+A typed short or overdue battery response ends the current wait without
+creating new generic-ERR ambiguity or publishing a successful value. Any
+ambiguity from an earlier unanswered timeout remains. The host regression
+checks both kinds of typed failure with and without a prior timeout, then
+submits a real private send and dispatches its ERR through the production client.
+
+**Response-ordering verification, 2026-09-09.** The pinned
+[command handler](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/MyMesh.cpp#L1472)
+constructs opcode 20's response synchronously, with no request-generation field.
+[MultiSerialInterface](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/MultiSerialInterface.h#L160)
+forwards it without retaining a failed response. The
+[ESP32 FIFO](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/esp32/SerialBLEInterface.cpp#L114)
+removes its head after `notify()`, without response retry; the
+[nRF52 FIFO](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/nrf52/SerialBLEInterface.cpp#L276)
+retains it on a zero-byte write while connected. FIFO submission attempts do
+not establish delivery of all earlier replies. Nor does FIFO distinguish
+`poll A -> local timeout -> command X -> poll B -> delayed response A`:
+this sequence requires no reordering, and response 12 cannot identify A or B.
+A later type-12 frame therefore cannot clear historical ERR ambiguity merely
+by its type. Its public timestamp denotes arrival, not source-sample age or
+proof that the latest poll produced it. These are source and protocol limits;
+no physical transport-order or timing result is claimed.
 
 ### 5.2 Text message types — three defined, and no command accepts all three
 

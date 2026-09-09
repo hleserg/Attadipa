@@ -1972,8 +1972,51 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
     }
 }
 
+void test_typed_battery_failure_does_not_create_err_ambiguity()
+{
+    const std::uint8_t hint[] = {21};
+    const std::uint8_t voltage[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+    const std::uint8_t error[] = {1, 1};
+    for (bool previous_timeout : {false, true}) {
+        for (bool late : {false, true}) {
+            MeshCoreCompanion client;
+            connect_and_handshake(client);
+            CHECK(client.receive(hint, sizeof(hint), at(8)));
+            MeshPeer peer{};
+            CHECK(client.peer(0, peer));
+            MeshCoreFrame frame{};
+            client.tick(at(10));
+            CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+            const std::uint64_t started = previous_timeout ? 60010 : 10;
+            if (previous_timeout) {
+                client.tick(at(5010));
+                client.tick(at(started));
+                CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
+            }
+            const std::uint64_t reply_at = started + (late ? 5000 : 1);
+            CHECK(!client.receive(voltage, late ? sizeof(voltage) : 3, at(reply_at)));
+            CHECK(client.status().node_battery.validity == core::Validity::Unknown);
+            CHECK(client.status().node_battery.millivolts == 0);
+            CHECK(client.status().node_battery.received_at.ms == 0);
+            CHECK(client.send_private(peer.id, "after typed reply", WallTime{1}));
+            client.tick(at(reply_at + 1));
+            CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+            CHECK(client.receive(error, sizeof(error), at(reply_at + 2)));
+            CHECK(client.send_busy() == previous_timeout);
+            CHECK(client.status().delivery == (previous_timeout ? MeshDelivery::Queued
+                                                               : MeshDelivery::Failed));
+            if (previous_timeout) {
+                client.tick(at(reply_at + 15001));
+                CHECK(client.status().delivery == MeshDelivery::Failed);
+                CHECK(!client.send_busy());
+            }
+        }
+    }
+}
+
 int main()
 {
+    test_typed_battery_failure_does_not_create_err_ambiguity();
     test_attached_node_battery_uses_the_live_queue_and_public_status();
     test_handshake_contacts_and_service_boundary();
     test_room_send_does_not_wait_for_contact_sync();
