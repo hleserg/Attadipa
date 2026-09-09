@@ -8,37 +8,33 @@ because they are not true yet.
 
 ## Current publication — 9 September 2026
 
-The Pages refresh in issue #511 follows the product introduction in README
-PR #512. Its first screen shows the approved Clock, Direction and Mesh browser
-captures, explicitly labelled sample data rather than firmware screenshots.
-The primary action opens the existing interactive study; Shell Study 03 has a
-separate link for applications and Settings.
+Issue #519 corrects the product framing shared by the landing page and both
+READMEs: Attadipa is an open operating system for wearable devices and personal
+mesh nodes. Watches are its first embodiment, not its scope boundary.
 
-The current evidence section links dated physical Clock, boot and MeshCore
-reports. It does not promise a complete composer, remote-contact navigation,
-a physical compass, outdoor GNSS fix, recorder, phone pairing or app SDK.
-Static head strings, English JSON-LD and the EN/RU runtime metadata were updated
-together. The canonical URL and English graph policy below are unchanged.
+The public page introduces the OS to nontechnical visitors. The primary action
+continues the on-page story; Telegram is the direct participation path and
+GitHub is optional for developers. Review tools are not public onboarding.
+The meaning of the name appears near the introduction. Interface artwork has
+a short design-preview caption; current development is described in one section
+rather than repeated acceptance caveats.
 
-The page now loads the existing local Nunito Sans file with font-display swap;
-this replaces the earlier system-font-only choice. No third-party font service,
-script, analytics or new deployment system was added. The browser may briefly
-show its fallback font. The language CSS hides the inactive locale regardless
-of component display rules; with scripting disabled both languages remain
-readable and the nonfunctional language buttons are hidden.
+Static head strings, English JSON-LD and EN/RU runtime metadata describe the
+same OS positioning. The canonical URL and English graph policy below remain.
+The existing local variable Nunito Sans font is declared with its full weight
+range and font-display swap. No external font service, third-party script,
+analytics or deployment system was added. Without scripting, both languages
+remain readable and the inactive language controls are hidden.
 
-Twelve unchanged PNG copies in docs/assets are served by Pages, because root
-pics/ is outside its docs/ publishing directory. Their source, dates, hashes
-and native geometry remain canonical in
-[pics/README.md](../../pics/README.md#browser-design-study-captures).
-[The site media note](MEDIA.md) records the copying rule. Existing original
-brand artwork is retained; the banner now appears in the closing section.
+The unchanged PNG copies under docs/assets retain their canonical provenance
+in [pics/README.md](../../pics/README.md#browser-design-study-captures).
+[The site media note](MEDIA.md) records their copying rule. The landing uses
+large watch-interface previews; the small-screen comparison and review links
+have been removed from the public story.
 
-Sections 0–6 below preserve the **23 August audit and its rationale**, not the
-current first-screen text or readiness. In particular their old “firmware has
-not run” caveat and “Useful when your phone isn't” headline are historical.
-The file-size/image checks described in section 7 still run against the actual
-files; the redesign does not imply a new hardware PASS.
+Sections 0–6 below preserve the **23 August audit**, not current wording,
+navigation or readiness. The site checks in section 7 still exercise metadata,
+asset facts and visibility fallbacks.
 
 ## 0. The constraint the August audit worked under
 

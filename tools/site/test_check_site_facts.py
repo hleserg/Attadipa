@@ -138,7 +138,7 @@ def main() -> int:
     scenario(
         "a declared box of the wrong shape in index.html",
         lambda seo, html, root: edit(
-            html, 'width="1774" height="887"', 'width="1774" height="600"'
+            html, 'width="512" height="512"', 'width="512" height="300"'
         ),
         expect_fail=True,
         needle="a different shape, not a smaller one",

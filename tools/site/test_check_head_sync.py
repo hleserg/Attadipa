@@ -173,13 +173,13 @@ def main() -> int:
     # left site.js holding the previous one.
     scenario(
         "a <title> changed on one side only",
-        lambda html, js: edit(html, "<title>Atta-dipa", "<title>Firefly OS — Atta-dipa"),
+        lambda html, js: edit(html, "<title>Attadipa", "<title>Firefly OS — Attadipa"),
         expect_fail=True,
         needle="title differs",
     )
     scenario(
         "a title changed in site.js only",
-        lambda html, js: edit(js, "title: 'Atta-dipa", "title: 'Atta-dipa Firmware"),
+        lambda html, js: edit(js, "title: 'Attadipa", "title: 'Attadipa Firmware"),
         expect_fail=True,
         needle="title differs",
     )
@@ -213,7 +213,7 @@ def main() -> int:
     scenario(
         "og:description's string diverging is caught by the comparison",
         lambda html, js: edit(
-            js, "cardDescription: 'LoRa MeshCore", "cardDescription: 'Open-source ESP32-S3"
+            js, "cardDescription: 'Your device", "cardDescription: 'Open-source ESP32-S3"
         ),
         expect_fail=True,
         needle="cardDescription differs",
@@ -291,13 +291,13 @@ def main() -> int:
     # shows up as a case that stopped firing rather than as silence.
     scenario(
         "og:title diverges",
-        lambda html, js: edit(js, "ogTitle: 'Atta-dipa", "ogTitle: 'Atta-dipa OS"),
+        lambda html, js: edit(js, "ogTitle: 'Attadipa", "ogTitle: 'Attadipa OS"),
         expect_fail=True,
         needle="ogTitle differs",
     )
     scenario(
         "the meta description diverges",
-        lambda html, js: edit(js, "description: 'Open-source", "description: 'The open-source"),
+        lambda html, js: edit(js, "description: 'Meet Attadipa", "description: 'Explore Attadipa"),
         expect_fail=True,
         needle="description differs",
     )
@@ -321,8 +321,8 @@ def main() -> int:
         "twitter:title drifts from og:title",
         lambda html, js: edit(
             html,
-            '<meta name="twitter:title" content="Atta-dipa',
-            '<meta name="twitter:title" content="Atta-dipa OS',
+            '<meta name="twitter:title" content="Attadipa',
+            '<meta name="twitter:title" content="Attadipa OS',
         ),
         expect_fail=True,
         needle="twitter:title differs",
@@ -331,7 +331,7 @@ def main() -> int:
         "twitter:description drifts from og:description",
         lambda html, js: edit(
             html,
-            '<meta name="twitter:description" content="LoRa MeshCore',
+            '<meta name="twitter:description" content="Your device',
             '<meta name="twitter:description" content="MeshCore',
         ),
         expect_fail=True,
@@ -364,7 +364,7 @@ def main() -> int:
     )
     scenario(
         "copy.ru has an empty string",
-        lambda html, js: edit(js, "ogTitle: 'Atta-dipa — открытая", "ogTitle: '' , ogTitleOld: 'Atta-dipa — открытая"),
+        lambda html, js: edit(js, "ogTitle: 'Attadipa — открытая", "ogTitle: '' , ogTitleOld: 'Attadipa — открытая"),
         expect_fail=True,
         needle="copy.ru has no ogTitle",
     )
@@ -395,7 +395,7 @@ def main() -> int:
     # first commit. Likewise a comment mentioning a field is not a field.
     scenario(
         "Russian differing from English is not a divergence",
-        lambda html, js: edit(js, "title: 'Atta-dipa — открытая", "title: 'Atta-dipa — свободная"),
+        lambda html, js: edit(js, "title: 'Attadipa — открытая", "title: 'Attadipa — свободная"),
         expect_fail=False,
     )
     # THIS CASE USED TO BE DECORATIVE. It inserted the comment before
@@ -418,8 +418,8 @@ def main() -> int:
         "a comment below the real field is not the field either",
         lambda html, js: edit(
             js,
-            "      ogTitle: 'Atta-dipa",
-            "      // title: 'decoy'\n      ogTitle: 'Atta-dipa",
+            "      ogTitle: 'Attadipa",
+            "      // title: 'decoy'\n      ogTitle: 'Attadipa",
         ),
         expect_fail=False,
     )
@@ -472,8 +472,8 @@ def main() -> int:
         "an indented <title> body IS a divergence — the checker does not strip",
         lambda html, js: edit(
             html,
-            "<title>Atta-dipa —",
-            "<title>\n    Atta-dipa —",
+            "<title>Attadipa —",
+            "<title>\n    Attadipa —",
         ),
         expect_fail=True,
         needle="title differs",
@@ -495,7 +495,7 @@ def main() -> int:
         "og:image:alt and twitter:image:alt diverge inside index.html",
         lambda html, js: edit(
             html,
-            '<meta name="twitter:image:alt" content="The Atta-dipa firefly mark',
+            '<meta name="twitter:image:alt" content="The Attadipa firefly mark',
             '<meta name="twitter:image:alt" content="A firefly mark',
         ),
         expect_fail=True,
@@ -507,7 +507,7 @@ def main() -> int:
         "the JSON-LD description drifts from the meta description",
         lambda html, js: edit(
             html,
-            '"description": "Open-source ESP32-S3 smartwatch project',
+            '"description": "Meet Attadipa, an open operating system',
             '"description": "Open source ESP32-S3 smartwatch project',
         ),
         expect_fail=True,
@@ -521,8 +521,8 @@ def main() -> int:
         lambda html, js: edit(
             html,
             '<link rel="icon" type="image/png" href="assets/favicon.png">',
-            '<meta name="apple-mobile-web-app-title" content="The Atta-dipa firefly mark to the '
-            'left of the wordmark Atta-dipa, with the line Independent by design beneath it.">\n  '
+            '<meta name="apple-mobile-web-app-title" content="The Attadipa firefly mark to the '
+            'left of the wordmark Attadipa, with the line Independent by design beneath it.">\n  '
             '<link rel="icon" type="image/png" href="assets/favicon.png">',
         ),
         expect_fail=True,
