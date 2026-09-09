@@ -84,7 +84,20 @@ config ATTADIPA_I2C_PROBE
         Scan the I2C bus on the pins below and log every address that
         acknowledges, then read the AXP2101 charge-voltage register if one
         answered. A bring-up instrument for a board this firmware has no
-        driver for; it writes no register and asserts no board identity.
+        driver for; the default scan writes no register and asserts no board
+        identity. The separate AK09911 option enables guarded sensor writes.
+
+config ATTADIPA_AK09911_PROBE
+    bool "AK09911 identity and raw sample probe (writes sensor modes)"
+    depends on ATTADIPA_I2C_PROBE
+    default n
+    help
+        After the read-only bus scan, identify the received CAD-high
+        AK09911-compatible module at 0x0D. Only a matching 48 05 ID permits
+        mode writes. Read ASA and acquire raw XYZ at 10 Hz for 20 seconds,
+        then verify power-down and release the sensor device handle.
+        Requires the module's documented power/reset wiring. No PMU writes,
+        calibration, watch-body transform or usable heading is produced.
 
 config ATTADIPA_I2C_PROBE_SDA
     int "I2C probe SDA GPIO"
