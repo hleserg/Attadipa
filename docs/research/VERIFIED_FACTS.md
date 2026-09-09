@@ -2795,23 +2795,26 @@ ones that heading states.
   cited here for the bit rather than for the rail: bits 1, 2 and 4 being
   sourced does not make bit 3 sourced. ALDO4 on this board is the radio
   (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
-  and its bit is clear. This says nothing about BLE, which lives in the SoC and has
-  no rail of its own. It therefore does **not** answer the Waveshare entry's
+  and its bit is clear. This says nothing about BLE, which lives in the SoC
+  and has no rail of its own. It therefore does **not** answer the Waveshare
+  entry's
   open question above
   (`docs/research/VERIFIED_FACTS.md:2718` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
   (`docs/research/HARDWARE_MATRIX.md:554` — "| S17 | **the bench T-Watch S3 Plus, measured at its micro-USB input"),
-  and **not**, as far as anything here establishes, the same decoder. S16 records its own decode as
-  `baryluk/fnirsi-usb-power-data-logger` at an `UNKNOWN` revision with the
+  and **not**, as far as anything here establishes, the same decoder. S16
+  records its own decode as `baryluk/fnirsi-usb-power-data-logger` at an
+  `UNKNOWN` revision with the
   working copy not kept; this run used a copy fetched **2026-09-07**, two days
   after S16, pinned as `~/attadipa-bench/fnirsi_logger.py` sha256
   `388061aeb580cde0b7306626d87f833dfdbbf1fdf6c17663b49fde557ace250b`
   (bench-only). Its own upstream revision is `UNKNOWN` for the same reason
   S16's is, so **whether the two agree is `UNKNOWN` and is not claimed.**
-  S16 is the Waveshare's USB-C input on 2026-09-05, and this is the T-Watch's micro-USB input on **2026-09-08**,
-  reached through a USB-C-to-micro-USB adapter the owner fitted that day.
+  S16 is the Waveshare's USB-C input on 2026-09-05, and this is the
+  T-Watch's micro-USB input on **2026-09-08**, reached through a
+  USB-C-to-micro-USB adapter the owner fitted that day.
   **242 847 raw samples over 2698.8 s at 89.98 samples/s**, beginning
   **2026-09-08 10:27:28Z**. Nothing shorter than 11.1 ms is visible to this
   instrument, so the 986.9 mW largest sample bounds the peak from **below
@@ -2828,8 +2831,9 @@ ones that heading states.
   Left in, the 293 pull the mean from 778.9 mW to 780.7 mW — **1.8 mW,
   0.23 %**. That sensitivity is published, it is the whole of what the
   exclusion is load-bearing for in the mean, and it is why the headline
-  **779 mW survives everything below unchanged**. What the exclusion is *not* safe for is the
-  maximum, and that is the bullet the reader is being sent to.
+  **779 mW survives everything below unchanged**. What the exclusion is
+  *not* safe for is the maximum, and that is the bullet the reader is being
+  sent to.
 - **Two kinds of sample are inside those 293 and only one kind has evidence.**
   `V = 0.00000` while 150–195 mA flows, and five high voltages that are
   binary-round in millivolts, are **structural**: values the measured quantity
@@ -2917,8 +2921,9 @@ ones that heading states.
   carrying **at least 11 low zero bits** — 35 samples. Stated as `25·2^k`, as
   an earlier revision of this bullet stated it, the rule admits **86**: it
   reaches the 2 mV group.
-- **`986.9 mW` is the largest *retained* sample, and the filter is what makes it
-  the largest.** The filter's own ceiling is 5.5 V × 1.0 A = 5.5 W, and if even
+- **`986.9 mW` is the largest *retained* sample, and the filter is what makes
+  it the largest.** The filter's own ceiling is 5.5 V × 1.0 A = 5.5 W, and if
+  even
   one ≈1.27 A sample is a real reading then the capture's largest sample is
   about **6.3 W** at this run's mean voltage — six times the figure this entry
   publishes as its maximum. The instrument's 11.1 ms resolution already made
