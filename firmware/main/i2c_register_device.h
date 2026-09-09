@@ -10,16 +10,17 @@
 
 namespace attadipa::firmware {
 
-// Owns only the AK09911 device; never resets or deletes its caller's bus.
-class Ak09911I2c {
+// Shared by the AK and QMI owners. Device identity is checked by their
+// sequences before writes. Never resets or deletes its caller's bus.
+class I2cRegisterDevice {
 public:
-  Ak09911I2c() = default;
-  Ak09911I2c(const Ak09911I2c &) = delete;
-  Ak09911I2c &operator=(const Ak09911I2c &) = delete;
-  ~Ak09911I2c() { (void)close(); }
+  I2cRegisterDevice() = default;
+  I2cRegisterDevice(const I2cRegisterDevice &) = delete;
+  I2cRegisterDevice &operator=(const I2cRegisterDevice &) = delete;
+  ~I2cRegisterDevice() { (void)close(); }
 
   esp_err_t open(i2c_master_bus_handle_t bus, std::uint8_t address) {
-    if (!bus || device_ || (address != 0x0c && address != 0x0d))
+    if (!bus || device_ || address < 0x08 || address > 0x77)
       return ESP_ERR_INVALID_ARG;
     i2c_device_config_t config{};
     config.dev_addr_length = I2C_ADDR_BIT_LEN_7;

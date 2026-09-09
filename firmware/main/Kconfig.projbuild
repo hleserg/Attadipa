@@ -99,6 +99,17 @@ config ATTADIPA_AK09911_PROBE
         Requires the module's documented power/reset wiring. No PMU writes,
         calibration, watch-body transform or usable heading is produced.
 
+config ATTADIPA_QMI8658_PAIRED_PROBE
+    bool "Pair AK raw acquisition with QMI8658 FIFO (temporary sensor writes)"
+    depends on ATTADIPA_AK09911_PROBE && APP_BUILD_TYPE_PURE_RAM_APP
+    default n
+    help
+        Record raw AK and QMI acceleration for 40 seconds. Preserve an active
+        QMI sensor/step profile; temporarily start an idle accelerometer only.
+        Use Non-SyncSample FIFO, verify configuration restoration and report
+        timing, errors and discarded FIFO data. Never reset the step counter.
+        Requires the documented Waveshare I2C wiring. No heading is produced.
+
 config ATTADIPA_I2C_PROBE_SDA
     int "I2C probe SDA GPIO"
     depends on ATTADIPA_I2C_PROBE

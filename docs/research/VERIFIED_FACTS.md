@@ -3096,3 +3096,12 @@ ones that heading states.
   The vendor's published sleep figures above — light sleep 2.38 mA, deep sleep
   460–530 µA — are three orders of magnitude below this and describe states this
   run never entered, so nothing here contradicts them.
+
+## QMI FIFO can coexist with the required Non-SyncSample pedometer mode
+
+**VERIFIED — primary documentation:** QMI8658C 13-52-27 Rev A, section 11,
+requires Non-SyncSample for the pedometer; sections 6.2 and 8 permit polled FIFO
+acquisition in that mode. Preserving Pedo_EN while selecting SyncSample does not
+preserve step detection. The exact board pin evidence, register sequence and
+implementation limits are in [QMI8658 FIFO acquisition](QMI8658_FIFO_ACQUISITION.md).
+Concurrent FIFO/step operation on this watch is **NOT EXECUTED — HARDWARE REQUIRED**.
