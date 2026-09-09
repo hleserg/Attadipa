@@ -131,17 +131,22 @@ int main() {
 
   Bus unstable;
   unstable.unstable_asa = true;
-  Ak09911 rejected(unstable);
-  CHECK(rejected.start() == Ak09911Result::InvalidData);
-  CHECK(rejected.stop() == Ak09911Result::Ok && unstable.regs[0x31] == 0);
-  for (const auto &write : unstable.writes)
-    CHECK(write[1] != 0x02);
+  unstable.fuse_reads_zero = true;
+  Ak09911 diagnostic(unstable);
+  CHECK(diagnostic.start() == Ak09911Result::Ok);
+  CHECK(!diagnostic.info().asa_consistent);
+  unstable.frame(-123, 456, -789);
+  CHECK(diagnostic.read(attempt) == Ak09911Result::Sample);
+  CHECK(attempt.raw[0] == -123 && attempt.raw[1] == 456 &&
+        attempt.raw[2] == -789);
+  CHECK(diagnostic.stop() == Ak09911Result::Ok && unstable.regs[0x31] == 0);
 
   Bus reference;
   Ak09911 normal(reference);
   CHECK(normal.start() == Ak09911Result::Ok);
   const int start_operations = reference.operation;
-  CHECK(normal.info().fuse_mode_readback == 0x1f);
+  CHECK(normal.info().fuse_mode_readback == 0x1f &&
+        normal.info().asa_consistent);
   // Confirmed and discrepant fuse modes expose the same raw-only sample API.
   reference.frame(-123, 456, -789);
   CHECK(normal.read(attempt) == Ak09911Result::Sample);

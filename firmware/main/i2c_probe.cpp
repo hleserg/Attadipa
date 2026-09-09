@@ -86,10 +86,11 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
   if (result == Ak09911Result::Ok && info.fuse_mode_readback != 0x1f)
     ESP_LOGW(kTag, "AK09911 fuse-mode discrepancy: ASA validity is unknown; "
                    "raw counts only, no adjusted field units");
+  if (result == Ak09911Result::Ok && !info.asa_consistent)
+    ESP_LOGW(kTag, "AK09911 ASA reads differ; diagnostic only, raw capture continues");
   unsigned samples = 0, not_ready = 0, overflow = 0, invalid = 0, dor = 0;
   const auto began = io.now_us();
-  auto last_fresh = began;
-  // Policy: a 20-second 10 Hz bring-up, with a 500 ms no-fresh-data deadline.
+  // Policy: a 20-second 10 Hz bring-up, including overflow/not-ready recovery.
   // The loop is never a replacement for the product's acquisition owner.
   while (result == Ak09911Result::Ok && io.now_us() - began < 20000000) {
     Ak09911Sample sample;
@@ -97,7 +98,6 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
     if (read == Ak09911Result::Sample) {
       ++samples;
       dor += (sample.st1 & 2) != 0;
-      last_fresh = sample.received_at_us;
       ESP_LOGI(kTag, "AKRAW,%" PRId64 ",%d,%d,%d,%02x,%02x",
                sample.received_at_us, sample.raw[0], sample.raw[1], sample.raw[2],
                sample.st1, sample.st2);
@@ -112,11 +112,6 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
     } else {
       result = read;
       ESP_LOGE(kTag, "AK09911 acquisition stopped: result=%d", static_cast<int>(read));
-      break;
-    }
-    if (io.now_us() - last_fresh > 500000) {
-      result = Ak09911Result::NotReady;
-      ESP_LOGE(kTag, "AK09911 no usable fresh sample for 500 ms; stopping");
       break;
     }
     vTaskDelay(pdMS_TO_TICKS(10) > 0 ? pdMS_TO_TICKS(10) : 1);

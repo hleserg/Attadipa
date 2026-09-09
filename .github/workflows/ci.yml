@@ -838,12 +838,17 @@ jobs:
           # sdkconfig.i2cprobe is stacked here rather than in a job of its own:
           # the bench image is the RAM route *plus* the probe, so this builds
           # what actually gets loaded, and i2c_probe.cpp cannot rot unnoticed.
-          idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe;sdkconfig.i2cprobe" build
+          # Compile the native AK09911 adapter used by the Waveshare bench.
+          printf '%s\n' 'CONFIG_ATTADIPA_AK09911_PROBE=y' 'CONFIG_ATTADIPA_I2C_PROBE_SDA=15' 'CONFIG_ATTADIPA_I2C_PROBE_SCL=14' > "$RUNNER_TEMP/sdkconfig.ak09911"
+          idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe;sdkconfig.i2cprobe;$RUNNER_TEMP/sdkconfig.ak09911" build
           # idf.py keeps sdkconfig in the project directory, so without
           # the line above this silently rebuilds the flash image and
           # calls it a RAM build. Prove the option actually took.
           grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram/sdkconfig
           grep -q "^CONFIG_ATTADIPA_I2C_PROBE=y$" build-ram/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_AK09911_PROBE=y$" build-ram/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_I2C_PROBE_SDA=15$" build-ram/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_I2C_PROBE_SCL=14$" build-ram/sdkconfig
           python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
           python3 ../tools/flash/firmware_elf_check.py --variant pure-ram build-ram/attadipa.elf
 

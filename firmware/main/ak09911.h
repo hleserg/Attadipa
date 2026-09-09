@@ -26,6 +26,7 @@ struct Ak09911Info {
   // Raw register bytes: equal reads alone do not establish valid factory ASA.
   std::uint8_t asa[3]{};
   std::uint8_t fuse_mode_readback = 0;
+  bool asa_consistent = false; // diagnostic only; never a raw-data gate
 };
 
 struct Ak09911Sample {
@@ -81,9 +82,9 @@ public:
     result = power_down();
     if (result != Ak09911Result::Ok)
       return result;
+    info_.asa_consistent = true;
     for (unsigned i = 0; i < 3; ++i)
-      if (info_.asa[i] != again[i])
-        return Ak09911Result::InvalidData;
+      info_.asa_consistent = info_.asa_consistent && info_.asa[i] == again[i];
     if (info_.fuse_mode_readback != 0x00 && info_.fuse_mode_readback != 0x1f)
       return Ak09911Result::InvalidData;
     std::uint8_t discard = 0;
