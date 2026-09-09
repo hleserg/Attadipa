@@ -342,7 +342,7 @@ magnetometer is fitted to any board.
 selected for the first Waveshare integration is now soldered to and read by the
 watch. [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.1 holds the
 verified register source, connection and module-identity evidence, including the
-unconfirmed fuse-mode behavior. The [corrected-image bench result in #450](https://github.com/hleserg/Attadipa/issues/450#issuecomment-5596759154)
+unconfirmed fuse-mode behavior. The [corrected-image bench record](ak09911-waveshare-2026-09-09/README.md)
 records the exact source/image identity, raw acquisition, power-down and return
 to installed firmware. The delivery snapshot above is historical: its blanket
 no-read-off/no-fitted-module statements no longer describe the selected AK.

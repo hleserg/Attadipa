@@ -235,8 +235,8 @@ heading, mounting calibration, tilt compensation, accuracy or interference.
 [Bench evidence and source/binary provenance in #450](https://github.com/hleserg/Attadipa/issues/450#issuecomment-5595967813)
 identify the physical run as implementation `527f1382`, RAM image SHA-256
 `190fbe3d9e512ee848b4ee9452fb5f1478ec6f6f64949e968568eeb8ed559d09`.
-Later driver corrections are not a new physical test. No flash/erase command
-was issued; the previous image's cached build-description string is not the
+The later [corrected-image capture](ak09911-waveshare-2026-09-09/README.md) records a separate physical test. No flash/erase command
+was issued in either run; the previous image's cached build-description string is not the
 source identity. Placement and vibration A/B remain
 **NOT EXECUTED — HARDWARE REQUIRED**.
 
