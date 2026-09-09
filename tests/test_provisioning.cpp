@@ -1094,11 +1094,6 @@ void test_leaving_a_wait_says_the_answer_is_lost()
     CHECK(!second.finished());
 }
 
-// A screen that can only be left by getting something right is a trap, and a
-// long press onto it is easy to make by accident (#406 round 1). Every field
-// of both tasks has a way out that asks nothing of the holder -- except the
-// confirmation, where the neighbouring key is the destructive one and Leave is
-// Back instead.
 // The frame after the last press, which no test used to look at.
 //
 // `Exit` is not a screen; it is the absence of one, and the thing that takes
@@ -1147,6 +1142,11 @@ void test_the_finished_frame_keeps_the_words_and_drops_the_keys()
     }
 }
 
+// A screen that can only be left by getting something right is a trap, and a
+// long press onto it is easy to make by accident (#406 round 1). Every field
+// of both tasks has a way out that asks nothing of the holder -- except the
+// confirmation, where the neighbouring key is the destructive one and Leave is
+// Back instead.
 void test_leave_is_never_a_trap()
 {
     const EntryKey walk_time[] = {EntryKey::Next, EntryKey::Next, EntryKey::Next,

@@ -811,7 +811,7 @@ ru = "ответил другой узел"
 
 # The way out of a state the wearer can actually leave. Both routes are the
 # same long press on the clock, which is what reaches the entry screen's node
-# field -- `firmware/main/waveshare_board.cpp:923` — "  show_page(Page::Entry);".
+# field -- `firmware/main/waveshare_board.cpp:1048` — "  show_page(Page::Entry);".
 # Both are one line at 14 px on a 240 px panel, which is what caps them at
 # about thirty characters. The first Russian pair ran to thirty-five, wrapped,
 # and put its second line below the bottom of the T-Watch display.
