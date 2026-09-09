@@ -507,8 +507,8 @@ def main() -> int:
         "the JSON-LD description drifts from the meta description",
         lambda html, js: edit(
             html,
-            '"description": "Open-source ESP32-S3 smartwatch firmware:',
-            '"description": "Open source ESP32-S3 smartwatch firmware:',
+            '"description": "Open-source ESP32-S3 smartwatch project',
+            '"description": "Open source ESP32-S3 smartwatch project',
         ),
         expect_fail=True,
         needle="have diverged",

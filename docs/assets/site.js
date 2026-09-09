@@ -9,51 +9,25 @@
   const twitterTitle = document.querySelector('meta[name="twitter:title"]');
   const twitterDescription = document.querySelector('meta[name="twitter:description"]');
 
-  // THESE STRINGS ARE THE RENDERED <title> AND description, NOT A FALLBACK.
-  // setLanguage() assigns them unconditionally on every load, and a crawler
-  // that runs JavaScript sees what this object says rather than what
-  // index.html says. So when the head changes, this changes with it -- an
-  // earlier SEO pass rewrote the <title> and left these behind, which would
-  // have put the old strings straight back into the rendered DOM.
-  //
-  // AND `description` IS NOT `cardDescription`. index.html carries two strings
-  // on purpose: the meta description is written for a search result and the
-  // card text for a social preview, which is a different length and a
-  // different reader. Assigning one to all three put the search-result string
-  // on the card for every renderer-based crawler while Facebook, X, Slack and
-  // Discord -- which do not run scripts -- read the other from the HTML. One
-  // URL, two card texts. Found in review, in the fix for the first version of
-  // this same defect.
-  //
-  // The two DO now end in the same sentence, and that is also a review
-  // finding: the honesty caveat was written three ways -- "not yet run on
-  // hardware", "no board has run it yet", "no Attadipa firmware has yet run on
-  // a physical board" -- and the broadest of them stopped being true on
-  // 2026-08-23, when bench probes written for this project ran from RAM on the
-  // Waveshare unit and produced measurements. Not "built from this repository":
-  // nothing here compiles for a board -- no `app_main`, no
-  // `idf_component_register` anywhere in the tree -- and the first draft of
-  // this round's fix said it did, one comma from "the repository builds six
-  // libraries". Found in review. Three wordings meaning three
-  // different things is the tell. One sentence now, in all six places, and it
-  // is the narrow claim that is still true: the firmware has not run on a
-  // board; bench code has.
+  // Keep canonical English head strings and their localized runtime copies in sync.
+  // Search descriptions and social-card descriptions intentionally differ.
+  // The JSON-LD graph describes the canonical English document.
   const copy = {
     en: {
       title: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
       ogTitle: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware',
       locale: 'en_US',
       localeAlternate: 'ru_RU',
-      description: 'Open-source ESP32-S3 smartwatch firmware: LoRa MeshCore messaging, offline GNSS navigation, LVGL UI on FreeRTOS. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.',
-      cardDescription: 'LoRa MeshCore messaging, offline GNSS navigation and an LVGL UI on FreeRTOS, on ESP32-S3. Early stage — it boots on the Waveshare board from flash and drives its panel, touch and PMU rails; power lifecycle, timing and GNSS are unexercised.'
+      description: 'Open-source ESP32-S3 smartwatch project for time, MeshCore messaging and offline navigation. Explore the design and dated hardware results. Early development, not a finished consumer watch.',
+      cardDescription: 'LoRa MeshCore and offline GNSS are part of the direction. Explore a warm, glanceable watch interface, try the browser studies, and help build Atta-dipa. Early development.'
     },
     ru: {
       title: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
       ogTitle: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3',
       locale: 'ru_RU',
       localeAlternate: 'en_US',
-      description: 'Открытая прошивка для умных часов на ESP32-S3: LoRa-переписка через MeshCore, офлайн-навигация по GNSS, интерфейс LVGL на FreeRTOS. Ранняя стадия — она загружается на плате Waveshare из flash и управляет панелью, тачем и шинами PMU; питание, тайминги и GNSS не проверены.',
-      cardDescription: 'LoRa-переписка через MeshCore, офлайн-навигация по GNSS и интерфейс LVGL на FreeRTOS на ESP32-S3. Ранняя стадия — она загружается на плате Waveshare из flash и управляет панелью, тачем и шинами PMU; питание, тайминги и GNSS не проверены.'
+      description: 'Открытый проект часов на ESP32-S3: время, связь MeshCore и офлайн-навигация. Посмотрите дизайн и результаты на железе. Ранняя разработка, не готовые потребительские часы.',
+      cardDescription: 'LoRa MeshCore и офлайн-GNSS — часть замысла. Тёплый, понятный с одного взгляда интерфейс: попробуйте браузерные макеты и помогите создать Atta-dipa. Ранняя разработка.'
     }
   };
 
