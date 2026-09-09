@@ -2831,19 +2831,25 @@ ones that heading states.
   everything below unchanged**. What the exclusion is *not* safe for is the
   maximum, and that is the bullet the reader is being sent to.
 - **Two kinds of sample are inside those 293 and only one kind has evidence.**
-  `V = 0.00000` while 150–195 mA flows, and five high voltages whose raw counts
-  share one offset, are **structural**: values the measured quantity cannot take
-  while the field they were decoded from can. Upstream decodes voltage as an
-  unsigned 32-bit count over **100 000** and subtracts nothing, so the five are
-  counts 614 387, 819 187, 1 638 387, 3 276 787 and 6 553 587 — each exactly
-  **13 below a multiple of 25**, with `(raw + 13) / 25` equal to 3·2^13, 2^15,
-  2^16, 2^17 and 2^18: **13 to 18 low zero bits**. Read as `2^k / 1000` when
-  this bullet was first written, they needed a per-thousand decode this meter
-  does not use; **that identity is withdrawn**, it rounded the shared −13 counts
-  away, and it omitted 16.38387 V altogether. The conclusion survives on the
-  better evidence rather than on it. **What produces the offset is `UNKNOWN`**
-  — the offset and the low zero bits are the signature, and a repeated bit
-  pattern is a statement about the decode rather than about the board.
+  `V = 0.00000` while 150–195 mA flows, and five high voltages that are
+  binary-round in millivolts, are **structural**: values the measured quantity
+  cannot take while the field they were decoded from can. Upstream decodes
+  voltage as an unsigned 32-bit count over **100 000** and subtracts nothing,
+  so the five are counts 614 387, 819 187, 1 638 387, 3 276 787 and 6 553 587
+  — each **13 below a multiple of 25**, and each a whole number of millivolts
+  once that 13 is added: 6144, 8192, 16 384, 32 768 and 65 536 mV, which are
+  3·2^11 and 2^13 through 2^16 — **11 to 16 low zero bits**.
+  **The −13 is not the signature, and an earlier revision of this bullet said
+  it was.** Measured over the retained samples, `(raw + 13) mod 25` takes only
+  two values, 0 and 13: every one of the 242 554 sits on the same 0.25 mV
+  grid, so the offset separates nothing and only the low zero bits do. That
+  also answers the `2^k / 1000` identity this bullet first carried. Four of
+  the five are exactly that — `2^k / 1000` V **is** `2^k` mV — so it was the
+  right observation and is **not withdrawn, only made exact**: it rounded the
+  shared −0.13 mV away, and it missed 6.14387 V, which is 3·2^11 mV and not a
+  bare power of two. **What produces the values is `UNKNOWN`** — a
+  binary-round magnitude is a statement about the decode rather than about the
+  board.
   **`I ≈ 1.27 A` is not.** An earlier revision of this entry
   put it in the same list and said a 5 V USB line cannot present it. **That is
   withdrawn — it is wrong, and this repository already holds the reason.** The
@@ -2893,9 +2899,10 @@ ones that heading states.
   `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
   65.53587 V with the offset signature above; **72** current-only, at
   1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at
-  `V = 0.00187`, whose count is also 13 below a multiple of 25 but has only
-  three low zero bits, so the signature does not reach it; and **8** between
-  0.07262 V and 0.08837 V with no shared structure. **153 of the 293 have
+  `V = 0.00187`, which is a whole 2 mV and so binary-round too, but with **one**
+  low zero bit against the five's eleven — at 2 mV that is any small reading,
+  not a signature; and **8** between 0.07262 V and 0.08837 V, which sit on the
+  0.25 mV grid because every sample does and are otherwise ordinary. **153 of the 293 have
   structural evidence and 140 do not.** An earlier revision bounded this
   arithmetically — at most 172 current-only, at most 110 at the quoted
   ≈1.27 A, at least 121 voltage-class. Every one of those bounds **holds**
@@ -2906,7 +2913,10 @@ ones that heading states.
   classification** — which is the honest reading of a filter this entry already
   calls a heuristic. Reproduce from the pinned capture: apply the filter, then
   split the remainder on `V == 0`, on `V` inside the band, and on
-  `round(V × 100000) + 13` being 25·2^k.
+  `round(V × 100000) + 13` being 100·N with N a whole number of millivolts
+  carrying **at least 11 low zero bits** — 35 samples. Stated as `25·2^k`, as
+  an earlier revision of this bullet stated it, the rule admits **86**: it
+  reaches the 2 mV group.
 - **`986.9 mW` is the largest *retained* sample, and the filter is what makes it
   the largest.** The filter's own ceiling is 5.5 V × 1.0 A = 5.5 W, and if even
   one ≈1.27 A sample is a real reading then the capture's largest sample is
