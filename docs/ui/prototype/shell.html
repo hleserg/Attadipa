@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Attadipa — Shell Study 03</title>
+  <link rel="stylesheet" href="shell.css">
+  <script src="shell.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="index.html?v=2">ATTADIPA <span>/ a little light</span></a>
+    <span class="edition">SHELL STUDY 03 · REVIEW V1</span>
+  </header>
+  <main>
+    <section class="intro">
+      <p class="eyebrow" data-copy="eyebrow">Один мир на запястье</p>
+      <h1 data-copy="headline">Всё начинается<br>с одного касания.</h1>
+      <p data-copy="intro">Циферблат, приложения и настройки — теперь связаны. Нажимайте на экран часов.</p>
+    </section>
+    <div class="workspace">
+      <section class="stage" aria-label="Watch prototype">
+        <div class="stage-label"><span id="geometry">410 × 502</span><span data-copy="simulation">ДЕМО · ДАННЫЕ ВЫМЫШЛЕНЫ</span></div>
+        <div class="screen-viewport">
+          <div id="watch-shell" data-size="large" data-theme="night" data-page="clock">
+            <div class="fireflies" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="status"></div>
+            <div class="content"></div>
+          </div>
+        </div>
+        <div class="stage-footer"><span id="breadcrumb"></span><button id="restart" data-copy="restart">К циферблату</button></div>
+        <p class="stage-note" data-copy="sizeNote">Реальные пиксельные размеры; не физический масштаб. На узком окне большой экран можно прокрутить по горизонтали.</p>
+      </section>
+      <aside class="review">
+        <h2 data-copy="reviewTitle">Посмотреть в разных условиях</h2>
+        <div class="controls">
+          <label><span data-copy="size">Экран</span><select id="size"><option value="small">240 × 240</option><option value="large" selected>410 × 502</option></select></label>
+          <label><span data-copy="locale">Язык</span><select id="locale"><option value="ru">Русский</option><option value="en">English</option></select></label>
+          <label><span data-copy="theme">Тема</span><select id="theme"><option value="night" data-copy="night">Ночь</option><option value="day" data-copy="day">День</option></select></label>
+          <label><span data-copy="motion">Движение</span><select id="motion"><option value="ambient" data-copy="ambient">Светлячки</option><option value="reduce" data-copy="reduce">Без анимации</option></select></label>
+          <label class="wide"><span data-copy="scenario">Состояние ноды · демонстрация</span><select id="scenario"><option value="fresh" data-copy="fresh">Подключена · свежие данные</option><option value="stale" data-copy="stale">Подключена · данные устарели</option><option value="unknown" data-copy="unknown">Подключена · батарея неизвестна</option><option value="disconnected" data-copy="disconnected">Связь потеряна</option><option value="low" data-copy="low">Часы разряжены · нода подключена</option><option value="integrated" data-copy="integrated">Встроенный источник · одна батарея</option></select></label>
+        </div>
+        <section class="context"><p class="eyebrow" data-copy="now">На экране</p><h2 id="page-title"></h2><p id="page-note"></p></section>
+        <div class="boundary"><p data-copy="boundary">Это веб-прототип, не прошивка. Он не подключается к BLE и ничего не отправляет. Батареи и время — примеры; настройки действуют только до перезагрузки страницы.</p></div>
+        <a class="previous" href="index.html?v=2&locale=ru" data-copy="previous">Ранее согласованные экраны ↗</a>
+        <p id="test-result" role="status"></p>
+      </aside>
+    </div>
+  </main>
+  <footer><span>ATTADIPA / SHELL STUDY 03</span><span data-copy="footer">Красота — в спокойствии. Ясность — в каждом состоянии.</span></footer>
+</body>
+</html>
