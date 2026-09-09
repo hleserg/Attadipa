@@ -301,17 +301,17 @@ put a dead page in results under the project's own name.
 
 ### `README.md` and `README.ru.md`
 
-The opening sentence is what GitHub's own search indexes and what Google shows
-under the repository result. It read *"A wearable firmware platform for ESP32-S3
-smartwatches — mesh messaging, offline navigation, and a UI…"*, which contains
-almost none of the terms in §1. It now names LoRa, MeshCore, GNSS, LVGL,
-FreeRTOS, ESP-IDF, `GPL-3.0-or-later` and **both target boards by their full product names** —
-which is what someone who owns one of those boards will actually type.
+This audit's 2026-08-23 README edit put LoRa, MeshCore, GNSS, LVGL,
+FreeRTOS, ESP-IDF, `GPL-3.0-or-later` and both full target-board product names
+near the opening, to help readers searching by their hardware or software.
+Its second paragraph explained the capability registry and the shared codebase.
+Both files changed together under the README pair rule.
 
-The second paragraph explains the capability registry, because the two-boards-one-codebase
-problem is the project's genuinely distinguishing claim and it was buried.
-
-Both files changed in the same commit, per the README pair rule in `CLAUDE.md`.
+PR #512 (2026-09-09) replaced that opening with a product introduction and a
+browser-design gallery. Technical terms and board names now appear farther down;
+FreeRTOS and the CI, CodeQL, ESP-IDF, LVGL, licence and Discussions badges were
+removed from both front pages. That change prioritises a readable introduction;
+this dated audit records the earlier decision, not the current README layout.
 
 ### `docs/index.html` — hero lead
 
