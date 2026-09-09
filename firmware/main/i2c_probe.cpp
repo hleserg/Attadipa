@@ -80,9 +80,14 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
   Ak09911<Ak09911I2c> sensor(io);
   auto result = sensor.start();
   const auto &info = sensor.info();
-  ESP_LOGI(kTag, "AK09911 ID=%02x %02x ASA=%02x %02x %02x fuse_mode=%02x start=%d",
-           info.id[0], info.id[1], info.asa[0], info.asa[1], info.asa[2],
-           info.fuse_mode_readback, static_cast<int>(result));
+  if (result == Ak09911Result::Ok) {
+    ESP_LOGI(kTag, "AK09911 ID=%02x %02x ASA=%02x %02x %02x fuse_mode=%02x start=%d",
+             info.id[0], info.id[1], info.asa[0], info.asa[1], info.asa[2],
+             info.fuse_mode_readback, static_cast<int>(result));
+  } else {
+    ESP_LOGE(kTag, "AK09911 start failed: result=%d; register diagnostics incomplete",
+             static_cast<int>(result));
+  }
   if (result == Ak09911Result::Ok && info.fuse_mode_readback != 0x1f)
     ESP_LOGW(kTag, "AK09911 fuse-mode discrepancy: ASA validity is unknown; "
                    "raw counts only, no adjusted field units");
@@ -108,7 +113,7 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
       ESP_LOGW(kTag, "AK09911 overflow ST1=%02x ST2=%02x", sample.st1, sample.st2);
     } else if (read == Ak09911Result::InvalidData) {
       ++invalid;
-      ESP_LOGW(kTag, "AK09911 invalid frame ST1=%02x ST2=%02x", sample.st1, sample.st2);
+      ESP_LOGW(kTag, "AK09911 invalid frame");
     } else {
       result = read;
       ESP_LOGE(kTag, "AK09911 acquisition stopped: result=%d", static_cast<int>(read));
