@@ -2832,19 +2832,22 @@ ones that heading states.
   Neither the exclusion nor this small mean sensitivity establishes the
   physical peak; the decoded-set comparison below gives the separate effect
   of retaining the current-only samples.
-- **Two kinds of sample are inside those 293 and only one kind has evidence.**
-  `V = 0.00000` while 150–195 mA flows, and five high voltages that are
-  binary-round in millivolts, are **structural**: values the measured quantity
-  cannot take while the field they were decoded from can. Upstream decodes
+- **Decoded patterns motivate investigation; they do not locate the fault.**
+  `V = 0.00000` paired with 150–195 mA and five high voltages that are
+  binary-round in millivolts form a **zero/high-binary pattern group**. These
+  pairs warrant investigation of the meter, decoder and physical input; their
+  decoded structure alone does not establish which is responsible. The pinned
+  logger decodes
   voltage as an unsigned 32-bit count over **100 000** and subtracts nothing,
   so the five are counts 614 387, 819 187, 1 638 387, 3 276 787 and 6 553 587
   — each **13 below a multiple of 25**, and each a whole number of millivolts
   once that 13 is added: 6144, 8192, 16 384, 32 768 and 65 536 mV, which are
   3·2^11 and 2^13 through 2^16 — **11 to 16 low zero bits**. **The −13 is not
   the signature, and an earlier revision of this bullet said it was.**
-  Measured over the retained samples, `(raw + 13) mod 25` takes only two
-  values, 0 and 13: every one of the 242 554 sits on the same 0.25 mV grid, so
-  the offset separates nothing and only the low zero bits do. That also
+  Calculated over the retained samples, `(raw + 13) mod 25` takes two
+  values, 0 and 13. These are two residue classes, **not one 0.25 mV grid**;
+  neither a unique grid pitch nor an ADC resolution follows from them.
+  The offset alone does not separate the high-voltage group. That also
   answers the `2^k / 1000` identity this bullet first carried. Four of the
   five are exactly that — `2^k / 1000` V **is** `2^k` mV — so it was the right
   observation and is **not withdrawn, only made exact**: it rounded the shared
@@ -2897,18 +2900,14 @@ ones that heading states.
   `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
   65.53587 V, binary-round in millivolts as above; **72** current-only, at
   1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at `V =
-  0.00187`, which is a whole 2 mV and so binary-round too, but with **one** low
-  zero bit against the five's eleven — at 2 mV that is any small reading, not a
-  signature; and **8** between 0.07262 V and 0.08837 V, which sit on the 0.25
-  mV grid because every sample does and are otherwise ordinary. **153 of the
-  293 have structural evidence and 140 do not.** An earlier revision bounded
-  this arithmetically — at most 172 current-only, at most 110 at the quoted
-  ≈1.27 A, at least 121 voltage-class. Every one of those bounds **holds**
-  against the counts and every one is loose; the counts supersede them because
-  a bound cannot say which samples, and the split is what matters here. The 140
-  without structural evidence are still excluded, but by the filter's bound
-  rather than by proof, so **for those 140 the exclusion is a choice and not a
-  classification** — which is the honest reading of a filter this entry already
+  0.00187` paired with **0.15065–0.19241 A**; and **8** between
+  **0.07262 V and 0.08837 V**, paired with **0.14982–0.18332 A**. All 68
+  low-voltage/current pairs warrant investigation too. **153 match the narrow
+  zero/high-binary rule and 140 do not**; that partition does not establish
+  that only 153 are anomalous or that any particular excluded row is valid.
+  Earlier arithmetic bounds are superseded by these exact counts. The
+  exclusion of all 293 remains the original heuristic rather than a proven
+  classification of physical versus corrupted samples, as this entry already
   calls a heuristic. Reproduce from the pinned capture: apply the filter, then
   split the remainder on `V == 0`, on `V` inside the band, and on `round(V ×
   100000) + 13` being 100·N with N a whole number of millivolts carrying **at
@@ -2944,11 +2943,15 @@ ones that heading states.
 
   **All 293 exclusions occupy 293 different reports, one exclusion per
   report. None of the 72 current-only samples shares a report with a
-  structural exclusion** (the 118 zero-voltage and 35 high binary-round
+  zero/high-binary exclusion** (the 118 zero-voltage and 35 high binary-round
   voltage samples). This rejects the proposed prediction that the exclusions
   cluster within reports, roughly 73 reports. It **does not prove transport
   integrity**: corruption of a bit or field can affect just one sample within
-  a report. The source of individual anomalies remains **`UNKNOWN`**.
+  a report. Nor does one exclusion per group rule out a short physical
+  disturbance: the CSV alone cannot separate a real input excursion, meter or
+  decoder behavior, and a transport error in one field. There is no original
+  report or independent voltage trace here. The source of individual anomalies
+  remains **`UNKNOWN`**.
 
   The pinned logger itself decodes four slots at `offset = 2 + 15 * i`,
   with unsigned voltage/current counts divided by 100000. It writes the slot
@@ -2958,9 +2961,9 @@ ones that heading states.
   checksum bytes with which to check it retrospectively. The logger's
   upstream revision and its equivalence to S16's copy remain **`UNKNOWN`**.
 
-  The exact standard-library reproduction scripts and aggregate output are
-  published in the [hash-checked grouping analysis](https://github.com/hleserg/Attadipa/pull/494#issuecomment-5595467764)
-  and the [decoded-set sensitivity](https://github.com/hleserg/Attadipa/pull/494#issuecomment-5595990274).
+  The exact standard-library reproduction scripts, aggregate outputs and
+  low-voltage/current pairing check are in the
+  [S17 reanalysis report](TWATCH_USB_POWER_S17_REANALYSIS_2026-09-09.md).
   This is software analysis of the existing private capture, not a new
   physical measurement. Hardware re-capture is
   **NOT EXECUTED — HARDWARE REQUIRED**. No raw capture or private logger
