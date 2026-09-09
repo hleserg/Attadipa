@@ -1,0 +1,7 @@
+# Preserve original serial CRLF and all evidence bytes in Git.
+console.txt -text -whitespace
+NORMAL_BOOT.txt -text -whitespace
+NORMAL_BOOT_CONTROL.txt -text -whitespace
+LOAD_RESULT.json -text
+ANALYSIS.json -text
+INPUT.json -text

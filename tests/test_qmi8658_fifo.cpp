@@ -21,6 +21,8 @@ struct Bus {
   std::int64_t now = 1000000;
   bool apply_failed_write = false, never_done = false, fail_payload = false;
   bool fail_release = false;
+  bool retain_on_reset = false, mismatch_watermark_restore = false;
+  bool pending_watermark_mismatch = false;
   std::uint8_t extra_status = 0;
   explicit Bus(bool gyro = false, bool idle = false) {
     regs[0] = 5; regs[1] = 0x7c; regs[2] = 0x60;
@@ -50,6 +52,11 @@ struct Bus {
       return true;
     }
     CHECK(n == 1);
+    if (reg == 0x13 && pending_watermark_mismatch) {
+      pending_watermark_mismatch = false;
+      *out = 1;
+      return true;
+    }
     *out = regs[reg];
     return true;
   }
@@ -66,13 +73,15 @@ struct Bus {
       CHECK((value & 0x1f) == (regs[9] & 0x1f)); // no engine toggles
     writes.push_back({reg, value});
     regs[reg] = value;
+    if (reg == 0x13 && value == 0 && mismatch_watermark_restore)
+      pending_watermark_mismatch = true;
     if (reg == 0x0a) {
       CHECK(value == 0 || value == 4 || value == 5); // never step/chip reset
       if (value == 0) regs[0x2d] &= 0x7f;
       else if (!never_done) {
         regs[0x2d] |= 0x80;
         if (value == 5) regs[0x14] |= 0x80;
-        if (value == 4) { fifo.clear(); cursor = 0; extra_status = 0; }
+        if (value == 4 && !retain_on_reset) { fifo.clear(); cursor = 0; extra_status = 0; }
       }
     }
     return !failed;
@@ -117,12 +126,35 @@ int main() {
     CHECK(batch.received_at_us == 0 && sensor.latest().received_at_us == last);
     bus.frame(10, 20, 30, gyro); // late owned data is explicitly discarded
     CHECK(sensor.stop() == QmiResult::Ok);
+    CHECK(std::strcmp(sensor.stop_diagnostic().failed_step, "none") == 0);
+    CHECK(sensor.stop_diagnostic().remaining_valid &&
+          sensor.stop_diagnostic().remaining_words == 0 &&
+          !sensor.stop_diagnostic().mismatch_valid);
     CHECK(sensor.discarded_words() == (gyro ? 6U : 3U));
     CHECK(sensor.after().complete && sensor.after().steps == 12345);
     CHECK(bus.regs == original && bus.fifo.empty());
     CHECK(sensor.read(batch) == QmiResult::NotStarted);
     if (kind != 2)
       for (auto w : bus.writes) CHECK(w[0] != 3 && w[0] != 8);
+  }
+  // Two distinct causes of InvalidData can leave the same final control
+  // snapshot. Diagnose them without changing the sensor sequence or verdict.
+  for (bool retained : {false, true}) {
+    Bus bus;
+    const auto original = bus.regs;
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start() == QmiResult::Ok);
+    bus.frame(1, 2, 3);
+    bus.retain_on_reset = retained;
+    bus.mismatch_watermark_restore = true; // later failure must not hide first
+    CHECK(sensor.stop() == QmiResult::InvalidData);
+    const auto &diag = sensor.stop_diagnostic();
+    CHECK(std::strcmp(diag.failed_step,
+                      retained ? "count_after_reset" : "restore_watermark") == 0);
+    CHECK(diag.remaining_valid && diag.remaining_words == (retained ? 3U : 0U));
+    CHECK(diag.mismatch_valid && diag.mismatch_reg == 0x13 &&
+          diag.expected == 0 && diag.actual == 1);
+    CHECK(sensor.after().complete && bus.regs == original);
   }
   for (unsigned kind = 0; kind < 5; ++kind) {
     Bus bus;

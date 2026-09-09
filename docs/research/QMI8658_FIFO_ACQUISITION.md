@@ -2,8 +2,10 @@
 
 Scope: the opt-in RAM checkpoint under #450, following the measured AK-only
 [archive](ak09911-waveshare-2026-09-09/README.md). This is not a heading provider.
-Physical FIFO acquisition, axis mapping and concurrent step operation are
-**NOT EXECUTED — HARDWARE REQUIRED**.
+The first [physical paired capture](qmi-paired-waveshare-2026-09-09/README.md)
+produced 398 AK and 3810 QMI records, but QMI cleanup returned InvalidData.
+Axis mapping and concurrent step operation remain
+**NOT EXECUTED — HARDWARE REQUIRED**; this is not a clean cleanup checkpoint.
 
 ## Verified sources
 
@@ -53,7 +55,9 @@ owns the bus. The paired option is disabled by default and restricted to RAM.
 4. Request read mode with command `05`, observe CmdDone, acknowledge `00`,
    observe completion clear, read frozen count and complete payload, then verify
    read-mode release before publishing a batch. Partial failures never refresh
-   the last good batch; command waits are bounded to 20 ms per phase.
+   the last good batch. Each command phase has a 20 ms software polling budget;
+   this is not a hard native wall-clock bound because one I2C operation has its
+   own 50 ms timeout.
 5. On exit, resolve any pending command where possible, stop FIFO filling,
    record remaining words, reset only the owned FIFO with command `04`, and
    restore/read back the saved settings. Never issue step reset `0F`, toggle
@@ -74,6 +78,14 @@ number, host request/freeze/release timestamps, item count and FIFO status;
 `QMIRAW` carries batch number, item index and raw sensor-axis acceleration XYZ.
 No FIFO item's conversion time is equated with its host read-completion time.
 Scale/ODR are derived from the logged control values during analysis.
+
+After the first physical run exposed an ambiguous `stop=4`, `QMI stop_check`
+records the first failing stop step, post-reset word count with validity, and
+the first register readback mismatch with expected/actual values. These are
+collected in RAM and printed after stop/close. No extra bus operations, waits,
+or relaxed checks are added. A later readback mismatch can coexist with an
+earlier failing step; their fields must not be assumed to name the same event.
+The diagnostic image remains **NOT EXECUTED — HARDWARE REQUIRED**.
 
 The `qmi8658_fifo` host test calls the production sequence with a transport model:
 six/twelve-byte layout, signed values, idle/active cleanup, no-write admission,

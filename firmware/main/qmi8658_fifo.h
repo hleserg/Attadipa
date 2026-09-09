@@ -33,6 +33,14 @@ struct QmiBatch {
   std::int64_t received_at_us = 0;
 };
 
+struct QmiStopDiagnostic {
+  const char *failed_step = "none";
+  unsigned remaining_words = 0;
+  bool remaining_valid = false;
+  bool mismatch_valid = false;
+  std::uint8_t mismatch_reg = 0, expected = 0, actual = 0;
+};
+
 template <typename Io> class Qmi8658Fifo {
 public:
   explicit Qmi8658Fifo(Io &io) : io_(io) {}
@@ -45,6 +53,7 @@ public:
   bool temporary_accel() const { return temporary_accel_; }
   unsigned frame_bytes() const { return frame_bytes_; }
   unsigned discarded_words() const { return discarded_words_; }
+  const QmiStopDiagnostic &stop_diagnostic() const { return stop_diagnostic_; }
 
   QmiResult start() {
     if (owned_)
@@ -149,43 +158,49 @@ public:
   // consumed samples. A failed command's completion must be resolved first.
   QmiResult stop() {
     running_ = false;
+    stop_diagnostic_ = {};
     if (!owned_)
       return QmiResult::Ok;
+    recording_stop_ = true;
     QmiResult result = QmiResult::Ok;
-    auto keep = [&result](QmiResult next) {
-      if (result == QmiResult::Ok && next != QmiResult::Ok)
+    auto keep = [this, &result](QmiResult next, const char *step) {
+      if (result == QmiResult::Ok && next != QmiResult::Ok) {
         result = next;
+        stop_diagnostic_.failed_step = step;
+      }
     };
     if (command_pending_)
-      keep(finish_command());
-    keep(set(0x14, 0)); // stop FIFO filling; sensors/step engine keep running
+      keep(finish_command(), "pending_command");
+    // Stop FIFO filling; sensors/step engine keep running.
+    keep(set(0x14, 0), "disable_fifo");
     if (!fifo_words(discarded_words_))
-      keep(QmiResult::IoError);
+      keep(QmiResult::IoError, "count_before_reset");
     if (!command_pending_) {
       // Only this owner's unused-on-entry FIFO is reset, never step count.
-      keep(command(0x04)); // section 8.10, distinct from pedometer reset 0x0f
-      unsigned remaining = 0;
-      if (!fifo_words(remaining))
-        keep(QmiResult::IoError);
-      else if (remaining != 0)
-        keep(QmiResult::InvalidData);
+      keep(command(0x04), "reset_fifo"); // distinct from step reset 0x0f
+      stop_diagnostic_.remaining_valid = fifo_words(stop_diagnostic_.remaining_words);
+      if (!stop_diagnostic_.remaining_valid)
+        keep(QmiResult::IoError, "count_after_reset");
+      else if (stop_diagnostic_.remaining_words != 0)
+        keep(QmiResult::InvalidData, "count_after_reset");
     }
-    keep(set(0x13, before_.regs[6]));
-    keep(set(0x14, before_.regs[7]));
+    keep(set(0x13, before_.regs[6]), "restore_watermark");
+    keep(set(0x14, before_.regs[7]), "restore_fifo");
     if (temporary_accel_) {
-      keep(set(0x08, before_.regs[4]));
+      keep(set(0x08, before_.regs[4]), "restore_enable");
       io_.wait_us(16000); // up to 2/ODR to stop the owned 125 Hz accelerometer
-      keep(set(0x03, before_.regs[1]));
+      keep(set(0x03, before_.regs[1]), "restore_accel");
     }
-    keep(set(0x09, before_.regs[5]));
-    keep(set(0x02, before_.regs[0]));
+    keep(set(0x09, before_.regs[5]), "restore_ctrl8");
+    keep(set(0x02, before_.regs[0]), "restore_ctrl1");
     if (!snapshot(after_))
-      keep(QmiResult::IoError);
+      keep(QmiResult::IoError, "snapshot");
     else {
       for (unsigned i = 0; i < 8; ++i)
         if (after_.regs[i] != before_.regs[i])
-          keep(QmiResult::InvalidData);
+          keep(QmiResult::InvalidData, "verify_snapshot");
     }
+    recording_stop_ = false;
     if (result == QmiResult::Ok)
       owned_ = false;
     return result;
@@ -243,6 +258,14 @@ private:
     std::uint8_t actual = 0;
     if (!io_.write(reg, value) || !byte(reg, actual))
       return QmiResult::IoError;
+    // Capture the first stop readback mismatch in RAM. The caller logs only
+    // after stop: no extra bus operations, waits or console output here.
+    if (actual != value && recording_stop_ && !stop_diagnostic_.mismatch_valid) {
+      stop_diagnostic_.mismatch_valid = true;
+      stop_diagnostic_.mismatch_reg = reg;
+      stop_diagnostic_.expected = value;
+      stop_diagnostic_.actual = actual;
+    }
     return actual == value ? QmiResult::Ok : QmiResult::InvalidData;
   }
   QmiResult wait_done(bool expected) {
@@ -281,9 +304,11 @@ private:
   Io &io_;
   QmiState before_{}, after_{};
   QmiBatch latest_{};
+  QmiStopDiagnostic stop_diagnostic_{};
   unsigned frame_bytes_ = 6, discarded_words_ = 0;
   bool owned_ = false, running_ = false, temporary_accel_ = false;
   bool command_pending_ = false;
+  bool recording_stop_ = false;
 };
 
 } // namespace attadipa::firmware

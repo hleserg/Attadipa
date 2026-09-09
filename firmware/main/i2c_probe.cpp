@@ -183,6 +183,12 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
   const auto qmi_stopped = qmi.stop();
   const auto qmi_closed = qmi_io.close();
   log_qmi_state("after", qmi.after());
+  const auto &stop_diag = qmi.stop_diagnostic();
+  ESP_LOGI(kTag, "QMI stop_check step=%s remaining_valid=%d remaining_words=%u"
+                 " mismatch_valid=%d reg=%02x expected=%02x actual=%02x",
+           stop_diag.failed_step, stop_diag.remaining_valid, stop_diag.remaining_words,
+           stop_diag.mismatch_valid, stop_diag.mismatch_reg,
+           stop_diag.expected, stop_diag.actual);
   ESP_LOGI(kTag, "QMI summary samples=%u batches=%u result=%d stop=%d"
                  " discarded_fifo_words=%u close=%s",
            qmi_samples, qmi_batches, static_cast<int>(qmi_result),
