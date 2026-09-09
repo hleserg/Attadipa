@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ak09911.h"
 #include <array>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -72,7 +71,7 @@ struct Bus {
     for (unsigned i = 0; i < 3; ++i) {
       const unsigned bits = static_cast<unsigned>(values[i]) & 0xffff;
       regs[0x11 + i * 2] = bits & 0xff;
-      regs[0x12 + i * 2] = bits >> 8;
+      regs[0x12 + i * 2] = static_cast<std::uint8_t>(bits >> 8);
     }
     regs[0x10] = st1;
     regs[0x18] = st2;
@@ -81,7 +80,7 @@ struct Bus {
 };
 } // namespace
 int main() {
-  for (int bad = 0; bad < 2; ++bad) {
+  for (unsigned bad = 0; bad < 2; ++bad) {
     Bus bus;
     bus.regs[bad] = 0xff;
     Ak09911 sensor(bus);
@@ -99,8 +98,7 @@ int main() {
   CHECK(sensor.read(attempt) == Ak09911Result::Sample);
   CHECK(attempt.raw[0] == -123 && attempt.raw[1] == 456 &&
         attempt.raw[2] == -789);
-  CHECK(std::abs(attempt.microtesla[0] - (-123.0f * 151.0f / 128.0f * 0.6f)) <
-        0.0001f);
+
   CHECK(attempt.st1 == 3 && attempt.st2 == 0);
   const auto accepted_at = sensor.latest().received_at_us;
   CHECK(accepted_at == bus.now);
@@ -142,8 +140,13 @@ int main() {
   Bus reference;
   Ak09911 normal(reference);
   CHECK(normal.start() == Ak09911Result::Ok);
-  CHECK(normal.info().fuse_mode_readback == 0x1f);
   const int start_operations = reference.operation;
+  CHECK(normal.info().fuse_mode_readback == 0x1f);
+  // Confirmed and discrepant fuse modes expose the same raw-only sample API.
+  reference.frame(-123, 456, -789);
+  CHECK(normal.read(attempt) == Ak09911Result::Sample);
+  CHECK(attempt.raw[0] == -123 && attempt.raw[1] == 456 &&
+        attempt.raw[2] == -789);
   CHECK(normal.stop() == Ak09911Result::Ok);
   // Every transport failure during initialization is visible; cleanup is still
   // attempted after identity succeeded and never writes after a failed ID read.

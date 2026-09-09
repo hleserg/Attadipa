@@ -84,8 +84,8 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
            info.id[0], info.id[1], info.asa[0], info.asa[1], info.asa[2],
            info.fuse_mode_readback, static_cast<int>(result));
   if (result == Ak09911Result::Ok && info.fuse_mode_readback != 0x1f)
-    ESP_LOGW(kTag, "AK09911 fuse-mode discrepancy: ASA scaling is nominal; "
-                   "silicon authenticity and calibration are not established");
+    ESP_LOGW(kTag, "AK09911 fuse-mode discrepancy: ASA validity is unknown; "
+                   "raw counts only, no adjusted field units");
   unsigned samples = 0, not_ready = 0, overflow = 0, invalid = 0, dor = 0;
   const auto began = io.now_us();
   auto last_fresh = began;

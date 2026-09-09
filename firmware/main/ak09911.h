@@ -23,14 +23,16 @@ enum class Ak09911Result {
 
 struct Ak09911Info {
   std::uint8_t id[2]{};
+  // Raw register bytes: equal reads alone do not establish valid factory ASA.
   std::uint8_t asa[3]{};
   std::uint8_t fuse_mode_readback = 0;
 };
 
 struct Ak09911Sample {
   std::int16_t raw[3]{};
-  // Nominal factory-adjusted uT, NOT a calibrated compass measurement.
-  float microtesla[3]{};
+  // Raw sensor-axis counts only, even when fuse-mode readback is confirmed.
+  // No adjusted field units until the calibration prerequisites are
+  // established.
   std::uint8_t st1 = 0;
   std::uint8_t st2 = 0;
   // Host monotonic read-completion time, not the chip's conversion time.
@@ -131,9 +133,6 @@ public:
     // Reserved bits must be zero in Standard/Fast mode (not Hs-mode).
     if (!in_range || (attempt.st2 & 0xf7) != 0)
       return Ak09911Result::InvalidData;
-    for (unsigned i = 0; i < 3; ++i)
-      attempt.microtesla[i] =
-          attempt.raw[i] * (1.0f + info_.asa[i] / 128.0f) * 0.6f;
     attempt.received_at_us = io_.now_us();
     latest_ = attempt;
     // DOR remains in st1: skipped updates, not an exact count or disturbance.
