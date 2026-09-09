@@ -5,6 +5,10 @@ zone. It hands over that whole zone, not one task. Read §0 and §2 before
 touching anything: one pull request is open mid-review and carries a result
 that exists nowhere but this document.
 
+It is written once and **it is not a ledger** — when a fact here stops being
+true, the issue, the pull request or `AGENTS.md` is where it gets corrected,
+not this document. §0 in particular is a snapshot of the hour it was written.
+
 ---
 
 ## 0. What is in flight this minute
@@ -12,7 +16,7 @@ that exists nowhere but this document.
 | What | State |
 | --- | --- |
 | **PR #494** (`claude/s17-artefact-classification-491`, `Fixes #491`) | **OPEN**, head `097aecbc`, `ai-review:blocking`, MERGEABLE. Review **round 3 of a 5 round ceiling**, floor 4. Four open findings, all `normal`, all holding. |
-| PR #505 | draft, `app/claude`, `Fixes #504`. Not mine, not started by me. |
+| PR #505 | **OPEN**, not a draft, `claude/forget-confirmation-truth-504`, `Fixes #504`, `ai-review:blocking`. Not mine, not started by me. |
 | PR #501 | yours (Shell Study 03), `ai-review:blocking`. |
 | Writer lease | **released.** `git ls-remote origin 'refs/tags/attadipa-claims/writer'` is empty. Nothing of mine is holding the gate. |
 | Working tree | clean on the tracked side; this file is the only addition. |
@@ -118,15 +122,43 @@ sample's slot as column 2 (`sample_in_packet`). The entry's own stated test:
 *transport corruption of a report shows up as a run inside that report, so do
 the 293 group into roughly 73 reports, or scatter across 293?*
 
+Grouping is by the slot column alone, over **all 242 847 data rows** — a new
+report starts wherever the slot fails to increase:
+
+```python
+import collections
+# The file is whitespace-separated despite the .csv name: csv.reader on it
+# returns one empty field per line and every index below fails.
+rows = [l.split() for l in open(path) if l.strip()][1:]   # header dropped
+
+g = collections.defaultdict(list); rep = -1; prev = None
+for r in rows:
+    s = int(r[1])                   # column 2, sample_in_packet
+    if prev is None or s <= prev:
+        rep += 1
+    g[rep].append(r); prev = s
+def excluded(r):                    # the entry's own filter
+    V, I = float(r[2]), float(r[3])
+    return not (4.0 < V < 5.5 and 0.0 <= I < 1.0)
+```
+
 ```
 rows 242847
 reports 60712      size histogram {3: 1, 4: 60711}
 excluded samples 293 in 293 distinct reports
 ```
 
+The one short report is **the tail** (index 60711, the last), which is a
+capture that stopped mid-report and not a hole in the middle. “Excluded” is
+`excluded()` above — the entry's own structural filter, nothing new.
+
 **They scatter. One excluded sample per report, 293 reports, never two in the
-same one.** Report-level transport corruption is refuted by the entry's own
-criterion — it would have produced about 73 reports, not 293.
+same one.** That rejects **the clustering model the entry itself proposed** —
+corruption making the excluded samples group into roughly 73 reports. It is not
+a proof of transport integrity, and it does not rule out a transport bit or
+field error touching a single sample inside an otherwise sound report. The CSV
+keeps no report bytes and no checksum, so that narrower case cannot be tested
+retrospectively at all.
 
 ### Result B — the overlap test
 
@@ -137,9 +169,14 @@ current-only samples: 72
 ```
 
 **None** of the 72 `≈1.27 A` samples shares a report with a structural
-exclusion (`V = 0` or a binary-round voltage). The two exclusion families do
-not co-occur at all, which is the opposite of what a corrupt-report explanation
-predicts.
+exclusion (`V = 0` or a binary-round voltage).
+
+**This is a corollary of Result A, not independent corroboration of it**, and
+saying otherwise would double-count one measurement. A puts 293 exclusions in
+293 distinct reports, so by pigeonhole no report holds two; the 72 are a subset
+of those 293; therefore none of them can share a report with another. B is
+worth stating because it is the form the entry's question took, not because it
+is a second piece of evidence.
 
 ### Result C — the pinned copy
 
@@ -176,22 +213,27 @@ Learned the hard way in this session; each has cost real time.
    `.github/scripts/writer-start.sh start REPO ISSUE AGENT_ID` from current
    `main`. `AGENT_ID` is an opaque label published in a tag anyone can read —
    **never a credential**.
-2. **Check `$?` directly, never through a pipe.** `writer-start.sh start … | tee`
-   gives you the pipe's status, not the claim's. That has bypassed the lease
-   once and hidden four broken citations once.
+2. **Check `$?` directly, never through a pipe.** Piping
+   `writer-start.sh start …` into `tee` gives you the pipe's status, not the
+   claim's. That has bypassed the lease once and hidden four broken citations
+   once.
 3. **`writer-start.sh finish` lies.** It reports the tag "still exists after
    DELETE". That is a ref-cache artefact. `git ls-remote origin
    'refs/tags/attadipa-claims/writer'` is the truth.
-4. **Claim by PR number to bypass the WIP limit.** At the 4-PR limit a fresh
-   claim is refused, but `.github/scripts/writer-admission.sh` admits a claim on
-   an **existing PR number** as `recovery / existing-pr` before the width check.
-   That is how #494 was picked up.
+4. **Recover an abandoned PR by its number.** At the 4-PR limit a fresh claim
+   is refused, but `.github/scripts/writer-admission.sh` admits a claim on an
+   **existing PR number** as `recovery / existing-pr` before the width check.
+   This is not a way around the limit: an open PR is already counted in the
+   width, so picking it up adds none. The check is on the number, not on who
+   owns it — so claim only a PR nobody is working. That is how #494 was picked
+   up.
 5. **A push during a live review is free.** The review workflow sets
    `cancel-in-progress: true` on a per-PR concurrency group, and
-   `.github/scripts/review-verdict.sh` advances `round=N` **only when a findings
-   block was actually published**. Three cancelled runs on #494 left the ledger
-   at `round=2`. So the moment you know the pushed head is wrong, fix and push
-   — waiting spends a round reviewing text you are about to delete.
+   `.github/scripts/review-verdict.sh` advances `round=N` **only when a
+   findings block was actually published**. Three cancelled runs on #494 left
+   the ledger at `round=2`. So the moment you know the pushed head is wrong,
+   fix and push — waiting spends a round reviewing text you are about to
+   delete.
 6. **The review caps at five rounds.** Past the ceiling `ai-review:pass` means
    the review *ended*. Read `round=N` out of the ledger comment — it is PATCHed
    in place, so counting comments tells you nothing.
@@ -271,15 +313,19 @@ citations are stale, and `check_docs` walks `.md` only so CI cannot see them);
 - **Never probe `REG 0x62` by writing high codes.**
 - GPIO 6 (DIO3) is never driven as an output. GPIO 45 backlight: never add a
   pull-up.
-- **Do not touch the third agent's ESP32 dev board** — CH343 `1a86:55d3`,
-  serial `5C94148300`. Address boards by `/dev/serial/by-id/`, never by
-  `ttyACMn`; the numbers move and they are not identity. Opening an ESP32
-  serial port can assert DTR/RTS and reset the board.
+- **Do not touch the third agent's ESP32 dev board** — it is the CH343 bridge
+  (`1a86:55d3`); its serial is recorded on the bench, not here. Address boards
+  by `/dev/serial/by-id/`, never by `ttyACMn`; the numbers move and they are
+  not identity. Opening an ESP32 serial port can assert DTR/RTS and reset the
+  board.
 - Never push to `main`. Never edit `STATUS.md` or `TASKS.md`.
 - Public repository. **The owner's coordinates are their home address** — a
   mean position never goes in the repository, whatever was printed in chat.
-  Per-unit identity (CHIPID, `UBX-SEC-UNIQID`, module serial suffixes, the
-  MeshCore node's BLE address) is bench-only.
+  Per-unit identity that is bench-only: CHIPID, `UBX-SEC-UNIQID`, GNSS module
+  serial suffixes, the MeshCore node's **BLE** address, and the other agent's
+  dev-board serial. The rule is narrower than an earlier draft of this document
+  claimed: the boards' **USB** serials are already published, deliberately, in
+  `docs/research/BENCH_DEVICES.md`, which is where board identity lives.
 
 ---
 
@@ -293,16 +339,38 @@ sheet and integration manual, the factory flash dumps and backups, the upstream
 GNSS / PMU / power-meter log including `twatch_taper_20260908.csv` and the
 `fnirsi-*.csv` captures.
 
-Hardware present and working: the T-Watch S3 Plus (`DC:B4:D9:18:49:40`), the
-Waveshare AMOLED 2.06 (`28:84:85:B2:18:A4`), an FNIRSI **FNB-58** USB power
-meter (HID, not serial — and 0.12 % of every capture must be filtered before
-any figure), GT-U12 and AN3126 GNSS modules, magnetometers, vibromotors, and a
-MeshCore node that is already advertising. The watch is **unprovisioned** —
-that, not missing code, is the gap between here and the end goal.
+Hardware present and working: the T-Watch S3 Plus, the Waveshare AMOLED 2.06,
+an FNIRSI **FNB-58** USB power meter (HID, not serial), GT-U12 and AN3126 GNSS
+modules, magnetometers, vibromotors, and a MeshCore node that is already
+advertising. **Board identity is not repeated here**: `BENCH_DEVICES.md`
+already carries the USB serials and is the one home for them, and what stays
+on the bench is listed in §6. The watch is **unprovisioned** — that, not
+missing code, is the gap between here and the end goal.
 
-Two measured results worth keeping in your head: the Waveshare draws 415 mW and
-its input current is **bimodal** (84 mA / 213 mA in bursts, so a single spot
-reading misleads); the T-Watch draws **779 mW**.
+Two measured results worth keeping in your head. **Both are USB *input* power
+at the meter, not board consumption**, and neither is quotable without the
+state it was taken in.
+
+The Waveshare figure is **413 mW, the median** — not the 415 mW mean over the
+same 21 440 samples — with **the cell disconnected**, screen on at minimum
+brightness, static on the provisioning entry screen, idle and unprovisioned.
+The **bimodal** 84 mA / 213 mA input current belongs to a **different run**,
+on 2026-09-05, with **the cell still attached**; whether its 213 mA mode is
+charge current is *consistent with* the cell being attached and **is not
+established** — nothing measured the charger. Do not carry that bimodality
+back onto the 413 mW state, where it was not observed.
+
+The T-Watch reads **779 mW**, and **how much of that is charging the cell
+rather than running the watch is `UNKNOWN`** — that conflation is the whole of
+open issue #492. The entry's own instruction, verbatim: **do not derive a
+battery life, a per-rail split, or a sleep figure from this.**
+
+One number this document used to carry as a rule is not one: 0.121 % of the
+**S17** capture was excluded by the filter **that entry** calls a heuristic.
+That is one capture's figure under one filter, not a law about the meter. Apply
+the same filter to S16 and it deletes that entry's own **1282 mA maximum** — a
+real reading, thrown away by a rule imported from another capture. Nothing
+licenses filtering 0.12 % of the next one.
 
 ---
 
