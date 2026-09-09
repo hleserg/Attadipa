@@ -64,9 +64,9 @@ and `first-boot-waveshare.gif`, both taken off the Waveshare.
 
 | File | What it shows | SHA-256 | Used by |
 |---|---|---|---|
-| `nav-honest-states.gif` | GIF, the navigation readout stepping through `ready`, `node-stale`, `node-unavailable`, `node-unknown`, `no-fix`, `waiting` | `f8a597a26bdb63c631dbf8aa56de7cdded1986854c70e4ceaf211f25861477d8` | Historical simulator gallery (retained) |
-| `clock-night.gif` | GIF, the Clock in the night theme, 10 s at 4 fps — the fireflies pulse and the minute turns over | `97ed8058a93e4aee373a7c6c8e539077db844936530345c1c6597e4f28c861fb` | Historical simulator gallery (retained) |
-| `two-watches-one-codebase.gif` | GIF, the same six states side by side on both panels, composited from two captures onto a plain ground | `39a46096b17e36e0268fb36648a1cff4f6f590165e140405468dfde2f78dc574` | Historical simulator gallery (retained) |
+| `nav-honest-states.gif` | GIF, the navigation readout stepping through `ready`, `node-stale`, `node-unavailable`, `node-unknown`, `no-fix`, `waiting` | `f8a597a26bdb63c631dbf8aa56de7cdded1986854c70e4ceaf211f25861477d8` | Not used by current pages; retained for history |
+| `clock-night.gif` | GIF, the Clock in the night theme, 10 s at 4 fps — the fireflies pulse and the minute turns over | `97ed8058a93e4aee373a7c6c8e539077db844936530345c1c6597e4f28c861fb` | Not used by current pages; retained for history |
+| `two-watches-one-codebase.gif` | GIF, the same six states side by side on both panels, composited from two captures onto a plain ground | `39a46096b17e36e0268fb36648a1cff4f6f590165e140405468dfde2f78dc574` | Not used by current pages; retained for history |
 
 Regenerate the two navigation files with
 `python3 tools/pics/make_nav_gifs.py`, which renders the six states on both

@@ -19,9 +19,10 @@ proposal and the reasoning, so the next person does not have to re-derive it.
 > offline GNSS navigation, LVGL UI and FreeRTOS.
 
 It is a keyword list, and one of the keywords is a claim the project does not
-make. This is an ESP-IDF application on FreeRTOS; `README.md` calls it a
-**platform** in its first line and nowhere calls it an operating system. "/ OS"
-therefore promises a visitor something the front page does not deliver.
+make. The README describes an open-source wearable project
+(`README.md:13` — "Attadipa is an open-source wearable project") and does not present it as an
+operating system. "/ OS" therefore promises a visitor something the front page
+does not deliver.
 
 **Proposed** (159 characters, well inside GitHub's 350):
 
@@ -55,7 +56,7 @@ is a swap list, not an addition list.
 | `embedded` | `embedded-systems` is the topic with the followers; `embedded` is a near-empty alias |
 | `wearable-tech` | same relationship to `wearable` |
 | `open-source` | every public repository is; it selects nobody |
-| `smartwatch-os` | the project is a firmware platform on FreeRTOS, not an OS, and the README says platform. A topic that promises more than the front page costs trust from exactly the reader who checks |
+| `smartwatch-os` | the README describes a wearable project (§1) and does not present an OS. The topic sets a stronger expectation than the front page supports |
 
 **Add five, and why:**
 
@@ -112,16 +113,17 @@ the product rather than the brand:
 
 ## 4. The five pictures worth taking
 
-The repository's visual evidence is honest and thin: a boot GIF, a device
-framebuffer capture of the clock, and a set of research screenshots. Everything
-below is a **real photograph or capture the owner can produce**, ranked by what
-it unblocks. No rendering, no mockups, no generated devices — the whole value of
-this repository's evidence model is that its pictures are of things that exist.
+The README now leads with labelled browser design studies; its dated physical
+evidence includes the boot GIF and live Clock framebuffer. Everything below is
+a **real photograph or capture the owner can produce**, ranked by what
+it unblocks. These proposed images add physical evidence alongside the labelled
+browser studies; they must show the actual device and its observed state.
 
 1. **The watch on a wrist, outdoors, showing the clock.** This is the single
-   highest-value image and its absence is why the README opens with a
-   framebuffer capture instead of a product shot. A framebuffer proves the
-   pixels; a wrist proves the object. Dusk or overcast, so the AMOLED is not
+   highest-value image. The README currently introduces the visual direction
+   with browser captures (`README.md:33` — "Browser design study · sample data · not firmware screenshots."); a wrist
+   photograph would add physical context without turning those studies into
+   hardware evidence. Dusk or overcast, so the AMOLED is not
    washed out. Becomes the hero image and the social preview.
 
 2. **The navigation screen showing a real distance and bearing to a real node.**
