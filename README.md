@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="pics/atta-dipa-banner.png" width="820" alt="Attadipa · Independent by design">
+  <img src="pics/atta-dipa-banner.png" width="820" alt="Atta-dipa · Independent by design">
 </p>
 
 <p align="center"><b>English</b> · <a href="README.ru.md">Русский</a> · <a href="https://hleserg.github.io/Attadipa/">Meet the project</a></p>
 
-<h1 align="center">Attadipa</h1>
+<h1 align="center">Atta-dipa</h1>
 <p align="center"><b>An open operating system for wearable devices.</b></p>
-<p align="center">Attadipa is building a shared foundation for watches, personal mesh nodes and<br>the applications people want to carry with them. Independent by design.</p>
+<p align="center">Atta-dipa is building a shared foundation for watches, personal mesh nodes and<br>the applications people want to carry with them. Independent by design.</p>
 <p align="center"><sub><i>Attadīpa</i> means relying on oneself. <a href="docs/brand/naming.md">About the name</a>.</sub></p>
 <p align="center"><a href="#the-os-and-its-architecture">Architecture</a> · <a href="#run-it-on-your-desk">Run the simulator</a> · <a href="#what-works-today">Development status</a> · <a href="#help-build-it">Contribute</a></p>
 
@@ -35,7 +35,7 @@ we want to build.
 ## The OS and its architecture
 
 The current implementation uses **C++17, ESP-IDF v5.5.5, FreeRTOS and LVGL
-v9.5.0**. Attadipa supplies the wearable system services, application layer,
+v9.5.0**. Atta-dipa supplies the wearable system services, application layer,
 device capabilities and interface above that foundation.
 
 | Layer | Responsibility |
@@ -63,9 +63,9 @@ glanceable interface. Lumar, our firefly, brings a little of that character
 into the project.
 
 <p align="center">
-  <img src="pics/design-clock-night-en.png" width="240" alt="Attadipa clock interface design">
-  <img src="pics/design-mesh-night-en.png" width="240" alt="Attadipa mesh interface design">
-  <img src="pics/design-navigation-night-en.png" width="240" alt="Attadipa navigation interface design">
+  <img src="pics/design-clock-night-en.png" width="240" alt="Atta-dipa clock interface design">
+  <img src="pics/design-mesh-night-en.png" width="240" alt="Atta-dipa mesh interface design">
+  <img src="pics/design-navigation-night-en.png" width="240" alt="Atta-dipa navigation interface design">
 </p>
 
 Interface design previews: Clock · Mesh · Direction. [Image sources](pics/README.md#browser-design-study-captures).
@@ -90,7 +90,7 @@ holds the technical distinction; it is not a separate product identity.
 
 ## What works today
 
-**Active development.** Attadipa boots on real hardware; system services,
+**Active development.** Atta-dipa boots on real hardware; system services,
 the interface and radio integration are being developed together. The aim is
 a shared app/device platform, not a finished app marketplace. Navigation is
 experimental and must not be relied on for safety-critical use.
