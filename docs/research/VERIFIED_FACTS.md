@@ -2825,10 +2825,10 @@ ones that heading states.
   together with `0 ≤ I < 1.0`, leaving 242 554 samples; applying it to the
   capture reproduces every number in this entry, and **every number in this
   entry is therefore a figure of those 242 554 and is conditional on it.**
-  Left in, the 293 pull the mean from 778.9 mW to 780.7 mW — **1.8 mW, 0.23 %**.
-  That sensitivity is published, it is the whole of what the exclusion is
-  load-bearing for in the mean, and it is why the headline **779 mW survives
-  everything below unchanged**. What the exclusion is *not* safe for is the
+  Left in, the 293 pull the mean from 778.9 mW to 780.7 mW — **1.8 mW,
+  0.23 %**. That sensitivity is published, it is the whole of what the
+  exclusion is load-bearing for in the mean, and it is why the headline
+  **779 mW survives everything below unchanged**. What the exclusion is *not* safe for is the
   maximum, and that is the bullet the reader is being sent to.
 - **Two kinds of sample are inside those 293 and only one kind has evidence.**
   `V = 0.00000` while 150–195 mA flows, and five high voltages that are
@@ -2838,20 +2838,19 @@ ones that heading states.
   so the five are counts 614 387, 819 187, 1 638 387, 3 276 787 and 6 553 587
   — each **13 below a multiple of 25**, and each a whole number of millivolts
   once that 13 is added: 6144, 8192, 16 384, 32 768 and 65 536 mV, which are
-  3·2^11 and 2^13 through 2^16 — **11 to 16 low zero bits**.
-  **The −13 is not the signature, and an earlier revision of this bullet said
-  it was.** Measured over the retained samples, `(raw + 13) mod 25` takes only
-  two values, 0 and 13: every one of the 242 554 sits on the same 0.25 mV
-  grid, so the offset separates nothing and only the low zero bits do. That
-  also answers the `2^k / 1000` identity this bullet first carried. Four of
-  the five are exactly that — `2^k / 1000` V **is** `2^k` mV — so it was the
-  right observation and is **not withdrawn, only made exact**: it rounded the
-  shared −0.13 mV away, and it missed 6.14387 V, which is 3·2^11 mV and not a
-  bare power of two. **What produces the values is `UNKNOWN`** — a
-  binary-round magnitude is a statement about the decode rather than about the
-  board.
-  **`I ≈ 1.27 A` is not.** An earlier revision of this entry
-  put it in the same list and said a 5 V USB line cannot present it. **That is
+  3·2^11 and 2^13 through 2^16 — **11 to 16 low zero bits**. **The −13 is not
+  the signature, and an earlier revision of this bullet said it was.**
+  Measured over the retained samples, `(raw + 13) mod 25` takes only two
+  values, 0 and 13: every one of the 242 554 sits on the same 0.25 mV grid, so
+  the offset separates nothing and only the low zero bits do. That also
+  answers the `2^k / 1000` identity this bullet first carried. Four of the
+  five are exactly that — `2^k / 1000` V **is** `2^k` mV — so it was the right
+  observation and is **not withdrawn, only made exact**: it rounded the shared
+  −0.13 mV away, and it missed 6.14387 V, which is 3·2^11 mV and not a bare
+  power of two. **What produces the values is `UNKNOWN`** — a binary-round
+  magnitude is a statement about the decode rather than about the board.
+  **`I ≈ 1.27 A` is not.** An earlier revision of this entry put it in the
+  same list and said a 5 V USB line cannot present it. **That is
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
@@ -2899,11 +2898,12 @@ ones that heading states.
   `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
   65.53587 V with the offset signature above; **72** current-only, at
   1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at
-  `V = 0.00187`, which is a whole 2 mV and so binary-round too, but with **one**
-  low zero bit against the five's eleven — at 2 mV that is any small reading,
-  not a signature; and **8** between 0.07262 V and 0.08837 V, which sit on the
-  0.25 mV grid because every sample does and are otherwise ordinary. **153 of the 293 have
-  structural evidence and 140 do not.** An earlier revision bounded this
+  `V = 0.00187`, which is a whole 2 mV and so binary-round too, but with
+  **one** low zero bit against the five's eleven — at 2 mV that is any small
+  reading, not a signature; and **8** between 0.07262 V and 0.08837 V, which
+  sit on the 0.25 mV grid because every sample does and are otherwise
+  ordinary. **153 of the 293 have structural evidence and 140 do not.** An
+  earlier revision bounded this
   arithmetically — at most 172 current-only, at most 110 at the quoted
   ≈1.27 A, at least 121 voltage-class. Every one of those bounds **holds**
   against the counts and every one is loose; the counts supersede them because
