@@ -1,16 +1,17 @@
 # Manual brightness
 
 Issue [#514](https://github.com/hleserg/Attadipa/issues/514) owns acceptance.
-The native flow is Clock tap > Settings > Display > Brightness. Holding a
+The Waveshare flow is Clock tap > Settings > Display > Brightness. Holding a
 node page opens Settings because its short tap already switches Mesh/Nav.
 Clock hold retains provisioning. The shared status remains visible.
 
 The displayed percentage is the requested setting, not measured luminance.
 Preview applies immediately; only Save writes `attadipa_screen/brightness` in
-the already initialized default NVS. Successful commit also replaces the power
+the already initialized default NVS. On Waveshare, successful commit also replaces the power
 owner's wake request. Cancel restores the last successfully saved request.
 Sleep discards an uncommitted preview and redraws that saved request on wake.
-Reconnection updates status without displacing an active editor.
+Reconnection updates status without displacing an active editor. T-Watch has
+no runtime sleep service yet; the shared editor does not add one.
 
 Missing state uses the default without writing. Invalid or unreadable state
 uses the default and shows “Using default”. Failed application keeps the prior
@@ -42,7 +43,31 @@ Readback before recovery cannot prove which value a restart will recover.
   retaining 5% for recovery; it does not establish readability in all lighting.
 - Boot/sleep already own screen-off separately. The editor cannot request 0%.
 
-## Checkpoint limitations
+## Native T-Watch policy and provenance
+
+Holding the diagnostic screen after its panel exercise opens the same Settings
+face. Back returns to the diagnostic screen. Boot initializes default NVS once,
+without erasing it on error, and applies the saved request after the first frame.
+Both boards use the same native read/write transaction and recovery behavior.
+
+The existing full-on boot behavior remains the 100% default/recovery request.
+The 5% minimum and 5-point step are provisional software policy. Readability at
+the floor and a safe continuous maximum are **UNKNOWN**; they were not measured.
+The editor rejects 0%, while initialization holds the backlight dark.
+
+- The pinned Arduino T-Watch S3 variant assigns
+  [DISP_BL to GPIO45](https://github.com/espressif/arduino-esp32/blob/3.3.2/variants/lilygo_twatch_s3/pins_arduino.h#L20),
+  which the pinned [LilyGoWatchS3 composition passes to its display](https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/38e6f8dee3ba78b340512af9a013365ef248a7d0/src/LilyGoWatchS3.cpp#L135).
+- The vendor display interface uses
+  [1000 Hz and 8-bit LEDC](https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/38e6f8dee3ba78b340512af9a013365ef248a7d0/src/LilyGoDispInterface.h#L23).
+  Attadipa maps percent to `percent * 256 / 100`; at 100% the duty is 256,
+  matching [Arduino's full-on conversion](https://github.com/espressif/arduino-esp32/blob/3.3.2/cores/esp32/esp32-hal-ledc.c#L336).
+- Writes use checked `ledc_set_duty` followed by `ledc_update_duty`, serialized
+  by boot and then the LVGL task. The combined `ledc_set_duty_and_update` needs
+  an installed fade service in [pinned IDF 5.5.5](https://github.com/espressif/esp-idf/blob/v5.5.5/components/esp_driver_ledc/src/ledc.c#L1603);
+  fixed PWM here does not install that service.
+
+## Evidence boundaries
 
 The same face is built by the simulator at both native geometries. Its storage
 is deliberately volatile and its apply callback does not control a monitor.
@@ -53,9 +78,14 @@ theme/locale changes, header pixels and all four corners of the full slider hit
 row. Reintroducing the production redraw defect makes this test fail. These
 are not physical panel tests or an executed IDF flash-fault experiment.
 
-The initial `fdae291` checkpoint built in pinned ESP-IDF5.5.5 HIL. Real NVS
-reboot/wake and physical readability acceptance remain pending:
-**NOT EXECUTED — HARDWARE REQUIRED** for hardware outcomes.
-The current T-Watch native backlight backend is binary on/off; its normalized
-brightness application and native Settings entry remain pending. A 240 × 240
-simulator image must not be presented as their implementation.
+Waveshare `7a20c8e` executed Save 10%, a real chip reset, and an eight-second boot
+log reporting 10%; the real editor also showed 10% after reboot. A later sleep
+attempt logged entry to LightSleep and lost USB before wake evidence was
+captured. Successful wake restoration and physical readability remain
+**NOT EXECUTED — HARDWARE REQUIRED**. USB access after reconnection alone does
+not establish a successful sleep/wake cycle.
+
+Native T-Watch Settings entry, Save/reboot, readable PWM range and physical
+touch acceptance remain **NOT EXECUTED — HARDWARE REQUIRED**. The 240 × 240
+simulator verifies the shared face, not those native paths. Runtime sleep/wake
+acceptance remains pending its board service.

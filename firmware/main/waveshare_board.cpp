@@ -59,7 +59,7 @@
 #include "meshcore_passkey.h" // plain C++, no NimBLE behind it: every image
 
 #include "physical_input.h"
-#include "brightness_store.h"
+#include "brightness_nvs.h"
 #include "esp_system.h"
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
@@ -177,32 +177,15 @@ BoardState state;
 
 struct BoardBrightness final : attadipa::apps::BrightnessPort {
   attadipa::apps::BrightnessRead load(std::uint8_t &percent) override {
-    using attadipa::apps::BrightnessRead;
-    if (state.metadata_storage != ESP_OK) return BrightnessRead::Failed;
-    nvs_handle_t handle{};
-    esp_err_t err = nvs_open("attadipa_screen", NVS_READONLY, &handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) return BrightnessRead::Missing;
-    if (err != ESP_OK) return BrightnessRead::Failed;
-    err = nvs_get_u8(handle, "brightness", &percent);
-    nvs_close(handle);
-    return err == ESP_OK ? BrightnessRead::Present
-        : err == ESP_ERR_NVS_NOT_FOUND ? BrightnessRead::Missing
-                                      : BrightnessRead::Failed;
+    return attadipa::firmware::load_brightness(state.metadata_storage, percent);
   }
   bool apply(std::uint8_t percent) override {
     return attadipa::firmware::board_power_preview_brightness(percent) == ESP_OK;
   }
   attadipa::apps::BrightnessWrite store(std::uint8_t percent) override {
     using attadipa::apps::BrightnessWrite;
-    if (state.metadata_storage != ESP_OK) return BrightnessWrite::Failed;
-    struct Write {
-      nvs_handle_t handle{};
-      bool open() { return nvs_open("attadipa_screen", NVS_READWRITE, &handle) == ESP_OK; }
-      bool write(std::uint8_t value) { return nvs_set_u8(handle, "brightness", value) == ESP_OK; }
-      bool commit() { return nvs_commit(handle) == ESP_OK; }
-      void close() { nvs_close(handle); }
-    } write;
-    const auto result = attadipa::firmware::store_brightness(write, percent);
+    const auto result =
+        attadipa::firmware::persist_brightness(state.metadata_storage, percent);
     if (result == BrightnessWrite::Saved) {
       attadipa::firmware::board_power_remember_brightness(percent);
     }

@@ -2562,7 +2562,7 @@ ones that heading states.
   would make the second call see a different partition.
 - **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
   re-reads it.
-- **Consequence:** `firmware/main/waveshare_board.cpp:339` —
+- **Consequence:** `firmware/main/waveshare_board.cpp:322` —
   "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
   the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
   cannot contradict it (ADR-0014).
@@ -2583,7 +2583,7 @@ ones that heading states.
 - **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
   header: a third member of the family would make the boot log recommend the
   wrong recovery for it.
-- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:342` —
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:325` —
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.
@@ -2776,7 +2776,7 @@ ones that heading states.
   2026-09-05 and recorded above
   (`docs/research/VERIFIED_FACTS.md:720` — "Claim, on the bench unit, MEASURED 2026-09-05"),
   and this image raises that rail on purpose
-  (`firmware/main/twatch_board.cpp:875` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
+  (`firmware/main/twatch_board.cpp:978` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
   So for the whole 45 minutes a receiver was powered, and **nothing here
   measures what it cost.** What state it was in is `UNKNOWN`: a receiver that
   never sees a satellite searches continuously and costs the most, one with a
@@ -2992,19 +2992,17 @@ ones that heading states.
   panel exercise: ten display cycles, a full flush, a partial flush, a rotation
   and two sleep intervals, all passing.
 
-  It could not have been otherwise on this image. The bring-up line is printed
-  unconditionally, so it reports either state
-  (`firmware/main/twatch_board.cpp:790` — "T-Watch S3 Plus bring-up: panel %s, touch %s (probe %u of %u); SPI "),
-  and the backlight is switched on inside the block that runs when the panel
-  came up (`firmware/main/twatch_board.cpp:729` — "  if (panel_err == ESP_OK) {",
-  `firmware/main/twatch_board.cpp:779` — "    err = backlight(true);").
-  **Nothing dims it.** The backlight is a plain GPIO with no PWM anywhere in
-  this build (`firmware/main/twatch_board.cpp:69` —
-  "constexpr gpio_num_t kBacklight = GPIO_NUM_45;"), fed by
+  The inspected pre-PWM source printed that state after
+  [applying `backlight(true)` when the panel came up](https://github.com/hleserg/Attadipa/blob/7a20c8e8a4528ab2d2c47189719cba0da62fcc12/firmware/main/twatch_board.cpp#L779).
+  Its [backlight helper was a plain GPIO output](https://github.com/hleserg/Attadipa/blob/7a20c8e8a4528ab2d2c47189719cba0da62fcc12/firmware/main/twatch_board.cpp#L152),
+  fed by
   a rail the firmware writes to a fixed 3.3 V
   (`firmware/main/board_power.cpp:587` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
-  So "screen on" here means undimmed, unlike the Waveshare figure above, which
-  is at that board's measured 5 % visible floor.
+  The historical "undimmed" classification came from this source inspection;
+  actual backlight duty during the capture was not separately measured. This
+  does not prove the exact September 5 compiled tree identified below and is
+  not evidence about the later PWM implementation. The capture and hashes
+  remain unchanged.
 
   The same log identifies what ran, which the flash read alone could not: `App
   version attadipa-claim-writer-local-hle`, `Compile time Sep  5 2026 22:07:42`,
@@ -3085,7 +3083,7 @@ ones that heading states.
   that argument does not survive its own numbers: a 1 Hz navigation epoch is
   disciplined by the receiver's own oscillator and repeats at 1.000 s, while
   what lands 15 % late is a *relative* periodic that runs late — and this build
-  has more than one of those (`firmware/main/twatch_board.cpp:50` —
+  has more than one of those (`firmware/main/twatch_board.cpp:57` —
   "constexpr std::uint32_t kGnssTickMs = 1000;" — and the 1 s `alive` heartbeat
   this entry sets aside above, `firmware/main/attadipa_main.cpp:357` —
   "        vTaskDelay(pdMS_TO_TICKS(1000));"). The cadence fits both, so it

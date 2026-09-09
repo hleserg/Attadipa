@@ -385,25 +385,25 @@ elsewhere on the merge ref. `tools/docs/check_docs.py` now keeps them.
 
 *The clock survives the round trip.* A production image reads the PCF85063 and
 restores a persisted UTC offset — `restore_time_metadata()`
-(`waveshare_board.cpp:338` "restore_time_metadata()") is outside the `#if` — and,
+(`waveshare_board.cpp:321` "restore_time_metadata()") is outside the `#if` — and,
 since #356's second change, writes one too: `provision_time()` has two callers,
-`BoardProvisioner` (`waveshare_board.cpp:522` "provision_time(ops, request,")
-outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:680`
+`BoardProvisioner` (`waveshare_board.cpp:505` "provision_time(ops, request,")
+outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:663`
 "provision_time(ops, provision,") inside it. Flashing the HIL image, setting the
 time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:2174` "bool configure_meshcore_ble") had exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:703`
+`BoardMeshSink::configure` (`waveshare_board.cpp:686`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
-(`waveshare_board.cpp:559`
+(`waveshare_board.cpp:542`
 "if (meshcore_ble_configure_passkey(passkey, passkey_ticket_) != ESP_OK) {") is
 the ungated second, and since #416 it is a different function for a reason that
 is this document's subject: the screen has to be told how the request *ended*,
 not that the queue took it, so it reserves an answer slot and reads it back
-(`waveshare_board.cpp:570`
+(`waveshare_board.cpp:553`
 "switch (meshcore_ble_passkey_outcome(passkey_ticket_)) {"). The debug
 channel's caller keeps the old one, because the console it is read on is where
 the worker's refusals were already being written. What that call set was
@@ -442,11 +442,11 @@ clock's does — flash the HIL image, configure, flash back, and the product
 image scans for and pairs with its node until the HIL image is flashed back
 and told to stop — and since #356's second change a product image can also
 put that key there itself, though not take it away: the entry screen a long
-press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:543`
+press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:526`
 "set_mesh_passkey(std::uint32_t passkey) override {" sends the same `Configure`
 event. What stays HIL-only is watching it happen: the mesh screen's
-`mesh_screen_requested` (`waveshare_board.cpp:216`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:706`
+`mesh_screen_requested` (`waveshare_board.cpp:199`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:689`
 "mesh_screen_requested.store(true)", inside the `#if`, so a product image
 scans without showing that it does.
 
