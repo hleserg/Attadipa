@@ -5,7 +5,7 @@ module on the Waveshare. This directory preserves the source console and
 normal-boot records, their original analysis and run metadata, and the actual
 generated build configuration. The owner authorised repository publication on
 2026-09-09. Imported measurement files are byte-identical to the original run;
-`SHA256.json` covers this focused archive. Local Git attributes preserve original
+`SHA256.json` covers the eight original evidence files. Local Git attributes preserve original
 line endings and console whitespace. The original files remain preserved.
 
 The hardware fact and wiring index stays in
