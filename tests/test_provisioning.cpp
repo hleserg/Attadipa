@@ -1144,9 +1144,9 @@ void test_the_finished_frame_keeps_the_words_and_drops_the_keys()
 
 // A screen that can only be left by getting something right is a trap, and a
 // long press onto it is easy to make by accident (#406 round 1). Every field
-// of both tasks has a way out that asks nothing of the holder -- except the
-// confirmation, where the neighbouring key is the destructive one and Leave is
-// Back instead.
+// of all three tasks has a way out that asks nothing of the holder -- except
+// the confirmation, where `Leave` is Back: it answers the destructive question
+// the safe way rather than taking the screen away with it still open.
 void test_leave_is_never_a_trap()
 {
     const EntryKey walk_time[] = {EntryKey::Next, EntryKey::Next, EntryKey::Next,
@@ -1185,6 +1185,42 @@ void test_leave_is_never_a_trap()
         step_passkey(entry, "111111");
         entry.press(EntryKey::Leave);
         CHECK(entry.finished() && board.passkeys == 0);
+    }
+    {
+        // `EntryTask::All` is the walk a product image builds, and until now
+        // this test never took it -- round 5's review walked it by hand and
+        // said so. What `Leave` may never do is write, so the counters are
+        // read before the press and compared after rather than checked
+        // against zero: by the node half this walk has legitimately saved a
+        // clock, and a test that demanded zero could only cover the first
+        // half of it. The one screen it does not leave is the confirmation,
+        // which is the whole of the exception stated once.
+        const EntryKey walk_all[] = {
+            EntryKey::Next, EntryKey::Next, EntryKey::Next, EntryKey::Next,
+            EntryKey::Next, EntryKey::Next, EntryKey::Next, EntryKey::Next,
+            EntryKey::Forget};
+        const unsigned stops = sizeof(walk_all) / sizeof(walk_all[0]);
+        for (unsigned stop = 0; stop <= stops; ++stop) {
+            FakeBoard board;
+            board.pinned = true;
+            ProvisioningEntry entry(board, EntryTask::All);
+            for (unsigned i = 0; i < stop; ++i) { entry.press(walk_all[i]); }
+            const bool confirm = entry.field() == EntryField::ForgetConfirm;
+            const int clocks = board.clocks;
+            const int forgets = board.forgets;
+            const int passkeys = board.passkeys;
+            entry.press(EntryKey::Leave);
+            CHECK(entry.finished() != confirm);
+            CHECK(board.clocks == clocks && board.forgets == forgets);
+            CHECK(board.passkeys == passkeys);
+        }
+        // ... and the last stop above really is the confirmation, so the
+        // `!= confirm` above was exercised in both directions.
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry entry(board, EntryTask::All);
+        for (const EntryKey key : walk_all) { entry.press(key); }
+        CHECK(entry.field() == EntryField::ForgetConfirm);
     }
 }
 

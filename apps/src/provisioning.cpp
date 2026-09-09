@@ -481,7 +481,13 @@ void ProvisioningEntry::press(EntryKey key)
         case EntryKey::Leave:     // Back
             // Neither has asked the board anything, and neither has touched
             // the node. The confirmation is the only screen `Leave` does not
-            // leave from, because the key beside it is the destructive one.
+            // leave from, and the reason is no longer adjacency -- since the
+            // confirm moved to `Minus` the destructive key is in the opposite
+            // corner. It is that everywhere else the press means "take this
+            // away", and here that same reflex would take the screen away
+            // with a destructive question still open. So it answers the
+            // question the safe way and stays, and the holder is looking at
+            // the node it did not forget.
             verdict_ = EntryVerdict::None;
             field_   = EntryField::Node;
             return;
