@@ -14,20 +14,20 @@
   // The JSON-LD graph describes the canonical English document.
   const copy = {
     en: {
-      title: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware, LoRa mesh, offline GNSS',
-      ogTitle: 'Atta-dipa — open-source ESP32-S3 smartwatch firmware',
+      title: 'Attadipa — an open operating system for wearable devices',
+      ogTitle: 'Attadipa — open OS, personal devices, shared possibilities',
+      description: 'Meet Attadipa, an open operating system in development for watches and personal mesh devices. Independent by design, shaped by the people who use and build it.',
+      cardDescription: 'Your device should do more than its maker imagined. We are building an open OS for wearables, with independent operation, a beautiful interface and room for new ideas.',
       locale: 'en_US',
-      localeAlternate: 'ru_RU',
-      description: 'Open-source ESP32-S3 smartwatch project for time, MeshCore messaging and offline navigation. Explore the design and dated hardware results. Early development, not a finished consumer watch.',
-      cardDescription: 'LoRa MeshCore and offline GNSS are part of the direction. Explore a warm, glanceable watch interface, try the browser studies, and help build Atta-dipa. Early development.'
+      localeAlternate: 'ru_RU'
     },
     ru: {
-      title: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3, LoRa mesh, GNSS офлайн',
-      ogTitle: 'Atta-dipa — открытая прошивка для умных часов на ESP32-S3',
+      title: 'Attadipa — открытая операционная система для носимых устройств',
+      ogTitle: 'Attadipa — открытая ОС, свои устройства, общие возможности',
+      description: 'Знакомьтесь с Attadipa — открытой ОС для часов и персональных меш-устройств. Создаём самостоятельные устройства, красивый интерфейс и общую основу для новых приложений.',
+      cardDescription: 'Ваше устройство должно уметь больше, чем однажды решил его производитель. Мы создаём открытую ОС для носимых устройств — с самостоятельной работой и идеями от каждого.',
       locale: 'ru_RU',
-      localeAlternate: 'en_US',
-      description: 'Открытый проект часов на ESP32-S3: время, связь MeshCore и офлайн-навигация. Посмотрите дизайн и результаты на железе. Ранняя разработка, не готовые потребительские часы.',
-      cardDescription: 'LoRa MeshCore и офлайн-GNSS — часть замысла. Тёплый, понятный с одного взгляда интерфейс: попробуйте браузерные макеты и помогите создать Atta-dipa. Ранняя разработка.'
+      localeAlternate: 'en_US'
     }
   };
 
