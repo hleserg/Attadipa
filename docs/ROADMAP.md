@@ -159,7 +159,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > receiver is on the same body and the rule is satisfied rather than lifted.
 > What holds `own` off on the T-Watch is neither hardware nor a rule but a
 > default waiting for a caller —
-> `firmware/main/Kconfig.projbuild:173` — "        bring-up slice, so listening to it is opt-in until something above" —
+> `firmware/main/Kconfig.projbuild:186` — "        bring-up slice, so listening to it is opt-in until something above" —
 > and [#442](https://github.com/hleserg/Attadipa/issues/442) is the task that
 > supplies one. So the two are not a choice: **#450 is the split topology's
 > vertical slice and #442 is the self-contained one's**, they close different
