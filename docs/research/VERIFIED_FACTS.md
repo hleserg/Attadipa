@@ -2900,15 +2900,14 @@ ones that heading states.
   and the excluded set carries **2.218 W per sample** on average. Classifying
   the 293 from the capture this entry already pins gives, by count: **118** at
   `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
-  65.53587 V with the offset signature above; **72** current-only, at
-  1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at
-  `V = 0.00187`, which is a whole 2 mV and so binary-round too, but with
-  **one** low zero bit against the five's eleven — at 2 mV that is any small
-  reading, not a signature; and **8** between 0.07262 V and 0.08837 V, which
-  sit on the 0.25 mV grid because every sample does and are otherwise
-  ordinary. **153 of the 293 have structural evidence and 140 do not.** An
-  earlier revision bounded this
-  arithmetically — at most 172 current-only, at most 110 at the quoted
+  65.53587 V, binary-round in millivolts as above; **72** current-only, at
+  1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at `V =
+  0.00187`, which is a whole 2 mV and so binary-round too, but with **one** low
+  zero bit against the five's eleven — at 2 mV that is any small reading, not a
+  signature; and **8** between 0.07262 V and 0.08837 V, which sit on the 0.25
+  mV grid because every sample does and are otherwise ordinary. **153 of the
+  293 have structural evidence and 140 do not.** An earlier revision bounded
+  this arithmetically — at most 172 current-only, at most 110 at the quoted
   ≈1.27 A, at least 121 voltage-class. Every one of those bounds **holds**
   against the counts and every one is loose; the counts supersede them because
   a bound cannot say which samples, and the split is what matters here. The 140
@@ -2916,11 +2915,12 @@ ones that heading states.
   rather than by proof, so **for those 140 the exclusion is a choice and not a
   classification** — which is the honest reading of a filter this entry already
   calls a heuristic. Reproduce from the pinned capture: apply the filter, then
-  split the remainder on `V == 0`, on `V` inside the band, and on
-  `round(V × 100000) + 13` being 100·N with N a whole number of millivolts
-  carrying **at least 11 low zero bits** — 35 samples. Stated as `25·2^k`, as
-  an earlier revision of this bullet stated it, the rule admits **86**: it
-  reaches the 2 mV group.
+  split the remainder on `V == 0`, on `V` inside the band, and on `round(V ×
+  100000) + 13` being 100·N with N a whole number of millivolts carrying **at
+  least 11 low zero bits** — 35 samples. Stated as `25·2^k`, as an earlier
+  revision of this bullet stated it, the rule admits **86**: it drops the **9**
+  at 6.14387 V, whose 6144 mV is 3·2^11 and not a bare power of two, and
+  reaches the **60** at 2 mV — 35 − 9 + 60.
 - **`986.9 mW` is the largest *retained* sample, and the filter is what makes
   it the largest.** The filter's own ceiling is 5.5 V × 1.0 A = 5.5 W, and if
   even
