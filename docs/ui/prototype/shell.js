@@ -94,7 +94,7 @@
     const watch = `<span class="watch-status">${low ? '! ' : ''}${t('watch')} <span class="battery ${low ? 'low' : ''}" aria-hidden="true"><i></i></span> ${charge}</span>`;
     const recent = scenario === 'fresh' || scenario === 'low';
     const mark = recent ? '✓' : scenario === 'disconnected' ? '×' : '!';
-    const description = `${t('node')}: ${t(scenario)}${recent ? ` · ${t('volts')} · ${t('freshAge')}` : ''}`;
+    const description = `${t('node')}: ${t(recent ? 'fresh' : scenario)}${recent ? ` · ${t('volts')} · ${t('freshAge')}` : ''}`;
     status.innerHTML = watch + (scenario === 'integrated' ? '' : `<span class="node-status" role="img" aria-label="${description}"><span class="${recent ? 'link-mark' : 'attention'}" aria-hidden="true">${mark}</span> ${t('node')} ${recent ? t('volts') : '—'}</span>`);
   }
   function connectionBody() {
@@ -108,6 +108,7 @@
   }
   function render(focus = '') {
     document.documentElement.lang = value('locale');
+    for (const link of document.querySelectorAll('.wordmark, .previous')) link.href = `index.html?v=2&locale=${value('locale')}`;
     for (const element of document.querySelectorAll('[data-copy]')) element.innerHTML = t(element.dataset.copy);
     shell.dataset.size = value('size'); shell.dataset.theme = value('theme'); shell.dataset.motion = value('motion'); shell.dataset.page = page;
     document.getElementById('geometry').textContent = value('size') === 'small' ? '240 × 240' : '410 × 502';
@@ -121,7 +122,9 @@
     } else if (page === 'apps') {
       content.innerHTML = `${heading(t('apps'))}<div class="scroll rows">${row('navigation', t('navigation'), value('scenario') === 'disconnected' ? t('needNode') : t('needPosition'))}${row('settings', t('settings'))}</div>${button('clock', t('restart'))}`;
     } else if (page === 'settings') {
-      content.innerHTML = `${heading(`${t('settings')} ↓`)}<div class="scroll rows">${row('connection', t('connection'))}${row('display', t('display'))}${row('about', t('about'))}</div>${back()}`;
+      content.innerHTML = `${heading(t('settings'))}<div class="scroll rows">${row('connection', t('connection'))}${row('display', t('display'))}${row('about', t('about'))}</div>${back()}`;
+      const rows = content.querySelector('.rows');
+      if (rows.scrollHeight > rows.clientHeight + 1) content.querySelector('h2 > span').insertAdjacentHTML('beforeend', '<span aria-hidden="true"> ↕</span>');
     } else if (page === 'connection') {
       content.innerHTML = `${heading(t('node'))}${scroll(connectionBody())}${back()}`;
     } else if (page === 'display') {
@@ -156,8 +159,8 @@
     const button = event.target.closest('button[data-go]');
     if (button) go(button.dataset.go);
   });
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { event.preventDefault(); go('back'); }
+  content.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && history.length && !event.defaultPrevented) { event.preventDefault(); go('back'); }
   });
   document.getElementById('restart').addEventListener('click', () => go('clock'));
   for (const id of ids) document.getElementById(id).addEventListener('change', () => render());

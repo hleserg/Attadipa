@@ -21,6 +21,21 @@
     check(!!button, `Route ${route} has a visible affordance`);
     if (button) { button.focus(); button.click(); }
   };
+  const escape = () => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const luminance = color => color.match(/[\d.]+/g).slice(0, 3)
+    .map(v => Number(v) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+    .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+  const connectedContrast = context => {
+    const mark = document.querySelector('.link-mark');
+    const foreground = luminance(getComputedStyle(mark).color);
+    const background = luminance(getComputedStyle(document.querySelector('.status')).backgroundColor);
+    check((Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05) >= 3,
+      `${context}: connected glyph clears graphic contrast`);
+  };
   const page = (name) => check(
     document.querySelector('#watch-shell').dataset.page === name,
     `Expected page ${name}`,
@@ -58,12 +73,24 @@
     select('size', size);
     for (const locale of ['ru', 'en']) {
       select('locale', locale);
+      for (const link of document.querySelectorAll('.wordmark, .previous')) {
+        const destination = new URL(link.href);
+        check(destination.pathname.endsWith('/index.html') && destination.searchParams.get('v') === '2' &&
+          destination.searchParams.get('locale') === locale, 'Both previous-demo links retain the selected locale');
+      }
       for (const theme of ['night', 'day']) {
         select('theme', theme);
         const context = `${size}/${locale}/${theme}`;
+        select('motion', 'ambient');
         select('scenario', 'fresh');
         document.querySelector('#restart').click();
         page('clock'); fit(`${context}/clock`);
+        connectedContrast(context);
+        document.querySelector('#locale').focus();
+        check(!escape() && document.activeElement.id === 'locale', 'Escape leaves review controls focused and unconsumed');
+        page('clock');
+        document.querySelector('[data-go="apps"]').focus();
+        check(!escape(), 'Escape at home has no back action');
         click('apps'); page('apps'); fit(`${context}/apps`);
         check(!!document.querySelector('[data-go="navigation"]'), 'Navigation is installed even when unavailable');
         check(!document.querySelector('[data-go="mesh"]'), 'Mesh is not falsely listed as a registered app');
@@ -71,6 +98,18 @@
         check(!document.querySelector('.needle'), 'No invented heading or direction needle');
         click('back'); page('apps');
         click('settings'); page('settings'); fit(`${context}/settings`);
+        const settingsList = document.querySelector('#watch-shell .rows');
+        const settingsHeading = document.querySelector('#watch-shell h2');
+        const cue = settingsHeading.querySelector('[aria-hidden="true"]');
+        check(!!cue === (settingsList.scrollHeight > settingsList.clientHeight + 1),
+          `${context}: scroll cue matches actual overflow`);
+        const spokenHeading = settingsHeading.cloneNode(true);
+        spokenHeading.querySelectorAll('[aria-hidden="true"]').forEach(el => el.remove());
+        check(spokenHeading.textContent.trim() === (locale === 'ru' ? 'Настройки' : 'Settings'),
+          'The Settings accessible heading does not include a decorative arrow');
+        document.querySelector('#theme').focus();
+        check(!escape() && document.activeElement.id === 'theme', 'Escape outside the shell does not navigate history');
+        page('settings');
         click('connection'); page('connection'); fit(`${context}/connection`);
         check(document.querySelector('.node-reading').textContent.includes(locale === 'ru' ? '4,02' : '4.02'), 'Fresh node reading is voltage');
         check(!document.querySelector('.node-status').textContent.includes('%'), 'Node voltage is not converted to percent');
@@ -78,6 +117,7 @@
         check(announcedNode.getAttribute('role') === 'img' &&
           announcedNode.getAttribute('aria-label').includes(locale === 'ru' ? '4,02' : '4.02'),
         'Assistive technology receives the node reading and its state');
+        const freshAnnouncement = announcedNode.getAttribute('aria-label');
         for (const state of ['stale', 'unknown', 'disconnected', 'low', 'integrated']) {
           select('scenario', state);
           page('connection'); fit(`${context}/${state}`);
@@ -86,6 +126,12 @@
             check(!node, 'Integrated source has no duplicate battery');
           } else {
             check(!!node, `${state}: accessory status remains visible`);
+            if (state === 'low') {
+              connectedContrast(`${context}/low`);
+              check(node.getAttribute('aria-label') === freshAnnouncement,
+                'A low watch battery does not change the connected node announcement');
+              check(document.querySelector('.watch-status').textContent.includes('8%'), 'Low battery belongs to the watch');
+            }
             check(!node.textContent.includes('%'), `${state}: no fabricated SOC`);
             if (['stale', 'unknown', 'disconnected'].includes(state))
               check(node.textContent.includes('—'), `${state}: no fresh-looking battery value`);
@@ -106,7 +152,11 @@
         check(getComputedStyle(document.querySelector('.fireflies i')).animationName === 'none', 'Reduced motion actually stops the decorative animation');
         click('back'); page('settings');
         click('about'); page('about'); fit(`${context}/about`);
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const cancelled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        cancelled.preventDefault();
+        document.activeElement.dispatchEvent(cancelled);
+        page('about');
+        check(escape(), 'Escape from the watch consumes a real back action');
         page('settings');
         const returned = document.activeElement;
         const returnedBounds = returned.getBoundingClientRect();

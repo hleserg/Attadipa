@@ -49,6 +49,7 @@ select { width: 100%; min-height: 44px; background: var(--ivory); border: 1px so
 body > footer { display: flex; gap: 20px; justify-content: space-between; font-size: 11px; border-top: 1px solid var(--sage); margin-top: 38px; }
 
 #watch-shell {
+  /* Browser-only proposed geometry exceptions: ../DESIGN_SYSTEM.md §10. */
   --width: 410px; --height: 502px; --target: 87px; --pad: 22px;
   --status-height: 42px; --heading-height: 52px; --gap: 12px; --bottom: 16px;
   --type-body: 25px; --type-title: 29px; --type-caption: 18px; --type-status: 16px;
@@ -61,7 +62,8 @@ body > footer { display: flex; gap: 20px; justify-content: space-between; font-s
   position: relative; overflow: hidden; isolation: isolate; font-size: var(--type-body);
 }
 #watch-shell[data-size='small'] {
-  /* 27 + 24 + 122 (two 61px rows) + 61 + 2 gaps + 4 bottom = 240. */
+  /* Two full adult rows win over space.xs: 27 + 24 + 122 + 61 + 2 gaps + 4 = 240.
+     Proposed 1px gaps / 4px bottom, not firmware tokens: DESIGN_SYSTEM.md §10. */
   --width: 240px; --height: 240px; --target: 61px; --pad: 11px;
   --status-height: 27px; --heading-height: 24px; --gap: 1px; --bottom: 4px;
   --type-body: 17px; --type-title: 18px; --type-caption: 12px; --type-status: 11px;
@@ -77,6 +79,7 @@ body > footer { display: flex; gap: 20px; justify-content: space-between; font-s
   background: var(--face); white-space: nowrap; gap: 5px; font-variant-numeric: tabular-nums; }
 .status > span { display: flex; align-items: center; gap: 4px; }
 .link-mark { color: var(--green); }
+[data-theme='day'] .link-mark { color: var(--text); }
 .status .attention { color: var(--text); }
 .battery { display: inline-block; width: var(--battery-width); height: var(--battery-height); border: 1px solid currentColor; border-radius: 2px; padding: 1px; position: relative; }
 .battery::after { content: ''; position: absolute; width: 2px; height: 4px; right: -3px; top: 2px; background: currentColor; }

@@ -9,7 +9,9 @@ Nunito font and day/night glade artwork; no new asset download is needed.
 
 Clock → Applications → Navigation / Settings; Settings → Connection & node /
 Display / About. Labelled Back returns one level and Watch face returns home.
-Escape is a browser convenience, **not** a physical watch-button contract.
+Escape goes back only from inside the watch content with existing history; it
+leaves outside controls and already-cancelled key events alone. This is a browser
+convenience, **not** a physical watch-button contract.
 The existing firmware button and long-tap bindings are not changed.
 
 Clock is represented by Home; the other two rows reflect the installed
@@ -37,6 +39,11 @@ Independent layout tokens target 240×240 and 410×502, not CSS scaling. Adult
 touch minima are 61 and 87 pixels from the design system. The small layout uses
 27px status + 24px heading + 122px two-row viewport + 61px Back + 2px gaps +
 4px bottom. Lists/details scroll inside the frame; the primary clock does not.
+The compact gaps and browser radii/padding are explicit **proposed exceptions**
+to the Dp family, with their arithmetic and layout cost in
+[Design system §10](../DESIGN_SYSTEM.md#10-shell-study-03-browser-only-geometry-proposal).
+Settings shows an aria-hidden scrollability cue only when its rows overflow;
+it promises neither more content below nor a physical gesture binding.
 Panels and local reading surfaces protect text without blurring the artwork.
 This review is adult-only, **not Child Mode acceptance**.
 
@@ -54,8 +61,10 @@ rtk npm exec --yes --package=agent-browser -- agent-browser --session shell-chec
 ```
 
 The test runs actual UI controls across size/locale/theme/state combinations,
-checks reachable touch targets, label overflow, truthful battery units, return
-paths and unchanged browser storage. Require an empty `failures` array; the
+checks reachable touch targets, label overflow, connected-glyph contrast,
+truthful battery units and accessible state, Settings overflow, scoped Escape,
+locale-preserving study links, return paths and unchanged browser storage.
+Require an empty `failures` array; the
 browser command's exit code alone is not the verdict. Inspect screenshots too.
 The original `selftest.js` still checks V2 on a **freshly loaded** `index.html?v=2`.
 
