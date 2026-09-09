@@ -128,7 +128,7 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   // The compact face spends some ring space on the shared status, keeping
   // three Russian caveat lines and the existing readable type sizes.
   const std::int32_t ring = shorter * (large ? 40 : 30) / 100 -
-      (large ? 0 : std::max(0, (240 - height) / 2));
+      (large ? 0 : std::max<std::int32_t>(0, (240 - height) / 2));
 
   // A COLUMN, NOT SIX ANCHORS. The first version of this face anchored the
   // title to the top, the ring below it, and the status and caveat to the
