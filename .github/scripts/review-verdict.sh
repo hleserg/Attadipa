@@ -60,7 +60,7 @@
 # merge-candidate.sh.
 
 # attadipa_review_verdict PREV_LEDGER FINDINGS FLOOR LEDGER_OUT DEFERRED_OUT PR
-#                         [CEILING]
+#                         [CEILING] [HEAD_SHA]
 #
 # PREV_LEDGER   path to the body of the ledger comment this script wrote last
 #               round. Missing or empty means round 1.
@@ -77,6 +77,16 @@
 #               that defaults to 5. A ceiling below the floor is raised to the
 #               floor, because a ceiling that fires before the floor would make
 #               the floor unreachable and silently delete the older rule.
+# HEAD_SHA      the object id of the commit this round reviewed — the head the
+#               verdict below is ABOUT. Recorded in the ledger's state block so
+#               that a later reader can ask whether a standing verdict still
+#               belongs to the commit being merged; see
+#               `attadipa_review_cap_stale`, which is that reader. Optional in
+#               arity only: a caller that does not name the commit it judged
+#               leaves the field out, and the cap then holds rather than guesses.
+#               It is never carried forward from the previous ledger — a head
+#               inherited from an older round would say the verdict was reached
+#               on a commit it was not.
 #
 # Prints `key=value` lines on stdout and nothing else:
 #
@@ -92,6 +102,8 @@
 #   open=       open findings after reconciliation
 #   blocking=   of those, the ones that hold the pull request
 #   deferred=   of those, the ones that do not
+#   head=       the head this round's verdict was reached on, when HEAD_SHA
+#               named a usable one. Absent means the ledger records none either.
 #   deferred_title=  the title for the follow-up issue, when there is one
 #   deferred_issue=  the issue the deferred findings were filed as, when the
 #                    ledger already records one. Carried forward, never invented:
@@ -113,6 +125,7 @@
 #   <!-- attadipa-review-ledger-state
 #   round=7
 #   floor=4
+#   head_sha=0f0a1c8f9d4b6e2a7c3d5e1f8b9a0c2d4e6f8a1b
 #   deferred_issue=170
 #   gnss-trust-source | 2 | floor | open | The trust state is claimed with no source
 #   -->
@@ -209,10 +222,40 @@ _attadipa_is_uint() {
   esac
 }
 
+# A commit object id, printed back in lower case, or nothing and a non-zero
+# status. SHA-1 as this repository stores it today and SHA-256 for one that has
+# moved; every other string is refused rather than repaired, because the only
+# use of this value is to decide whether two commits are the same commit and a
+# repaired identity would answer that question about something else.
+#
+# Lower-casing is a normalisation and not a widening: `ABC…` and `abc…` are one
+# object id, and comparing them raw would report a head change that did not
+# happen — the direction that clears a blocking verdict.
+_attadipa_oid() {
+  local oid
+  oid="$(_attadipa_trim "${1:-}")"
+  oid="${oid//A/a}"; oid="${oid//B/b}"; oid="${oid//C/c}"
+  oid="${oid//D/d}"; oid="${oid//E/e}"; oid="${oid//F/f}"
+  case "$oid" in
+    "" | *[!0-9a-f]* ) return 1 ;;
+  esac
+  case "${#oid}" in
+    40 | 64 ) printf '%s' "$oid" ;;
+    * ) return 1 ;;
+  esac
+}
+
 attadipa_review_verdict() {
   local prev="${1:-}" findings="${2:-}" floor="${3:-}" \
         ledger_out="${4:-}" deferred_out="${5:-}" pr="${6:-}" \
-        ceiling="${7:-${ATTADIPA_REVIEW_CEILING:-5}}"
+        ceiling="${7:-${ATTADIPA_REVIEW_CEILING:-5}}" head_sha=""
+
+  # The head this round is about, or nothing. Nothing is a caller that did not
+  # say which commit it reviewed, and the ledger then records no head at all --
+  # `attadipa_review_cap_stale` reads that as "unknown" and holds. Writing a
+  # malformed value instead would be worse than writing none: it is the same
+  # HOLD, reached by a route that looks like an answer.
+  head_sha="$(_attadipa_oid "${8:-}")" || head_sha=""
 
   _attadipa_is_uint "$floor" && [ "$floor" -ge 1 ] || floor=1
   # An unreadable ceiling falls back to the default rather than to "no ceiling":
@@ -379,6 +422,7 @@ attadipa_review_verdict() {
   printf 'blocking=%s\n'  "$blocking_n"
   printf 'deferred=%s\n'  "$deferred_n"
   printf 'dropped=%s\n'   "$dropped"
+  [ -n "$head_sha" ] && printf 'head=%s\n' "$head_sha"
   [ -n "$deferred_issue" ] && printf 'deferred_issue=%s\n' "$deferred_issue"
   [ "$deferred_n" -gt 0 ] && \
     printf 'deferred_title=Deferred review findings from #%s\n' "$pr"
@@ -450,6 +494,14 @@ _attadipa_render_ledger() {
     printf '\n%s\n' "$ATTADIPA_LEDGER_OPEN"
     printf 'round=%s\n' "$round"
     printf 'floor=%s\n' "$floor"
+    # WHICH COMMIT THIS VERDICT IS ABOUT. A label records that a verdict was
+    # reached and never what it was reached on, so the identity has to be
+    # written down at the moment it is known -- here, by the round that judged
+    # it. Everything downstream that asks "does this block still belong to the
+    # head being merged" reads this line and nothing else; before it existed the
+    # question was answered from `.commit.committer.date`, which the author of
+    # the commit chooses. Issue #199.
+    [ -n "$head_sha" ] && printf 'head_sha=%s\n' "$head_sha"
     [ -n "$deferred_issue" ] && printf 'deferred_issue=%s\n' "$deferred_issue"
     for id in ${order[@]+"${order[@]}"}; do
       printf '%s | %s | %s | %s | %s\n' \
@@ -580,14 +632,177 @@ attadipa_review_gate() {
   return 0
 }
 
+# attadipa_review_cap_stale PREV_LEDGER CURRENT_HEAD
+#
+# Past the ceiling, does the standing `ai-review:blocking` belong to a commit
+# that is no longer the one being merged?
+#
+# WHY THIS EXISTS, AND IT IS THE SECOND TIME. `claude-pr-review.yml` asked the
+# question like this:
+#
+#     head_sha=$(gh pr view ... --jq '.headRefOid')
+#     head_at=$(gh api "repos/$REPO/commits/$head_sha" --jq '.commit.committer.date')
+#     [[ "$head_at" > "$blocked_at" ]] && stale=yes
+#
+# It read the exact identity of the head and then threw it away to fetch a date
+# off it, and the date is an input: `GIT_COMMITTER_DATE` is whatever the person
+# making the commit types. So a bare re-run against the *unchanged* blocked head,
+# if that head carried a future committer date, cleared `ai-review:blocking` and
+# applied `ai-review:pass` with no commit in between -- the laundering the step's
+# own comment said it was there to refuse. The mirror case is as bad and quieter:
+# a genuinely new head with a backdated committer date reads as older than the
+# label, so a real fix stays blocked for ever, past a ceiling where no round will
+# ever look at it again. Issue #199, whose first half took the same date out of
+# the merge sweep (`merge-head-trust.jq`) and left this caller behind.
+#
+# IDENTITY, NOT TIME, AND THEREFORE NO TIMESTAMP AT ALL. The question is not
+# "did something happen after something else"; it is "is the commit this verdict
+# was reached on the commit being merged". That is an equality between two object
+# ids. `review-verdict.sh` writes the first one into the ledger's state block at
+# the moment the round reaches its verdict, and GitHub answers the second from
+# `headRefOid`. Neither is a clock, so no clock can be lied to. `committedDate`,
+# `authoredDate`, `pushedDate` and `.commit.committer.date` are read nowhere on
+# this path, and re-deriving one takes an edit to two files and a red test.
+#
+# AND THAT IS ONLY THE FIRST OF TWO QUESTIONS. The head's identity says whether
+# *this ledger's verdict* is about the commit being merged. It says nothing
+# about whether the `ai-review:blocking` actually on the pull request right now
+# is that verdict, and the first version of this function assumed it was. It is
+# not, on two paths that both happen:
+#
+#   - A person puts the label back, on the current head, after reading the open
+#     finding. Nothing is pushed. The merge sweep undrafts, the workflow re-runs
+#     and the cap compares this ledger's older head with the current one, calls
+#     the label stale and strips what a person applied minutes earlier -- and
+#     silently, because the `cleared` note was already posted on the push before.
+#   - `review-published.sh` answers `unknown`, so the converge step is skipped
+#     and the ledger is not advanced, while the round that ran still applied
+#     `ai-review:blocking` to the head it reviewed. Four rounds running on #382.
+#     The ledger then sits on an older head and the label belongs to the newer.
+#
+# The second question is answered by two facts GitHub writes about its own
+# objects, and by no clock either: how many rounds have published findings (a
+# count of comments by the review account) and who applied the standing label
+# (`.actor.login` on the timeline event). A contributor can type neither. When
+# the count is ahead of this ledger, the standing label is a round this ledger
+# never converged. When the actor is not the automation, the label is a
+# person's and is not this ledger's verdict at all. Either way the cap holds:
+# a block it cannot prove it owns is not a block it may clear.
+#
+# The comparison the review of this change first proposed -- hold when the
+# label event post-dates the ledger comment's `updated_at` -- cannot be used.
+# The converge step writes the ledger and *then* applies the label
+# (`claude-pr-review.yml`, the `gh api -X PATCH` immediately above the
+# `gh pr edit --add-label`), so its own label always post-dates its own ledger
+# and that rule would hold every block the automation ever applied, clearing
+# none of them. Provenance, not order.
+#
+# PREV_LEDGER    path to the ledger comment body, as everywhere else here.
+# CURRENT_HEAD   the pull request's head object id as GitHub reports it now.
+# PAID           how many review rounds have published a findings block, as the
+#                gate above already counts them. Absent or not a number holds.
+# BLOCK_ACTOR    the login on the newest `labeled ai-review:blocking` timeline
+#                event. Absent holds; anything but the review or ledger account
+#                holds, because that block is a person's and not this ledger's.
+#
+# Prints exactly one line, and there is no path through this that prints nothing:
+#
+#   STALE <blocked_head> <current_head>   the two are well-formed and differ
+#   HOLD <reason>                         everything else
+#
+# EVERY UNANSWERABLE CASE HOLDS, and one of them is ordinary rather than
+# exceptional: a ledger written before `head_sha=` existed records no head, so
+# the blocking verdicts standing on pull requests open at that moment cannot be
+# bound to a commit and are not cleared by this. That is the state those pull
+# requests were in before the cap learned to clear anything at all, and a person
+# takes the label off after reading the finding. It heals on its own -- every
+# round from round one writes the field.
+attadipa_review_cap_stale() {
+  local prev="${1:-}" current="${2:-}" paid="${3:-}" actor="${4:-}"
+  local block line raw="" seen=0 blocked rest ledger_round=0
+
+  if ! current="$(_attadipa_oid "$current")"; then
+    echo "HOLD the pull request's current head is not a commit object id, so there is nothing to compare the blocking verdict against"
+    return 0
+  fi
+  if [ -z "$prev" ] || [ ! -f "$prev" ]; then
+    echo "HOLD there is no review ledger to read the blocked head out of"
+    return 0
+  fi
+
+  block="$(_attadipa_block "$prev" "$ATTADIPA_LEDGER_OPEN")"
+  while IFS= read -r line; do
+    case "$line" in
+      round=*)
+        rest="${line#round=}"
+        _attadipa_is_uint "$rest" && ledger_round="$rest"
+        continue ;;
+      head_sha=*) ;;
+      *) continue ;;
+    esac
+    seen=$((seen + 1))
+    raw="${line#head_sha=}"
+  done <<< "$block"
+
+  if [ "$seen" -eq 0 ]; then
+    echo "HOLD the review ledger records no head for the blocking verdict, so which commit it was reached on is unknown"
+    return 0
+  fi
+  # Two answers to a question with one answer. The ledger is written by this
+  # script and read only from a comment by the ledger account, so this is not a
+  # reachable state -- which is exactly why it must not be resolved by picking
+  # one. Refusing costs a person one look at the comment; guessing costs the
+  # verdict.
+  if [ "$seen" -gt 1 ]; then
+    echo "HOLD the review ledger records $seen heads for the blocking verdict, and a verdict has one"
+    return 0
+  fi
+  if ! blocked="$(_attadipa_oid "$raw")"; then
+    echo "HOLD the head recorded for the blocking verdict is not a commit object id"
+    return 0
+  fi
+
+  if [ "$blocked" = "$current" ]; then
+    echo "HOLD the blocking verdict was reached on ${current:0:8}, which is still the head being merged"
+    return 0
+  fi
+
+  # THE HEAD MOVED, AND THAT IS NOT YET A CLEARANCE. Everything above answers
+  # "is this ledger's verdict about the commit being merged". What follows
+  # answers "is the label on the pull request this ledger's verdict", and both
+  # have to be answered before a block comes off. See the second half of the
+  # header. Neither input is a clock and neither is a contributor's to type.
+  if ! _attadipa_is_uint "$paid"; then
+    echo "HOLD how many rounds have published findings could not be read, so whether the standing block is this ledger's verdict is unknown"
+    return 0
+  fi
+  if [ "$paid" -gt "$ledger_round" ]; then
+    echo "HOLD $paid round(s) have published findings and this ledger records $ledger_round, so the standing block is a round this ledger never converged"
+    return 0
+  fi
+  if [ -z "$actor" ]; then
+    echo "HOLD who applied the standing block could not be read, so whether it is this ledger's verdict is unknown"
+    return 0
+  fi
+  if [ "$actor" != "${ATTADIPA_REVIEW_ACTOR:-claude[bot]}" ] &&
+     [ "$actor" != "${ATTADIPA_LEDGER_ACTOR:-github-actions[bot]}" ]; then
+    echo "HOLD the standing block was applied by $actor rather than by the convergence rule, so it is not this ledger's verdict to clear"
+    return 0
+  fi
+
+  echo "STALE $blocked $current"
+  return 0
+}
+
 # Callable as a script as well as sourceable.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  # `gate` as a first word rather than a flag, and rather than a second script:
-  # the two decisions read the same ledger and share its parsing primitives, and
-  # a second file is how the two drift apart.
-  if [ "${1:-}" = gate ]; then
-    attadipa_review_gate "${2:-}" "${3:-}" "${4:-}"
-  else
-    attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
-  fi
+  # `gate` and `cap` as first words rather than flags, and rather than two more
+  # scripts: all three decisions read the same ledger and share its parsing
+  # primitives, and a second file is how two readers of one format drift apart.
+  case "${1:-}" in
+    gate) attadipa_review_gate "${2:-}" "${3:-}" "${4:-}" ;;
+    cap)  attadipa_review_cap_stale "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
+    *)    attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" \
+            "${6:-}" "${7:-}" "${8:-}" ;;
+  esac
 fi

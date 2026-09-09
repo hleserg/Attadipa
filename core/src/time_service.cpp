@@ -190,6 +190,7 @@ TimeState TimeService::state(MonotonicTime now) const
     result.has_last_sync = has_last_sync_;
     result.last_sync = last_sync_;
     result.timezone_valid = timezone_.configured && now < timezone_.valid_until;
+    result.timezone_offset_minutes = timezone_.minutes_east_of_utc;
 
     if (!has_observation_) {
         result.utc.validity = has_report_ ? reported_validity_ : Validity::Unknown;

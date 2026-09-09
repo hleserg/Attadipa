@@ -50,6 +50,13 @@ struct TimeState {
     MonotonicTime   last_sync{};
     bool            has_last_sync      = false;
     bool            timezone_valid     = false;
+    // The offset `local` was made with, as the service holds it. Here because
+    // the only other way to get it back is `local - utc` through
+    // `.unix_seconds`, which is the shape `clock.h` removes `operator-` to
+    // stop; a caller that needs the number should be given it, not left to
+    // subtract two `WallTime`s and hope one is the other plus an offset.
+    // Meaningless unless `timezone_valid`, exactly like `local`.
+    std::int16_t    timezone_offset_minutes = 0;
     bool            recently_corrected = false;
 };
 

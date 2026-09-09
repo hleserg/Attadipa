@@ -7,6 +7,8 @@
 
 #include "lvgl.h"
 
+#include "attadipa/apps/app_registry.h"
+#include "attadipa/apps/clock.h"
 #include "attadipa/apps/provisioning.h"
 #include "attadipa/core/provisioning.h"
 #include "attadipa/l10n/tr.h"
@@ -134,14 +136,14 @@ ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
           clock.pixel_cost, clock.metrics,  l10n::locale()};
 }
 
-// The same loop the board runs: Done shows for a moment, then the clock is
-// back. Here it is an LVGL timer that deletes itself; there it is the
-// clock's own refresh timer counting ticks.
+// The same loop the board runs: poll for the answer the radio owes, and go
+// back to the clock when the holder leaves. Here it is an LVGL timer that
+// deletes itself; there it is the clock's own refresh timer.
 void leave_provisioning(lv_timer_t *timer) {
   // The board polls the passkey on its clock tick; here it is this timer, and
   // it is the only thing that can end the wait. The tick that hears the answer
-  // draws it and stops there: leaving on the same tick would put Done on the
-  // screen for no frames at all. The board spends three ticks on it.
+  // draws it and stops there, and nothing takes the receipt away afterwards:
+  // `finished()` is the entry's `Exit` field, which only a press can reach.
   if (g_entry->poll()) {
     g_provision_face.update();
     return;
@@ -166,6 +168,16 @@ void on_long_press(lv_event_t *) {
   enter_provisioning();
 }
 
+// The slowest the simulator will let a screen sit between repaints.
+//
+// It has no work of its own on this timer -- unlike a board, which drains a
+// receive ring on every tick whatever page is up -- so this is a ceiling and
+// not an obligation. It is here so the simulator spends an application's
+// declared cadence through the same door the firmware does
+// (`apps::ui_period`), instead of naming one manifest by hand and drifting from
+// the device on the one rule this seam exists to make visible.
+constexpr core::Millis kSimBoardPeriod{1000};
+
 void refresh_clock(lv_timer_t *timer) {
   if (g_clock_live) {
     g_clock_state.time.value.unix_seconds =
@@ -174,7 +186,8 @@ void refresh_clock(lv_timer_t *timer) {
   g_clock_state.locale = l10n::locale();
   g_clock_face.update(
       apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
-  lv_timer_set_period(timer, apps::clock_manifest().tick_period.value);
+  lv_timer_set_period(
+      timer, apps::ui_period(apps::clock_manifest(), kSimBoardPeriod).value);
 }
 
 } // namespace
@@ -200,8 +213,9 @@ void build_clock_screen(const platform::BoardProfile &board, ui::Theme theme,
   set_theme_toggle(toggle_clock_theme);
   rebuild_clock_screen();
   if (g_clock_live) {
-    lv_timer_create(refresh_clock, apps::clock_manifest().tick_period.value,
-                    nullptr);
+    lv_timer_create(
+        refresh_clock,
+        apps::ui_period(apps::clock_manifest(), kSimBoardPeriod).value, nullptr);
   }
   lv_obj_add_event_cb(lv_screen_active(), on_long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
@@ -214,11 +228,15 @@ void rebuild_clock_screen() {
       apps::format_clock(g_clock_state, g_clock_config.width_px < 300));
 }
 
-void enter_provisioning() {
+void enter_provisioning(apps::EntryTask task) {
   g_clock_face.clear();
   g_clock_active = false;
   g_provision_config = provision_config_for(g_clock_config);
-  g_entry.emplace(g_provisioner);
+  // Unseeded, and deliberately: `ClockState` carries a UTC instant and no
+  // offset, so seeding from it would have to invent the offset half -- and an
+  // invented offset reads exactly like a remembered one. The board seeds from
+  // its time service, which keeps both.
+  g_entry.emplace(g_provisioner, task);
   l10n::set_locale_changed_handler(rebuild_provision_screen);
   set_theme_toggle(toggle_provision_theme);
   rebuild_provision_screen();

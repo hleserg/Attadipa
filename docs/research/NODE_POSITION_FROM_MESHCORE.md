@@ -41,7 +41,7 @@ in the fleet.
 ## 1. Three wires carry a coordinate, and they are not equivalent
 
 A MeshCore node emits its position in three places. The existing research
-([`MESHCORE_COMPANION_PROTOCOL.md:331`](MESHCORE_COMPANION_PROTOCOL.md)
+([`MESHCORE_COMPANION_PROTOCOL.md:337`](MESHCORE_COMPANION_PROTOCOL.md)
 "The caveat on the LPP encoder is closed") documented the second — that line now
 reads as closed because §3.1 below is what closed it. The first path is the one
 this work found, and it is the cheapest by a wide margin.
@@ -148,7 +148,7 @@ either path carries, and it is weak: it says a receiver is running, not that it
 has a fix, and not that the coordinate in the record came from it.
 
 It is also **only true of `EnvironmentSensorManager`**, which is what the T114
-builds. [`MESHCORE_COMPANION_PROTOCOL.md:370`](MESHCORE_COMPANION_PROTOCOL.md)
+builds. [`MESHCORE_COMPANION_PROTOCOL.md:376`](MESHCORE_COMPANION_PROTOCOL.md)
 "additionally requires `gps_active`" — records seven per-variant managers that
 gate on the permission bit alone. On one of those the record's presence says
 nothing at all, so this inference is a property of the node's variant and not of

@@ -98,7 +98,8 @@ recorded here so that no option is credited with paying them.
    own** — as one field on the entry screen this ADR chose, shown only on a
    pinned watch and placed before the passkey, because a forgotten node's
    *current* passkey is the next thing typed:
-   `apps/include/attadipa/apps/provisioning.h:44` — "enum class EntryField : std::uint8_t { Date, Time, Offset, Node,".
+   `apps/include/attadipa/apps/provisioning.h:71` —
+   "Node,           // The node this watch is pinned to. Forget asks to drop it.".
    It is not the revocation gesture the decision declines: no listener, no
    mode, the same finger on the same panel (the report's §9), and it arms
    nothing — the passkey entry that follows is the one arm, as for a first
@@ -383,7 +384,7 @@ Beyond B and C:
   `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:84` —
   "class MeshProvider {" — is four methods — status, peer count, peer, send —
   and not one of them arms a passkey, while
-  `core/include/attadipa/core/time_service.h:60` —
+  `core/include/attadipa/core/time_service.h:67` —
   "bool observe(const TimeObservation& observation);" — is one step inside the
   clock sequence and the step that does not persist; nothing in `core/` reaches
   the PCF85063 or NVS. So what an option here buys is that seam and the firmware

@@ -395,8 +395,8 @@ operation re-pins; the adopt path does, at the next handshake that finds no pin
   show the adopted key and let the owner forget again: the entry screen's node
   field carries the pinned prefix for exactly that comparison against the
   node's own screen
-  ([`../../apps/src/provisioning.cpp:437`](../../apps/src/provisioning.cpp) —
-  "// The first eight hex digits of the node's key, the way the mesh screen").
+  ([`../../apps/src/provisioning.cpp:816`](../../apps/src/provisioning.cpp) —
+  "// --- the node's first eight hex digits, the way its own screen shows ---").
   §10.5's second-node run measures how often the wrong one wins, not whether
   it can.
 
