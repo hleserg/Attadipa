@@ -3116,3 +3116,8 @@ acquisition in that mode. Preserving Pedo_EN while selecting SyncSample does not
 preserve step detection. The exact board pin evidence, register sequence and
 implementation limits are in [QMI8658 FIFO acquisition](QMI8658_FIFO_ACQUISITION.md).
 Concurrent FIFO/step operation on this watch is **NOT EXECUTED — HARDWARE REQUIRED**.
+
+**MEASURED — 2026-09-09:** the temporary-accelerometer raw capture works, but
+FIFO stop verification fails; a later read-only probe still reports three
+pending words after ordinary MCU reboot. See the [stop evidence and limits](qmi-stop-waveshare-2026-09-09/README.md).
+This is not a clean-stop, calibration or heading acceptance result.

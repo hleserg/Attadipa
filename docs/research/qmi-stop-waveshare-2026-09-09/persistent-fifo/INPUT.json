@@ -1,0 +1,31 @@
+{
+  "source_commit": "35512fc1bddaa31bebe6edb51571615ef2d614f4",
+  "source_clean_at_freeze": true,
+  "source_sha256": {
+    "firmware/main/qmi8658_fifo.h": "604d1b27a356f5d762f599414e4f138555bd56f67541ee1fae94407b3babff04",
+    "firmware/main/i2c_probe.cpp": "185897fba735536f9cef5d6629aa5af2a32b3293138e49f9f3d6683de9699818",
+    "firmware/main/i2c_register_device.h": "415447bfb36a74dd09cf2920d3b9c537e26947ac9274ea7de4cc491415c38479",
+    "firmware/main/ak09911.h": "cc952e932a9ac113ad10d0ba56f890a10c683d4a6f5aa15a421185313b24173a",
+    "firmware/main/Kconfig.projbuild": "9ea6099259f8dcba9c6cbabc015ad704626784efa39afe5ecdab0b8dddbeb53c",
+    "tools/flash/ramhold.py": "809120281bb5207b0904219669b75a3d512253a9a6b389bf9436958d361ae36d"
+  },
+  "files": {
+    "sdkconfig.txt": {
+      "bytes": 82242,
+      "sha256": "38c4d8f514b79c10db3dfc2a1b8bc621e7eaf54711461830c5ff522c2b23b31c"
+    },
+    "attadipa.elf": {
+      "bytes": 3265404,
+      "sha256": "f5224d44b0b58456c4c4bb7a8edad81305b72c53ee727289ae21767e7c718c5d"
+    },
+    "build.log": {
+      "bytes": 2129,
+      "sha256": "3e88aa0c97fe161b33e0345b53d0f5e97919abff645da9407fece6868cf2f708"
+    },
+    "attadipa.bin": {
+      "bytes": 189952,
+      "sha256": "3f695cb4fa890b528c611efe26564e436c84cfc9edeab0d07ba1e22e3f3be616"
+    }
+  },
+  "status": "BUILT AND CHECKED; NOT EXECUTED \u2014 HARDWARE REQUIRED"
+}

@@ -14,6 +14,8 @@ Next diagnostic: preserve full FIFO_STATUS from the existing post-reset read, th
 
 The [follow-up attempt](busy-entry/README.md) executed but returned Busy before acquisition; it therefore did not measure the post-restoration count. A further read-only observation includes CTRL9/STATUSINT and runs after stop even on a refused entry with a complete initial snapshot. Its four reads do not change start/stop commands or verdicts. Ordinary boot alone is not evidence of an admissible QMI entry state.
 
+That [read-only observation](persistent-fifo/README.md) is now executed: count=3, FIFO_STATUS=50 (NOT_EMPTY and WTM), CTRL9=00, STATUSINT=00. The persistent nonempty FIFO is the measured entry blocker. Why the prior reset failed remains UNKNOWN; no cleanup or heading PASS is claimed.
+
 ## Ordinary boot and limits
 
 The architect's actual handoff is [issue #450 comment 5602884117](https://github.com/hleserg/Attadipa/issues/450#issuecomment-5602884117). After this RAM run, the eight-second raw boot log again shows ELF `2915714b7`, the ordinary image without the USB watch-control endpoint, UI ready at saved brightness 5%, and alive through 6 seconds without panic. The port was closed and fuser reported no opener. No flash-write command was used for this diagnostic. This is boot evidence, not visual acceptance or a claim that normal firmware never writes NVS.
