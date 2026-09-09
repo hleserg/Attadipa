@@ -2831,23 +2831,43 @@ ones that heading states.
   everything below unchanged**. What the exclusion is *not* safe for is the
   maximum, and that is the bullet the reader is being sent to.
 - **Two kinds of sample are inside those 293 and only one kind has evidence.**
-  `V = 0`, and `V` at a whole binary count divided by a thousand
-  (65.536 = 2^16, 32.768 = 2^15, 8.192 = 2^13, 6.144 = 3·2^11 — the first three
-  are powers of two and the fourth is not), are **structural**: they are values
-  the measured quantity cannot take while the field they were decoded from can,
-  and a repeated binary signature is a statement about the decode rather than
-  about the board. **`I ≈ 1.27 A` is not.** An earlier revision of this entry
+  `V = 0.00000` while 150–195 mA flows, and five high voltages whose raw counts
+  share one offset, are **structural**: values the measured quantity cannot take
+  while the field they were decoded from can. Upstream decodes voltage as an
+  unsigned 32-bit count over **100 000** and subtracts nothing, so the five are
+  counts 614 387, 819 187, 1 638 387, 3 276 787 and 6 553 587 — each exactly
+  **13 below a multiple of 25**, with `(raw + 13) / 25` equal to 3·2^13, 2^15,
+  2^16, 2^17 and 2^18: **13 to 18 low zero bits**. Read as `2^k / 1000` when
+  this bullet was first written, they needed a per-thousand decode this meter
+  does not use; **that identity is withdrawn**, it rounded the shared −13 counts
+  away, and it omitted 16.38387 V altogether. The conclusion survives on the
+  better evidence rather than on it. **What produces the offset is `UNKNOWN`**
+  — the offset and the low zero bits are the signature, and a repeated bit
+  pattern is a statement about the decode rather than about the board.
+  **`I ≈ 1.27 A` is not.** An earlier revision of this entry
   put it in the same list and said a 5 V USB line cannot present it. **That is
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:676` — "POR default `100b` = 1500 mA"),
-  and **nothing in this firmware writes `REG 0x16`** — grep over `firmware/`,
-  2026-09-08: the PMU writes in the tree are the rail-enable and rail-voltage
-  registers `0x80`, `0x82`, `0x90`, `0x92`, `0x93`, `0x94`, `0x96` and the
-  interrupt-status register `0x49`, and the only `0x16` literals anywhere in
-  `firmware/` are a Waveshare panel column offset. So the board's own front end
-  was admitting more than 1.27 A unless something before this image lowered it,
+  (`docs/research/OPEN_QUESTIONS.md:683` — "POR default `100b` = 1500 mA"),
+  and **no revision of this repository has ever written `REG 0x16` in PMU
+  code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
+  firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
+  nothing. That holds whichever tree built the image, which the dated grep it
+  replaces did not — this entry says a few bullets below that which *tree*
+  built the flashed image is `UNKNOWN`, so a grep dated after the compile was
+  never evidence about it. The PMU writes in the tree are the rail-enable
+  and rail-voltage registers `0x80`, `0x82`, `0x90`, `0x92`, `0x93`, `0x94`,
+  `0x96`, the interrupt-status register `0x49` and the interrupt-enable
+  register `0x41` — **two helpers, not one**. `write_reg(pmu, …)` lives in
+  `firmware/main/board_power.cpp`; `0x41` is written only through the other,
+  `firmware/main/physical_input.cpp:126` — "  esp_err_t write_pmu(std::uint8_t reg, std::uint8_t value) const {",
+  with `firmware/main/physical_input.cpp:44` — "constexpr std::uint8_t kAxpInterruptEnable2 = 0x41;".
+  Searching only the first helper is how an earlier revision of this list
+  missed it. The only `0x16` literals anywhere in `firmware/` are a Waveshare
+  panel column offset, `firmware/main/waveshare_board.cpp:72` — "constexpr int kPanelGapX = 0x16;".
+  So the board's own front end was admitting more than 1.27 A unless something
+  before this image lowered it,
   which is `UNKNOWN` for exactly the reason `REG 0x62` is: the PMU holds its
   registers across an ESP32 reset. What the source and
   the cable on the far side of that micro-USB adapter could deliver was not
@@ -2862,24 +2882,31 @@ ones that heading states.
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
-- **So the current-only samples are `UNKNOWN`, and their number is bounded from
-  the published statistics rather than counted.** The per-reason breakdown of
-  the 293 and the overlap between the two kinds were not published, and the
-  capture is bench-only, so **how many are current-only is not recorded here**.
-  It is not unbounded either, and the two means already in this entry are what
-  bound it. At the 0.1 mW they are printed to, the excluded set carries
-  **2.19–2.35 W per sample** on average — 780.7 mW × 242 847 minus
-  778.9 mW × 242 554, over 293. A current-only exclusion has a voltage the
-  filter would otherwise accept (`V > 4.0`) and a current of at least 1.0 A, so
-  it carries more than 4 W by itself; upstream decodes both fields as
-  **unsigned** 32-bit counts, so no excluded sample can carry negative power to
-  make room for it — the pinned copy is the caveat two bullets below. **At most
-  172 of the 293 can be current-only** — at most **110** if they sit at the
-  quoted ≈1.27 A and this run's mean 4.930 V — and therefore
-  **at least 121 of them are voltage-class exclusions**, which is the kind that
-  has structural evidence. The bound is arithmetic on rounded published
-  figures; it is not a count, and it does not say any current-only sample is
-  authentic.
+- **So the current-only samples are `UNKNOWN`, and the 293 are counted rather
+  than bounded.** Both means this entry publishes are arithmetic means of
+  **per-sample power**, `mean(V × I)`: 780.6784 mW over all 242 847 and
+  778.9421 mW over the retained 242 554. `mean(V) × mean(I)` gives 780.7647 and
+  779.0308, which print as 780.8 and 779.0, so the printed figures identify the
+  method rather than leaving it open. The subtraction is therefore an energy,
+  and the excluded set carries **2.218 W per sample** on average. Classifying
+  the 293 from the capture this entry already pins gives, by count: **118** at
+  `V = 0.00000` carrying 0.14976–0.19539 A; **35** between 6.14387 V and
+  65.53587 V with the offset signature above; **72** current-only, at
+  1.23644–1.27369 A with `V` 4.82987–4.97537 V inside the band; **60** at
+  `V = 0.00187`, whose count is also 13 below a multiple of 25 but has only
+  three low zero bits, so the signature does not reach it; and **8** between
+  0.07262 V and 0.08837 V with no shared structure. **153 of the 293 have
+  structural evidence and 140 do not.** An earlier revision bounded this
+  arithmetically — at most 172 current-only, at most 110 at the quoted
+  ≈1.27 A, at least 121 voltage-class. Every one of those bounds **holds**
+  against the counts and every one is loose; the counts supersede them because
+  a bound cannot say which samples, and the split is what matters here. The 140
+  without structural evidence are still excluded, but by the filter's bound
+  rather than by proof, so **for those 140 the exclusion is a choice and not a
+  classification** — which is the honest reading of a filter this entry already
+  calls a heuristic. Reproduce from the pinned capture: apply the filter, then
+  split the remainder on `V == 0`, on `V` inside the band, and on
+  `round(V × 100000) + 13` being 25·2^k.
 - **`986.9 mW` is the largest *retained* sample, and the filter is what makes it
   the largest.** The filter's own ceiling is 5.5 V × 1.0 A = 5.5 W, and if even
   one ≈1.27 A sample is a real reading then the capture's largest sample is
@@ -2891,9 +2918,12 @@ ones that heading states.
   capture, so the exclusion cannot move the 99th percentile far in either
   direction. Upward, with every one of them above it, it lands at the 99.12th
   percentile of the retained set — between the published 949.1 mW and the
-  retained maximum, so **wrong by at most 37.8 mW**. Downward, with every one
-  of them a `V = 0` sample, it moves by **under three samples' worth of rank in
-  242 554**. Median, floor and burst split move less still, which is why the
+  retained maximum, so **wrong by at most 37.8 mW**. Downward the bound is
+  formal rather than a case: 1 % of 242 847 is 2 428.47 and 1 % of 242 554 is
+  2 425.54, so the 99th percentile's rank moves by **2.93 — under three
+  samples' worth in 242 554** whatever power the 293 carry. Stating it as a
+  scenario instead would have to name one the bullet above forbids. Median,
+  floor and burst split move less still, which is why the
   entry's own instruction to quote the **mean** for anything integrated over
   time is unaffected.
 - **What would settle the classification needs the capture, not the bench, and
