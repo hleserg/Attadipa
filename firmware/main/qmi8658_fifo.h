@@ -36,6 +36,7 @@ struct QmiBatch {
 struct QmiStopDiagnostic {
   const char *failed_step = "none";
   unsigned remaining_words = 0;
+  std::uint8_t remaining_status = 0;
   bool remaining_valid = false;
   bool mismatch_valid = false;
   std::uint8_t mismatch_reg = 0, expected = 0, actual = 0;
@@ -178,7 +179,8 @@ public:
     if (!command_pending_) {
       // Only this owner's unused-on-entry FIFO is reset, never step count.
       keep(command(0x04), "reset_fifo"); // distinct from step reset 0x0f
-      stop_diagnostic_.remaining_valid = fifo_words(stop_diagnostic_.remaining_words);
+      stop_diagnostic_.remaining_valid = fifo_words(stop_diagnostic_.remaining_words,
+                                                    &stop_diagnostic_.remaining_status);
       if (!stop_diagnostic_.remaining_valid)
         keep(QmiResult::IoError, "count_after_reset");
       else if (stop_diagnostic_.remaining_words != 0)

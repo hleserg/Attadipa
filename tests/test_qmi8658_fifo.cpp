@@ -152,6 +152,7 @@ int main() {
     CHECK(std::strcmp(diag.failed_step,
                       retained ? "count_after_reset" : "restore_watermark") == 0);
     CHECK(diag.remaining_valid && diag.remaining_words == (retained ? 3U : 0U));
+    CHECK(diag.remaining_status == (retained ? 0x10 : 0));
     CHECK(diag.mismatch_valid && diag.mismatch_reg == 0x13 &&
           diag.expected == 0 && diag.actual == 1);
     CHECK(sensor.after().complete && bus.regs == original);

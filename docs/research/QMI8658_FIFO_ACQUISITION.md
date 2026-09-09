@@ -94,3 +94,7 @@ and command timeout. `ak09911` remains the reused acquisition regression.
 The existing RAM CI build explicitly enables the paired path, checks its
 generated configuration and runs both RAM ELF guards. None of these is a
 physical compass, tilt, calibration or step-count PASS.
+
+## Executed stop diagnostic, 2026-09-09 14:00 UTC
+
+The [preserved second paired run](qmi-stop-waveshare-2026-09-09/README.md) identifies `count_after_reset` as the first failing step: three words remain after the command handshake, with no register readback mismatch. The temporary accelerometer is disabled later, not before that count check. The actual reason remains UNKNOWN; the next bounded observation records full FIFO_STATUS and a post-restoration count without suppressing the failed verdict. Ordinary firmware ELF `2915714b7` and saved brightness 5% were restored and verified.

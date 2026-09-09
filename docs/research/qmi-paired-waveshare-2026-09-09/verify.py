@@ -49,11 +49,13 @@ def stats(values):
             'population_sd': statistics.pstdev(values)}
 
 qxyz = [xyz for batch in batches for xyz in samples[batch[0]]]
-summary = [line for line in lines if 'summary' in line or 'QMI before' in line or 'QMI after' in line or 'QMI start' in line or 'AK09911 ID' in line]
+summary = [line for line in lines if 'summary' in line or 'QMI before' in line or 'QMI after' in line or 'QMI start' in line or 'AK09911 ID' in line or 'QMI stop_check' in line or 'QMI stop_final' in line]
 qsum = next(line for line in summary if 'QMI summary' in line)
 assert re.search(rf'samples={len(qxyz)}\b.*batches={len(batches)}\b', qsum), qsum
 cleanup_ok = 'stop=0' in qsum and 'close=ESP_OK' in qsum
 boot = (run / 'NORMAL_BOOT.txt').read_bytes()
+expected_elf = json.loads((run / 'LOAD_RESULT.json').read_text()).get(
+    'expected_ordinary_elf_prefix', 'd5e09572c')
 result = {
     'classification': 'MEASURED physical transcript; pose, accuracy and calibration UNKNOWN',
     'console_sha256': hashlib.sha256(raw).hexdigest(),
@@ -74,7 +76,7 @@ result = {
     'qmi_host_timestamp_caveat': 'Host transaction boundaries, not conversion timestamps or exact device frozen durations; dropped conversion count UNKNOWN.',
     'source_summary_lines': summary,
     'normal_boot_spi': b'SPI_FAST_FLASH_BOOT' in boot,
-    'normal_boot_expected_elf': b'd5e09572c' in boot,
+    'normal_boot_expected_elf': expected_elf.encode('ascii') in boot,
     'normal_boot_relevant_lines': [line for line in boot.decode('utf-8', errors='replace').splitlines() if any(k in line for k in ('SPI_FAST_FLASH_BOOT', 'ELF file SHA256', 'UI ready', 'ui ready', 'watch-control'))],
 }
 (run / 'ANALYSIS.json').write_text(json.dumps(result, indent=2) + '\n')
