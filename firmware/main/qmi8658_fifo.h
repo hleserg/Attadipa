@@ -54,15 +54,29 @@ public:
   bool temporary_accel() const { return temporary_accel_; }
   unsigned frame_bytes() const { return frame_bytes_; }
   unsigned discarded_words() const { return discarded_words_; }
+  unsigned stale_words() const { return stale_words_; }
+  const std::uint8_t *stale_bytes() const { return stale_bytes_; }
   const QmiStopDiagnostic &stop_diagnostic() const { return stop_diagnostic_; }
 
-  QmiResult start() {
+  // `drain_stale_fifo` is the way back in after a stop() whose count check
+  // failed. That stop() is the only code here that resets the FIFO, and it
+  // returns early when nothing is owned, so the words it leaves behind make
+  // every later start() read Busy forever -- observed on the bench Waveshare
+  // as three words surviving `reset_fifo`, then `start=8` and zero samples on
+  // two subsequent sessions. It is never the default and never silent: it
+  // performs only the REQ_FIFO / read / release transitions read() already
+  // performs, keeps the discarded words for the caller to log, and still
+  // refuses entry if the count does not reach zero -- so an owner that is
+  // genuinely mid-acquisition is not taken over and a drain that does not work
+  // is not hidden behind a successful start.
+  QmiResult start(bool drain_stale_fifo = false) {
     if (owned_)
       return QmiResult::Busy;
     before_ = {};
     after_ = {};
     latest_ = {};
     discarded_words_ = 0;
+    stale_words_ = 0;
     std::uint8_t who = 0, rev = 0;
     if (!byte(0x00, who) || !byte(0x01, rev))
       return QmiResult::IoError;
@@ -75,8 +89,12 @@ public:
     unsigned words = 0;
     if (!byte(0x0a, cmd) || !byte(0x2d, status) || !fifo_words(words))
       return QmiResult::IoError;
-    if (cmd != 0 || (status & 0x80) || (r[7] & 0x83) || words != 0)
+    if (cmd != 0 || (status & 0x80) || (r[7] & 0x83))
       return QmiResult::Busy; // no acknowledgement/reset of another owner
+    // Refused before any write, including the too-deep case: a refusal that
+    // has already touched CTRL1 is not a refusal.
+    if (words != 0 && (!drain_stale_fifo || words * 2 > sizeof(stale_bytes_)))
+      return QmiResult::Busy; // a FIFO this owner did not fill
     if ((r[0] & 1) || (r[4] & 0x80))
       return QmiResult::UnsupportedConfig;
     temporary_accel_ = (r[4] & 3) == 0 && (r[5] & 0x1f) == 0;
@@ -88,6 +106,16 @@ public:
     auto result = set(0x02, (r[0] | 0x40) & 0xdf); // AI=1, little endian
     if (result != QmiResult::Ok)
       return result;
+    // After the byte order is explicit, because the payload read depends on it.
+    if (words != 0) {
+      result = drain_stale(words);
+      if (result != QmiResult::Ok)
+        return result;
+      if (!fifo_words(words))
+        return QmiResult::IoError;
+      if (words != 0)
+        return QmiResult::Busy; // the drain did not clear it; refuse as before
+    }
     result = set(0x09, r[5] | 0x80); // preserve every motion-engine bit
     if (result != QmiResult::Ok)
       return result;
@@ -299,6 +327,24 @@ private:
       return QmiResult::IoError;
     return finish_command();
   }
+  QmiResult drain_stale(unsigned words) {
+    // The count survives `reset_fifo` in bypass: 2026-09-11 on the Waveshare
+    // read three words of 0x8000 with `FIFO=00` and the count still 3 after.
+    // `read()` only ever requests a batch with FIFO_CTRL already in FIFO mode,
+    // so the drain enters that mode first and reads the words the same way.
+    auto result = set(0x14, kFifoMode);
+    if (result != QmiResult::Ok)
+      return result;
+    result = command(0x05);
+    if (result != QmiResult::Ok)
+      return result;
+    if (!io_.read(0x17, stale_bytes_, words * 2))
+      return QmiResult::IoError;
+    stale_words_ = words;
+    // Back to whatever the entry snapshot found, not to this owner's mode: the
+    // drain has not decided yet that entry succeeds.
+    return set(0x14, before_.regs[7]);
+  }
   QmiResult fail(QmiResult result) {
     running_ = false;
     return result;
@@ -307,7 +353,8 @@ private:
   QmiState before_{}, after_{};
   QmiBatch latest_{};
   QmiStopDiagnostic stop_diagnostic_{};
-  unsigned frame_bytes_ = 6, discarded_words_ = 0;
+  unsigned frame_bytes_ = 6, discarded_words_ = 0, stale_words_ = 0;
+  std::uint8_t stale_bytes_[16 * 12]{};
   bool owned_ = false, running_ = false, temporary_accel_ = false;
   bool command_pending_ = false;
   bool recording_stop_ = false;

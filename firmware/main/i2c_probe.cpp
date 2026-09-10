@@ -110,6 +110,13 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
     ESP_LOGW(kTag, "AK09911 ASA reads differ; diagnostic only, raw capture continues");
   unsigned samples = 0, not_ready = 0, overflow = 0, invalid = 0, dor = 0;
 #if CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE
+  // Kconfig writes nothing at all for an unselected bool, so the symbol is
+  // absent rather than 0 -- fine in `#if`, a compile error in an expression.
+#ifdef CONFIG_ATTADIPA_QMI8658_DRAIN_STALE_FIFO
+  constexpr bool kDrainStaleFifo = true;
+#else
+  constexpr bool kDrainStaleFifo = false;
+#endif
   I2cRegisterDevice qmi_io;
   Qmi8658Fifo<I2cRegisterDevice> qmi(qmi_io);
   QmiResult qmi_result = QmiResult::NotStarted;
@@ -117,7 +124,7 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
   if (result == Ak09911Result::Ok) {
     const auto qmi_opened = qmi_io.open(bus, 0x6b);
     if (qmi_opened == ESP_OK)
-      qmi_result = qmi.start();
+      qmi_result = qmi.start(kDrainStaleFifo);
     else {
       qmi_result = QmiResult::IoError;
       ESP_LOGE(kTag, "QMI add device failed: %s", esp_err_to_name(qmi_opened));
@@ -125,7 +132,17 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
     log_qmi_state("before", qmi.before());
     ESP_LOGI(kTag, "QMI start=%d temporary_accel=%d frame_bytes=%u; raw axes only",
              static_cast<int>(qmi_result), qmi.temporary_accel(), qmi.frame_bytes());
+    // What the drain threw away, if it ran. Logged whether or not entry then
+    // succeeded: these words are the only record of what the previous run left.
+    if (qmi.stale_words()) {
+      ESP_LOGW(kTag, "QMI drained stale_words=%u (entry %s)", qmi.stale_words(),
+               qmi_result == QmiResult::Ok ? "succeeded" : "still refused");
+      for (unsigned w = 0; w < qmi.stale_words(); ++w)
+        ESP_LOGI(kTag, "QMISTALE,%u,%02x,%02x", w, qmi.stale_bytes()[w * 2],
+                 qmi.stale_bytes()[w * 2 + 1]);
+    }
   }
+  bool qmi_active = qmi_result == QmiResult::Ok;
   constexpr std::int64_t duration_us = 40000000;
 #else
   constexpr std::int64_t duration_us = 20000000;
@@ -135,10 +152,11 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
   // The loop is never a replacement for the product's acquisition owner.
   while (result == Ak09911Result::Ok && io.now_us() - began < duration_us) {
 #if CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE
-    if (qmi_result != QmiResult::Ok)
-      break;
+    // A QMI refusal is not an AK09911 failure. The two sensors share only the
+    // bus, so the magnetometer keeps acquiring for the whole window and the
+    // capture still says what the accelerometer half did.
     QmiBatch batch;
-    const auto qmi_read = qmi.read(batch);
+    const auto qmi_read = qmi_active ? qmi.read(batch) : QmiResult::NotStarted;
     if (qmi_read == QmiResult::Samples) {
       ++qmi_batches;
       qmi_samples += batch.count;
@@ -150,10 +168,11 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
       for (unsigned i = 0; i < batch.count; ++i)
         ESP_LOGI(kTag, "QMIRAW,%u,%u,%d,%d,%d", qmi_batches, i,
                  batch.accel[i][0], batch.accel[i][1], batch.accel[i][2]);
-    } else if (qmi_read != QmiResult::NotReady) {
+    } else if (qmi_active && qmi_read != QmiResult::NotReady) {
       qmi_result = qmi_read;
-      ESP_LOGE(kTag, "QMI acquisition stopped: result=%d", static_cast<int>(qmi_read));
-      break;
+      qmi_active = false;
+      ESP_LOGE(kTag, "QMI acquisition stopped: result=%d; AK09911 continues",
+               static_cast<int>(qmi_read));
     }
 #endif
     Ak09911Sample sample;

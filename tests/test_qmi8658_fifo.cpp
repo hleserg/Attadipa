@@ -22,6 +22,7 @@ struct Bus {
   bool apply_failed_write = false, never_done = false, fail_payload = false;
   bool fail_release = false;
   bool retain_on_reset = false, mismatch_watermark_restore = false;
+  bool sticky_fifo = false; // a count that a payload read does not consume
   bool pending_watermark_mismatch = false;
   std::uint8_t extra_status = 0;
   explicit Bus(bool gyro = false, bool idle = false) {
@@ -48,7 +49,8 @@ struct Bus {
       CHECK(cursor + n <= fifo.size());
       if (fail_payload) { ++cursor; return false; }
       std::memcpy(out, fifo.data() + cursor, n);
-      cursor += static_cast<unsigned>(n);
+      if (!sticky_fifo)
+        cursor += static_cast<unsigned>(n);
       return true;
     }
     CHECK(n == 1);
@@ -80,7 +82,9 @@ struct Bus {
       if (value == 0) regs[0x2d] &= 0x7f;
       else if (!never_done) {
         regs[0x2d] |= 0x80;
-        if (value == 5) regs[0x14] |= 0x80;
+        // A request only takes effect from a FIFO mode. In bypass the bench
+        // Waveshare kept its count and handed back 0x8000 words, 2026-09-11.
+        if (value == 5 && (regs[0x14] & 3) != 0) regs[0x14] |= 0x80;
         if (value == 4 && !retain_on_reset) { fifo.clear(); cursor = 0; extra_status = 0; }
       }
     }
@@ -156,6 +160,48 @@ int main() {
     CHECK(diag.mismatch_valid && diag.mismatch_reg == 0x13 &&
           diag.expected == 0 && diag.actual == 1);
     CHECK(sensor.after().complete && bus.regs == original);
+  }
+  {
+    // A FIFO nobody here filled: refused by default, and the refusal writes
+    // nothing. This is the state the bench Waveshare was left in.
+    Bus bus;
+    bus.frame(0x1234, -5, 0x0678); // asymmetric: a byte swap would show
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start() == QmiResult::Busy);
+    CHECK(bus.writes.empty());
+    CHECK(sensor.stale_words() == 0);
+    CHECK(sensor.stop() == QmiResult::Ok);
+  }
+  {
+    // Explicitly asked to drain it: entry succeeds, and the words it threw
+    // away are readable rather than lost.
+    Bus bus;
+    const auto original = bus.regs;
+    bus.frame(0x1234, -5, 0x0678);
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start(true) == QmiResult::Ok);
+    CHECK(sensor.stale_words() == 3);
+    CHECK(sensor.stale_bytes()[0] == 0x34 && sensor.stale_bytes()[1] == 0x12);
+    CHECK(sensor.stale_bytes()[2] == 0xfb && sensor.stale_bytes()[3] == 0xff);
+    CHECK(sensor.stale_bytes()[4] == 0x78 && sensor.stale_bytes()[5] == 0x06);
+    QmiBatch batch;
+    bus.frame(7, 8, 9);
+    CHECK(sensor.read(batch) == QmiResult::Samples);
+    CHECK(batch.count == 1 && batch.accel[0][0] == 7 && batch.accel[0][2] == 9);
+    CHECK(sensor.stop() == QmiResult::Ok);
+    CHECK(bus.regs == original);
+  }
+  {
+    // A drain that does not clear the count is still a refusal. The bench
+    // failure this path exists for is a FIFO that survived its own reset, so
+    // a FIFO that also survives being read must not become a successful entry.
+    Bus bus;
+    bus.sticky_fifo = true;
+    bus.frame(0x1234, -5, 0x0678);
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start(true) == QmiResult::Busy);
+    CHECK(sensor.stale_words() == 3); // what it discarded is still reported
+    CHECK(sensor.stop() == QmiResult::Ok);
   }
   for (unsigned kind = 0; kind < 5; ++kind) {
     Bus bus;
