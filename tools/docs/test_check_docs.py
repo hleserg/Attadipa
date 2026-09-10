@@ -215,21 +215,28 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as root:
         subprocess.run(["git", "init", "-q", root], check=True)
-        write(root, "README.md", "# Attadipa\n")
-        subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
+        for name in sorted(check_docs.ROOT_REQUIRED - {"SECURITY.md"}):
+            write(root, name, "# Attadipa\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        # Named rather than covered by the generic cases around it, and checked
+        # from both sides, because this file is load-bearing outside the
+        # repository and silent inside it. Dropping it from the allow-list
+        # turns a required job red on every open pull request until somebody
+        # notices -- that is what #524 was. Moving the file itself under
+        # `docs/` turns nothing red at all: GitHub's "Report a vulnerability"
+        # link resolves this path and no other, and simply stops working.
         case(
-            "an allowed root file passes",
+            "the security policy missing from the root is reported",
             "check_root_files",
-            not check_docs.check_root_files(root),
+            any(
+                "SECURITY.md" in problem
+                for problem in check_docs.check_root_files(root)
+            ),
         )
-        # Named rather than covered by the generic case above: this file has to
-        # live at the root for GitHub to find it, so removing it from the
-        # allow-list turns a required job red on every open pull request until
-        # somebody notices. That is what #524 was.
         write(root, "SECURITY.md", "# Security policy\n")
         subprocess.run(["git", "add", "SECURITY.md"], cwd=root, check=True)
         case(
-            "the security policy GitHub looks for at the root passes",
+            "the allowed root files, security policy included, pass",
             "check_root_files",
             not check_docs.check_root_files(root),
         )
