@@ -222,6 +222,17 @@ def main() -> int:
             "check_root_files",
             not check_docs.check_root_files(root),
         )
+        # Named rather than covered by the generic case above: this file has to
+        # live at the root for GitHub to find it, so removing it from the
+        # allow-list turns a required job red on every open pull request until
+        # somebody notices. That is what #524 was.
+        write(root, "SECURITY.md", "# Security policy\n")
+        subprocess.run(["git", "add", "SECURITY.md"], cwd=root, check=True)
+        case(
+            "the security policy GitHub looks for at the root passes",
+            "check_root_files",
+            not check_docs.check_root_files(root),
+        )
         write(root, "vendor-datasheet.pdf.md", "accidental root file\n")
         subprocess.run(["git", "add", "vendor-datasheet.pdf.md"], cwd=root, check=True)
         case(

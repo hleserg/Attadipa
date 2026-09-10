@@ -823,6 +823,10 @@ ROOT_ALLOWED = {
     "LICENSE",
     "README.md",
     "README.ru.md",
+    # GitHub looks for the security policy at exactly this path; moving it
+    # under docs/ would silently stop the "Report a vulnerability" link
+    # from finding it.
+    "SECURITY.md",
     "STATUS.md",
     "TASKS.md",
 }
