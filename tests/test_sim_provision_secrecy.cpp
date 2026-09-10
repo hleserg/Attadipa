@@ -400,6 +400,7 @@ void the_console_reports_the_passkey_without_saying_it(
   run_frames(80);
 
   const std::string captured = console.end();
+  const int failures_before = failures;
 
   CHECK(walked);
   CHECK(left);
@@ -418,9 +419,11 @@ void the_console_reports_the_passkey_without_saying_it(
   CHECK(contains(captured, "provision: passkey queued"));
   CHECK(contains(captured, "provision: passkey armed"));
 
-  if (failures > 0) {
-    // The canary is synthetic, so printing it here costs nothing and is the
-    // difference between a failure a reader can act on and a line number.
+  // This board's console, and only when this board's walk is what failed: a
+  // second geometry dumping the first one's output reads as two failures. The
+  // canary is synthetic, so printing it costs nothing and is the difference
+  // between a failure a reader can act on and a line number.
+  if (failures > failures_before) {
     std::fprintf(stderr, "captured console was:\n%s", captured.c_str());
   }
 
