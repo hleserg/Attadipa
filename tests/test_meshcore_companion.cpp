@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "attadipa/apps/mesh.h"
 #include "attadipa/core/mesh_service.h"
 #include "attadipa/core/position.h"
 #include "attadipa/link/meshcore_companion.h"
@@ -1667,6 +1668,71 @@ void test_channel_message_is_rendered_without_a_contact_prefix()
     CHECK(std::strcmp(client.status().last_message.data(), "Room") == 0);
 }
 
+// A FAULT IS NOT A NODE THE WEARER PICKED WRONG, AND THIS IS THE PATH THAT
+// USED TO SAY IT WAS.
+//
+// The two halves of this file's subject meet here: the provider decides what
+// is true and `apps::format_mesh()` decides what a wearer is told, and the
+// defect lived in neither on its own. `reset_session()` keeps the refusal
+// across a disconnect on purpose, which is right; the formatter ranked that
+// retained refusal above every phase, which meant a watch whose transport had
+// since faulted was told to go and select a different node -- an instruction
+// that cannot clear a fault. Driven through the shipping calls rather than by
+// assigning to a `MeshStatus`, because a hand-built status is exactly the
+// fixture that would have agreed with the old code.
+void test_a_terminal_fault_outranks_a_refusal_the_session_kept()
+{
+    MeshCoreCompanion client;
+    client.pin(key_of(0x40));
+    handshake_to_self_info(client, key_of(0x91));
+    CHECK(client.wrong_node());
+    CHECK(client.status().has_refused && client.status().has_pinned);
+
+    client.fault(at(20));
+
+    // What the provider says: the transport is done, and the evidence of the
+    // refusal is still there to be read. Both are deliberate.
+    const core::MeshStatus faulted = client.status();
+    CHECK(faulted.availability == Availability::Failed);
+    CHECK(faulted.transport == attadipa::core::TransportPhase::Faulted);
+    CHECK(faulted.has_refused && faulted.has_pinned);
+
+    // What the wearer is told, in both languages: the fault, and the note that
+    // says a reset rather than a retry -- not "hold the clock to change it",
+    // which is the way out of a refusal and does nothing to a faulted link.
+    for (auto locale : {attadipa::l10n::Locale::En, attadipa::l10n::Locale::Ru}) {
+        const attadipa::apps::MeshText text =
+            attadipa::apps::format_mesh(faulted, locale);
+        CHECK(text.link == attadipa::apps::MeshLink::Broken);
+        CHECK(text.note[0] != '\0');
+        CHECK(text.way_out[0] == '\0');
+    }
+}
+
+// And the window the refusal exists for is untouched. An ordinary disconnect
+// is what a refusal causes -- the watch turned the only node in range away, so
+// there is no session -- and there the refusal is still the whole explanation
+// for a screen with nothing on it.
+void test_an_ordinary_disconnect_still_reports_the_refusal()
+{
+    MeshCoreCompanion client;
+    client.pin(key_of(0x40));
+    handshake_to_self_info(client, key_of(0x91));
+    client.disconnected(at(20));
+
+    const core::MeshStatus dropped = client.status();
+    CHECK(dropped.availability != Availability::Failed);
+    CHECK(dropped.transport != attadipa::core::TransportPhase::Faulted);
+
+    const attadipa::apps::MeshText text =
+        attadipa::apps::format_mesh(dropped, attadipa::l10n::Locale::En);
+    CHECK(text.link == attadipa::apps::MeshLink::TurnedAway);
+    CHECK(text.way_out[0] != '\0');
+    // Both keys, because a wearer cannot act on "some other node answered".
+    CHECK(std::strstr(text.pinned, "40414243") != nullptr);
+    CHECK(std::strstr(text.answered, "91929394") != nullptr);
+}
+
 }  // namespace
 
 // The length guard the coordinate rides on, and the case the suite did not
@@ -2051,6 +2117,8 @@ int main()
     test_the_pinned_node_is_the_one_the_handshake_continues_with();
     test_another_node_answers_and_the_handshake_stops_there();
     test_the_pin_outlives_the_session_and_the_identity_does_not();
+    test_a_terminal_fault_outranks_a_refusal_the_session_kept();
+    test_an_ordinary_disconnect_still_reports_the_refusal();
     test_unpin_clears_the_pin_and_the_refusal_it_caused();
     test_a_short_self_info_is_refused_before_anything_reads_it();
     if (failures != 0) {

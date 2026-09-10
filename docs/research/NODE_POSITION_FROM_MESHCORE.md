@@ -611,7 +611,7 @@ Frame parsing, buildable in the first slice — and *above* the length check,
 which the companion owns: `link/src/meshcore_companion.cpp:706` — "if (size < 58) { ++malformed_frames_; return false; }"
 — drops a `RESP_CODE_SELF_INFO` shorter than the name offset before any
 provider sees it. The companion's suite fails closed on a short *contact* frame
-(`tests/test_meshcore_companion.cpp:928` — "CHECK(client.malformed_frames() == 1);")
+(`tests/test_meshcore_companion.cpp:929` — "CHECK(client.malformed_frames() == 1);")
 and has no short `SELF_INFO` case; that missing case is the one length test this
 plan names, and it belongs in that file, not in the provider's. Bytes 36–43 are
 therefore present in every frame the provider is handed, and a 44-byte case in

@@ -18,20 +18,42 @@ void put(char* out, std::size_t size, const char* text) {
     std::snprintf(out, size, "%s", text);
 }
 
+// Whether the link has reached a verdict that changing node cannot revise.
+//
+// Both availabilities and the phase mean the same thing to a wearer: this link
+// is not coming back by waiting, and not by picking a different node either.
+bool is_terminal(const MeshStatus& status) {
+    return status.availability == Availability::Failed ||
+           status.availability == Availability::Incompatible ||
+           status.transport == TransportPhase::Faulted;
+}
+
 // What shape the link is in.
 //
 // A REFUSAL OUTRANKS THE PHASE, because it explains the phase. A watch that
 // turned the only node in range away has no session at all, so the phase is
 // some flavour of "nothing here" and every session-scoped field is empty --
 // exactly when the operator most needs to know that the silence is deliberate.
-// `core/include/attadipa/core/mesh_service.h:55` — "    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY."
+// `core/include/attadipa/core/mesh_service.h:70` — "    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY."
+//
+// BUT NOT OVER A TERMINAL ONE, because there the refusal is history and the
+// fault is now. `MeshCoreCompanion::reset_session()` deliberately keeps the pin
+// and the refusal across a disconnect
+// (`link/src/meshcore_companion.cpp:161` — "    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared"),
+// which is right, and it means a refusal latched at any point in the past is
+// still latched after the transport later faults. Ranked first, it answered
+// `TurnedAway` there -- telling the wearer to go and select a different node,
+// which is an instruction that cannot clear a fault, in place of the `Broken`
+// note that says a reset is what this needs. The refusal keeps its precedence
+// over every non-terminal phase, which is where it is still the explanation
+// for the silence.
 //
 // Availability is consulted before the transport for the two answers the
 // transport cannot give: a device that can never carry a mesh, and one that
 // could but has been told about no node. Both leave the transport at `Absent`,
 // and "no radio" and "no node named" are different things to do about it.
 MeshLink link_of(const MeshStatus& status) {
-    if (status.has_refused && status.has_pinned) {
+    if (status.has_refused && status.has_pinned && !is_terminal(status)) {
         return MeshLink::TurnedAway;
     }
     switch (status.availability) {
@@ -189,10 +211,18 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
     text.has_signal  = has_link;
 
     if (has_link) {
+        // A message the provider cut is only a claim about a message there is.
+        // With nothing heard, `last_message` is empty and the retained flag is
+        // stale evidence about some earlier one, so it says nothing here.
+        text.message_partial =
+            status.message_truncated && status.last_message[0] != '\0';
+        const StringId heading =
+            text.live ? (text.message_partial ? StringId::MeshMessageHeadingCut
+                                              : StringId::MeshMessageHeading)
+                      : (text.message_partial ? StringId::MeshMessageLastKnownCut
+                                              : StringId::MeshMessageLastKnown);
         put(text.message_heading, sizeof(text.message_heading),
-            l10n::tr(text.live ? StringId::MeshMessageHeading
-                               : StringId::MeshMessageLastKnown,
-                     locale));
+            l10n::tr(heading, locale));
         put(text.message, sizeof(text.message),
             status.last_message[0] != '\0'
                 ? status.last_message.data()
@@ -205,8 +235,24 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
 
         put(text.peers_label, sizeof(text.peers_label),
             l10n::tr(StringId::MeshLabelPeers, locale));
-        std::snprintf(text.peers, sizeof(text.peers), "%u",
-                      static_cast<unsigned>(status.peers_reported));
+        // KEPT OF REPORTED, AND ONLY WHERE THOSE ARE DIFFERENT NUMBERS.
+        //
+        // `peers_reported` is the node's own count and is honest on its own;
+        // what the retained cap costs is that a sender past it cannot be
+        // named, because `find_peer_prefix()` has nothing to match. One number
+        // where the watch kept them all reads as "there are this many"; two
+        // where it did not reads as "there are this many and I have that many
+        // of them", which is the only difference this face is in a position to
+        // make. It needs no word, so it needs no translation.
+        text.peers_partial = status.peers_truncated;
+        if (text.peers_partial) {
+            std::snprintf(text.peers, sizeof(text.peers), "%u/%u",
+                          static_cast<unsigned>(status.peers_retained),
+                          static_cast<unsigned>(status.peers_reported));
+        } else {
+            std::snprintf(text.peers, sizeof(text.peers), "%u",
+                          static_cast<unsigned>(status.peers_reported));
+        }
 
         text.has_snr = status.has_snr;
         if (status.has_snr) {

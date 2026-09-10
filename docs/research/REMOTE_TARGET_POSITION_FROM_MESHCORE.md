@@ -568,7 +568,7 @@ so their length rules are tested here rather than assumed:
 
 - `{0x80}` alone and `{0x8A}` alone ⇒ counted malformed; no key compared, no
   command sent, no coordinate read. These tests build frames as exact-sized
-  stack arrays — `tests/test_meshcore_companion.cpp:926` — "    const std::uint8_t short_contact[] = {3};" — so an arm that trusts its length over-reads that array by 32 bytes and by 143;
+  stack arrays — `tests/test_meshcore_companion.cpp:927` — "    const std::uint8_t short_contact[] = {3};" — so an arm that trusts its length over-reads that array by 32 bytes and by 143;
 - one byte short of each bound ⇒ still refused; exactly at it ⇒ accepted;
 - `{0x8F}` alone ⇒ counted malformed, with no key compared and **no coordinate
   discarded** — a short delete must not become a delete;

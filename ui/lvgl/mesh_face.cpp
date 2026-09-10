@@ -305,9 +305,26 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_align(rule_, LV_ALIGN_TOP_LEFT, margin, (big ? 352 : 136) - inset);
 
     show(msg_heading_, text.message_heading);
+    // The heading says three things and this is the third: whether the block
+    // is live, and whether what it holds is all of what arrived. `Warning` is
+    // the strongest colour either palette has, and it outranks the live/last
+    // distinction here rather than replacing it -- the heading's own words
+    // still carry that, `LAST KNOWN · CUT` against `MESSAGE · CUT`.
+    //
+    // THE COLOUR IS NOT THE CUE, AND ON THE DAY PALETTE IT COULD NOT BE.
+    // `color.warning` measures 1.93:1 on a day surface
+    // (`docs/ui/DESIGN_SYSTEM.md:139` — "| `color.warning` | **2.19** | **1.93** | **1.73** |"),
+    // under the 4.5:1 a word needs, so what a wearer reads is the word `CUT`
+    // and the colour only draws the eye to it -- which is the rule about not
+    // signalling a state by colour alone, paid rather than dodged. It is the
+    // price this row already paid: `AccentPrimary`, the `LAST KNOWN` colour it
+    // replaces here, is 1.93:1 in the same column.
     lv_obj_set_style_text_color(
         msg_heading_,
-        resolved(text.live ? ColorRole::TextMuted : ColorRole::AccentPrimary,
+        resolved(text.message_partial
+                     ? ColorRole::Warning
+                     : (text.live ? ColorRole::TextMuted
+                                  : ColorRole::AccentPrimary),
                  config_.theme, config_.pixel_cost),
         LV_PART_MAIN);
     show(msg_, text.message);
@@ -372,11 +389,31 @@ void MeshFace::lay_out(const apps::MeshText &text) {
                                     big ? 268 : 174};
     const char *values[3] = {text.snr, text.peers, text.mtu};
     const char *labels[3] = {text.snr_label, text.peers_label, text.mtu_label};
+    // EACH COLUMN ENDS WHERE THE NEXT ONE STARTS, AND SAYS SO.
+    //
+    // All three of these are wire-derived and none of them is a fixture: SNR
+    // is a signed quarter-dB with two decimals, MTU is negotiated, and the
+    // peer count is now two numbers wherever the retained set is capped. Left
+    // at content width they grow rightwards into the neighbour -- `16/65535`
+    // beside a three-digit MTU rendered as `16/65535244`, one number as far as
+    // anybody reading it is concerned. Bounded and ellipsised is the treatment
+    // the message and the sender rows above already get, and for the same
+    // reason: what decides the width of these is off the link, not here.
+    const std::int32_t last_edge = w - (big ? 32 : 12);
     for (int i = 0; i < 3; ++i) {
+      const std::int32_t gap =
+          (i < 2 ? column[i + 1] : last_edge) - column[i] - (big ? 8 : 4);
       show(value_[i], values[i]);
       show(label_[i], labels[i]);
       lv_obj_set_style_text_opa(value_[i], text.live ? LV_OPA_COVER : LV_OPA_50,
                                 LV_PART_MAIN);
+      for (lv_obj_t *cell : {value_[i], label_[i]}) {
+        lv_obj_set_width(cell, gap);
+        lv_obj_set_height(cell,
+                          lv_font_get_line_height(
+                              lv_obj_get_style_text_font(cell, LV_PART_MAIN)));
+        lv_label_set_long_mode(cell, LV_LABEL_LONG_DOT);
+      }
       lv_obj_align(value_[i], LV_ALIGN_TOP_LEFT, column[i], (big ? 452 : 192) - inset);
       lv_obj_align(label_[i], LV_ALIGN_TOP_LEFT, column[i], (big ? 478 : 214) - inset);
     }

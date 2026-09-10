@@ -142,6 +142,58 @@ void a_refusal_outranks_the_phase() {
   CHECK(std::strcmp(text.pinned, text.answered) != 0);
 }
 
+// ...BUT NOT OVER A VERDICT NOTHING CAN REVISE.
+//
+// The refusal survives a disconnect on purpose, so it is still latched when
+// the transport later gives up, and ranked first it answered `TurnedAway` --
+// the wearer told to select a different node, which is not a thing that clears
+// a fault. Each terminal input on its own, because `Failed` arrives with
+// `Faulted` on the shipping path and either alone must still be believed:
+// `Incompatible` never sets a phase at all.
+void a_terminal_verdict_outranks_a_refusal() {
+  const struct {
+    core::Availability availability;
+    core::TransportPhase transport;
+  } kTerminal[] = {
+      {core::Availability::Failed, core::TransportPhase::Faulted},
+      {core::Availability::Failed, core::TransportPhase::Ready},
+      {core::Availability::Incompatible, core::TransportPhase::Ready},
+      {core::Availability::Unreachable, core::TransportPhase::Faulted},
+  };
+  for (const auto &c : kTerminal) {
+    core::MeshStatus status = linked_status();
+    status.availability = c.availability;
+    status.transport = c.transport;
+    status.pinned_id = key(0x4C9A2F7BU);
+    status.has_pinned = true;
+    status.refused_id = key(0x9E14C003U);
+    status.has_refused = true;
+
+    const apps::MeshText text = apps::format_mesh(status, l10n::Locale::En);
+    CHECK(text.link == apps::MeshLink::Broken);
+    // The recovery instruction, and not the one for a refusal. `Broken` offers
+    // no way out of this screen because there is none from here.
+    CHECK(std::strcmp(text.note, "needs a reset, not a retry") == 0);
+    CHECK(text.way_out[0] == '\0');
+  }
+
+  // And every phase that is not terminal keeps the refusal in front of it,
+  // which is the window the retained evidence exists for.
+  for (int t = 0; t <= static_cast<int>(core::TransportPhase::Faulted); ++t) {
+    const auto phase = static_cast<core::TransportPhase>(t);
+    if (phase == core::TransportPhase::Faulted) {
+      continue;
+    }
+    core::MeshStatus status = linked_status();
+    status.availability = core::Availability::Unreachable;
+    status.transport = phase;
+    status.has_pinned = true;
+    status.has_refused = true;
+    CHECK(apps::format_mesh(status, l10n::Locale::En).link ==
+          apps::MeshLink::TurnedAway);
+  }
+}
+
 // `Resting` fills the same six values as `Linked` and must not look the same
 // doing it. There is no age in `core::MeshStatus`, so the distinction cannot be
 // "how long ago" -- it is that one block is arriving and the other is history.
@@ -250,6 +302,11 @@ void no_field_is_ever_cut_short() {
     for (int t = 0; t <= static_cast<int>(core::TransportPhase::Faulted); ++t) {
       for (int d = 0; d <= static_cast<int>(core::MeshDelivery::Failed); ++d) {
         for (int refused = 0; refused < 2; ++refused) {
+         // Both completeness flags, because the widest string either can put
+         // on the screen is a translated one and the buffers they land in are
+         // the two this sweep is here to size. `peers` carries two numbers
+         // when the retained set is capped and `message_heading` gains a word.
+         for (int cut = 0; cut < 2; ++cut) {
           for (l10n::Locale locale : locales) {
             core::MeshStatus status = linked_status();
             status.availability = static_cast<core::Availability>(a);
@@ -259,6 +316,10 @@ void no_field_is_ever_cut_short() {
             status.has_refused = refused != 0;
             status.pinned_id = key(0x11223344U);
             status.refused_id = key(0x55667788U);
+            status.message_truncated = cut != 0;
+            status.peers_truncated = cut != 0;
+            status.peers_reported = cut != 0 ? 65535 : 3;
+            status.peers_retained = cut != 0 ? 16 : 3;
             // The longest name and sender either side can carry, because a
             // buffer that fits the fixture's "Ridge" proves nothing about the
             // 32 bytes `core::MeshStatus` is willing to hold.
@@ -278,11 +339,12 @@ void no_field_is_ever_cut_short() {
             MESH_TEXT_FIELDS(CHECK_NOT_TRUNCATED)
 #undef CHECK_NOT_TRUNCATED
           }
+         }
         }
       }
     }
   }
-  CHECK(swept == 7 * 6 * 5 * 2 * 2);
+  CHECK(swept == 7 * 6 * 5 * 2 * 2 * 2);
 }
 
 // And the message itself arrives whole. The sweep above cannot make this claim:
@@ -297,6 +359,107 @@ void the_longest_message_arrives_whole() {
   const apps::MeshText text = apps::format_mesh(status, l10n::Locale::En);
   CHECK(std::strlen(text.message) == core::kMeshTextBytes);
   CHECK(std::strcmp(text.message, status.last_message.data()) == 0);
+}
+
+// A TAIL THE NODE SENT AND THE WATCH NO LONGER HAS IS NOT THE SAME AS A TAIL
+// THAT IS OFF THE EDGE OF THE PANEL.
+//
+// `format_mesh()` read neither completeness flag, so a status with both set
+// and one with both clear produced identical `MeshText` -- and `MeshFace`
+// compares `MeshText` to decide whether to repaint, so the face did not even
+// get the chance to draw the difference. This is the assertion in the form the
+// defect had: two statuses, one field apart, and the same bytes out.
+void a_cut_message_does_not_read_as_a_whole_one() {
+  for (auto locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+    core::MeshStatus whole = linked_status();
+    core::MeshStatus cut = whole;
+    cut.message_truncated = true;
+
+    const apps::MeshText a = apps::format_mesh(whole, locale);
+    const apps::MeshText b = apps::format_mesh(cut, locale);
+    CHECK(!a.message_partial);
+    CHECK(b.message_partial);
+    CHECK(std::strcmp(a.message_heading, b.message_heading) != 0);
+    CHECK(std::memcmp(&a, &b, sizeof(a)) != 0);
+    // The message itself is what arrived, in both. The cue is chrome and it
+    // does not get to edit a peer's text (ADR-0010 §5).
+    CHECK(std::strcmp(a.message, b.message) == 0);
+    // `Resting` says "last known" and must keep saying it while also saying
+    // the tail is gone, so the two facts need four headings and not three.
+    core::MeshStatus resting = cut;
+    resting.transport = core::TransportPhase::Suspended;
+    const apps::MeshText c = apps::format_mesh(resting, locale);
+    CHECK(c.link == apps::MeshLink::Resting);
+    CHECK(c.message_partial);
+    CHECK(std::strcmp(c.message_heading, b.message_heading) != 0);
+    CHECK(std::strcmp(c.message_heading,
+                      apps::format_mesh(
+                          [&] {
+                            core::MeshStatus s = whole;
+                            s.transport = core::TransportPhase::Suspended;
+                            return s;
+                          }(),
+                          locale)
+                          .message_heading) != 0);
+  }
+}
+
+// And the ellipsis stays the layout's business. A message long enough that the
+// face will put dots in it is still a complete message, so nothing in the
+// readout may say otherwise -- that is the distinction the flag exists to
+// make, and asserting it here is what stops the cue drifting onto the message
+// row where the dots already are.
+void a_long_whole_message_is_not_a_cut_one() {
+  core::MeshStatus status = linked_status();
+  for (std::size_t i = 0; i < core::kMeshTextBytes; ++i) {
+    status.last_message[i] = static_cast<char>('a' + (i % 26));
+  }
+  const apps::MeshText text = apps::format_mesh(status, l10n::Locale::En);
+  CHECK(!text.message_partial);
+  CHECK(std::strlen(text.message) == core::kMeshTextBytes);
+  CHECK(std::strcmp(text.message_heading,
+                    apps::format_mesh(linked_status(), l10n::Locale::En)
+                        .message_heading) == 0);
+
+  // A retained flag with nothing heard says nothing: it is evidence about some
+  // earlier message, and `last_message` is empty, so there is no message on
+  // this screen for it to be about.
+  core::MeshStatus empty = linked_status();
+  empty.last_message.fill('\0');
+  empty.message_truncated = true;
+  CHECK(!apps::format_mesh(empty, l10n::Locale::En).message_partial);
+}
+
+// THE PEER COUNT SAYS WHICH NUMBER IT IS.
+//
+// `peers_reported` is the node's own count and the retained cap does not
+// change it, so printing it alone is not a lie -- but it is not the whole
+// answer either, because what the watch kept is what it can name a sender
+// from. Two numbers where they differ, one where they do not. This face
+// selects no peers and this is the whole of the treatment: an explicit,
+// deliberate decision rather than a flag that reaches the panel as nothing.
+void a_capped_peer_list_shows_both_numbers() {
+  core::MeshStatus status = linked_status();
+  status.peers_reported = 3;
+  status.peers_retained = 3;
+  const apps::MeshText all = apps::format_mesh(status, l10n::Locale::En);
+  CHECK(!all.peers_partial);
+  CHECK(std::strcmp(all.peers, "3") == 0);
+
+  status.peers_reported = 40;
+  status.peers_retained = 16;
+  status.peers_truncated = true;
+  const apps::MeshText some = apps::format_mesh(status, l10n::Locale::En);
+  CHECK(some.peers_partial);
+  CHECK(std::strcmp(some.peers, "16/40") == 0);
+  CHECK(std::memcmp(&all, &some, sizeof(all)) != 0);
+
+  // The widest either number can be. `peers_reported` is a `uint16_t` off the
+  // wire, and a buffer sized for the retained cap alone would cut this.
+  status.peers_reported = 65535;
+  const apps::MeshText widest = apps::format_mesh(status, l10n::Locale::En);
+  CHECK(std::strcmp(widest.peers, "16/65535") == 0);
+  CHECK(std::strlen(widest.peers) < sizeof(widest.peers) - 1);
 }
 
 void separate_batteries_never_invent_a_percentage() {
@@ -351,6 +514,10 @@ int main() {
   a_key_prefix_is_eight_hex_characters();
   reaching_lights_part_of_the_channel();
   both_locales_are_answered();
+  a_terminal_verdict_outranks_a_refusal();
+  a_cut_message_does_not_read_as_a_whole_one();
+  a_long_whole_message_is_not_a_cut_one();
+  a_capped_peer_list_shows_both_numbers();
   no_field_is_ever_cut_short();
   the_longest_message_arrives_whole();
 

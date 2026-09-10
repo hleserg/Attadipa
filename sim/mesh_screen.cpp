@@ -111,12 +111,41 @@ bool stage_mesh_scenario(const char *name) {
     g_status.has_pinned = true;
     g_status.refused_id = key(0x9E14C003U);
     g_status.has_refused = true;
+  } else if (std::strcmp(name, "refused-faulted") == 0) {
+    // A REFUSAL THAT IS STILL LATCHED WHEN THE TRANSPORT GIVES UP.
+    //
+    // Reachable and not a corner: `MeshCoreCompanion::reset_session()` keeps
+    // the pin and the refusal across a disconnect on purpose, so any fault
+    // after a wrong node answered arrives here. It is staged because it used
+    // to draw `refused` above -- the wearer told to select a different node
+    // by a screen whose link had faulted (#465).
+    g_status.availability = core::Availability::Failed;
+    g_status.transport = core::TransportPhase::Faulted;
+    g_status.pinned_id = key(0x4C9A2F7BU);
+    g_status.has_pinned = true;
+    g_status.refused_id = key(0x9E14C003U);
+    g_status.has_refused = true;
+  } else if (std::strcmp(name, "truncated") == 0) {
+    // Both completeness flags at once, on a live link: a message longer than
+    // `last_message` and more contacts than the retained set holds. Neither is
+    // a layout problem, so neither may look like one.
+    g_status.availability = core::Availability::Ready;
+    g_status.transport = core::TransportPhase::Ready;
+    with_session(g_status);
+    std::snprintf(g_status.last_message.data(), g_status.last_message.size(),
+                  "%s",
+                  "at the ridge, heading down the north side before the light "
+                  "goes and the wind gets up, will call from the sadd");
+    g_status.message_truncated = true;
+    g_status.peers_reported = 40;
+    g_status.peers_retained = 16;
+    g_status.peers_truncated = true;
   } else {
     std::fprintf(stderr,
                  "unknown --mesh-state '%s'\n"
                  "known: unprovisioned absent attached connecting ready "
-                 "suspended faulted refused battery-unknown battery-stale "
-                 "battery-low integrated\n",
+                 "suspended faulted refused refused-faulted truncated "
+                 "battery-unknown battery-stale battery-low integrated\n",
                  name);
     return false;
   }

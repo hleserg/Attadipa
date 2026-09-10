@@ -867,6 +867,21 @@ ru = "СООБЩЕНИЕ"
 en = "LAST KNOWN"
 ru = "ПОСЛЕДНЕЕ"
 
+# And the same two headings again for a message the node sent more of than the
+# watch kept. The heading carries it rather than the message row, because the
+# message row already ends in dots whenever the text is wider than the panel,
+# and a second meaning for the same dots is not a cue -- it is a guess. The
+# separator is U+00B7, which is in the font subset for the boot screen's
+# "GLOW · GUIDE · CONNECT" (`tools/font/charset.py:23` —
+# "    (0x00B7, 0x00B7, \"middle dot: the separator in GLOW - GUIDE - CONNECT\"),").
+[mesh_message_heading_cut]
+en = "MESSAGE · CUT"
+ru = "СООБЩЕНИЕ · ОБРЕЗАНО"
+
+[mesh_message_last_known_cut]
+en = "LAST KNOWN · CUT"
+ru = "ПОСЛЕДНЕЕ · ОБРЕЗАНО"
+
 [mesh_no_message]
 en = "no message"
 ru = "нет сообщений"
