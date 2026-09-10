@@ -49,9 +49,21 @@ struct AcceptingProvisioner final : core::Provisioner {
                 static_cast<int>(entry.timezone_offset_minutes));
     return core::ProvisionOutcome::Accepted;
   }
+  // THE DIGITS DO NOT GO TO STDOUT, and no derivative of them does either.
+  //
+  // This line used to print `%06u`. A fake node does not make a typed number
+  // fake: the six digits a person enters here are as likely to be the bench
+  // node's live PIN as an invented one, and nothing on this side of the seam
+  // can tell those apart -- while stdout is a terminal scrollback, a shell
+  // redirect and a CI artefact at once.
+  // `docs/research/OWNER_DECISIONS.md:1143` -- "device access credential"; and
+  // one layer down, `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:595` --
+  // "Do not log the passkey through the watch's". Queued and armed are the two
+  // facts somebody watching this console is waiting for, and neither of them
+  // is the number (#316).
   core::ProvisionOutcome set_mesh_passkey(std::uint32_t passkey) override {
-    std::printf("provision: passkey %06u queued\n",
-                static_cast<unsigned>(passkey));
+    (void)passkey;
+    std::printf("provision: passkey queued\n");
     in_flight_ = true;
     return core::ProvisionOutcome::Pending;
   }
