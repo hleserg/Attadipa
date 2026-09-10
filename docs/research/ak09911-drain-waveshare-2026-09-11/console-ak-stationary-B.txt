@@ -1,0 +1,267 @@
+# port /dev/ttyACM2  image firmware/build-akonly/attadipa.bin
+Connecting...
+Detecting chip type... ESP32-S3
+# chip ESP32-S3
+RAM boot...
+Downloading 62744 bytes at 3fca1f00... done!
+Downloading 464 bytes at 3fcb1d80... done!
+Downloading 122512 bytes at 40374000... done!
+Downloading 32 bytes at 50000000... done!
+All segments done, executing at 40375c5c
+# load_ram returned; port still open, watching
+I (900) boot: ESP-IDF v5.5.5-dirty 2nd stage bootloader
+I (900) boot: compile time Sep 11 2026 01:15:47
+I (900) boot: Multicore bootloader
+I (900) boot: Enabling RNG early entropy source...
+I (901) cpu_start: Multicore app
+I (909) cpu_start: Pro cpu start user code
+I (909) cpu_start: cpu freq: 160000000 Hz
+I (909) app_init: Application information:
+I (909) app_init: Project name:     attadipa
+I (910) app_init: App version:      attadipa-claim-writer-local-cod
+I (910) app_init: Compile time:     Sep 11 2026 01:15:47
+I (910) app_init: ELF file SHA256:  000000000...
+I (910) app_init: ESP-IDF:          v5.5.5-dirty
+I (910) efuse_init: Min chip rev:     v0.0
+I (911) efuse_init: Max chip rev:     v0.99 
+I (911) efuse_init: Chip rev:         v0.2
+I (911) heap_init: Initializing. RAM available for dynamic allocation:
+I (911) heap_init: At 3FCB1F50 len 000377C0 (221 KiB): RAM
+I (911) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (911) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (912) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (912) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (913) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (913) main_task: Started on CPU0
+I (913) main_task: Calling app_main()
+I (913) attadipa: --- Attadipa boot -------------------------------------------
+I (913) attadipa: Build      : attadipa-claim-writer-local-cod Sep 11 2026, ESP-IDF v5.5.5-dirty
+I (913) attadipa: Reset      : Unknown (ESP-IDF code 11)
+I (913) attadipa: SoC        : esp32s3 rev v0.2, 2 core(s), WiFi BLE
+W (913) attadipa: Flash      : not initialised — this is a pure-RAM image, and the JEDEC id needs the flash driver
+W (913) attadipa: PSRAM      : disabled in this build
+I (913) attadipa: Board      : Waveshare ESP32-S3-Touch-AMOLED-2.06 (waveshare-amoled-206), 410x502 AMOLED, 315 dpi
+W (913) attadipa: Partitions : not readable — a pure-RAM image has no flash driver, and asking anyway is a panic rather than an empty answer
+I (913) attadipa: Heap       : 269704 free, 204800 largest block, 269688 lowest ever (internal)
+I (913) attadipa: -------------------------------------------------------------
+W (913) i2c-probe: probe build — the board identity printed above is the build's, not this unit's
+I (913) i2c-probe: scanning SDA 15 / SCL 14 at 100000 Hz
+I (913) i2c-probe: ACK 0x0d
+I (923) i2c-probe: ACK 0x18
+I (923) i2c-probe: ACK 0x34
+I (923) i2c-probe: ACK 0x40
+I (933) i2c-probe: ACK 0x51
+I (933) i2c-probe: ACK 0x6b
+I (933) i2c-probe: 6 address(es) acknowledged
+I (933) i2c-probe: AXP2101 REG 0x64 = 0x03
+I (943) i2c-probe: AK09911 ID=48 05 ASA=17 17 13 fuse_mode=00 start=0
+W (943) i2c-probe: AK09911 fuse-mode discrepancy: ASA validity is unknown; raw counts only, no adjusted field units
+I (963) i2c-probe: AKRAW,47825,43,66,-268,01,00
+I (1063) i2c-probe: AKRAW,147825,45,69,-264,01,00
+I (1163) i2c-probe: AKRAW,247825,45,68,-267,01,00
+I (1263) i2c-probe: AKRAW,347825,45,65,-266,01,00
+I (1363) i2c-probe: AKRAW,447825,46,67,-266,01,00
+I (1463) i2c-probe: AKRAW,547825,44,68,-266,01,00
+I (1563) i2c-probe: AKRAW,647825,47,66,-268,01,00
+I (1663) i2c-probe: AKRAW,747825,46,65,-267,01,00
+I (1773) i2c-probe: AKRAW,857825,45,66,-267,01,00
+I (1873) i2c-probe: AKRAW,957825,46,66,-268,01,00
+I (1973) i2c-probe: AKRAW,1057825,46,67,-266,01,00
+I (2073) i2c-probe: AKRAW,1157825,46,67,-267,01,00
+I (2173) i2c-probe: AKRAW,1257825,43,66,-269,01,00
+I (2273) i2c-probe: AKRAW,1357825,45,66,-267,01,00
+I (2373) i2c-probe: AKRAW,1457825,44,67,-268,01,00
+I (2473) i2c-probe: AKRAW,1557825,45,68,-267,01,00
+I (2573) i2c-probe: AKRAW,1657825,45,66,-267,01,00
+I (2673) i2c-probe: AKRAW,1757825,47,67,-266,01,00
+I (2773) i2c-probe: AKRAW,1857825,44,65,-269,01,00
+I (2873) i2c-probe: AKRAW,1957825,44,67,-266,01,00
+I (2973) i2c-probe: AKRAW,2057825,46,66,-269,01,00
+I (3073) i2c-probe: AKRAW,2157825,47,66,-267,01,00
+I (3173) i2c-probe: AKRAW,2257825,45,66,-267,01,00
+I (3283) i2c-probe: AKRAW,2367825,44,66,-268,01,00
+I (3383) i2c-probe: AKRAW,2467825,42,65,-266,01,00
+I (3483) i2c-probe: AKRAW,2567825,46,63,-270,01,00
+I (3583) i2c-probe: AKRAW,2667825,45,68,-265,01,00
+I (3683) i2c-probe: AKRAW,2767825,45,67,-265,01,00
+I (3783) i2c-probe: AKRAW,2867825,45,64,-267,01,00
+I (3883) i2c-probe: AKRAW,2967825,45,65,-266,01,00
+I (3983) i2c-probe: AKRAW,3067825,45,68,-267,01,00
+I (4083) i2c-probe: AKRAW,3167825,45,66,-265,01,00
+I (4183) i2c-probe: AKRAW,3267825,44,68,-266,01,00
+I (4283) i2c-probe: AKRAW,3367825,47,66,-266,01,00
+I (4383) i2c-probe: AKRAW,3467825,44,68,-266,01,00
+I (4483) i2c-probe: AKRAW,3567825,44,65,-267,01,00
+I (4583) i2c-probe: AKRAW,3667825,45,66,-269,01,00
+I (4693) i2c-probe: AKRAW,3777825,46,67,-266,01,00
+I (4793) i2c-probe: AKRAW,3877825,46,68,-266,01,00
+I (4893) i2c-probe: AKRAW,3977825,46,66,-267,01,00
+I (4993) i2c-probe: AKRAW,4077825,43,67,-268,01,00
+I (5093) i2c-probe: AKRAW,4177825,44,64,-266,01,00
+I (5193) i2c-probe: AKRAW,4277825,44,66,-265,01,00
+I (5293) i2c-probe: AKRAW,4377825,44,68,-268,01,00
+I (5393) i2c-probe: AKRAW,4477825,44,64,-266,01,00
+I (5493) i2c-probe: AKRAW,4577825,47,68,-267,01,00
+I (5593) i2c-probe: AKRAW,4677825,45,66,-268,01,00
+I (5693) i2c-probe: AKRAW,4777825,44,66,-267,01,00
+I (5793) i2c-probe: AKRAW,4877825,45,68,-266,01,00
+I (5893) i2c-probe: AKRAW,4977825,44,66,-266,01,00
+I (5993) i2c-probe: AKRAW,5077825,44,65,-268,01,00
+I (6103) i2c-probe: AKRAW,5187825,46,67,-268,01,00
+I (6203) i2c-probe: AKRAW,5287825,47,66,-268,01,00
+I (6303) i2c-probe: AKRAW,5387825,45,66,-266,01,00
+I (6403) i2c-probe: AKRAW,5487825,43,66,-267,01,00
+I (6503) i2c-probe: AKRAW,5587825,45,66,-268,01,00
+I (6603) i2c-probe: AKRAW,5687825,46,66,-266,01,00
+I (6703) i2c-probe: AKRAW,5787825,42,67,-267,01,00
+I (6803) i2c-probe: AKRAW,5887825,46,69,-267,01,00
+I (6903) i2c-probe: AKRAW,5987825,45,66,-267,01,00
+I (7003) i2c-probe: AKRAW,6087825,44,65,-268,01,00
+I (7103) i2c-probe: AKRAW,6187825,44,67,-266,01,00
+I (7203) i2c-probe: AKRAW,6287825,48,67,-266,01,00
+I (7303) i2c-probe: AKRAW,6387825,45,68,-268,01,00
+I (7413) i2c-probe: AKRAW,6497825,47,65,-268,01,00
+I (7513) i2c-probe: AKRAW,6597825,47,67,-266,01,00
+I (7613) i2c-probe: AKRAW,6697825,44,67,-268,01,00
+I (7713) i2c-probe: AKRAW,6797825,44,65,-267,01,00
+I (7813) i2c-probe: AKRAW,6897825,44,65,-268,01,00
+I (7913) i2c-probe: AKRAW,6997825,44,65,-266,01,00
+I (8013) i2c-probe: AKRAW,7097825,44,67,-265,01,00
+I (8113) i2c-probe: AKRAW,7197825,45,68,-266,01,00
+I (8213) i2c-probe: AKRAW,7297825,45,67,-266,01,00
+I (8313) i2c-probe: AKRAW,7397825,45,66,-267,01,00
+I (8413) i2c-probe: AKRAW,7497825,45,68,-267,01,00
+I (8513) i2c-probe: AKRAW,7597825,46,65,-268,01,00
+I (8613) i2c-probe: AKRAW,7697825,45,66,-268,01,00
+I (8713) i2c-probe: AKRAW,7797825,45,67,-267,01,00
+I (8823) i2c-probe: AKRAW,7907825,44,66,-268,01,00
+I (8923) i2c-probe: AKRAW,8007825,46,66,-267,01,00
+I (9023) i2c-probe: AKRAW,8107825,44,65,-267,01,00
+I (9123) i2c-probe: AKRAW,8207825,44,67,-267,01,00
+I (9223) i2c-probe: AKRAW,8307825,44,67,-268,01,00
+I (9323) i2c-probe: AKRAW,8407825,44,68,-268,01,00
+I (9423) i2c-probe: AKRAW,8507825,45,64,-270,01,00
+I (9523) i2c-probe: AKRAW,8607825,47,69,-269,01,00
+I (9623) i2c-probe: AKRAW,8707825,44,66,-268,01,00
+I (9723) i2c-probe: AKRAW,8807825,43,66,-268,01,00
+I (9823) i2c-probe: AKRAW,8907825,47,66,-264,01,00
+I (9923) i2c-probe: AKRAW,9007825,44,67,-266,01,00
+I (10023) i2c-probe: AKRAW,9107825,46,67,-263,01,00
+I (10123) i2c-probe: AKRAW,9207825,45,66,-267,01,00
+I (10233) i2c-probe: AKRAW,9317825,44,66,-269,01,00
+I (10333) i2c-probe: AKRAW,9417825,45,66,-264,01,00
+I (10433) i2c-probe: AKRAW,9517825,46,66,-267,01,00
+I (10533) i2c-probe: AKRAW,9617825,44,67,-268,01,00
+I (10633) i2c-probe: AKRAW,9717825,43,66,-266,01,00
+I (10733) i2c-probe: AKRAW,9817825,44,65,-268,01,00
+I (10833) i2c-probe: AKRAW,9917825,46,67,-266,01,00
+I (10933) i2c-probe: AKRAW,10017825,46,66,-268,01,00
+I (11033) i2c-probe: AKRAW,10117825,45,66,-267,01,00
+I (11133) i2c-probe: AKRAW,10217825,48,66,-267,01,00
+I (11233) i2c-probe: AKRAW,10317825,45,66,-267,01,00
+I (11333) i2c-probe: AKRAW,10417825,43,65,-267,01,00
+I (11433) i2c-probe: AKRAW,10517825,44,66,-267,01,00
+I (11533) i2c-probe: AKRAW,10617825,45,69,-267,01,00
+I (11643) i2c-probe: AKRAW,10727825,44,69,-266,01,00
+I (11743) i2c-probe: AKRAW,10827825,44,66,-266,01,00
+I (11843) i2c-probe: AKRAW,10927825,44,66,-268,01,00
+I (11943) i2c-probe: AKRAW,11027825,43,66,-266,01,00
+I (12043) i2c-probe: AKRAW,11127825,45,66,-266,01,00
+I (12143) i2c-probe: AKRAW,11227825,46,65,-268,01,00
+I (12243) i2c-probe: AKRAW,11327825,44,65,-266,01,00
+I (12343) i2c-probe: AKRAW,11427825,44,63,-269,01,00
+I (12443) i2c-probe: AKRAW,11527825,45,67,-268,01,00
+I (12543) i2c-probe: AKRAW,11627825,46,66,-269,01,00
+I (12643) i2c-probe: AKRAW,11727825,45,67,-266,01,00
+I (12743) i2c-probe: AKRAW,11827825,44,66,-267,01,00
+I (12843) i2c-probe: AKRAW,11927825,44,65,-266,01,00
+I (12943) i2c-probe: AKRAW,12027825,44,67,-265,01,00
+I (13053) i2c-probe: AKRAW,12137825,46,66,-266,01,00
+I (13153) i2c-probe: AKRAW,12237825,44,67,-265,01,00
+I (13253) i2c-probe: AKRAW,12337825,44,67,-270,01,00
+I (13353) i2c-probe: AKRAW,12437825,43,67,-266,01,00
+I (13453) i2c-probe: AKRAW,12537825,45,65,-269,01,00
+I (13553) i2c-probe: AKRAW,12637825,45,67,-267,01,00
+I (13653) i2c-probe: AKRAW,12737825,46,67,-267,01,00
+I (13753) i2c-probe: AKRAW,12837825,46,67,-267,01,00
+I (13853) i2c-probe: AKRAW,12937825,46,66,-266,01,00
+I (13953) i2c-probe: AKRAW,13037825,45,67,-267,01,00
+I (14053) i2c-probe: AKRAW,13137825,46,67,-269,01,00
+I (14153) i2c-probe: AKRAW,13237825,46,66,-266,01,00
+I (14253) i2c-probe: AKRAW,13337825,45,66,-267,01,00
+I (14353) i2c-probe: AKRAW,13437825,44,67,-269,01,00
+I (14463) i2c-probe: AKRAW,13547825,44,68,-268,01,00
+I (14563) i2c-probe: AKRAW,13647825,45,70,-269,01,00
+I (14663) i2c-probe: AKRAW,13747825,45,66,-267,01,00
+I (14763) i2c-probe: AKRAW,13847825,45,68,-268,01,00
+I (14863) i2c-probe: AKRAW,13947825,44,65,-268,01,00
+I (14963) i2c-probe: AKRAW,14047825,45,66,-269,01,00
+I (15063) i2c-probe: AKRAW,14147825,45,67,-266,01,00
+I (15163) i2c-probe: AKRAW,14247825,45,67,-267,01,00
+I (15263) i2c-probe: AKRAW,14347825,46,67,-268,01,00
+I (15363) i2c-probe: AKRAW,14447825,46,66,-267,01,00
+I (15463) i2c-probe: AKRAW,14547825,45,65,-267,01,00
+I (15563) i2c-probe: AKRAW,14647825,45,67,-266,01,00
+I (15663) i2c-probe: AKRAW,14747825,45,68,-268,01,00
+I (15773) i2c-probe: AKRAW,14857825,46,67,-269,01,00
+I (15873) i2c-probe: AKRAW,14957825,44,66,-267,01,00
+I (15973) i2c-probe: AKRAW,15057825,45,68,-266,01,00
+I (16073) i2c-probe: AKRAW,15157825,44,65,-266,01,00
+I (16173) i2c-probe: AKRAW,15257825,45,66,-265,01,00
+I (16273) i2c-probe: AKRAW,15357825,47,69,-269,01,00
+I (16373) i2c-probe: AKRAW,15457825,45,69,-266,01,00
+I (16473) i2c-probe: AKRAW,15557825,44,66,-266,01,00
+I (16573) i2c-probe: AKRAW,15657825,45,68,-265,01,00
+I (16673) i2c-probe: AKRAW,15757825,44,68,-266,01,00
+I (16773) i2c-probe: AKRAW,15857825,47,65,-264,01,00
+I (16873) i2c-probe: AKRAW,15957825,45,67,-266,01,00
+I (16973) i2c-probe: AKRAW,16057825,46,68,-267,01,00
+I (17073) i2c-probe: AKRAW,16157825,46,66,-268,01,00
+I (17183) i2c-probe: AKRAW,16267825,45,68,-267,01,00
+I (17283) i2c-probe: AKRAW,16367825,42,67,-268,01,00
+I (17383) i2c-probe: AKRAW,16467825,45,67,-266,01,00
+I (17483) i2c-probe: AKRAW,16567825,45,66,-266,01,00
+I (17583) i2c-probe: AKRAW,16667825,46,65,-265,01,00
+I (17683) i2c-probe: AKRAW,16767825,45,66,-268,01,00
+I (17783) i2c-probe: AKRAW,16867825,46,67,-267,01,00
+I (17883) i2c-probe: AKRAW,16967825,44,67,-267,01,00
+I (17983) i2c-probe: AKRAW,17067825,46,68,-267,01,00
+I (18083) i2c-probe: AKRAW,17167825,43,67,-268,01,00
+I (18183) i2c-probe: AKRAW,17267825,46,66,-269,01,00
+I (18283) i2c-probe: AKRAW,17367825,46,67,-266,01,00
+I (18383) i2c-probe: AKRAW,17467825,44,68,-265,01,00
+I (18493) i2c-probe: AKRAW,17577825,45,68,-266,01,00
+I (18593) i2c-probe: AKRAW,17677825,45,66,-269,01,00
+I (18693) i2c-probe: AKRAW,17777825,43,67,-266,01,00
+I (18793) i2c-probe: AKRAW,17877825,45,67,-267,01,00
+I (18893) i2c-probe: AKRAW,17977825,45,66,-268,01,00
+I (18993) i2c-probe: AKRAW,18077825,43,68,-268,01,00
+I (19093) i2c-probe: AKRAW,18177825,43,65,-263,01,00
+I (19193) i2c-probe: AKRAW,18277825,45,67,-267,01,00
+I (19293) i2c-probe: AKRAW,18377825,44,67,-268,01,00
+I (19393) i2c-probe: AKRAW,18477825,46,68,-267,01,00
+I (19493) i2c-probe: AKRAW,18577825,45,66,-270,01,00
+I (19593) i2c-probe: AKRAW,18677825,44,67,-268,01,00
+I (19693) i2c-probe: AKRAW,18777825,45,66,-268,01,00
+I (19793) i2c-probe: AKRAW,18877825,44,66,-265,01,00
+I (19903) i2c-probe: AKRAW,18987825,44,66,-266,01,00
+I (20003) i2c-probe: AKRAW,19087825,44,67,-267,01,00
+I (20103) i2c-probe: AKRAW,19187825,45,66,-268,01,00
+I (20203) i2c-probe: AKRAW,19287825,43,65,-267,01,00
+I (20303) i2c-probe: AKRAW,19387825,46,69,-266,01,00
+I (20403) i2c-probe: AKRAW,19487825,45,67,-268,01,00
+I (20503) i2c-probe: AKRAW,19587825,45,67,-270,01,00
+I (20603) i2c-probe: AKRAW,19687825,44,66,-265,01,00
+I (20703) i2c-probe: AKRAW,19787825,45,67,-269,01,00
+I (20803) i2c-probe: AKRAW,19887825,45,66,-267,01,00
+I (20903) i2c-probe: AKRAW,19987825,44,67,-268,01,00
+I (20953) i2c-probe: AK09911 summary duration_us=20004054 samples=199 not_ready=1802 overflow=0 invalid=0 dor=0 result=0 power_down_attempted=1 power_down_result=0 close=ESP_OK
+I (20953) attadipa: Waveshare UI skipped in PURE_RAM mode
+I (21953) attadipa: alive 1s, heap 269420
+I (22953) attadipa: alive 2s, heap 269420
+I (23953) attadipa: alive 3s, heap 269420
+I (24953) attadipa: alive 4s, heap 269420
+
+# 13779 chars
+# no reset banner
+# console spoke

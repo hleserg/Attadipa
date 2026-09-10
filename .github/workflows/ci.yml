@@ -839,7 +839,7 @@ jobs:
           # the bench image is the RAM route *plus* the probe, so this builds
           # what actually gets loaded, and i2c_probe.cpp cannot rot unnoticed.
           # Compile the native AK09911 adapter used by the Waveshare bench.
-          printf '%s\n' 'CONFIG_ATTADIPA_AK09911_PROBE=y' 'CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE=y' 'CONFIG_ATTADIPA_I2C_PROBE_SDA=15' 'CONFIG_ATTADIPA_I2C_PROBE_SCL=14' > "$RUNNER_TEMP/sdkconfig.ak09911"
+          printf '%s\n' 'CONFIG_ATTADIPA_AK09911_PROBE=y' 'CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE=y' 'CONFIG_ATTADIPA_QMI8658_DRAIN_STALE_FIFO=y' 'CONFIG_ATTADIPA_I2C_PROBE_SDA=15' 'CONFIG_ATTADIPA_I2C_PROBE_SCL=14' > "$RUNNER_TEMP/sdkconfig.ak09911"
           idf.py -B build-ram -DSDKCONFIG=build-ram/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe;sdkconfig.i2cprobe;$RUNNER_TEMP/sdkconfig.ak09911" build
           # idf.py keeps sdkconfig in the project directory, so without
           # the line above this silently rebuilds the flash image and
@@ -848,10 +848,34 @@ jobs:
           grep -q "^CONFIG_ATTADIPA_I2C_PROBE=y$" build-ram/sdkconfig
           grep -q "^CONFIG_ATTADIPA_AK09911_PROBE=y$" build-ram/sdkconfig
           grep -q "^CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE=y$" build-ram/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_QMI8658_DRAIN_STALE_FIFO=y$" build-ram/sdkconfig
           grep -q "^CONFIG_ATTADIPA_I2C_PROBE_SDA=15$" build-ram/sdkconfig
           grep -q "^CONFIG_ATTADIPA_I2C_PROBE_SCL=14$" build-ram/sdkconfig
           python3 ../tools/flash/pure_ram_elf_check.py build-ram/attadipa.elf
           python3 ../tools/flash/firmware_elf_check.py --variant pure-ram build-ram/attadipa.elf
+
+      # The paired option is `default n`, so a plain ATTADIPA_AK09911_PROBE
+      # bench image is the AK-only shape -- the one the 2026-09-09 and
+      # 2026-09-11 stationary captures were taken with. Folding the paired
+      # option into the only configuration that sets AK09911_PROBE left that
+      # shape compiled by nothing, which is the silent rot the step above
+      # exists to refuse. Build it too, and assert the paired option is absent
+      # rather than "is not set": Kconfig omits an unmet symbol entirely.
+      - name: Build the AK-only RAM-load variant
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd firmware
+          printf '%s\n' 'CONFIG_ATTADIPA_AK09911_PROBE=y' 'CONFIG_ATTADIPA_I2C_PROBE_SDA=15' 'CONFIG_ATTADIPA_I2C_PROBE_SCL=14' > "$RUNNER_TEMP/sdkconfig.akonly"
+          idf.py -B build-ram-ak -DSDKCONFIG=build-ram-ak/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ramprobe;sdkconfig.i2cprobe;$RUNNER_TEMP/sdkconfig.akonly" build
+          grep -q "^CONFIG_APP_BUILD_TYPE_PURE_RAM_APP=y$" build-ram-ak/sdkconfig
+          grep -q "^CONFIG_ATTADIPA_AK09911_PROBE=y$" build-ram-ak/sdkconfig
+          if grep -q "^CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE=y$" build-ram-ak/sdkconfig; then
+            echo "::error title=The AK-only RAM build is not AK-only::CONFIG_ATTADIPA_QMI8658_PAIRED_PROBE is set, so the 20-second AK-only path is still compiled nowhere"
+            exit 1
+          fi
+          python3 ../tools/flash/pure_ram_elf_check.py build-ram-ak/attadipa.elf
+          python3 ../tools/flash/firmware_elf_check.py --variant pure-ram build-ram-ak/attadipa.elf
 
   required-ci:
     name: Required CI

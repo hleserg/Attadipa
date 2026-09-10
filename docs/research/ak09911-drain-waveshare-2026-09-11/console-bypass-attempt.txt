@@ -1,0 +1,133 @@
+# port /dev/ttyACM2  image firmware/build-drain/attadipa.bin
+Connecting...
+Detecting chip type... ESP32-S3
+# chip ESP32-S3
+RAM boot...
+Downloading 63880 bytes at 3fca2c00... done!
+Downloading 464 bytes at 3fcb2ef0... done!
+Downloading 125908 bytes at 40374000... done!
+Downloading 32 bytes at 50000000... done!
+All segments done, executing at 40375ce4
+# load_ram returned; port still open, watching
+I (920) boot: ESP-IDF v5.5.5-dirty 2nd stage bootloader
+I (920) boot: compile time Sep 11 2026 01:37:05
+I (920) boot: Multicore bootloader
+I (921) boot: Enabling RNG early entropy source...
+I (921) cpu_start: Multicore app
+I (930) cpu_start: Pro cpu start user code
+I (930) cpu_start: cpu freq: 160000000 Hz
+I (930) app_init: Application information:
+I (930) app_init: Project name:     attadipa
+I (930) app_init: App version:      attadipa-claim-writer-local-cod
+I (930) app_init: Compile time:     Sep 11 2026 01:37:06
+I (930) app_init: ELF file SHA256:  000000000...
+I (931) app_init: ESP-IDF:          v5.5.5-dirty
+I (931) efuse_init: Min chip rev:     v0.0
+I (931) efuse_init: Max chip rev:     v0.99 
+I (931) efuse_init: Chip rev:         v0.2
+I (931) heap_init: Initializing. RAM available for dynamic allocation:
+I (932) heap_init: At 3FCB30C0 len 00036650 (217 KiB): RAM
+I (932) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (932) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (932) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (933) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (933) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (934) main_task: Started on CPU0
+I (934) main_task: Calling app_main()
+I (934) attadipa: --- Attadipa boot -------------------------------------------
+I (934) attadipa: Build      : attadipa-claim-writer-local-cod Sep 11 2026, ESP-IDF v5.5.5-dirty
+I (934) attadipa: Reset      : Unknown (ESP-IDF code 11)
+I (934) attadipa: SoC        : esp32s3 rev v0.2, 2 core(s), WiFi BLE
+W (934) attadipa: Flash      : not initialised — this is a pure-RAM image, and the JEDEC id needs the flash driver
+W (934) attadipa: PSRAM      : disabled in this build
+I (934) attadipa: Board      : Waveshare ESP32-S3-Touch-AMOLED-2.06 (waveshare-amoled-206), 410x502 AMOLED, 315 dpi
+W (934) attadipa: Partitions : not readable — a pure-RAM image has no flash driver, and asking anyway is a panic rather than an empty answer
+I (934) attadipa: Heap       : 265240 free, 196608 largest block, 265224 lowest ever (internal)
+I (934) attadipa: -------------------------------------------------------------
+W (934) i2c-probe: probe build — the board identity printed above is the build's, not this unit's
+I (934) i2c-probe: scanning SDA 15 / SCL 14 at 100000 Hz
+I (934) i2c-probe: ACK 0x0d
+I (944) i2c-probe: ACK 0x18
+I (944) i2c-probe: ACK 0x34
+I (944) i2c-probe: ACK 0x40
+I (954) i2c-probe: ACK 0x51
+I (954) i2c-probe: ACK 0x6b
+I (954) i2c-probe: 6 address(es) acknowledged
+I (954) i2c-probe: AXP2101 REG 0x64 = 0x03
+I (964) i2c-probe: AK09911 ID=48 05 ASA=17 17 13 fuse_mode=00 start=0
+W (964) i2c-probe: AK09911 fuse-mode discrepancy: ASA validity is unknown; raw counts only, no adjusted field units
+I (984) i2c-probe: QMI before CTRL1=20 CTRL2=00 CTRL3=00 CTRL5=00 CTRL7=00 CTRL8=00 WTM=00 FIFO=00 steps=0
+I (984) i2c-probe: QMI start=8 temporary_accel=1 frame_bytes=6; raw axes only
+W (984) i2c-probe: QMI drained stale_words=3 (entry still refused)
+I (984) i2c-probe: QMISTALE,0,00,80
+I (984) i2c-probe: QMISTALE,1,00,80
+I (984) i2c-probe: QMISTALE,2,00,80
+I (1024) i2c-probe: QMI after CTRL1=20 CTRL2=00 CTRL3=00 CTRL5=00 CTRL7=00 CTRL8=00 WTM=00 FIFO=00 steps=0
+I (1024) i2c-probe: QMI stop_check step=count_after_reset remaining_valid=1 remaining_words=3 remaining_status=50 mismatch_valid=0 reg=00 expected=00 actual=00
+I (1024) i2c-probe: QMI stop_final valid=1 count_lo=03 status=50 command_valid=1 command=00 command_status=00
+I (1024) i2c-probe: QMI summary samples=0 batches=0 result=8 stop=4 discarded_fifo_words=3 close=ESP_OK
+I (1024) i2c-probe: AK09911 summary duration_us=39799 samples=0 not_ready=0 overflow=0 invalid=0 dor=0 result=0 power_down_attempted=1 power_down_result=0 close=ESP_OK
+I (1024) attadipa: Waveshare UI skipped in PURE_RAM mode
+I (2024) attadipa: alive 1s, heap 264956
+I (3024) attadipa: alive 2s, heap 264956
+I (4024) attadipa: alive 3s, heap 264956
+I (5024) attadipa: alive 4s, heap 264956
+I (6024) attadipa: alive 5s, heap 264956
+I (7024) attadipa: alive 6s, heap 264956
+I (8024) attadipa: alive 7s, heap 264956
+I (9024) attadipa: alive 8s, heap 264956
+I (10024) attadipa: alive 9s, heap 264956
+I (11024) attadipa: alive 10s, heap 264956
+I (12024) attadipa: alive 11s, heap 264956
+I (13024) attadipa: alive 12s, heap 264956
+I (14024) attadipa: alive 13s, heap 264956
+I (15024) attadipa: alive 14s, heap 264956
+I (16024) attadipa: alive 15s, heap 264956
+I (17024) attadipa: alive 16s, heap 264956
+I (18024) attadipa: alive 17s, heap 264956
+I (19024) attadipa: alive 18s, heap 264956
+I (20024) attadipa: alive 19s, heap 264956
+I (21024) attadipa: alive 20s, heap 264956
+I (22024) attadipa: alive 21s, heap 264956
+I (23024) attadipa: alive 22s, heap 264956
+I (24024) attadipa: alive 23s, heap 264956
+I (25024) attadipa: alive 24s, heap 264956
+I (26024) attadipa: alive 25s, heap 264956
+I (27024) attadipa: alive 26s, heap 264956
+I (28024) attadipa: alive 27s, heap 264956
+I (29024) attadipa: alive 28s, heap 264956
+I (30024) attadipa: alive 29s, heap 264956
+I (31024) attadipa: alive 30s, heap 264956
+I (32024) attadipa: alive 31s, heap 264956
+I (33024) attadipa: alive 32s, heap 264956
+I (34024) attadipa: alive 33s, heap 264956
+I (35024) attadipa: alive 34s, heap 264956
+I (36024) attadipa: alive 35s, heap 264956
+I (37024) attadipa: alive 36s, heap 264956
+I (38024) attadipa: alive 37s, heap 264956
+I (39024) attadipa: alive 38s, heap 264956
+I (40024) attadipa: alive 39s, heap 264956
+I (41024) attadipa: alive 40s, heap 264956
+I (42024) attadipa: alive 41s, heap 264956
+I (43024) attadipa: alive 42s, heap 264956
+I (44024) attadipa: alive 43s, heap 264956
+I (45024) attadipa: alive 44s, heap 264956
+I (46024) attadipa: alive 45s, heap 264956
+I (47024) attadipa: alive 46s, heap 264956
+I (48024) attadipa: alive 47s, heap 264956
+I (49024) attadipa: alive 48s, heap 264956
+I (50024) attadipa: alive 49s, heap 264956
+I (51024) attadipa: alive 50s, heap 264956
+I (52024) attadipa: alive 51s, heap 264956
+I (53024) attadipa: alive 52s, heap 264956
+I (54024) attadipa: alive 53s, heap 264956
+I (55024) attadipa: alive 54s, heap 264956
+I (56024) attadipa: alive 55s, heap 264956
+I (57024) attadipa: alive 56s, heap 264956
+I (58024) attadipa: alive 57s, heap 264956
+I (59024) attadipa: alive 58s, heap 264956
+I (60024) attadipa: alive 59s, heap 264956
+
+# 6482 chars
+# no reset banner
+# console spoke
