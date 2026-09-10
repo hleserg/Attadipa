@@ -59,15 +59,34 @@ not visibly disturb the magnetometer over this window.
 `fuse_mode=00`, so `ASA=17 17 13` is of UNKNOWN validity and these are raw
 counts, not adjusted field units. Converting at the part's nominal 0.6 µT/LSB
 puts `|B|` near 167 µT — **ESTIMATED**, roughly 3.3× the geomagnetic magnitude.
-A field that large and that repeatable is consistent with the retrofit report's
-§5 hard-iron hypothesis, but this archive does not establish it: an offset is
-identified by rotating the sensor, and nothing here rotated. USB delivered the
-board's current throughout, so whatever that contributes is inside these numbers.
+
+**The same sensor on the same board read 68.6 counts two days earlier.** The
+2026-09-09 paired capture in [the first archive](../qmi-paired-waveshare-2026-09-09/README.md)
+reports mean raw axes 46.04, -12.91, -49.19 from the same part — `ID=48 05`,
+`ASA=17 17 13`, `fuse_mode=00` — which is `|B|` = 68.6 counts, near 41 µT at the
+same nominal scale and entirely plausible for the geomagnetic field alone.
+Between then and now `|B|` went to 277.9 while X barely moved: 46.04 to 44.85,
+against Y from -12.91 to +66.33 and Z from -49.19 to -266.16.
+
+A rotation preserves the magnitude, so this is not the watch having been turned.
+Some field roughly in the sensor's YZ plane is present now and was not present
+then, and 278 counts is far from the part's saturation, so it is a real reading
+rather than a clipped one. **What produces it is UNKNOWN** and cannot be settled
+without moving things on the bench, which nothing here did. Candidates that were
+not on the bench in the same arrangement on 2026-09-09 include the vibromotors,
+which contain permanent magnets, and the other powered boards.
+
+This retires the hard-iron reading of today's magnitude rather than supporting
+it. A hard-iron offset is fixed to the body that carries the sensor and does not
+change between sessions with the body untouched; this did. Any calibration
+computed from today's field would bake in whatever changed. USB delivered the
+board's current throughout both sessions, so that is not the difference either.
 
 ## What this does not establish
 
 Pose, axis mapping and the direction of any axis relative to the watch body are
-UNKNOWN. No hard-iron or soft-iron calibration was computed, no reference
+UNKNOWN, and so is the source of the field that changed between 2026-09-09 and
+2026-09-11. No hard-iron or soft-iron calibration was computed, no reference
 heading was compared, no tilt compensation exists, and mounting rigidity was not
 measured — the owner confirmed the part is fastened, which is not the same fact.
 This is not an accuracy or a heading result. Motor and vibration influence stay
