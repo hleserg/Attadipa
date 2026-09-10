@@ -1,8 +1,4 @@
 {
-  "ANALYSIS.json": {
-    "bytes": 3245,
-    "sha256": "6ce59a98c967421097dcce95a51ff4a150c023376ed41905039cc25ef3aef062"
-  },
   "INPUT.json": {
     "bytes": 1504,
     "sha256": "819946af881e588eb083c6cc21b8388da7962a8148d8d0eef7021e07032da0a6"

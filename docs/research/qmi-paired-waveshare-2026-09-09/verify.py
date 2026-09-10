@@ -54,8 +54,13 @@ qsum = next(line for line in summary if 'QMI summary' in line)
 assert re.search(rf'samples={len(qxyz)}\b.*batches={len(batches)}\b', qsum), qsum
 cleanup_ok = 'stop=0' in qsum and 'close=ESP_OK' in qsum
 boot = (run / 'NORMAL_BOOT.txt').read_bytes()
+# No default. The three Waveshare archives in this directory restored three
+# different production images -- d5e09572c, 2915714b7 and 4997786e8 -- so a
+# literal baked in here checks a future archive against an unrelated run and
+# reports the coincidence as a result. An archive that does not record what it
+# expected cannot have that checked; say so rather than invent the expectation.
 expected_elf = json.loads((run / 'LOAD_RESULT.json').read_text()).get(
-    'expected_ordinary_elf_prefix', 'd5e09572c')
+    'expected_ordinary_elf_prefix')
 result = {
     'classification': 'MEASURED physical transcript; pose, accuracy and calibration UNKNOWN',
     'console_sha256': hashlib.sha256(raw).hexdigest(),
@@ -76,8 +81,14 @@ result = {
     'qmi_host_timestamp_caveat': 'Host transaction boundaries, not conversion timestamps or exact device frozen durations; dropped conversion count UNKNOWN.',
     'source_summary_lines': summary,
     'normal_boot_spi': b'SPI_FAST_FLASH_BOOT' in boot,
-    'normal_boot_expected_elf': expected_elf.encode('ascii') in boot,
+    'normal_boot_expected_elf': (expected_elf.encode('ascii') in boot) if expected_elf
+        else 'UNKNOWN — this archive records no expected_ordinary_elf_prefix; '
+             'LOAD_RESULT.json asserts expected_production_elf_seen separately, '
+             'and this verifier does not reproduce that assertion',
     'normal_boot_relevant_lines': [line for line in boot.decode('utf-8', errors='replace').splitlines() if any(k in line for k in ('SPI_FAST_FLASH_BOOT', 'ELF file SHA256', 'UI ready', 'ui ready', 'watch-control'))],
 }
+# Not in SHA256.json: this line rewrites the file, so pinning its hash in the
+# manifest asserted above would make the documented reproduce command report the
+# archive as corrupt after any change to what the summary filter collects.
 (run / 'ANALYSIS.json').write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result, indent=2))

@@ -86,7 +86,7 @@
     "I (41048) i2c-probe: AK09911 summary duration_us=40042233 samples=398 not_ready=3603 overflow=0 invalid=0 dor=0 result=0 power_down_attempted=1 power_down_result=0 close=ESP_OK"
   ],
   "normal_boot_spi": true,
-  "normal_boot_expected_elf": true,
+  "normal_boot_expected_elf": "UNKNOWN \u2014 this archive records no expected_ordinary_elf_prefix; LOAD_RESULT.json asserts expected_production_elf_seen separately, and this verifier does not reproduce that assertion",
   "normal_boot_relevant_lines": [
     "rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)",
     "I (772) app_init: ELF file SHA256:  d5e09572c...",
