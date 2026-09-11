@@ -3105,3 +3105,45 @@ ones that heading states.
 - **Not verified:** physical accuracy, absent-cell readings and polling energy.
   **NOT EXECUTED — HARDWARE REQUIRED**. Client receipt freshness is software
   state, not evidence about the node's measurement time or battery percentage.
+
+## QMI FIFO can coexist with the required Non-SyncSample pedometer mode
+
+**VERIFIED — primary documentation:** QMI8658C 13-52-27 Rev A, section 11,
+requires Non-SyncSample for the pedometer; sections 6.2 and 8 permit polled FIFO
+acquisition in that mode. Preserving Pedo_EN while selecting SyncSample does not
+preserve step detection. The exact board pin evidence, register sequence and
+implementation limits are in [QMI8658 FIFO acquisition](QMI8658_FIFO_ACQUISITION.md).
+Concurrent FIFO/step operation on this watch is **NOT EXECUTED — HARDWARE REQUIRED**.
+
+**MEASURED — 2026-09-09:** the temporary-accelerometer raw capture works, but
+FIFO stop verification fails; a later read-only probe still reports three
+pending words after ordinary MCU reboot. See the [stop evidence and limits](qmi-stop-waveshare-2026-09-09/README.md).
+This is not a clean-stop, calibration or heading acceptance result.
+
+**MEASURED — 2026-09-11:** those three pending words are what refused every
+later FIFO entry, and the paired loop abandoned a working AK09911 on that
+refusal (`QMI start=8`, `samples=0`, `AK09911 samples=0`). With an opt-in
+bounded drain on entry the same board returned 3814 QMI samples in 3114 batches
+and 398 AK09911 samples over 40.047958 s, `overflow=0 invalid=0 dor=0`. `stop=4`
+is still produced and still UNKNOWN. The captures, the three image identities
+behind them, the first stationary magnetometer readings and the **retraction**
+of the hard-iron estimate taken from them are in
+[the drain and AK09911 session](ak09911-drain-waveshare-2026-09-11/README.md).
+No compass, tilt, calibration or step-count PASS is claimed.
+
+**MEASURED — 2026-09-11, the head on the same board:** entering a FIFO mode from
+bypass **empties the QMI8658's queue**. Two cold loads both print
+`entry_fifo_words=3` and then `QMI drained stale_words=0 (entry succeeded)`: the
+three words the previous run left are waiting, the drain writes `FIFO_CTRL = 01`
+and issues `REQ_FIFO`, and the count it reads back is zero, with nothing read
+from `0x17`. A payload sized from the entry count therefore reads `0x8000`
+filler, which is what the three `00 80` words of the previous image's archive
+are — filler, not residue. The paired acquisition reproduces alongside it (3809
+and 3812 QMI samples, 398 AK09911 samples each over 40.0477 s, `result=0`,
+`overflow=0 invalid=0 dor=0`) and the stationary magnetometer agreement is now
+six cold loads, within 1.30 counts per axis. `stop=4` with `remaining_words=3`
+is unchanged and still UNKNOWN. A drain that carries words *out* is still
+**NOT EXECUTED — HARDWARE REQUIRED**: this part freezes zero every time. The two
+streams, the manifest and the restored production boot are in
+[the head session](qmi-head-waveshare-2026-09-11/README.md). This revives no
+calibration number and claims no compass, tilt or step-count PASS.

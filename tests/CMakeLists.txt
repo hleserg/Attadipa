@@ -729,3 +729,7 @@ set_tests_properties(ui_tokens PROPERTIES LABELS design)
 add_executable(test_ak09911 test_ak09911.cpp)
 target_include_directories(test_ak09911 PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 add_test(NAME ak09911 COMMAND test_ak09911)
+
+add_executable(test_qmi8658_fifo test_qmi8658_fifo.cpp)
+target_include_directories(test_qmi8658_fifo PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME qmi8658_fifo COMMAND test_qmi8658_fifo)

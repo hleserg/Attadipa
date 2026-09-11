@@ -1,0 +1,22 @@
+{
+  "INPUT.json": {
+    "bytes": 1575,
+    "sha256": "7ca2f25575baee78e61e3e6979c7313f59021479147c35acbc4bed48a8a5fa5e"
+  },
+  "NORMAL_BOOT.txt": {
+    "bytes": 6853,
+    "sha256": "5352fe52bf346ea3cabdb4889f10019bc4c19c3fc2a1d88de52cca4491c92d0e"
+  },
+  "console.txt": {
+    "bytes": 418765,
+    "sha256": "5b891438b79c2c6078e0e044ebc20e2cf9b2922a9e5e05404aa124b8fae1bc1a"
+  },
+  "NORMAL_BOOT_CONTROL.txt": {
+    "bytes": 76,
+    "sha256": "197269bc08494d7816316a51a742da6b4668753a6199a6bbf00af25980d8e26e"
+  },
+  "LOAD_RESULT.json": {
+    "bytes": 1097,
+    "sha256": "69bb7a9441c72b2fa3ad3798fb947337ab3a54176a6a8e643b718b970e353882"
+  }
+}

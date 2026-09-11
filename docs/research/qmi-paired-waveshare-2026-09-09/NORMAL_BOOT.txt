@@ -1,0 +1,117 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40048d14
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x16a8
+load:0x403c8700,len:0xe88
+load:0x403cb700,len:0x3184
+entry 0x403c8948
+I (24) boot: ESP-IDF v5.5.5 2nd stage bootloader
+I (24) boot: compile time Sep  9 2026 09:35:24
+I (25) boot: Multicore bootloader
+I (25) boot: chip revision: v0.2
+I (25) boot: efuse block revision: v1.4
+I (25) qio_mode: Enabling default flash chip QIO
+I (25) boot.esp32s3: Boot SPI Speed : 80MHz
+I (26) boot.esp32s3: SPI Mode       : QIO
+I (26) boot.esp32s3: SPI Flash Size : 16MB
+I (26) boot: Enabling RNG early entropy source...
+I (26) boot: Partition Table:
+I (26) boot: ## Label            Usage          Type ST Offset   Length
+I (27) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (27) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (27) boot:  2 factory          factory app      00 00 00010000 00400000
+I (28) boot: End of partition table
+I (28) esp_image: segment 0: paddr=00010020 vaddr=3c0b0020 size=eb030h (962608) map
+I (177) esp_image: segment 1: paddr=000fb058 vaddr=3fca0000 size=04a58h ( 19032) load
+I (181) esp_image: segment 2: paddr=000ffab8 vaddr=40374000 size=00560h (  1376) load
+I (182) esp_image: segment 3: paddr=00100020 vaddr=42000020 size=aa9e0h (698848) map
+I (291) esp_image: segment 4: paddr=001aaa08 vaddr=40374560 size=1b998h (113048) load
+I (313) esp_image: segment 5: paddr=001c63a8 vaddr=50000000 size=00020h (    32) load
+I (314) esp_image: segment 6: paddr=001c63d0 vaddr=600fe000 size=00058h (    88) load
+I (325) boot: Loaded app from partition at offset 0x10000
+I (325) boot: Disabling RNG early entropy source...
+I (326) octal_psram: vendor id    : 0x0d (AP)
+I (326) octal_psram: dev id       : 0x02 (generation 3)
+I (326) octal_psram: density      : 0x03 (64 Mbit)
+I (327) octal_psram: good-die     : 0x01 (Pass)
+I (327) octal_psram: Latency      : 0x01 (Fixed)
+I (327) octal_psram: VCC          : 0x01 (3V)
+I (327) octal_psram: SRF          : 0x01 (Fast Refresh)
+I (328) octal_psram: BurstType    : 0x01 (Hybrid Wrap)
+I (328) octal_psram: BurstLen     : 0x01 (32 Byte)
+I (328) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (328) octal_psram: DriveStrength: 0x00 (1/1)
+I (328) MSPI Timing: Enter psram timing tuning
+I (329) esp_psram: Found 8MB PSRAM device
+I (329) esp_psram: Speed: 80MHz
+I (330) cpu_start: Multicore app
+I (763) esp_psram: SPI SRAM memory test OK
+I (771) cpu_start: Pro cpu start user code
+I (771) cpu_start: cpu freq: 160000000 Hz
+I (771) app_init: Application information:
+I (772) app_init: Project name:     attadipa
+I (772) app_init: App version:      unknown
+I (772) app_init: Compile time:     Sep  9 2026 09:35:15
+I (772) app_init: ELF file SHA256:  d5e09572c...
+I (772) app_init: ESP-IDF:          v5.5.5
+I (772) efuse_init: Min chip rev:     v0.0
+I (773) efuse_init: Max chip rev:     v0.99 
+I (773) efuse_init: Chip rev:         v0.2
+I (773) heap_init: Initializing. RAM available for dynamic allocation:
+I (773) heap_init: At 3FCB7208 len 00032508 (201 KiB): RAM
+I (773) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (773) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (774) heap_init: At 600FE058 len 00001F90 (7 KiB): RTCRAM
+I (774) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator
+I (775) spi_flash: detected chip: gd
+I (775) spi_flash: flash io: qio
+W (775) spi_flash: Detected size(32768k) larger than the size in the binary image header(16384k). Using the size in the binary image header.
+I (776) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (776) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (778) main_task: Started on CPU0
+I (778) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (778) main_task: Calling app_main()
+I (778) attadipa: --- Attadipa boot -------------------------------------------
+I (778) attadipa: Build      : unknown Sep  9 2026, ESP-IDF v5.5.5
+I (778) attadipa: Reset      : Unknown (ESP-IDF code 11)
+I (778) attadipa: SoC        : esp32s3 rev v0.2, 2 core(s), WiFi BLE
+I (778) attadipa: Flash      : JEDEC c8 40 19, 32 MB on the part, 16MB declared by this build
+I (778) attadipa: PSRAM      : 8 MB, octal SPI, initialised
+I (778) attadipa: Board      : Waveshare ESP32-S3-Touch-AMOLED-2.06 (waveshare-amoled-206), 410x502 AMOLED, 315 dpi
+I (778) attadipa: Partition  : nvs      type 1/2   0x009000 + 0x006000
+I (778) attadipa: Partition  : phy_init type 1/1   0x00f000 + 0x001000
+I (778) attadipa: Partition  : factory  type 0/0   0x010000 + 0x400000
+I (778) attadipa: Heap       : 240391 free, 139264 largest block, 208360 lowest ever (internal)
+I (778) attadipa: PSRAM heap : 8386192 free, 8257536 largest block
+I (778) attadipa: -------------------------------------------------------------
+I (788) board-power: AXP2101: DC enable 0x0f, LDO enable 0xff
+I (808) waveshare: restored provisional UTC offset +180 minutes
+I (808) waveshare: PCF85063: unavailable
+I (808) co5300: version: 2.1.0
+I (808) co5300_spi: LCD panel create success, version: 2.1.0
+I (1118) co5300_spi: set brightness to 0% (hardware value: 0)
+I (1118) LVGL: Starting LVGL task
+I (1118) waveshare: CO5300: QSPI 40 MHz, RGB565 swap yes, brightness pending
+I (1138) waveshare: FT3168: I2C 0x38, reset GPIO 9, interrupt GPIO 38
+I (1208) waveshare: production image: no USB watch-control endpoint
+I (1208) physical-input: physical input ready: touch, GPIO0 and the AXP2101 power key
+I (1208) co5300_spi: set brightness to 5% (hardware value: 12)
+I (1208) waveshare: UI ready: AMOLED brightness 5%, touch present, RTC present
+I (1208) attadipa_mesh_ble: no MeshCore node pinned; the first node that answers will be adopted as this watch's node
+I (1208) BLE_INIT: BT controller compile version [51d9dfd]
+I (1208) BLE_INIT: Using main XTAL as clock source
+I (1208) BLE_INIT: Feature Config, ADV:1, BLE_50:1, DTM:1, SCAN:1, CCA:0, SMP:1, CONNECT:1
+I (1208) BLE_INIT: Bluetooth MAC: 28:84:85:b2:18:a6
+I (1208) phy_init: phy_version 712,87e8c20e,Apr 13 2026,18:51:10
+I (1278) attadipa_mesh_ble: no MeshCore passkey stored; BLE stays unconfigured
+I (1278) attadipa_mesh_ble: Position   : pos UNKNOWN,UNKNOWN src Unknown fix Unknown validity NoFix age_us UNKNOWN age_src UNKNOWN recv unknown avail unreachable trust NotEvaluated node UNKNOWN
+I (1278) attadipa: Link model : Attached (MeshCore companion over BLE)
+I (2278) attadipa: alive 1s, heap 118119
+I (3278) attadipa: alive 2s, heap 118119
+I (4278) attadipa: alive 3s, heap 118119
+I (5278) attadipa: alive 4s, heap 118119
+I (6278) attadipa: alive 5s, heap 118119
+I (7278) attadipa: alive 6s, heap 118119

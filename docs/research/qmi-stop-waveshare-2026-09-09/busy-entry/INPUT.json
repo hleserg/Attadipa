@@ -1,0 +1,28 @@
+{
+  "source_commit": "f4dcfbb4cb2c0df07e5d3ae4e8712cf0ca12b6e1",
+  "source_clean_at_freeze": true,
+  "source_sha256": {
+    "firmware/main/qmi8658_fifo.h": "604d1b27a356f5d762f599414e4f138555bd56f67541ee1fae94407b3babff04",
+    "firmware/main/i2c_probe.cpp": "e1c62c920fa5fdecc49f8d35d938ca7a7854a50b7ad82751c7720cdb72653d3d",
+    "firmware/main/i2c_register_device.h": "415447bfb36a74dd09cf2920d3b9c537e26947ac9274ea7de4cc491415c38479",
+    "firmware/main/ak09911.h": "cc952e932a9ac113ad10d0ba56f890a10c683d4a6f5aa15a421185313b24173a",
+    "firmware/main/Kconfig.projbuild": "9ea6099259f8dcba9c6cbabc015ad704626784efa39afe5ecdab0b8dddbeb53c",
+    "tools/flash/ramhold.py": "809120281bb5207b0904219669b75a3d512253a9a6b389bf9436958d361ae36d"
+  },
+  "files": {
+    "sdkconfig.txt": {
+      "bytes": 82242,
+      "sha256": "38c4d8f514b79c10db3dfc2a1b8bc621e7eaf54711461830c5ff522c2b23b31c"
+    },
+    "attadipa.elf": {
+      "bytes": 3264948,
+      "sha256": "3a01e2394cecbb20a6734f6aa6ac75a259118b163191d0ffd000759b03f0d2f8"
+    },
+    "attadipa.bin": {
+      "bytes": 189840,
+      "sha256": "b55c813a477d0ef721911877f44d5582fd3fd7a53fa1e8e76d3e31046d462ccb"
+    }
+  },
+  "status": "BUILT AND CHECKED; NOT EXECUTED \u2014 HARDWARE REQUIRED",
+  "validation": "Strict production-sequence host test:0 failures; ESP-IDF paired RAM build, pure_ram_elf_check, firmware_elf_check and six configuration assertions passed. Build console not archived as a complete transcript."
+}

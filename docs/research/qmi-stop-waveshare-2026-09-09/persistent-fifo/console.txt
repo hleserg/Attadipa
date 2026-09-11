@@ -1,0 +1,114 @@
+I (916) boot: ESP-IDF v5.5.5-dirty 2nd stage bootloader
+I (917) boot: compile time Sep  9 2026 12:47:49
+I (917) boot: Multicore bootloader
+I (917) boot: Enabling RNG early entropy source...
+I (917) cpu_start: Multicore app
+I (926) cpu_start: Pro cpu start user code
+I (926) cpu_start: cpu freq: 160000000 Hz
+I (926) app_init: Application information:
+I (926) app_init: Project name:     attadipa
+I (926) app_init: App version:      attadipa-claim-writer-local-cod
+I (927) app_init: Compile time:     Sep  9 2026 12:47:49
+I (927) app_init: ELF file SHA256:  000000000...
+I (927) app_init: ESP-IDF:          v5.5.5-dirty
+I (927) efuse_init: Min chip rev:     v0.0
+I (927) efuse_init: Max chip rev:     v0.99 
+I (927) efuse_init: Chip rev:         v0.2
+I (928) heap_init: Initializing. RAM available for dynamic allocation:
+I (928) heap_init: At 3FCB2F40 len 000367D0 (217 KiB): RAM
+I (928) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (928) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM
+I (928) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (929) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (929) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (930) main_task: Started on CPU0
+I (930) main_task: Calling app_main()
+I (930) attadipa: --- Attadipa boot -------------------------------------------
+I (930) attadipa: Build      : attadipa-claim-writer-local-cod Sep  9 2026, ESP-IDF v5.5.5-dirty
+I (930) attadipa: Reset      : Unknown (ESP-IDF code 11)
+I (930) attadipa: SoC        : esp32s3 rev v0.2, 2 core(s), WiFi BLE
+W (930) attadipa: Flash      : not initialised — this is a pure-RAM image, and the JEDEC id needs the flash driver
+W (930) attadipa: PSRAM      : disabled in this build
+I (930) attadipa: Board      : Waveshare ESP32-S3-Touch-AMOLED-2.06 (waveshare-amoled-206), 410x502 AMOLED, 315 dpi
+W (930) attadipa: Partitions : not readable — a pure-RAM image has no flash driver, and asking anyway is a panic rather than an empty answer
+I (930) attadipa: Heap       : 265624 free, 196608 largest block, 265608 lowest ever (internal)
+I (930) attadipa: -------------------------------------------------------------
+W (930) i2c-probe: probe build — the board identity printed above is the build's, not this unit's
+I (930) i2c-probe: scanning SDA 15 / SCL 14 at 100000 Hz
+I (930) i2c-probe: ACK 0x0d
+I (940) i2c-probe: ACK 0x18
+I (940) i2c-probe: ACK 0x34
+I (940) i2c-probe: ACK 0x40
+I (950) i2c-probe: ACK 0x51
+I (950) i2c-probe: ACK 0x6b
+I (950) i2c-probe: 6 address(es) acknowledged
+I (950) i2c-probe: AXP2101 REG 0x64 = 0x03
+I (960) i2c-probe: AK09911 ID=48 05 ASA=17 17 13 fuse_mode=00 start=0
+W (960) i2c-probe: AK09911 fuse-mode discrepancy: ASA validity is unknown; raw counts only, no adjusted field units
+I (970) i2c-probe: QMI before CTRL1=20 CTRL2=00 CTRL3=00 CTRL5=00 CTRL7=00 CTRL8=00 WTM=00 FIFO=00 steps=0
+I (970) i2c-probe: QMI start=8 temporary_accel=0 frame_bytes=6; raw axes only
+E (980) i2c-probe: QMI after state incomplete
+I (980) i2c-probe: QMI stop_check step=none remaining_valid=0 remaining_words=0 remaining_status=00 mismatch_valid=0 reg=00 expected=00 actual=00
+I (980) i2c-probe: QMI stop_final valid=1 count_lo=03 status=50 command_valid=1 command=00 command_status=00
+I (980) i2c-probe: QMI summary samples=0 batches=0 result=8 stop=0 discarded_fifo_words=0 close=ESP_OK
+I (980) i2c-probe: AK09911 summary duration_us=5904 samples=0 not_ready=0 overflow=0 invalid=0 dor=0 result=0 power_down_attempted=1 power_down_result=0 close=ESP_OK
+I (980) attadipa: Waveshare UI skipped in PURE_RAM mode
+I (1980) attadipa: alive 1s, heap 265340
+I (2980) attadipa: alive 2s, heap 265340
+I (3980) attadipa: alive 3s, heap 265340
+I (4980) attadipa: alive 4s, heap 265340
+I (5980) attadipa: alive 5s, heap 265340
+I (6980) attadipa: alive 6s, heap 265340
+I (7980) attadipa: alive 7s, heap 265340
+I (8980) attadipa: alive 8s, heap 265340
+I (9980) attadipa: alive 9s, heap 265340
+I (10980) attadipa: alive 10s, heap 265340
+I (11980) attadipa: alive 11s, heap 265340
+I (12980) attadipa: alive 12s, heap 265340
+I (13980) attadipa: alive 13s, heap 265340
+I (14980) attadipa: alive 14s, heap 265340
+I (15980) attadipa: alive 15s, heap 265340
+I (16980) attadipa: alive 16s, heap 265340
+I (17980) attadipa: alive 17s, heap 265340
+I (18980) attadipa: alive 18s, heap 265340
+I (19980) attadipa: alive 19s, heap 265340
+I (20980) attadipa: alive 20s, heap 265340
+I (21980) attadipa: alive 21s, heap 265340
+I (22980) attadipa: alive 22s, heap 265340
+I (23980) attadipa: alive 23s, heap 265340
+I (24980) attadipa: alive 24s, heap 265340
+I (25980) attadipa: alive 25s, heap 265340
+I (26980) attadipa: alive 26s, heap 265340
+I (27980) attadipa: alive 27s, heap 265340
+I (28980) attadipa: alive 28s, heap 265340
+I (29980) attadipa: alive 29s, heap 265340
+I (30980) attadipa: alive 30s, heap 265340
+I (31980) attadipa: alive 31s, heap 265340
+I (32980) attadipa: alive 32s, heap 265340
+I (33980) attadipa: alive 33s, heap 265340
+I (34980) attadipa: alive 34s, heap 265340
+I (35980) attadipa: alive 35s, heap 265340
+I (36980) attadipa: alive 36s, heap 265340
+I (37980) attadipa: alive 37s, heap 265340
+I (38980) attadipa: alive 38s, heap 265340
+I (39980) attadipa: alive 39s, heap 265340
+I (40980) attadipa: alive 40s, heap 265340
+I (41980) attadipa: alive 41s, heap 265340
+I (42980) attadipa: alive 42s, heap 265340
+I (43980) attadipa: alive 43s, heap 265340
+I (44980) attadipa: alive 44s, heap 265340
+I (45980) attadipa: alive 45s, heap 265340
+I (46980) attadipa: alive 46s, heap 265340
+I (47980) attadipa: alive 47s, heap 265340
+I (48980) attadipa: alive 48s, heap 265340
+I (49980) attadipa: alive 49s, heap 265340
+I (50980) attadipa: alive 50s, heap 265340
+I (51980) attadipa: alive 51s, heap 265340
+I (52980) attadipa: alive 52s, heap 265340
+I (53980) attadipa: alive 53s, heap 265340
+I (54980) attadipa: alive 54s, heap 265340
+I (55980) attadipa: alive 55s, heap 265340
+I (56980) attadipa: alive 56s, heap 265340
+I (57980) attadipa: alive 57s, heap 265340
+I (58980) attadipa: alive 58s, heap 265340
+I (59980) attadipa: alive 59s, heap 265340
