@@ -1156,7 +1156,7 @@
       min-height: 0;
       gap: 8px;
     }
-    .screen .instrument svg {
+    .screen .instrument svg.dial {
       height: min(100%, 180px);
       width: auto;
       aspect-ratio: 1;
@@ -1164,7 +1164,11 @@
       background: var(--bg);
       border-radius: 50%;
     }
-    .instrument svg * { vector-effect: non-scaling-stroke; }
+    /* The 22px rule above is for icons and ties with a plain
+       `.instrument svg` on specificity, so the dial used to keep its size
+       only by being written further down the file. The class wins on
+       specificity, which survives the rules being reordered. */
+    .instrument svg.dial * { vector-effect: non-scaling-stroke; }
     .instrument text {
       fill: var(--text);
       stroke: none;
@@ -1818,6 +1822,7 @@
       staleHeading: "Компас: данные устарели", uncalibrated: "Компас не откалиброван",
       simulation: "Симуляция", heading: "Ориентация часов", missing: "Недоступна",
       age: "Получено часами", reason: "Режим",
+      markUncal: "не откалибровано", markStale: "устарело · 2 мин",
     } : {
       target: "Ridge node", fromNorth: "North-up", fromWatch: "Watch-relative",
       bearingNorth: "057° NE", received: "Received 3 s ago", old: "Old data · 2 min",
@@ -1829,7 +1834,19 @@
       staleHeading: "Compass data stale", uncalibrated: "Compass uncalibrated",
       simulation: "Simulation", heading: "Watch heading", missing: "Unavailable",
       age: "Received by watch", reason: "Mode",
+      markUncal: "uncalibrated", markStale: "2 min old",
     };
+    // ADR-0009 §5 — "| Heading `Uncalibrated` | the value, marked, plus the
+    // calibration entry point |" — and §6, `docs/adr/0009-heading.md:162` —
+    // "never silently withholds the number, because Diagnostics needs it."
+    // An uncalibrated compass has a reading; what it lacks is a bound on its
+    // error. So the mark travels WITH the number rather than replacing it:
+    // withholding it is the one thing that cannot say whether the compass is
+    // off by two degrees or by ninety.
+    const headingAngle = (state) =>
+      ["head-up", "uncalibrated", "compass-stale"].includes(state) ? "045°" : null;
+    const headingMark = (state, c) =>
+      state === "uncalibrated" ? c.markUncal : state === "compass-stale" ? c.markStale : "";
     function navStudy(view) {
       const c = navCopy();
       // Scenario presentation only. Native gates remain in format_navigation().
@@ -1845,10 +1862,14 @@
       const drawn = (bearingFromNorth - heading + 360) % 360;
       const bearingText = wrist ? `${String(drawn).padStart(3, "0")}°` : c.bearingNorth;
       const reason = view.state === "compass-stale" ? c.staleHeading : view.state === "uncalibrated" ? c.uncalibrated : view.state === "stale" ? c.old : wrist ? c.received : c.orient;
+      // The condition already names which mark it is, so the glance screen
+      // appends the angle alone. The bearing beside the mode carries its own
+      // label, which is what keeps two three-digit numbers apart here.
+      const glanceAngle = ["uncalibrated", "compass-stale"].includes(view.state) ? headingAngle(view.state) : null;
       const mark = !present ? `<text x="90" y="96" text-anchor="middle">—</text>` : wrist
         ? `<g class="wrist-arrow" transform="rotate(${drawn} 90 90)"><path d="M90 49 109 114 90 102 71 114Z" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/></g>`
         : `<g class="bearing-mark" transform="rotate(${drawn} 90 90)"><path d="M90 90V43" stroke="var(--text)" stroke-dasharray="2 6"/><circle cx="90" cy="35" r="9" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/><circle cx="90" cy="90" r="4" fill="var(--text)"/></g>`;
-      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? bearingText : ""}</span></div><div class="nav-condition"><span>${present ? reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${view.state === "uncalibrated" ? action(c.calibrate, "nav-calibrate") : ""}${action(t("details"), "nav-details")}</div></div>`;
+      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg class="dial" viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? bearingText : ""}</span></div><div class="nav-condition"><span>${present ? glanceAngle ? `${reason} · ${glanceAngle}` : reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${view.state === "uncalibrated" ? action(c.calibrate, "nav-calibrate") : ""}${action(t("details"), "nav-details")}</div></div>`;
     }
     function navStudyCalibrate() {
       const c = navCopy();
@@ -1858,7 +1879,7 @@
       const c = navCopy();
       const present = !["no-fix", "node-unknown"].includes(state);
       const reason = state === "compass-stale" ? c.staleHeading : state === "uncalibrated" ? c.uncalibrated : state === "head-up" ? c.fromWatch : c.fromNorth;
-      return `<div class="content details nav-study-details"><h3 class="title">${c.simulation}</h3><dl><dt>${c.reason}</dt><dd>${present ? reason : c.missing}</dd><dt>${c.heading}</dt><dd>${state === "head-up" ? "045°" : "—"}</dd><dt>${c.age}</dt><dd>${present ? state === "stale" ? t("staleAge") : t("freshAge") : "—"}</dd></dl>${present ? `<p class="sub">${c.unconfirmed}</p>` : ""}<div class="actions">${action(t("back"), "nav-return")}</div></div>`;
+      return `<div class="content details nav-study-details"><h3 class="title">${c.simulation}</h3><dl><dt>${c.reason}</dt><dd>${present ? reason : c.missing}</dd><dt>${c.heading}</dt><dd>${headingAngle(state) ? `${headingAngle(state)}${headingMark(state, c) ? ` · ${headingMark(state, c)}` : ""}` : "—"}</dd><dt>${c.age}</dt><dd>${present ? state === "stale" ? t("staleAge") : t("freshAge") : "—"}</dd></dl>${present ? `<p class="sub">${c.unconfirmed}</p>` : ""}<div class="actions">${action(t("back"), "nav-return")}</div></div>`;
     }
     function mesh(view) {
       if (view.state === "absent")
@@ -1977,6 +1998,34 @@
       if (!scale) return;
       const caption = parseFloat(getComputedStyle(screen).getPropertyValue("--caption"));
       dial.style.setProperty("--dial-label", `${caption / scale}px`);
+      // Fitting the SIZE moves the GLYPH. --caption converted into user units is
+      // about 31 at 240x240, and a cap of that height on a baseline fixed at 27
+      // puts the top of the letter above the ring it sits inside -- so the ring
+      // is painted straight through it, locally flat, about 40% down.
+      //
+      // The baseline is what has to move, and it moves by the measured ink
+      // rather than by a cap-height constant: getBBox is the inked box in user
+      // units and shifts 1:1 with y, so no assumption about a font is needed.
+      // The counter-rotation origin follows the baseline, because it is the
+      // glyph's own anchor -- rotating about the old one would displace it.
+      const label = dial.querySelector("text");
+      const ring = dial.querySelector("circle");
+      if (!label || !ring) return;
+      const spin = label.getAttribute("transform")?.match(/rotate\(\s*(-?[\d.]+)/)?.[1];
+      const place = (y) => {
+        label.setAttribute("y", y);
+        if (spin !== undefined) label.setAttribute("transform", `rotate(${spin} 90 ${y})`);
+      };
+      place(27);
+      const ringStyle = getComputedStyle(ring);
+      // A non-scaling stroke is declared in user units and painted in CSS
+      // pixels, so in the user-unit space the letter lives in it is that many
+      // divided by the scale -- 4.1 units at 240x240, not 1.6.
+      const band = parseFloat(ringStyle.strokeWidth)
+        * (ringStyle.vectorEffect === "non-scaling-stroke" ? 1 / scale : 1);
+      const clear = ring.cy.baseVal.value - ring.r.baseVal.value + band / 2 + 1;
+      const box = label.getBBox();
+      if (box.height) place(Number((27 + (clear - box.y)).toFixed(2)));
     }
     function render() {
       document.querySelector("#motion").disabled = reducedMotion.matches;
