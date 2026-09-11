@@ -6,7 +6,37 @@ repository's own metadata. This file is the record: what the state was, what
 changed, and — the part that matters more — the claims that were **not** made
 because they are not true yet.
 
-## 0. The constraint this whole document works under
+## Current publication — 9 September 2026
+
+Issue #519 corrects the product framing shared by the landing page and both
+READMEs: Attadipa is an open operating system for wearable devices and personal
+mesh nodes. Watches are its first embodiment, not its scope boundary.
+
+The public page introduces the OS to nontechnical visitors. The primary action
+continues the on-page story; Telegram is the direct participation path and
+GitHub is optional for developers. Review tools are not public onboarding.
+The meaning of the name appears near the introduction. Interface artwork has
+a short design-preview caption; current development is described in one section
+rather than repeated acceptance caveats.
+
+Static head strings, English JSON-LD and EN/RU runtime metadata describe the
+same OS positioning. The canonical URL and English graph policy below remain.
+The existing local variable Nunito Sans font is declared with its full weight
+range and font-display swap. No external font service, third-party script,
+analytics or deployment system was added. Without scripting, both languages
+remain readable and the inactive language controls are hidden.
+
+The unchanged PNG copies under docs/assets retain their canonical provenance
+in [pics/README.md](../../pics/README.md#browser-design-study-captures).
+[The site media note](MEDIA.md) records their copying rule. The landing uses
+large watch-interface previews; the small-screen comparison and review links
+have been removed from the public story.
+
+Sections 0–6 below preserve the **23 August audit**, not current wording,
+navigation or readiness. The site checks in section 7 still exercise metadata,
+asset facts and visibility fallbacks.
+
+## 0. The constraint the August audit worked under
 
 Attadipa is at early implementation. Six libraries and a simulator build and
 pass 24 host tests; **the firmware has not run on a board yet — only bench
@@ -373,9 +403,9 @@ Worth recording so nobody "fixes" it:
   pull request that never opened this file. A check that goes red for a true
   statement gets edited until it stops. What this section claims is that the
   page ships a small amount of first-party code; the bound is that claim, and
-  crossing it is a finding rather than a rounding. No web fonts are loaded at all — the type stack
-  is `"Nunito Sans", "Avenir Next", system-ui, …`, so there is no render-blocking
-  font fetch and no CLS from a swap. No third-party scripts, no analytics, no
+  crossing it is a finding rather than a rounding. At audit time no web fonts were loaded — the type stack
+  was `"Nunito Sans", "Avenir Next", system-ui, …`. The September refresh loads
+  the existing local Nunito font with swap, as recorded above. No third-party scripts, no analytics, no
   cookie banner.
 - **Theme.** `color-scheme: light dark` and a `theme-color` are both declared.
 

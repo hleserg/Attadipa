@@ -1,105 +1,105 @@
 <p align="center">
-  <img src="pics/atta-dipa-banner.png" width="820"
-       alt="Atta-dipa — Lumar the firefly and the motto Independent by design">
+  <img src="pics/atta-dipa-banner.png" width="820" alt="Atta-dipa · Independent by design">
 </p>
 
-<p align="center">
-  <b>English</b> · <a href="README.ru.md">Русский</a> · <a href="https://hleserg.github.io/Attadipa/">Project page</a>
-</p>
+<p align="center"><b>English</b> · <a href="README.ru.md">Русский</a> · <a href="https://hleserg.github.io/Attadipa/">Meet the project</a></p>
 
-<h1 align="center">An open watch. A world to explore.</h1>
+<h1 align="center">Atta-dipa</h1>
+<p align="center"><b>An open operating system for wearable devices.</b></p>
+<p align="center">Atta-dipa is building a shared foundation for watches, personal mesh nodes and<br>the applications people want to carry with them. Independent by design.</p>
+<p align="center"><sub><i>Attadīpa</i> means relying on oneself. <a href="docs/brand/naming.md">About the name</a>.</sub></p>
+<p align="center"><a href="#the-os-and-its-architecture">Architecture</a> · <a href="#run-it-on-your-desk">Run the simulator</a> · <a href="#what-works-today">Development status</a> · <a href="#help-build-it">Contribute</a></p>
 
-<p align="center">
-  Attadipa is an open-source wearable project for keeping time,<br>
-  finding direction and staying in touch beyond cellular coverage.<br>
-  Built around local operation, a beautiful interface, and hardware you can understand.
-</p>
+## One OS. Many possibilities.
 
-<p align="center">
-  <a href="#try-the-design"><b>Explore the design</b></a> ·
-  <a href="#what-works-today">What works today</a> ·
-  <a href="#help-build-it">Help build it</a>
-</p>
+A device should be able to grow beyond the functions its manufacturer shipped.
+Our ambition is an open common standard for wearable devices and personal
+mesh nodes: a platform where people can build applications, bring different
+hardware and share what they make.
 
-**Early development, not a finished consumer watch.** Some functions have run
-on physical hardware; others are software or design studies. Attadipa is not
-ready to be relied on for safety-critical navigation.
+**Watches are the first embodiment, not the product's boundary.** Time,
+messaging and navigation are the first applications. Maps, a recorder,
+optional phone pairing and personal tools are directions for the ecosystem
+we want to build.
 
-## A little light on your wrist
-
-Painted landscapes, a warm orange accent, large readable numbers and a few
-fireflies. The aim is an instrument you can read in a glance — and enjoy wearing.
-
-**Browser design study · sample data · not firmware screenshots.** These
-captures show the approved visual direction, not proof that a feature works
-on a watch. [Capture source and reproduction notes](pics/README.md#browser-design-study-captures).
-
-<p align="center">
-  <img src="pics/design-clock-night-en.png" width="240" alt="Browser study: night clock, large white 10:09 numerals above a painted meadow">
-  <img src="pics/design-navigation-night-en.png" width="240" alt="Browser study: navigation with a luminous direction trail, 2.1 km and an explicit position-age note">
-  <img src="pics/design-mesh-night-en.png" width="240" alt="Browser study: Mesh connection and a received message over a night landscape">
-</p>
-
-<p align="center"><sub>Clock · Direction · Mesh. Original image size: 410 × 502; displayed smaller here.</sub></p>
+- **Independent operation.** A capability that can run locally should not require a phone, a cloud account or a persistent Internet connection.
+- **Applications beyond the original set.** New ideas should build on shared services, instead of starting another board-specific firmware.
+- **Different hardware, one platform.** Applications use available capabilities; board providers handle how those capabilities are delivered.
+- **An experience worth wearing.** Clear interaction, a coherent visual language and room for personality are part of the OS.
 
 <a id="what-it-is"></a>
+<a id="where-things-live"></a>
+<a id="decisions-worth-knowing-about"></a>
+<a id="how-the-project-is-built"></a>
 
-## More than a watch face
+## The OS and its architecture
 
-- **Useful without a phone or cloud.** Time, local controls, navigation and mesh communication are the focus; an account or subscription should not stand between you and your own device.
-- **Your people, beyond cellular coverage.** MeshCore integration is the route to radio messaging through a carried node. The complete wrist messaging experience is still being built.
-- **One watch, room to grow.** Clock, Navigation, Mesh and Settings belong to one interface. More apps should fit naturally, including community contributions — there is no released app marketplace or third-party app SDK yet.
-- **A clear answer, including “I don't know.”** Missing positions, stale information and an unverified fix must stay visible, not disappear behind an attractive arrow.
+The current implementation uses **C++17, ESP-IDF v5.5.5, FreeRTOS and LVGL
+v9.5.0**. Atta-dipa supplies the wearable system services, application layer,
+device capabilities and interface above that foundation.
+
+| Layer | Responsibility |
+|---|---|
+| [Applications](apps/) | Product behavior, using system services rather than board registers. |
+| [Core services](core/) and [link](link/) | Shared capability, position, time, power and communication interfaces. |
+| [Platform](platform/) and [firmware](firmware/) | Hardware profiles, providers and board-specific composition. |
+| [UI](ui/), [localisation](l10n/) and [simulator](sim/) | A shared visual language and a desktop environment for development. |
+
+The separation is how the project can grow into an OS for multiple devices
+rather than a collection of unrelated firmwares. Hardware access and
+application behavior evolve on their own sides of the boundary.
+[Architecture decisions](docs/adr/) explain the contracts.
 
 <a id="the-watch-tells-you-when-it-does-not-know"></a>
 
-When position data is missing, distance becomes a dash. When it is old, the
-screen says so. A bearing from north is not presented as a live compass heading.
-These distinctions are part of the [design system](docs/ui/DESIGN_SYSTEM.md),
-not optional debug information.
+Services also carry the quality and age of their data. Applications can
+distinguish missing, stale and usable information without reinventing those
+rules in every screen.
 
-## A smaller screen is a different composition
+## A first look
 
-The 240 × 240 layout is designed separately, not shrunk from the larger panel.
-Day and night belong to the same visual world; time can be set on the watch itself.
-
-**Browser studies below; all values and outcomes are simulated.**
+The first watch apps share painted landscapes, warm accents and a calm,
+glanceable interface. Lumar, our firefly, brings a little of that character
+into the project.
 
 <p align="center">
-  <img src="pics/design-clock-day-small-en.png" width="240" alt="Browser study: 240 by 240 day clock with large time and compact controls">
-  <img src="pics/design-mesh-day-small-en.png" width="240" alt="Browser study: 240 by 240 day Mesh screen with compact message card">
-  <img src="pics/design-time-day-en.png" width="240" alt="Browser study: day time editor with one date field, minus, plus, Back and Next">
+  <img src="pics/design-clock-night-en.png" width="240" alt="Atta-dipa clock interface design">
+  <img src="pics/design-mesh-night-en.png" width="240" alt="Atta-dipa mesh interface design">
+  <img src="pics/design-navigation-night-en.png" width="240" alt="Atta-dipa navigation interface design">
 </p>
 
-<p align="center"><sub>Small Clock · Small Mesh · Time editor on the larger layout.</sub></p>
+Interface design previews: Clock · Mesh · Direction. [Image sources](pics/README.md#browser-design-study-captures).
 
 <a id="one-name-two-devices"></a>
 <a id="target-hardware"></a>
 
-## One experience, two device arrangements
+## Starting with two watches
 
-The project targets **LilyGO T-Watch S3 Plus** and **Waveshare ESP32-S3 Touch
-AMOLED 2.06**, with a desktop simulator for both screen sizes. Hardware
-identification and revision limits live in the [hardware matrix](docs/research/HARDWARE_MATRIX.md).
+The first targets are **Waveshare ESP32-S3 Touch AMOLED 2.06** and
+**LilyGO T-Watch S3 Plus**, with a desktop simulator for both display geometries.
 
-The intended split arrangement is a watch plus a node you carry. That node
-connects over BLE, carries mesh traffic and may provide GNSS observations.
-It is **not** the remote person you want to navigate to:
+The platform accommodates both an integrated device and a watch working with
+a separate radio node. MeshCore integration connects the watch to a carried
+node over BLE for mesh traffic; the wider OS direction also includes our own
+nodes. Which capabilities a particular device provides is recorded in the
+[hardware matrix](docs/research/HARDWARE_MATRIX.md).
 
-```text
-Carried node → BLE → your watch             your connection / possible own-position source
-Remote contact → Mesh → carried node → BLE  the other person's position and messages
-```
-
-This is the [product and architecture direction](docs/adr/0020-remote-target-position-source.md),
-not a claim that the full journey ships today. An upstream node's coordinates
-alone are not trusted GNSS evidence. Raw observations, confidence checks and
-remote-target selection still need their implementation and validation.
+A node carrying the wearer's position and a remote contact's position are
+different data sources. The [position-source contract](docs/adr/0020-remote-target-position-source.md)
+holds the technical distinction; it is not a separate product identity.
 
 ## What works today
 
-Evidence snapshot: **9 September 2026**. A browser image, a desktop test and
-a physical observation are three different kinds of evidence.
+**Active development.** Atta-dipa boots on real hardware; system services,
+the interface and radio integration are being developed together. The aim is
+a shared app/device platform, not a finished app marketplace. Navigation is
+experimental and must not be relied on for safety-critical use.
+
+The table below records the scope of the linked bench results, not a claim
+that every design preview is already running on a watch.
+
+<details>
+<summary>Implementation and bench evidence · 9 September 2026</summary>
 
 | Area | What the evidence supports |
 |---|---|
@@ -109,41 +109,13 @@ a physical observation are three different kinds of evidence.
 | **T-Watch display and touch** | Panel and touch bring-up are **MEASURED** on the bench unit. This is not Clock/Mesh/Nav application acceptance on that watch. [September 3 report](docs/research/TWATCH_S3_PLUS_PANEL_TOUCH_2026-09-03.md). |
 | **Desktop and design review** | A desktop LVGL simulator and separate interactive browser studies exist for both geometries. Neither is hardware evidence. [Simulator controls](docs/testing/WATCH_CONTROL.md), [browser study](docs/ui/prototype/index.html). |
 
-### Earlier physical evidence
-
-<p align="center">
-  <img src="docs/hardware/CLOCK_2026-08-26.png" width="240" alt="August 26 live framebuffer capture from a physical Waveshare: earlier Clock layout at 04:34">
-  <img src="pics/first-boot-waveshare.gif" width="240" alt="Earlier physical Waveshare prototype completing its first boot from flash">
-</p>
-
-The left image is a **live framebuffer capture, not a photograph of the panel**.
-Its paw and `7777` are layout placeholders, not a measured step count. The right
-image records an earlier physical first boot. Neither shows the new browser UI
-running on hardware. See the [Clock record](docs/hardware/CLOCK_2026-08-26.md)
-and [asset provenance](pics/README.md).
+</details>
 
 <a id="right-now"></a>
 
-Current work and blockers belong in [Issues](https://github.com/hleserg/Attadipa/issues)
-and [pull requests](https://github.com/hleserg/Attadipa/pulls).
-The [roadmap](docs/ROADMAP.md) holds the longer-term direction. Maps, phone
-pairing, a recorder, voice input and additional local apps are future
-possibilities, not a list of released features.
-
-## Try the design
-
-No board or firmware toolchain needed. From a clone of this repository,
-serve the study using Python 3:
-
-```bash
-python3 -m http.server 8481 --bind 127.0.0.1 --directory docs/ui
-```
-
-Open **http://127.0.0.1:8481/prototype/**. Switch size, theme and language; try the
-controls inside the screens. **[Shell Study 03](docs/ui/prototype/SHELL_STUDY_03.md)**
-at **http://127.0.0.1:8481/prototype/shell.html** explores the app launcher, Settings and
-separate watch/node status. These are review tools with sample data, not firmware.
-They do not access a watch, radio or device storage.
+See [Issues](https://github.com/hleserg/Attadipa/issues) and
+[pull requests](https://github.com/hleserg/Attadipa/pulls) for current work,
+and the [roadmap](docs/ROADMAP.md) for development priorities.
 
 ## Run it on your desk
 
@@ -186,23 +158,29 @@ Start with an [open issue](https://github.com/hleserg/Attadipa/issues) or
 [CONTRIBUTING.md](CONTRIBUTING.md) before a PR; coordinate claimed work so
 another contributor is not solving the same task.
 
-<a id="where-things-live"></a>
-<a id="decisions-worth-knowing-about"></a>
-<a id="how-the-project-is-built"></a>
+<details>
+<summary>Design workspace</summary>
 
-The code is organised into [core services](core/), [applications](apps/),
-[native UI](ui/), [board composition](firmware/) and [simulator](sim/).
-[ADRs](docs/adr/) explain the boundaries; [verified facts](docs/research/VERIFIED_FACTS.md)
-record what hardware evidence actually establishes. Applications ask what a
-device can do, not which board it is.
+## Try the design
+
+No board or firmware toolchain needed. From a clone of this repository,
+serve the study using Python 3:
+
+```bash
+python3 -m http.server 8481 --bind 127.0.0.1 --directory docs/ui
+```
+
+Open **http://127.0.0.1:8481/prototype/**. Switch size, theme and language; try the
+controls inside the screens. **[Shell Study 03](docs/ui/prototype/SHELL_STUDY_03.md)**
+at **http://127.0.0.1:8481/prototype/shell.html** explores the app launcher, Settings and
+separate watch/node status. These are review tools with sample data, not firmware.
+They do not access a watch, radio or device storage.
+
+</details>
 
 ## License
 
 **GPL-3.0-or-later** — [LICENSE](LICENSE). Copyright and contribution
 provenance: [COPYRIGHT.md](COPYRIGHT.md). Contributions use [DCO 1.1](DCO),
-with no CLA or copyright assignment. Third-party components keep their own
-licences, recorded in [DEPENDENCIES.md](docs/research/DEPENDENCIES.md).
-
-<p align="center"><sub><i>Attadīpa</i>: relying on oneself, an island and a refuge.
-<a href="docs/brand/naming.md">About the name</a>.<br>
-Lumar, the firefly on the banner, makes its own light.</sub></p>
+with no CLA or copyright assignment. Third-party licences are recorded in
+[DEPENDENCIES.md](docs/research/DEPENDENCIES.md).

@@ -1,185 +1,91 @@
-# Being found, and being understood in twenty seconds
+# Introducing Attadipa
 
-The README is the door. This file is everything *around* the door: what GitHub
-shows before a visitor arrives, what a link preview looks like when somebody
-shares the project, which pictures are worth taking next, and where it is worth
-showing the project once the door is presentable.
+## Product and audience
 
-Nothing here is applied automatically. The description, the topics and the
-social preview are repository settings the owner changes; this file is the
-proposal and the reasoning, so the next person does not have to re-derive it.
+Owner direction, 9 September 2026, recorded in
+[issue #519](https://github.com/hleserg/Attadipa/issues/519):
 
----
+**Attadipa is an open operating system for wearable devices and personal mesh
+nodes. Watches are the first embodiment, not the boundary of the project.**
+The ambition is a common open platform for applications, device makers and
+users. Messaging and navigation are early applications, not the OS definition.
 
-## 1. Repository description
+The website and README serve different readers:
 
-**Current** (2026-09-07):
+- **Public site:** people curious about the project, including those unfamiliar
+  with technology or uncomfortable with GitHub. Explain the purpose, show the
+  experience, describe why openness matters, and offer a direct way to join the
+  conversation without requiring GitHub.
+- **README:** developers and technical contributors. Introduce the same OS,
+  then explain architecture, capabilities, hardware, development and current
+  implementation. Make the simulator and contribution paths easy to find.
 
-> Open-source ESP32-S3 smartwatch firmware platform / OS with LoRa MeshCore,
-> offline GNSS navigation, LVGL UI and FreeRTOS.
+The previous advice to remove “OS” from the repository description and topics
+was wrong. It inferred the product identity from an overly narrow README.
+That recommendation is withdrawn; do not apply the old topic-removal command.
 
-It is a keyword list, and one of the keywords is a claim the project does not
-make. The README describes an open-source wearable project
-(`README.md:13` — "Attadipa is an open-source wearable project") and does not present it as an
-operating system. "/ OS" therefore promises a visitor something the front page
-does not deliver.
+## The message
 
-**Proposed** (159 characters, well inside GitHub's 350):
+The human benefit of the architecture is that a device can grow beyond the
+functions its original maker imagined: different applications and different
+hardware can share a common system.
 
-> Open-source ESP32-S3 smartwatch for LoRa mesh and offline navigation — no
-> phone, no cloud, no subscription. Every position carries its source, age and
-> confidence.
+Explain this through independent operation, personal applications and shared
+development. Phone integration is optional, not forbidden. Keep the future
+app ecosystem and device standard clearly framed as the project's ambition;
+do not invent a released SDK, marketplace or universal hardware compatibility.
 
-Why this shape: the first sentence is the product and carries the four terms
-somebody would actually search (`ESP32-S3`, `smartwatch`, `LoRa mesh`, `offline
-navigation`). The second is the differentiator, and it is the one sentence in
-the project that no competing repository can copy without doing the work.
+Use the canonical name **Attadipa**. Introduce the meaning briefly near the
+start: *attadīpa*, relying on oneself. The [naming guide](../brand/naming.md)
+holds the full brand rules.
 
-If a shorter line is wanted for a place that truncates, cut the second sentence
-rather than compressing both.
+## Public experience
 
-## 2. GitHub topics
+The primary website action continues the project story on the page.
+Telegram is an existing direct contact path. GitHub remains available for
+readers who want source code or technical participation.
 
-**GitHub caps a repository at 20 topics, and the repository is at 20.** So this
-is a swap list, not an addition list.
+Do not use internal design-review dashboards as a consumer demo. A public demo
+would need a separate visitor-facing experience; until one exists, the site
+can show interface imagery directly without sending people into review tools.
 
-**Currently set:** `embedded`, `embedded-systems`, `esp-idf`, `esp32`,
-`esp32-s3`, `esp32s3`, `firmware`, `freertos`, `gnss`, `gps`, `lora`, `lvgl`,
-`mesh-networking`, `meshcore`, `offline-navigation`, `open-source`, `smartwatch`,
-`smartwatch-os`, `wearable`, `wearable-tech`.
+Present the interface as part of the OS. Keep image captions short and clear:
+“Interface design previews” is enough beside design imagery. Preserve detailed
+provenance in [pics/README.md](../../pics/README.md), not in the main pitch.
+Do not present mockups as photographs or claim an untested hardware result.
 
-**Drop five, and why:**
+Describe active development once, positively and accurately. Safety guidance
+and dated technical evidence remain accessible in the README and reports.
+Missing features, validity enums, board revisions and acceptance procedures
+are not the organising structure of the public page.
 
-| Topic | Why it is not earning its slot |
-|---|---|
-| `esp32s3` | duplicate of `esp32-s3`; GitHub does not merge them, and browsers of one see the other's repos anyway through `esp32` |
-| `embedded` | `embedded-systems` is the topic with the followers; `embedded` is a near-empty alias |
-| `wearable-tech` | same relationship to `wearable` |
-| `open-source` | every public repository is; it selects nobody |
-| `smartwatch-os` | the README describes a wearable project (§1) and does not present an OS. The topic sets a stronger expectation than the front page supports |
+## README and developer entry
 
-**Add five, and why:**
+Lead with the OS and why its layers exist. Describe applications, core services,
+hardware providers and the UI in concrete terms. Keep the native simulator
+instructions visible; design-review tooling can live in a secondary section.
 
-| Topic | Who it reaches |
-|---|---|
-| `offline-first` | an active community that is mostly web, and for whom a wearable that means it is genuinely novel |
-| `open-hardware` | the crowd that reads schematics for fun — the same people who can close an `OPEN_QUESTIONS` row |
-| `ble` | the MeshCore link is BLE; people searching BLE + ESP32 are the ones who can help with the transport |
-| `u-blox` | narrow and high-intent: the bench T-Watch's GNSS module is a u-blox MIA-M10Q and the GNSS work is real |
-| `cpp` | the language filter a contributor actually uses when browsing embedded repos |
+Current implementation and bench evidence must remain traceable, with
+limitations attached to the specific result. A result from one board is not
+universal platform support.
 
-**Resulting set (20):** `ble`, `cpp`, `embedded-systems`, `esp-idf`, `esp32`,
-`esp32-s3`, `firmware`, `freertos`, `gnss`, `gps`, `lora`, `lvgl`,
-`mesh-networking`, `meshcore`, `offline-first`, `offline-navigation`,
-`open-hardware`, `smartwatch`, `u-blox`, `wearable`.
+## Sharing the project
 
-Apply with:
+A useful short repository description would be:
 
-```sh
-gh repo edit hleserg/Attadipa \
-  --remove-topic esp32s3 --remove-topic embedded --remove-topic wearable-tech \
-  --remove-topic open-source --remove-topic smartwatch-os \
-  --add-topic ble --add-topic cpp --add-topic offline-first \
-  --add-topic open-hardware --add-topic u-blox
-```
+> An open operating system for wearable devices and personal mesh nodes.
+> Shared services, independent operation and applications beyond one device.
 
-## 3. Social preview
+This is proposed copy, not a claim that repository settings were changed.
+Do not alter topics or social settings as a side effect of a text edit.
 
-**What is set now:** nothing. `gh repo view` reports the default
-`opengraph.githubassets.com` card, which is GitHub's generated one — repository
-name, owner avatar, description, and the star/fork counts rendered at a size
-where "2 stars" is the most legible thing on it. Every share of this project
-currently leads with its own star count.
+The existing [social card](../assets/og-card.jpg) can provide a consistent
+identity. Future photos or video should show real devices and observable
+interaction: the watch on a wrist, moving between apps, or the same application
+on different hardware. One navigation result illustrates one application,
+not the entire product thesis.
 
-**What to upload** (Settings → General → Social preview, 1280 × 640):
-
-The project already has a card built for this and it is not being used —
-[`docs/assets/og-card.jpg`](../assets/og-card.jpg), already referenced by
-`docs/index.html` as the project page's `og:image`. Uploading it makes the
-repository and the project page share one identity, which is worth more than a
-marginally better bespoke image.
-
-**If a new card is made instead**, the strongest version is the one that shows
-the product rather than the brand:
-
-- Left two-thirds: the clock face photographed *on the wrist*, outdoors, at
-  dusk — the one shot the repository does not have (see §4).
-- Right third: the wordmark, `INDEPENDENT BY DESIGN`, and one line —
-  *"LoRa mesh · offline navigation · no phone, no cloud"*.
-- Background: the banner's cream and sage, so a shared link and the README
-  read as the same project.
-- No star count, no badges, no screenshots of code. At Slack and Twitter
-  thumbnail sizes only two elements survive; make them the device and the name.
-
-## 4. The five pictures worth taking
-
-The README now leads with labelled browser design studies; its dated physical
-evidence includes the boot GIF and live Clock framebuffer. Everything below is
-a **real photograph or capture the owner can produce**, ranked by what
-it unblocks. These proposed images add physical evidence alongside the labelled
-browser studies; they must show the actual device and its observed state.
-
-1. **The watch on a wrist, outdoors, showing the clock.** This is the single
-   highest-value image. The README currently introduces the visual direction
-   with browser captures (`README.md:33` — "Browser design study · sample data · not firmware screenshots."); a wrist
-   photograph would add physical context without turning those studies into
-   hardware evidence. Dusk or overcast, so the AMOLED is not
-   washed out. Becomes the hero image and the social preview.
-
-2. **The navigation screen showing a real distance and bearing to a real node.**
-   The moment [#450](https://github.com/hleserg/Attadipa/issues/450) produces
-   `NODE / 742 m / ↗ NE` against a companion that is genuinely 742 m away, that
-   frame is the proof of the entire product thesis. Capture it the same day it
-   first happens, with the console log beside it.
-
-3. **A side-by-side of the two topologies as objects on a table.** T-Watch alone
-   on the left; Waveshare plus the companion node on the right, with the BLE
-   link implied by their placement. The ASCII diagram in the README explains it;
-   a photograph makes a stranger understand it without reading.
-
-4. **The simulator window and the physical watch showing the same screen, in one
-   frame.** This is the argument for the whole development setup, and it takes
-   one laptop, one watch and one phone camera. It is also the picture that
-   recruits UI contributors, because it says *"you can work on this today,
-   without buying anything."*
-
-5. **The magnetometer retrofit, mid-solder.** An opened watch, the module, its
-   four or five wires — the ohmmeter check decides which — and the flux. Hardware people trust a project that has opened the
-   case, and this is the picture that says the project does its own work rather
-   than describing it. Take it whether or not the retrofit succeeds — a failed
-   one is still evidence, and this repository publishes failures.
-
-Two more, cheap and worth having: a short GIF of the boot-to-clock sequence on
-the **T-Watch** (the repository only has the Waveshare one), and the mesh screen
-photographed while a message actually arrives, rather than screenshotted after.
-
-## 5. Where to show it, and what to show each place
-
-One post for all of them is the mistake. Each of these communities cares about a
-different thing, and three of the five will actively resent a generic
-announcement. **Post after the README lands, not before** — the whole point is
-that the door is now presentable.
-
-| Where | What to lead with | What not to lead with |
-|---|---|---|
-| **r/esp32** and the ESP32 forum | The capability layer: `apps/` cannot link against the hardware layer at all, and a chip question from an application is a build error. Say what it costs too — the board is a Kconfig `choice`, so it is one *source tree* and two images, and only the Waveshare image runs the screens today. This audience has all written the `#ifdef BOARD_X` that this project refuses, and the enforcement mechanism is the interesting part | the mesh; they have seen a dozen. And never "one binary for both boards" — it is not true |
-| **MeshCore community** (Discord / the upstream repo's Discussions) | A wearable MeshCore *client* that stays compatible with upstream rather than forking — plus the honest gap: pairing and receive are `MEASURED`, send-and-see-the-reply is `NOT OBSERVED`. Ask for help closing it | "we built a MeshCore watch" while the reply path is unproven. This community will check |
-| **LVGL forum and Discord** | The design-token system with WCAG contrast arithmetic, the CI check that rejects a raw hex value in screen code, and one set of UI code and one simulator binary across two geometries. Show the clock face | the hardware; they want the UI story |
-| **r/LoRa and the meshtastic-adjacent crowd** | The split topology: a wrist terminal with no radio talking to a node that has one, and *why* the coordinate is not allowed to be promoted to "your position". That is a design argument this community argues about constantly | positioning it as a Meshtastic competitor. It is not one, and saying so early prevents the whole thread being about that |
-| **Hackaday tip line / r/openhardware** | The evidence discipline: `UNKNOWN` written down instead of guessed, both schematics read sheet by sheet, a conflict between vendor doc and schematic recorded as a conflict, and one measured power number instead of a datasheet one. This is a *story*, and it is rarer than the hardware | the feature list. Hackaday runs process stories about firmware all the time and feature lists almost never |
-
-A sixth, only when picture 2 from §4 exists: **r/EDC and the offline-preparedness
-communities**. They are the end users rather than the builders, and they should
-be shown the working thing, never the architecture.
-
-**What not to do.** No mass cross-posting on one day, no "check out my project"
-with a bare link, and nothing at all posted to a community whose specific
-question the README cannot answer yet. The repository's credibility is built on
-not overclaiming; a launch post that overclaims spends it in one afternoon.
-
-## 6. What this file does not cover
-
-`docs/index.html` — the GitHub Pages project page — carries its own copy of the
-pitch, and it was not reviewed as part of this change. It should be read against
-the new README before the next round of promotion, because the two are now the
-project's two front doors and a visitor may meet either first.
+Match public posts to their audience. General readers get the project and
+its experience; contributors get a concrete technical contribution path.
+Do not publish community posts or infer permission to send messages from
+permission to improve the site.
