@@ -171,7 +171,7 @@ public:
     //
     // The board fact is deliberately not asserted here, because this repository
     // records it as unknown:
-    // `docs/research/MAGNETOMETER_RETROFIT.md:1909` — "**Q5 · Is the `+3V3` expansion pad always-on or `ALDO1`-switched?**"
+    // `docs/research/MAGNETOMETER_RETROFIT.md:1925` — "**Q5 · Is the `+3V3` expansion pad always-on or `ALDO1`-switched?**"
     // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
     // control a module on that pad, and `Off` becomes reachable — but only for
     // a caller that owns the rail and passes the state in. Nothing gates ALDO1

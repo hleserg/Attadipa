@@ -28,7 +28,8 @@ struct Bus {
   // residue.
   bool request_ignored = false;
   // A part that reflects CmdDone in STATUSINT only once CTRL8 bit 7 has
-  // selected that handshake (`docs/research/VERIFIED_FACTS.md:2170`). OFF by
+  // selected that handshake -- `docs/research/VERIFIED_FACTS.md:2189` --
+  // "`CTRL8 = 0x90` (`Pedo_EN` + `STATUSINT` handshake)". OFF by
   // default, and deliberately: both bench sessions on the Waveshare completed
   // their commands with `CTRL8=00`, so requiring the write is stronger than the
   // evidence and would be a fact this repository has not established. What it

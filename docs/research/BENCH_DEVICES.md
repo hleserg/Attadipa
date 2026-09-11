@@ -317,26 +317,24 @@ The owner ordered the two magnetometer candidate modules
 [OD-17](OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not)
 names — CJMCU-9911 (AK09911C) and GY-271 (QMC5883L) — together with an
 assortment of vibration motors for the Waveshare. **They arrived on
-2026-09-05.** That is owner-reported in the working session of that day and is
-not a measurement of anything: nothing has been powered, probed or read off
-since.
+2026-09-05.** Arrival is owner-reported in that day's working session.
+**Update, 2026-09-08:** module photos and unpowered resistance checks are now
+recorded in [MAGNETOMETER_BENCH_2026-09-08](MAGNETOMETER_BENCH_2026-09-08.md),
+alongside the separate Waveshare expansion-supply measurement.
 
-**What is on the bench is a delivery, not a part number.** Neither module has
-been examined; both are `UNKNOWN` in the sense
-[AGENTS.md](../../AGENTS.md) means until somebody reads the markings off the
-silicon, exactly as the GNSS modules above were `UNKNOWN` between 2026-09-02 and
-2026-09-04. A seller's listing is not a hardware fact, and this section records
-no listing values at all, because none were captured. The vibration motors are a
-batch rather than a chosen part: which one is fitted is itself an open question,
-and it is downstream of the magnetometer.
+**Silicon identity was still UNKNOWN on 2026-09-08.** The purple PCB's `AK09911C` label and
+the blue module's `GY-271` designation do not establish the fitted sensor.
+The focused bench report distinguishes legible labels, measured connections
+and unresolved routing. The vibration motors are a batch rather than a chosen
+part; fitting one remains downstream of a working calibrated compass.
 
-**Arrival retires "the parts have not arrived" and retires nothing else.**
-[H16](OPEN_QUESTIONS.md) — the four ohmmeter readings that say what pull-up each
-module fits and whether the CJMCU-9911's `RST` pad reaches the die — was waiting
-on delivery and is now waiting on an ohmmeter. Every electrical number in
-[MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is still a datasheet quote,
-every test in it is still `NOT EXECUTED — HARDWARE REQUIRED`, and no
-magnetometer is fitted to any board.
+[H16](OPEN_QUESTIONS.md) was open at that date: reset routing, the actual sensor supply
+domain and the complete pull-up network have not been established. The regulator
+on the received purple board makes an ohmmeter check against header VCC alone
+insufficient; the corrected procedure is in
+[MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md). No magnetometer is fitted to a
+watch in this procedure. Powered compass tests remain
+`NOT EXECUTED — HARDWARE REQUIRED`.
 
 **Current status, 2026-09-09 — MEASURED.** The AK09911-compatible module
 selected for the first Waveshare integration is now soldered to and read by the

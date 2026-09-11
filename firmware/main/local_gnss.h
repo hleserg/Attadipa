@@ -9,7 +9,7 @@
 // and 41 on the T-Watch, and the two arrived by different routes.
 //
 // **Waveshare — a pad, and no module on it.**
-// `docs/research/WAVESHARE_BOARD_RECEIVED.md:159` — "`RXD`/`TXD` pair: **UART0, `RXD` = GPIO 44, `TXD` = GPIO 43**, traced in §4 of"
+// `docs/research/WAVESHARE_BOARD_RECEIVED.md:163` — "`RXD`/`TXD` pair: **UART0, `RXD` = GPIO 44, `TXD` = GPIO 43**, traced in §4 of"
 // — is the *pin* half of the hardware story. Pad 7 is that CPU's receive line
 // and a module wired to it talks. Nothing on that board is a GNSS receiver
 // (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |"),

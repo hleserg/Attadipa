@@ -120,7 +120,8 @@ public:
     // BEFORE THE DRAIN, NOT AFTER IT, BECAUSE THE DRAIN ISSUES A CTRL9 COMMAND.
     //
     // Bit 7 of CTRL8 selects the STATUSINT handshake every `command()` here
-    // polls (`docs/research/VERIFIED_FACTS.md:2170`). With CTRL8 as the entry
+    // polls -- `docs/research/VERIFIED_FACTS.md:2189` --
+    // "`CTRL8 = 0x90` (`Pedo_EN` + `STATUSINT` handshake)". With CTRL8 as the entry
     // snapshot found it -- `00` on both bench sessions -- the drain's own
     // `REQ_FIFO` waits for a CmdDone that the part is not obliged to reflect
     // there. It completed both times, so this is an ordering the evidence does
