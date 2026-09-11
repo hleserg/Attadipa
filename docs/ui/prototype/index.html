@@ -439,6 +439,7 @@
     .screen .step-head,
     .screen .message,
     .screen .details dl,
+    .screen .nav-study-details p:not(.sub),
     .screen .message-body {
       background: color-mix(in srgb, var(--bg) 90%, transparent);
       box-shadow: 0 0 0 6px color-mix(in srgb, var(--bg) 90%, transparent);
@@ -1133,6 +1134,101 @@
     .screen.small .receipt .value {
       font-size: 32px;
     }
+    /* Study 02 is opt-in; Study 01 geometry and approval keys stay unchanged. */
+    .screen .nav-study {
+      gap: 10px;
+      align-items: stretch;
+    }
+    .nav-destination {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 500;
+      line-height: 1.15;
+      background: var(--bg);
+      align-self: flex-start;
+      border-radius: 6px;
+    }
+    .instrument {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex: 1;
+      min-height: 0;
+      gap: 8px;
+    }
+    .screen .instrument svg.dial {
+      height: min(100%, 180px);
+      width: auto;
+      aspect-ratio: 1;
+      flex-shrink: 0;
+      background: var(--bg);
+      border-radius: 50%;
+    }
+    /* The 22px rule above is for icons and ties with a plain
+       `.instrument svg` on specificity, so the dial used to keep its size
+       only by being written further down the file. The class wins on
+       specificity, which survives the rules being reordered. */
+    .instrument svg.dial * { vector-effect: non-scaling-stroke; }
+    .instrument text {
+      fill: var(--text);
+      stroke: none;
+      font: 16px Nunito, sans-serif;
+      font-size: var(--dial-label, 16px);
+    }
+    .instrument .range {
+      text-align: right;
+      background: var(--bg);
+      border-radius: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    .range strong {
+      display: block;
+      font-size: 64px;
+      font-weight: 500;
+      line-height: 1;
+    }
+    .range span { font-size: 24px; }
+    .direction-mode {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 18px;
+      line-height: 1.2;
+      background: var(--bg);
+      border-radius: 6px;
+    }
+    .direction-mode b { font-weight: 600; }
+    .nav-condition {
+      font-size: 16px;
+      line-height: 1.25;
+      padding: 8px 10px;
+      border-left: 3px solid var(--accent);
+      background: var(--bg);
+      border-radius: 0 8px 8px 0;
+    }
+    .nav-condition span { display: block; }
+    .nav-condition .qualification { color: var(--muted); }
+    .nav-study[data-condition="stale"] .instrument svg {
+      outline: 1px dashed var(--text);
+      outline-offset: -8px;
+    }
+    body[data-study="02"] .screen[data-page="nav"].night .scene-art {
+      background-image: url("clock_meadow_night_410x502.png");
+    }
+    .night .nav-study .nav-destination,
+    .night .nav-study .range,
+    .night .nav-study .direction-mode {
+      background: transparent;
+      text-shadow: 0 1px 3px var(--bg);
+    }
+    .screen.small .nav-study { gap: 4px; }
+    .small .nav-destination { font-size: 18px; }
+    .small .instrument { gap: 4px; }
+    .small .range strong { font-size: 44px; }
+    .small .range span { font-size: 16px; }
+    .small .direction-mode { font-size: 12px; }
+    .small .nav-condition { font-size: 12px; padding: 3px 5px; }
+    .nav-study-details .sub { font-size: var(--caption); }
   </style>
   <header>
     <div class="masthead">
@@ -1199,6 +1295,9 @@
   </footer>
   <script>
     "use strict";
+    const params = new URLSearchParams(location.search);
+    const study02 = params.get("study") === "02";
+    if (study02) document.body.dataset.study = "02";
     const strings = {
       en: {
         clock: "Clock",
@@ -1462,6 +1561,16 @@
         ],
       },
     ];
+    if (study02) {
+      const card = cards.splice(1, 1)[0];
+      card.states = ["ready", "head-up", "compass-stale", "uncalibrated", "stale", "no-fix", "node-unknown"];
+      card.note = "Study 02 · Simulation / Симуляция. Named target and heading reasons need engineering fields (#450). No real compass is connected. Other screens retain V2 design.";
+      cards.unshift(card);
+      document.querySelector(".edition").textContent = "Navigation study 02 · Review V1";
+      document.querySelector(".intro h1").innerHTML = "A sense of direction.<br><em>Even when uncertain.</em>";
+      document.querySelector(".intro p").textContent = "Навигация · Симуляция данных. Отдельный дизайн-чекпойнт; согласованный V2 не изменён. North-up is not a wrist compass.";
+      document.querySelector("#size").value = "small";
+    }
     const views = Object.fromEntries(
       cards.map((c) => [c.id, { page: c.id, state: c.states[0] }]),
     );
@@ -1483,7 +1592,7 @@
     );
     const savedClocks = {};
     // Bump the namespace when the design changes: approval must not carry forward.
-    const reviewPrefix = "attadipa-study-01-review-v2/";
+    const reviewPrefix = study02 ? "attadipa-study-02-review-v1/" : "attadipa-study-01-review-v2/";
     const reviews = new Map();
     const unreadableReviews = new Map();
     let reviewStorageFailed = false;
@@ -1491,7 +1600,7 @@
       try {
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (!/^attadipa-study-01-review-v[12]\//.test(key)) continue;
+          if (study02 ? !key.startsWith(reviewPrefix) : !/^attadipa-study-01-review-v[12]\//.test(key)) continue;
           const raw = localStorage.getItem(key);
           try {
             const entry = JSON.parse(raw);
@@ -1527,7 +1636,7 @@
             scope: "Только показанный вариант",
             export: "Скачать замечания",
             notice:
-              "V2 · Заметки сохраняются в этом браузере. Отзывы V1 остались в выгрузке, но не согласуют новый дизайн.",
+              study02 ? "Study 02 · Симуляция. Отдельные отзывы; согласование V2 не переносится. Заметки остаются в этом браузере." : "V2 · Заметки сохраняются в этом браузере. Отзывы V1 остались в выгрузке, но не согласуют новый дизайн.",
             failed:
               "Ошибка чтения или сохранения заметок. Скачайте файл до закрытия страницы; повреждённые записи включены как исходный текст и защищены от перезаписи.",
           }
@@ -1540,7 +1649,7 @@
             scope: "Only the displayed variant",
             export: "Download review",
             notice:
-              "V2 · Notes stay in this browser. V1 feedback remains in the export but does not approve the new design.",
+              study02 ? "Study 02 · Simulation. Separate reviews; V2 approvals do not carry over. Notes stay in this browser." : "V2 · Notes stay in this browser. V1 feedback remains in the export but does not approve the new design.",
             failed:
               "Browser storage failed to read or save notes. Download before closing; unreadable entries are included as raw text and protected from overwrite.",
           };
@@ -1630,7 +1739,7 @@
     function exportReview() {
       // ponytail: a local review file; add shared accounts only for multi-user review.
       return [
-        "ATTADIPA — DESIGN STUDY 01 / REVIEW V2",
+        study02 ? "ATTADIPA — NAVIGATION STUDY 02 / REVIEW V1" : "ATTADIPA — DESIGN STUDY 01 / REVIEW V2",
         "Only the listed variants are reviewed. Not firmware acceptance.",
         ...[...reviews.entries()]
           .filter(
@@ -1638,7 +1747,7 @@
           )
           .map(
             ([key, entry]) =>
-              `\nRevision: ${key.startsWith(reviewPrefix) ? "V2" : "V1 (previous design)"}\n${entry.context}\nDecision: ${entry.status}\n\n${entry.note}\n\nScreen text when reviewed:\n${entry.preview}`,
+              `\nRevision: ${study02 ? "Study 02 / V1" : key.startsWith(reviewPrefix) ? "V2" : "V1 (previous design)"}\n${entry.context}\nDecision: ${entry.status}\n\n${entry.note}\n\nScreen text when reviewed:\n${entry.preview}`,
           ),
         ...[...unreadableReviews].map(
           ([key, raw]) =>
@@ -1697,9 +1806,80 @@
       return `<div class="content empty">${imageLumar()}<h3 class="title">${t(title)}</h3><p class="sub">${t(hint)}</p><div class="actions">${action(t(label), command, true)}</div></div>`;
     }
     function nav(view) {
+      if (study02) return navStudy(view);
       if (view.state === "no-fix") return empty("nofix", "outdoors");
       if (view.state === "node-unknown") return empty("unknown", "unknownHint");
       return `<div class="content nav"><div class="nav-header"><span class="kicker">${t("nav")}</span><span class="sub">${view.state === "stale" ? icon("warning") : "↗"}</span></div><div class="nav-core"><div class="dial"><span class="north">${t("north")}</span><svg viewBox="0 0 180 180" aria-label="${t("bearing")}"><circle cx="90" cy="90" r="70" stroke="var(--muted)"/><path d="M90 27v7M153 90h-7M90 153v-7M27 90h7" stroke="var(--muted)"/><path d="M90 90 137 60" stroke="var(--text)" stroke-dasharray="2 5"/><circle cx="90" cy="90" r="4" fill="var(--text)" stroke="none"/><circle cx="137" cy="60" r="13" fill="var(--accent)" fill-opacity=".15" stroke="none"/><circle cx="137" cy="60" r="6" fill="var(--accent)" stroke="var(--text)"/></svg></div><div class="nav-value"><span class="value">${t("distance")}</span><span class="unit">${t("km")}</span></div></div><div class="nav-reading">${t("bearing")}</div><p class="nav-status ${view.state === "stale" ? "warning" : "sub"}">${t(view.state === "stale" ? "stale" : "fresh")}</p><div class="actions">${home()}${action(t("details"), "nav-details")}</div></div>`;
+    }
+    const navCopy = () => document.querySelector("#locale").value === "ru" ? {
+      target: "Узел на хребте", fromNorth: "От севера", fromWatch: "От часов",
+      bearingNorth: "057° СВ", received: "Получено 3 с назад", old: "Данные устарели · 2 мин",
+      orient: "Пройдите несколько шагов, чтобы сориентироваться",
+      calibrate: "Калибровка",
+      calibrateHow: "Опишите часами восьмёрку в воздухе, пока компас не примет данные.",
+      unconfirmed: "Фиксация не подтверждена", nofix: "Нет вашей позиции",
+      unknown: "Нет позиции цели", waiting: "Ждём координаты", outdoors: "Выйдите под открытое небо",
+      staleHeading: "Компас: данные устарели", uncalibrated: "Компас не откалиброван",
+      simulation: "Симуляция", heading: "Ориентация часов", missing: "Недоступна",
+      age: "Получено часами", reason: "Режим",
+      markUncal: "не откалибровано", markStale: "устарело · 2 мин",
+    } : {
+      target: "Ridge node", fromNorth: "North-up", fromWatch: "Watch-relative",
+      bearingNorth: "057° NE", received: "Received 3 s ago", old: "Old data · 2 min",
+      orient: "Walk a few steps to orient",
+      calibrate: "Calibrate",
+      calibrateHow: "Trace a figure eight in the air with the watch until the compass accepts the data.",
+      unconfirmed: "Fix unconfirmed", nofix: "No own position",
+      unknown: "No target position", waiting: "Waiting for coordinates", outdoors: "Move into open sky",
+      staleHeading: "Compass data stale", uncalibrated: "Compass uncalibrated",
+      simulation: "Simulation", heading: "Watch heading", missing: "Unavailable",
+      age: "Received by watch", reason: "Mode",
+      markUncal: "uncalibrated", markStale: "2 min old",
+    };
+    // ADR-0009 §5 — "| Heading `Uncalibrated` | the value, marked, plus the
+    // calibration entry point |" — and §6, `docs/adr/0009-heading.md:162` —
+    // "never silently withholds the number, because Diagnostics needs it."
+    // An uncalibrated compass has a reading; what it lacks is a bound on its
+    // error. So the mark travels WITH the number rather than replacing it:
+    // withholding it is the one thing that cannot say whether the compass is
+    // off by two degrees or by ninety.
+    const headingAngle = (state) =>
+      ["head-up", "uncalibrated", "compass-stale"].includes(state) ? "045°" : null;
+    const headingMark = (state, c) =>
+      state === "uncalibrated" ? c.markUncal : state === "compass-stale" ? c.markStale : "";
+    function navStudy(view) {
+      const c = navCopy();
+      // Scenario presentation only. Native gates remain in format_navigation().
+      const present = !["no-fix", "node-unknown"].includes(view.state);
+      const wrist = present && view.state === "head-up";
+      const heading = wrist ? 45 : 0;
+      // One angle drives the mark's rotation and the number beside the mode, so
+      // they cannot drift apart. Watch-relative is 057 minus the heading, and a
+      // relative angle has no cardinal: NE is a fact about north, not about the
+      // wrist. ADR-0009 §5 — "north-up, bearing marked, \"walk a few steps to
+      // orient\"" — is why a north-up screen with no heading says so.
+      const bearingFromNorth = 57;
+      const drawn = (bearingFromNorth - heading + 360) % 360;
+      const bearingText = wrist ? `${String(drawn).padStart(3, "0")}°` : c.bearingNorth;
+      const reason = view.state === "compass-stale" ? c.staleHeading : view.state === "uncalibrated" ? c.uncalibrated : view.state === "stale" ? c.old : wrist ? c.received : c.orient;
+      // The condition already names which mark it is, so the glance screen
+      // appends the angle alone. The bearing beside the mode carries its own
+      // label, which is what keeps two three-digit numbers apart here.
+      const glanceAngle = ["uncalibrated", "compass-stale"].includes(view.state) ? headingAngle(view.state) : null;
+      const mark = !present ? `<text x="90" y="96" text-anchor="middle">—</text>` : wrist
+        ? `<g class="wrist-arrow" transform="rotate(${drawn} 90 90)"><path d="M90 49 109 114 90 102 71 114Z" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/></g>`
+        : `<g class="bearing-mark" transform="rotate(${drawn} 90 90)"><path d="M90 90V43" stroke="var(--text)" stroke-dasharray="2 6"/><circle cx="90" cy="35" r="9" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/><circle cx="90" cy="90" r="4" fill="var(--text)"/></g>`;
+      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg class="dial" viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text class="cardinal" x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? bearingText : ""}</span></div><div class="nav-condition"><span>${present ? glanceAngle ? `${reason} · ${glanceAngle}` : reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${view.state === "uncalibrated" ? action(c.calibrate, "nav-calibrate") : ""}${action(t("details"), "nav-details")}</div></div>`;
+    }
+    function navStudyCalibrate() {
+      const c = navCopy();
+      return `<div class="content details nav-study-details"><h3 class="title">${c.calibrate}</h3><p>${c.calibrateHow}</p><p class="sub">${c.simulation}</p><div class="actions">${action(t("back"), "nav-return")}</div></div>`;
+    }
+    function navStudyDetails(state) {
+      const c = navCopy();
+      const present = !["no-fix", "node-unknown"].includes(state);
+      const reason = state === "compass-stale" ? c.staleHeading : state === "uncalibrated" ? c.uncalibrated : state === "head-up" ? c.fromWatch : c.fromNorth;
+      return `<div class="content details nav-study-details"><h3 class="title">${c.simulation}</h3><dl><dt>${c.reason}</dt><dd>${present ? reason : c.missing}</dd><dt>${c.heading}</dt><dd>${headingAngle(state) ? `${headingAngle(state)}${headingMark(state, c) ? ` · ${headingMark(state, c)}` : ""}` : "—"}</dd><dt>${c.age}</dt><dd>${present ? state === "stale" ? t("staleAge") : t("freshAge") : "—"}</dd></dl>${present ? `<p class="sub">${c.unconfirmed}</p>` : ""}<div class="actions">${action(t("back"), "nav-return")}</div></div>`;
     }
     function mesh(view) {
       if (view.state === "absent")
@@ -1711,6 +1891,7 @@
     }
     function details(kind, state) {
       const navDetails = kind === "nav-details";
+      if (study02 && navDetails) return navStudyDetails(state);
       const rows = navDetails
         ? [
             [t("heading"), t("northup")],
@@ -1786,6 +1967,8 @@
       if (view.page === "clock") screen.innerHTML = clock(view, id);
       else if (view.page === "nav") screen.innerHTML = nav(view);
       else if (view.page === "mesh") screen.innerHTML = mesh(view);
+      else if (view.page === "nav-calibrate")
+        screen.innerHTML = navStudyCalibrate();
       else if (view.page.endsWith("-details"))
         screen.innerHTML = details(view.page, view.state);
       else if (view.page === "message")
@@ -1795,12 +1978,69 @@
         "afterbegin",
         `<div class="scene-art" aria-hidden="true"></div>${motionEnabled(view) ? '<div class="fireflies" aria-hidden="true"><i></i><i></i><i></i></div>' : ""}`,
       );
+      fitDialLabel(screen);
       renderReview(id);
       if (focused)
         (
           screen.querySelector(`[data-action="${focused}"]`) ||
           screen.querySelector("button:not(:disabled)")
         )?.focus({ preventScroll: true });
+    }
+    // The dial sizes itself from the row it is in, so a font-size written in
+    // user units renders at whatever scale that leaves -- 9.5px in Russian at
+    // 240x240, under the panel's own smallest type token. Convert the token
+    // into user units once the dial has a measured width, and the cardinal
+    // renders at exactly --caption on both panels and in both locales.
+    function fitDialLabel(screen) {
+      const dial = screen.querySelector(".instrument svg");
+      if (!dial) return;
+      const scale = dial.getBoundingClientRect().width / dial.viewBox.baseVal.width;
+      if (!scale) return;
+      const caption = parseFloat(getComputedStyle(screen).getPropertyValue("--caption"));
+      dial.style.setProperty("--dial-label", `${caption / scale}px`);
+      // Fitting the SIZE moves the GLYPH. --caption converted into user units is
+      // about 31 at 240x240, and a cap of that height on a baseline fixed at 27
+      // puts the top of the letter above the ring it sits inside -- so the ring
+      // is painted straight through it, locally flat, about 40% down.
+      //
+      // The baseline is what has to move, and it moves by the measured ink
+      // rather than by a cap-height constant: getBBox is the inked box in user
+      // units and shifts 1:1 with y, so no assumption about a font is needed.
+      // The counter-rotation origin follows the baseline, because it is the
+      // glyph's own anchor -- rotating about the old one would displace it.
+      // The cardinal by name, not "the first text in the dial". In `no-fix`
+      // and `node-unknown` the dial's only <text> is the em-dash the markup
+      // centres at y="96" to say there is no direction at all, and an unscoped
+      // selector hoisted it to the top of the ring -- to twelve o'clock, where
+      // a bearing due north is drawn.
+      const label = dial.querySelector("text.cardinal");
+      const ring = dial.querySelector("circle");
+      if (!label || !ring) return;
+      const spin = label.getAttribute("transform")?.match(/rotate\(\s*(-?[\d.]+)/)?.[1];
+      const place = (y) => {
+        label.setAttribute("y", y);
+        if (spin !== undefined) label.setAttribute("transform", `rotate(${spin} 90 ${y})`);
+      };
+      place(27);
+      const ringStyle = getComputedStyle(ring);
+      // A non-scaling stroke is declared in user units and painted in CSS
+      // pixels, so in the user-unit space the letter lives in it is that many
+      // divided by the scale -- 4.1 units at 240x240, not 1.6.
+      const band = parseFloat(ringStyle.strokeWidth)
+        * (ringStyle.vectorEffect === "non-scaling-stroke" ? 1 / scale : 1);
+      const box = label.getBBox();
+      if (box.height) {
+        // Clearing the ring's TOP EDGE is not the same as being inside the
+        // ring, and the difference is where the letter actually is: a box in a
+        // circle touches it at the top CORNERS, so the constraint is
+        // Pythagorean rather than a subtraction. Subtracting left 0.07px of
+        // margin at 240x240 -- which is to say it ran the ring through a corner
+        // and let the arithmetic report clearance.
+        const inner = ring.r.baseVal.value - band / 2;
+        const half = box.width / 2;
+        const reach = Math.sqrt(Math.max(inner * inner - half * half, 0));
+        place(Number((27 + (ring.cy.baseVal.value - reach + 1 - box.y)).toFixed(2)));
+      }
     }
     function render() {
       document.querySelector("#motion").disabled = reducedMotion.matches;
@@ -1857,6 +2097,8 @@
     function handle(id, command) {
       const v = views[id],
         wizard = wizards[id];
+      if (command === "nav-return") return go(id, "nav", v.state);
+      if (command === "nav-calibrate") return go(id, "nav-calibrate", v.state);
       if (command === "home") return go(id, "clock");
       if (command === "node-back")
         return go(id, wizard.nodeReturn.page, wizard.nodeReturn.state);
@@ -1981,7 +2223,6 @@
     document
       .querySelectorAll(".toolbar select,.toolbar input")
       .forEach((el) => el.addEventListener("change", render));
-    const params = new URLSearchParams(location.search);
     for (const key of ["size", "theme", "locale"]) {
       const el = document.querySelector("#" + key);
       if ([...el.options].some((o) => o.value === params.get(key)))
