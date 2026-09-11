@@ -104,6 +104,21 @@ int painted(std::uint32_t x0, std::uint32_t x1, std::uint32_t y0,
   return count;
 }
 
+// How many rows have anything on them at all. A count of pixels cannot tell one
+// long line from two short ones; a count of rows can, and needs no font metric
+// to do it -- which is the point, since the metric is what the code under test
+// is using.
+int painted_rows(std::uint32_t x0, std::uint32_t x1, std::uint32_t y0,
+                 std::uint32_t y1, std::uint32_t width) {
+  int rows = 0;
+  for (std::uint32_t y = y0; y <= y1; ++y) {
+    if (painted(x0, x1, y, y, width) > 0) {
+      ++rows;
+    }
+  }
+  return rows;
+}
+
 core::MeshStatus unprovisioned() {
   core::MeshStatus status;
   status.availability = core::Availability::Unprovisioned;
@@ -630,6 +645,123 @@ void a_terminal_fault_keeps_both_keys_on_the_panel(
   face.clear();
 }
 
+// The rows between the last key and the way out, and the row the way out is on.
+// `ui/lvgl/mesh_face.cpp:535` -- "    lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, (big ? 444 : 210) - inset);" --
+// is the way out; the band below stops one row short of it and starts one row
+// past the second key, which on 240 px is 184 + one 17 px line.
+std::uint32_t way_out_row(bool big) { return big ? 444 : 210; }
+
+// A SCREEN WITH KEYS AND A WAY OUT DRAWS NEITHER ON TOP OF THE OTHER.
+//
+// `Unprovisioned` with a faulted transport is terminal, so `link_of()` does not
+// answer `TurnedAway` and the screen is `NoNode` -- with the refusal still
+// latched, so both keys are filled, and with a way out, because naming a node
+// is exactly what this screen asks for. Three rows of prose and two of identity
+// do not fit under 162 on a 240 px panel, and the arrangement that stacked the
+// keys under the note put the second key on the way out's own row.
+void a_no_node_screen_keeps_its_keys_off_the_way_out(
+    const platform::BoardProfile &board, l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus status = unprovisioned();
+  status.transport = core::TransportPhase::Faulted;
+
+  // The control is the same screen with nothing latched: same note, same way
+  // out, no keys. Everything from the way out's own row down is the way out
+  // and the empty panel under it, so that band is the assertion -- a key row
+  // landing on it is the defect, and a key row anywhere above it is not.
+  face.build(lv_screen_active(), config_for(board),
+             apps::format_mesh(status, locale));
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> without_keys = *g_frame;
+  check(painted(1, w - 2, way_out_row(big), way_out_row(big) + 8, w) > 0,
+        "the way out is drawn", __LINE__);
+
+  status.pinned_id.public_key[0] = 0x4C;
+  status.has_pinned = true;
+  status.refused_id.public_key[0] = 0x9E;
+  status.has_refused = true;
+  const apps::MeshText text = apps::format_mesh(status, locale);
+  // The fixture is the state `test_mesh` pins, not one invented here.
+  CHECK(text.link == apps::MeshLink::NoNode);
+  CHECK(text.way_out[0] != '\0' && text.pinned[0] != '\0');
+  face.update(text);
+  lv_refr_now(display);
+
+  const std::size_t from = static_cast<std::size_t>(way_out_row(big)) * w * 2;
+  int over = 0;
+  for (std::size_t at = from; at < without_keys.size(); ++at) {
+    if (without_keys[at] != (*g_frame)[at]) {
+      ++over;
+    }
+  }
+  check(over == 0, "the keys draw nothing on the way out's rows", __LINE__);
+  if (over != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed at or below y=%u\n", w,
+                 board.display.height_px, over, way_out_row(big));
+  }
+
+  // The counter-check: the keys are drawn somewhere, above that band.
+  int keys_drawn = 0;
+  for (std::size_t at = 0; at < from; ++at) {
+    if (without_keys[at] != (*g_frame)[at]) {
+      ++keys_drawn;
+    }
+  }
+  check(keys_drawn > 0, "the keys are drawn above it", __LINE__);
+
+  face.clear();
+}
+
+// A SCREEN WITH NO KEYS DOES NOT CLIP ITS NOTE AGAINST THEM.
+//
+// The keys are bounded rows and the note is bounded to what is left above them
+// -- on the screens that draw keys. On the five that draw none, `show()` has
+// hidden both labels and there is nothing to leave room for: the note has the
+// panel down to the way out, which on 240 px is 48 px where the key rows would
+// have allowed 17. A note that wrapped there before must not start ellipsising.
+void a_screen_without_keys_lets_its_note_wrap(
+    const platform::BoardProfile &board, l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  apps::MeshText text = apps::format_mesh(unprovisioned(), locale);
+  CHECK(text.pinned[0] == '\0' && text.note[0] != '\0');
+  face.build(lv_screen_active(), config_for(board), text);
+  lv_refr_now(display);
+
+  const std::uint32_t top = note_row(big);
+  const std::uint32_t bottom = way_out_row(big) - 1;
+  const int one_line = painted_rows(1, w - 2, top, bottom, w);
+  check(one_line > 0, "the short note is drawn", __LINE__);
+
+  // A note that needs more than one line. Short words, so this is wrapping and
+  // not a single token LVGL would have to break anywhere it liked.
+  std::size_t at = 0;
+  while (at + 5 < sizeof(text.note)) {
+    std::memcpy(text.note + at, "note ", 5);
+    at += 5;
+  }
+  text.note[at] = '\0';
+  face.update(text);
+  lv_refr_now(display);
+
+  const int wrapped = painted_rows(1, w - 2, top, bottom, w);
+  check(wrapped > one_line, "a longer note takes more rows instead of dots",
+        __LINE__);
+  if (wrapped <= one_line) {
+    std::fprintf(stderr, "  %ux%u: %d rows for the long note, %d for the short\n",
+                 w, board.display.height_px, wrapped, one_line);
+  }
+
+  face.clear();
+}
+
 // The same readout twice does not reach the panel.
 //
 // `refresh_mesh()` calls `update()` at 2 Hz with a struct that changes only
@@ -687,6 +819,10 @@ int main() {
     a_long_heading_stays_on_its_line(*board, l10n::Locale::Ru);
     a_terminal_fault_keeps_both_keys_on_the_panel(*board, l10n::Locale::En);
     a_terminal_fault_keeps_both_keys_on_the_panel(*board, l10n::Locale::Ru);
+    a_no_node_screen_keeps_its_keys_off_the_way_out(*board, l10n::Locale::En);
+    a_no_node_screen_keeps_its_keys_off_the_way_out(*board, l10n::Locale::Ru);
+    a_screen_without_keys_lets_its_note_wrap(*board, l10n::Locale::En);
+    a_screen_without_keys_lets_its_note_wrap(*board, l10n::Locale::Ru);
     a_named_node_cannot_grow_its_row(*board, l10n::Locale::En);
     a_named_node_cannot_grow_its_row(*board, l10n::Locale::Ru);
     a_build_owns_the_screen_it_is_given(*board);

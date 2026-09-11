@@ -125,6 +125,21 @@ bool stage_mesh_scenario(const char *name) {
     g_status.has_pinned = true;
     g_status.refused_id = key(0x9E14C003U);
     g_status.has_refused = true;
+  } else if (std::strcmp(name, "refused-unnamed") == 0) {
+    // THE OTHER SCREEN A LATCHED REFUSAL REACHES, AND THE ONLY ONE THAT DRAWS
+    // KEYS AND A WAY OUT AT ONCE.
+    //
+    // `Unprovisioned` is terminal once the transport has faulted, so the
+    // refusal does not outrank it and the screen is `NoNode`: no node named,
+    // both keys still latched, and "hold the clock to name one" -- which is
+    // the instruction, so it stays. Staged because the arrangement that put
+    // the keys under the note drew the second of them on the way out's row.
+    g_status.availability = core::Availability::Unprovisioned;
+    g_status.transport = core::TransportPhase::Faulted;
+    g_status.pinned_id = key(0x4C9A2F7BU);
+    g_status.has_pinned = true;
+    g_status.refused_id = key(0x9E14C003U);
+    g_status.has_refused = true;
   } else if (std::strcmp(name, "truncated") == 0) {
     // Both completeness flags at once, on a live link: a message longer than
     // `last_message` and more contacts than the retained set holds. Neither is
@@ -144,7 +159,8 @@ bool stage_mesh_scenario(const char *name) {
     std::fprintf(stderr,
                  "unknown --mesh-state '%s'\n"
                  "known: unprovisioned absent attached connecting ready "
-                 "suspended faulted refused refused-faulted truncated "
+                 "suspended faulted refused refused-faulted refused-unnamed "
+                 "truncated "
                  "battery-unknown battery-stale battery-low integrated\n",
                  name);
     return false;

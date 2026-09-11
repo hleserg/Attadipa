@@ -475,16 +475,30 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_width(answered_, w);
     lv_obj_set_style_text_align(pinned_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(answered_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    // On 240 px the note and the first key line are both y=162, so one of them
-    // moves. Which one is not a layout question. For `TurnedAway` the keys ARE
-    // the note -- "that node turned you away" says nothing the pinned and
-    // answered keys do not -- so the note goes. For a terminal fault the note
-    // is the only place the reset is named, and the keys are the evidence that
-    // the reset will not clear everything (`reset_session()` keeps the pin and
-    // the refusal on purpose), so there the keys move under it instead. On 410
-    // px both have their own row and neither question arises.
-    const bool keys_replace_note =
-        !big && text.link == apps::MeshLink::TurnedAway;
+    // What is actually drawn, not which screen this is. `show()` has just
+    // hidden both key labels wherever the app filled neither, and a layout
+    // that reserved their rows anyway clipped a note against nothing.
+    const bool keys = text.pinned[0] != '\0';
+
+    // On 240 px the note, the first key row and the way out cannot all be
+    // drawn: 162 to the panel edge is four rows of prose and the four of them
+    // want five. Which one gives is not a layout question.
+    //
+    // Where the screen names a way out, the keys take the note's row and the
+    // note goes: `TurnedAway` is the case that made the rule -- "that node
+    // turned you away" says nothing the pinned and answered keys do not -- and
+    // an `Unprovisioned` transport that has faulted with a refusal latched is
+    // the same shape, `NoNode` with both keys and "hold the clock to change
+    // it". Stacking the keys under the note there put `answered_` at 208 and
+    // the way out at 210, one on top of the other.
+    //
+    // Where there is no way out -- a terminal fault -- the note is the only
+    // place the reset is named, and the keys are the evidence that the reset
+    // will not clear everything (`reset_session()` keeps the pin and the
+    // refusal on purpose), so there the keys move under the note instead.
+    //
+    // On 410 px every row has its own and neither question arises.
+    const bool keys_replace_note = !big && keys && text.way_out[0] != '\0';
     if (keys_replace_note) {
       hide(note_);
     }
@@ -509,7 +523,7 @@ void MeshFace::lay_out(const apps::MeshText &text) {
       pinned_y = note_y + line + gap;
       answered_y = pinned_y + line + gap;
     }
-    if (!keys_replace_note) {
+    if (keys && !keys_replace_note) {
       const std::int32_t rows = (pinned_y - gap - note_y) / line;
       lv_obj_set_height(note_, (rows > 1 ? rows : 1) * line);
       lv_label_set_long_mode(note_, LV_LABEL_LONG_DOT);

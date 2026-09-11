@@ -201,6 +201,28 @@ void a_terminal_verdict_outranks_a_refusal() {
   }
 }
 
+// The other screen a latched refusal reaches, and the only one that fills both
+// keys and a way out. `Unprovisioned` is terminal once the transport has
+// faulted, so `link_of()` does not answer `TurnedAway`, and "no node is named
+// yet" comes with the instruction that names one. Three rows of prose and two
+// of identity on a 240 px panel is a layout question, answered in
+// `ui/lvgl/mesh_face.cpp`; the state it has to answer for is pinned here.
+void a_refusal_on_an_unnamed_node_still_asks_for_one() {
+  core::MeshStatus status;
+  status.availability = core::Availability::Unprovisioned;
+  status.transport = core::TransportPhase::Faulted;
+  status.pinned_id = key(0x4C9A2F7BU);
+  status.has_pinned = true;
+  status.refused_id = key(0x9E14C003U);
+  status.has_refused = true;
+
+  const apps::MeshText text = apps::format_mesh(status, l10n::Locale::En);
+  CHECK(text.link == apps::MeshLink::NoNode);
+  CHECK(text.way_out[0] != '\0');
+  CHECK(std::strstr(text.pinned, "4c9a2f7b") != nullptr);
+  CHECK(std::strstr(text.answered, "9e14c003") != nullptr);
+}
+
 // `Resting` fills the same six values as `Linked` and must not look the same
 // doing it. There is no age in `core::MeshStatus`, so the distinction cannot be
 // "how long ago" -- it is that one block is arriving and the other is history.
@@ -534,6 +556,7 @@ int main() {
   reaching_lights_part_of_the_channel();
   both_locales_are_answered();
   a_terminal_verdict_outranks_a_refusal();
+  a_refusal_on_an_unnamed_node_still_asks_for_one();
   a_cut_message_does_not_read_as_a_whole_one();
   a_long_whole_message_is_not_a_cut_one();
   a_capped_peer_list_shows_both_numbers();
