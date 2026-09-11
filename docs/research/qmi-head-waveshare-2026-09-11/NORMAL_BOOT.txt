@@ -1,7 +1,7 @@
 ESP-ROM:esp32s3-20210327
 Build:Mar 27 2021
 rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
-Saved PC:0x40392386
+Saved PC:0x403923aa
 SPIWP:0xee
 mode:DIO, clock div:1
 load:0x3fce2820,len:0x16a8
@@ -108,7 +108,7 @@ I (1208) BLE_INIT: Bluetooth MAC: 28:84:85:b2:18:a6
 I (1208) phy_init: phy_version 712,87e8c20e,Apr 13 2026,18:51:10
 I (1308) attadipa_mesh_ble: no MeshCore passkey stored; BLE stays unconfigured
 I (1308) attadipa_mesh_ble: Position   : pos UNKNOWN,UNKNOWN src Unknown fix Unknown validity NoFix age_us UNKNOWN age_src UNKNOWN recv unknown avail unreachable trust NotEvaluated node UNKNOWN
-I (1318) attadipa: Link model : Attached (MeshCore companion over BLE)
+I (1308) attadipa: Link model : Attached (MeshCore companion over BLE)
 I (2318) attadipa: alive 1s, heap 118151
 I (3318) attadipa: alive 2s, heap 118151
 I (4318) attadipa: alive 3s, heap 118151

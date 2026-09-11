@@ -120,22 +120,30 @@ does not resolve `stop=4`: that state is still produced at the end of every
 paired run and is still UNKNOWN, with the one candidate this session earned
 recorded in [the stop diagnostic](qmi-stop-waveshare-2026-09-09/README.md).
 
-The accepted capture above was produced by `b4a8f45b`, and the entry sequence
-changed twice after it — `1df9fcfb` moved the CTRL8 handshake write ahead of the
-drain's own CTRL9 command, `ea57bbf5` made the payload size come from the count
-re-read after `REQ_FIFO` (`17337383` touched only the host test). So the head
-ran: the [head session](qmi-head-waveshare-2026-09-11/README.md) is two cold
-loads of `ea57bbf5` on the same board, reproducing 3814 and 3809 QMI samples
-with 398 AK09911 samples each, `result=0` and `overflow=0 invalid=0 dor=0` on
-both, and putting the stationary magnetometer agreement at six cold loads.
+## Executed head drain, 2026-09-11 — the transition is what empties the FIFO
 
-**NOT EXECUTED — HARDWARE REQUIRED: the drain path, still.** Both head runs
-entered with the FIFO count at zero, so `drain_stale()` was never called. The
-residue that blocked entry in September no longer waits there — run A ends with
-`remaining_words=3` and run B, minutes later, finds a zero count — and what
-clears it in between is UNKNOWN. Executing the drain needs a board that presents
-a nonempty FIFO at entry, and this one no longer does; the transport model in
-`tests/test_qmi8658_fifo.cpp` is all the coverage the two changes have.
+The accepted capture above was produced by `b4a8f45b`, and the entry sequence
+changed after it. The [head session](qmi-head-waveshare-2026-09-11/README.md) is
+two cold loads of that head on the same board, and it settles a question the
+driver had to leave open.
+
+Both runs print `entry_fifo_words=3` and then `QMI drained stale_words=0 (entry
+succeeded)`. The three words the previous run left are waiting in bypass, the
+drain writes `FIFO_CTRL = 01`, issues `REQ_FIFO`, and the count it reads back is
+zero — with nothing read from `0x17` at all. **On this part the bypass-to-FIFO
+transition empties the queue**, so the entry count and the frozen count differ by
+three words on every entry, and a payload sized from the entry count reads
+`0x8000` filler. That is what the previous image did, and it is what the three
+`00 80` words in the earlier archive are.
+
+The acquisition reproduces alongside it: 3809 and 3812 QMI samples, 398 AK09911
+samples each over 40.0477 s, `result=0` and `overflow=0 invalid=0 dor=0` on both,
+and the stationary magnetometer agreement is now six cold loads.
+
+**NOT EXECUTED — HARDWARE REQUIRED: a drain that carries words out.** Every
+execution on this board freezes zero, because the transition clears the queue
+first. The path that reads `0x17` and reports a nonzero `stale_words()` has only
+the transport model in `tests/test_qmi8658_fifo.cpp` behind it.
 
 That archive also carries the first stationary AK09911 readings and the
 **retraction** of the hard-iron estimate taken from them — four cold loads agree

@@ -36,11 +36,11 @@ struct Bus {
   // before that write is correct on the part in hand and undefined on the one
   // the datasheet describes, and only a model that can be both asks it.
   bool cmddone_needs_handshake = false;
-  // A part that empties its queue on the bypass-to-FIFO transition. What that
-  // transition does to a count accumulated in bypass is UNKNOWN on the bench
-  // part, so the other answer is modelled too: the drain enters FIFO mode
-  // itself, and a payload sized from the count it saw before that write would
-  // read filler out of an emptied queue and publish it as somebody's residue.
+  // A part that empties its queue on the bypass-to-FIFO transition. This is the
+  // bench Waveshare, MEASURED twice on 2026-09-11: `entry_fifo_words=3` and
+  // `stale_words=0` on the same entry. A payload sized from the count seen
+  // before that write reads filler out of an emptied queue and publishes it as
+  // somebody's residue, which is what the previous image did.
   bool flush_on_fifo_entry = false;
   bool retain_on_reset = false, mismatch_watermark_restore = false;
   bool sticky_fifo = false; // a count that a payload read does not consume
@@ -144,6 +144,7 @@ int main() {
     const auto original = bus.regs;
     Qmi8658Fifo sensor(bus);
     CHECK(sensor.start() == QmiResult::Ok);
+    CHECK(sensor.entry_words() == 0 && !sensor.drained());
     CHECK(sensor.before().complete && sensor.before().steps == 12345);
     CHECK(sensor.temporary_accel() == (kind == 2));
     CHECK(bus.regs[8] == (gyro ? 3 : 1));
@@ -204,6 +205,7 @@ int main() {
     CHECK(sensor.start() == QmiResult::Busy);
     CHECK(bus.writes.empty());
     CHECK(sensor.stale_words() == 0);
+    CHECK(sensor.entry_words() == 3 && !sensor.drained());
     CHECK(sensor.stop() == QmiResult::Ok);
   }
   {
@@ -215,6 +217,7 @@ int main() {
     Qmi8658Fifo sensor(bus);
     CHECK(sensor.start(true) == QmiResult::Ok);
     CHECK(sensor.stale_words() == 3);
+    CHECK(sensor.drained() && sensor.entry_words() == 3);
     CHECK(sensor.stale_bytes()[0] == 0x34 && sensor.stale_bytes()[1] == 0x12);
     CHECK(sensor.stale_bytes()[2] == 0xfb && sensor.stale_bytes()[3] == 0xff);
     CHECK(sensor.stale_bytes()[4] == 0x78 && sensor.stale_bytes()[5] == 0x06);
@@ -262,19 +265,23 @@ int main() {
   {
     // A COUNT CAPTURED BEFORE THE FREEZE IS NOT THE COUNT THE PAYLOAD HAS.
     //
-    // The drain does the bypass-to-FIFO transition itself. If that transition
-    // empties the queue, the three words `start()` saw are gone before `0x17`
-    // is read, and a payload sized from the entry count reads filler and
-    // publishes it as "what the previous owner left" -- the same false record
-    // the ignored-request case is about, reached the other way. Sizing from
-    // the count re-read after `REQ_FIFO` reports zero, which is the truth: the
-    // drain found nothing to move.
+    // The drain does the bypass-to-FIFO transition itself, and on the bench
+    // Waveshare that transition empties the queue: the three words `start()`
+    // saw are gone before `0x17` is read. A payload sized from the entry count
+    // reads filler and publishes it as "what the previous owner left" -- the
+    // same false record the ignored-request case is about, reached the other
+    // way. Sizing from the count re-read after `REQ_FIFO` reports zero, which
+    // is what the board reports.
     Bus bus;
     bus.flush_on_fifo_entry = true;
     bus.frame(0x1234, -5, 0x0678);
     Qmi8658Fifo sensor(bus);
     CHECK(sensor.start(true) == QmiResult::Ok);
     CHECK(sensor.stale_words() == 0);
+    // Zero words moved is a result, not a silence: the probe logs the drain
+    // block on `drained()`, so this run is distinguishable from one that never
+    // called it and from a build without the option.
+    CHECK(sensor.drained() && sensor.entry_words() == 3);
     QmiBatch batch;
     bus.frame(7, 8, 9);
     CHECK(sensor.read(batch) == QmiResult::Samples);

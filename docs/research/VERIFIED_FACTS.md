@@ -3133,16 +3133,19 @@ of the hard-iron estimate taken from them are in
 [the drain and AK09911 session](ak09911-drain-waveshare-2026-09-11/README.md).
 No compass, tilt, calibration or step-count PASS is claimed.
 
-**MEASURED — 2026-09-11, the head on the same board:** two cold loads of
-`ea57bbf5` reproduce the paired acquisition — 3814 and 3809 QMI samples, 398
-AK09911 samples each over 40.048 s, `result=0` and `overflow=0 invalid=0 dor=0`
-on both — and put the stationary magnetometer agreement at six cold loads,
-within 1.27 counts per axis with `|B|` between 277.9 and 279.5. Both runs
-entered with the FIFO count at **zero**, so the drain never ran: the residue
-that refused entry in September no longer waits there, a stop that reports three
-words is followed minutes later by an entry that finds none, and what clears it
-in between is **UNKNOWN**. `Qmi8658Fifo::drain_stale()` in its current form is
-therefore **NOT EXECUTED — HARDWARE REQUIRED**. The two streams, the manifest
-and the restored production boot are in
+**MEASURED — 2026-09-11, the head on the same board:** entering a FIFO mode from
+bypass **empties the QMI8658's queue**. Two cold loads both print
+`entry_fifo_words=3` and then `QMI drained stale_words=0 (entry succeeded)`: the
+three words the previous run left are waiting, the drain writes `FIFO_CTRL = 01`
+and issues `REQ_FIFO`, and the count it reads back is zero, with nothing read
+from `0x17`. A payload sized from the entry count therefore reads `0x8000`
+filler, which is what the three `00 80` words of the previous image's archive
+are — filler, not residue. The paired acquisition reproduces alongside it (3809
+and 3812 QMI samples, 398 AK09911 samples each over 40.0477 s, `result=0`,
+`overflow=0 invalid=0 dor=0`) and the stationary magnetometer agreement is now
+six cold loads, within 1.30 counts per axis. `stop=4` with `remaining_words=3`
+is unchanged and still UNKNOWN. A drain that carries words *out* is still
+**NOT EXECUTED — HARDWARE REQUIRED**: this part freezes zero every time. The two
+streams, the manifest and the restored production boot are in
 [the head session](qmi-head-waveshare-2026-09-11/README.md). This revives no
 calibration number and claims no compass, tilt or step-count PASS.

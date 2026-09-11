@@ -130,11 +130,19 @@ void read_ak09911(i2c_master_bus_handle_t bus) {
       ESP_LOGE(kTag, "QMI add device failed: %s", esp_err_to_name(qmi_opened));
     }
     log_qmi_state("before", qmi.before());
-    ESP_LOGI(kTag, "QMI start=%d temporary_accel=%d frame_bytes=%u; raw axes only",
-             static_cast<int>(qmi_result), qmi.temporary_accel(), qmi.frame_bytes());
+    ESP_LOGI(kTag,
+             "QMI start=%d temporary_accel=%d frame_bytes=%u entry_fifo_words=%u "
+             "drain_built=%d; raw axes only",
+             static_cast<int>(qmi_result), qmi.temporary_accel(),
+             qmi.frame_bytes(), qmi.entry_words(), kDrainStaleFifo);
     // What the drain threw away, if it ran. Logged whether or not entry then
-    // succeeded: these words are the only record of what the previous run left.
-    if (qmi.stale_words()) {
+    // succeeded, and whether or not it moved anything: these words are the only
+    // record of what the previous run left, and a drain that froze zero is a
+    // result rather than a silence. Guarded on `drained()` and not on the word
+    // count, because with the count the transcript of a drain that moved
+    // nothing is byte-for-byte the transcript of a build without the option --
+    // which is the one thing the next bench run has to tell apart.
+    if (qmi.drained()) {
       ESP_LOGW(kTag, "QMI drained stale_words=%u (entry %s)", qmi.stale_words(),
                qmi_result == QmiResult::Ok ? "succeeded" : "still refused");
       for (unsigned w = 0; w < qmi.stale_words(); ++w)

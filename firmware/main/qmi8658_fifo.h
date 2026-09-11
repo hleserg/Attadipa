@@ -54,6 +54,14 @@ public:
   bool temporary_accel() const { return temporary_accel_; }
   unsigned frame_bytes() const { return frame_bytes_; }
   unsigned discarded_words() const { return discarded_words_; }
+  // What the FIFO held when `start()` looked, before anything was written, and
+  // whether the drain then ran. A drain that freezes zero words reports
+  // `stale_words() == 0`, which on its own is indistinguishable from a drain
+  // that was never called -- and both of those from a build without the
+  // option. These two separate all three, and the probe's transcript is the
+  // only place that distinction can be read after the fact.
+  unsigned entry_words() const { return entry_words_; }
+  bool drained() const { return drained_; }
   unsigned stale_words() const { return stale_words_; }
   const std::uint8_t *stale_bytes() const { return stale_bytes_; }
   const QmiStopDiagnostic &stop_diagnostic() const { return stop_diagnostic_; }
@@ -77,6 +85,8 @@ public:
     latest_ = {};
     discarded_words_ = 0;
     stale_words_ = 0;
+    entry_words_ = 0;
+    drained_ = false;
     std::uint8_t who = 0, rev = 0;
     if (!byte(0x00, who) || !byte(0x01, rev))
       return QmiResult::IoError;
@@ -89,6 +99,7 @@ public:
     unsigned words = 0;
     if (!byte(0x0a, cmd) || !byte(0x2d, status) || !fifo_words(words))
       return QmiResult::IoError;
+    entry_words_ = words; // recorded before every refusal below, not after
     if (cmd != 0 || (status & 0x80) || (r[7] & 0x83))
       return QmiResult::Busy; // no acknowledgement/reset of another owner
     // Refused before any write, including the too-deep case: a refusal that
@@ -121,6 +132,7 @@ public:
       return result;
     // After the byte order is explicit, because the payload read depends on it.
     if (words != 0) {
+      drained_ = true;
       result = drain_stale();
       if (result != QmiResult::Ok)
         return result;
@@ -356,13 +368,17 @@ private:
     // Without the read-mode half the drain would read those words anyway and
     // publish them as the residue.
     //
-    // The count is re-read for the same reason `read()` re-reads it, and the
-    // reason is stronger here: the drain does the bypass-to-FIFO transition
-    // itself, one line above, and what that does to a count accumulated in
-    // bypass is UNKNOWN on this part. Sizing the payload from the entry count
-    // assumed the two are equal -- if the transition empties the queue, `0x17`
-    // returns filler and the entry count publishes six bytes of it as "what
-    // the previous owner left". Whatever the frozen count says is what is read
+    // The count is re-read for the same reason `read()` re-reads it, and on
+    // this part it is the only reason that matters: the drain does the
+    // bypass-to-FIFO transition itself, one line above, and that transition
+    // EMPTIES THE QUEUE. MEASURED on the bench Waveshare, twice, 2026-09-11 --
+    // `entry_fifo_words=3` and `stale_words=0` on the same entry, with nothing
+    // read from `0x17` at all
+    // (`docs/research/qmi-head-waveshare-2026-09-11/README.md`). Sizing the
+    // payload from the entry count assumed the two are equal, and here they
+    // never are: the read would return `0x8000` filler and publish six bytes of
+    // it as "what the previous owner left", which is what the archive of the
+    // previous image recorded. Whatever the frozen count says is what is read
     // and what `stale_words()` reports, including zero.
     std::uint8_t control = 0;
     unsigned frozen = 0;
@@ -386,8 +402,10 @@ private:
   QmiBatch latest_{};
   QmiStopDiagnostic stop_diagnostic_{};
   unsigned frame_bytes_ = 6, discarded_words_ = 0, stale_words_ = 0;
+  unsigned entry_words_ = 0;
   std::uint8_t stale_bytes_[16 * 12]{};
   bool owned_ = false, running_ = false, temporary_accel_ = false;
+  bool drained_ = false;
   bool command_pending_ = false;
   bool recording_stop_ = false;
 };

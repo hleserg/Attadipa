@@ -31,12 +31,18 @@ def one(text, pattern, path):
 
 
 for name, text in runs.items():
-    # Entry: the FIFO was empty, so the drain had nothing to do and never ran.
-    # This is the claim the README rests on and the reason the drain path is
-    # still NOT EXECUTED on hardware.
+    # Entry: three words waiting, the drain ran, and it froze none of them.
+    # This is the claim the README rests on, and the one an earlier pair of runs
+    # could not make because a drain that moved nothing logged nothing.
     assert 'QMI before CTRL1=20' in text, name
     assert one(text, r'QMI start=(\d+) ', name) == '0', name
-    assert 'QMI drained' not in text, name
+    assert one(text, r'entry_fifo_words=(\d+) ', name) == '3', name
+    assert one(text, r'drain_built=(\d+);', name) == '1', name
+    assert one(text, r'QMI drained stale_words=(\d+) \(entry succeeded\)',
+               name) == '0', name
+    # Nothing was read out of 0x17, so nothing is reported as somebody's
+    # residue. The filler the earlier archive recorded is what the entry count
+    # would have produced here.
     assert 'QMISTALE' not in text, name
 
     # Acquisition: both streams, full duration, no error of any kind.

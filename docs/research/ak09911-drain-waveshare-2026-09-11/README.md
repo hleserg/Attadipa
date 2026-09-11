@@ -30,7 +30,7 @@ rather than naming the nearest one.** Its image is gone and its tree was never
 committed: the fix and the AK09911 change landed together in `b4a8f45b`, and
 that image had neither. `console-bypass-attempt.txt:69` — "AK09911 summary duration_us=39799 samples=0"
 is a 39.8 **millisecond** window, which the committed head cannot produce —
-`firmware/main/i2c_probe.cpp:146` — "  constexpr std::int64_t duration_us = 40000000;"
+`firmware/main/i2c_probe.cpp:154` — "  constexpr std::int64_t duration_us = 40000000;"
 — so the refused run predates it. What the capture is evidence of is the FIFO,
 and that evidence does not depend on which tree built it.
 
@@ -76,15 +76,15 @@ and it is not resolved here. What changed is that the state it leaves behind no
 longer locks the next run out.
 
 **Every capture in this archive belongs to the image named for it in the table
-above, and `b4a8f45b` is not the head of #515.** `1df9fcfb` moved the CTRL8
-handshake write ahead of the drain's own CTRL9 command and `ea57bbf5` changed
-where the payload size comes from (`17337383` touched only the host test). The
-head has since run on the same board — the [head
-session](../qmi-head-waveshare-2026-09-11/README.md) reproduces the paired
-acquisition and the stationary readings below. What it does **not** reproduce is
-the drain: both of its runs entered with an empty FIFO, so `drain_stale()` is
-still `NOT EXECUTED — HARDWARE REQUIRED`. The residue this archive is about no
-longer waits at entry on this board.
+above, and `b4a8f45b` is not the head of #515.** The head has since run on the
+same board, and the [head session](../qmi-head-waveshare-2026-09-11/README.md)
+answers the question this archive had to leave open: the bypass-to-FIFO
+transition **empties the queue**, so `entry_fifo_words=3` and `stale_words=0`
+land on the same entry. The three `00 80` words recorded here were therefore
+read out of a FIFO that was already empty — `0x8000` is what `0x17` returns with
+nothing queued — and the image that produced them sized that read from the entry
+count. They are filler, not the residue. The count is what this archive measured
+and the count still stands.
 
 ## MEASURED — four cold loads of an untouched board, raw counts
 
