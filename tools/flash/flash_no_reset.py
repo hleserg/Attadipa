@@ -20,13 +20,24 @@ THE TWO PATHS WRITE DIFFERENT THINGS, and the difference is what you lose.
 
 A build directory writes THREE SEPARATE SEGMENTS -- the bootloader, the
 partition table and the app that `flasher_args.json` names, at the offsets it
-names. The gaps between them are not written, so `nvs` at 0x9000 and `otadata`
-at 0xe000 survive, as do PHY data, the FAT and the coredump region.
+names. The gaps between them are not written, so everything outside those
+three segments survives -- `nvs`, PHY data, the FAT and the coredump region.
+
+WHICH OFFSETS THOSE ARE DEPENDS ON WHICH TABLE IS ON THE PART, and the build
+path replaces the table at 0x8000 with this repository's. Under
+`firmware/partitions.csv:22` -- "nvs,         data, nvs,      0x9000,    0x6000,"
+-- `nvs` runs 0x9000-0xf000 and there is NO `otadata` partition at all. The
+factory Arduino layout has one --
+`docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:61` -- "otadata  data ota      0xe000      8K"
+-- so on a factory unit flashed from a build directory those bytes survive the
+write and then sit inside our `nvs`. What that leftover page does to
+`nvs_flash_init()` is UNKNOWN and has not been tested.
 
 `--restore` writes ONE CONTIGUOUS BLOCK, 0x0-0x410000 from a full-flash backup.
-That covers the same three images and everything between them, so `nvs` and
-`otadata` ARE overwritten with whatever the backup holds. Pairing keys, Wi-Fi
-credentials and the OTA selection go back to their state when the backup was
+That covers the same three images and everything between them, so `nvs` --
+and the factory `otadata` at 0xe000, if the backup was taken from a factory
+unit -- ARE overwritten with whatever the backup holds. Pairing keys, Wi-Fi
+credentials and any OTA selection go back to their state when the backup was
 read. Above 0x410000 nothing is touched either way.
 
 A backup is accepted on its SHA-256 and the unit it was read from, not on its
@@ -69,7 +80,7 @@ FACTORY_FLASH_BYTES = 16 * 1024 * 1024
 # There is deliberately no flag that skips this: a switch that restores the old
 # behaviour is the old behaviour, one argument further away.
 VERIFIED_BACKUPS = {
-    # `docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:39` --
+    # `docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:38` --
     # "| SHA-256 | **`e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`** |"
     # -- verified three independent ways there: the chip's own MD5 over all
     # 16 MB, a second full read that matched byte for byte, and a structural
@@ -269,6 +280,12 @@ def selftest() -> int:
                 assert "verified backup of" in str(refused), refused
             else:
                 raise AssertionError("a backup of another unit was accepted")
+            # The digest refusal is checked for a leftover span and this one was
+            # not, so moving the binding below `span.write_bytes` would leave
+            # another unit's 4 MiB span in the operator's working directory with
+            # the suite green. Found in review.
+            assert not list(build.glob("*_0x0-*.bin")), \
+                "a backup refused on its serial still wrote a span file"
 
             settings, files = plan_from_backup(backup, build, TWATCH_SERIAL)
             assert settings == {"flash_mode": "keep", "flash_freq": "keep",
@@ -277,9 +294,13 @@ def selftest() -> int:
             assert files[0][1].stat().st_size == RESTORE_SPAN, files[0][1].stat().st_size
             assert files[0][1].read_bytes() == planted[:RESTORE_SPAN], \
                 "the span is the head of the backup, unmodified"
-            # Case is not identity: the loader reports the MAC in lower case and
-            # a serial typed by hand is whatever the hand typed.
-            plan_from_backup(backup, build, TWATCH_SERIAL.upper())
+            # Case is not identity: the loader reports the MAC in lower case
+            # and a serial typed by hand is whatever the hand typed. The table
+            # row is upper case, so LOWER is the direction that exercises the
+            # fold -- `.upper()` here was the identity function on an
+            # already-upper-case constant, and repeated the accepting case
+            # above it with the same argument. Found in review.
+            plan_from_backup(backup, build, TWATCH_SERIAL.lower())
         finally:
             del VERIFIED_BACKUPS[digest]
 

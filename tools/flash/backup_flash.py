@@ -183,6 +183,13 @@ def main() -> int:
     scratch.rmdir()
     candidate.replace(args.output)
     print("# VERIFIED — this image restores the board")
+    # ...ONCE `flash_no_reset.py` KNOWS IT. That refusal is fail-closed by
+    # digest, so a brand-new backup -- however well verified here -- is not a
+    # restore source until its SHA-256 is added to `VERIFIED_BACKUPS` with the
+    # evidence. Saying so beside the promise, because the two halves of OD-19's
+    # bench loop otherwise disagree in this repository's own words.
+    print("# To restore FROM it, add its sha256 to VERIFIED_BACKUPS in "
+          "tools/flash/flash_no_reset.py, citing the verification above.")
     return 0
 
 
