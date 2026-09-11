@@ -7,6 +7,7 @@
 add_library(attadipa_apps
     src/app_manifest.cpp
     src/app_registry.cpp
+    src/brightness.cpp
     src/clock.cpp
     src/mesh.cpp
     src/navigation.cpp

@@ -1,0 +1,32 @@
+{
+  "source_commit": "3ac23007abc058f30189975cf18d52f3dc6d16f3",
+  "source_clean_at_freeze": true,
+  "source_sha256": {
+    "firmware/main/qmi8658_fifo.h": "99e884c010b58939dc4a63b993d82136b19a9512cc706340a1618d05348a0ad1",
+    "firmware/main/i2c_register_device.h": "415447bfb36a74dd09cf2920d3b9c537e26947ac9274ea7de4cc491415c38479",
+    "firmware/main/ak09911.h": "cc952e932a9ac113ad10d0ba56f890a10c683d4a6f5aa15a421185313b24173a",
+    "firmware/main/i2c_probe.cpp": "10310502ed67030e9c631047c40b03bd5ed79c7f161e93e2dc787606b1d61baa",
+    "firmware/main/Kconfig.projbuild": "9ea6099259f8dcba9c6cbabc015ad704626784efa39afe5ecdab0b8dddbeb53c",
+    "tools/flash/ramhold.py": "809120281bb5207b0904219669b75a3d512253a9a6b389bf9436958d361ae36d"
+  },
+  "files": {
+    "attadipa.bin": {
+      "bytes": 188720,
+      "sha256": "2c6cf8114b39ba83f105521604ca158432874afc981cd7fffc78b809e064d209"
+    },
+    "attadipa.elf": {
+      "bytes": 3261172,
+      "sha256": "181027f06ef98b9d569366e99a61932aef73a264d143797241629804422f2406"
+    },
+    "sdkconfig.txt": {
+      "bytes": 82242,
+      "sha256": "38c4d8f514b79c10db3dfc2a1b8bc621e7eaf54711461830c5ff522c2b23b31c"
+    },
+    "build.log": {
+      "bytes": 2129,
+      "sha256": "3e88aa0c97fe161b33e0345b53d0f5e97919abff645da9407fece6868cf2f708"
+    }
+  },
+  "status": "BUILT AND CHECKED; NOT EXECUTED — HARDWARE REQUIRED",
+  "note": "Embedded version is build-system git-describe output, not the source identity; source identity is pinned separately here."
+}

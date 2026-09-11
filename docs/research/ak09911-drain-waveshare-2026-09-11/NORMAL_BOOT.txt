@@ -1,0 +1,25 @@
+I (177) esp_image: segment 1: paddr=000fb328 vaddr=3fca0000 sizeI (1169) co5300_spi: set brightness to 0% (hardware value: 0)
+I (1169) LVGL: Starting LVGL task
+I (1169) waveshare: CO5300: QSPI 40 MHz, RGB565 swap yes, brightness pending
+I (1189) waveshare: FT3168: I2C 0x38, reset GPIO 9, interrupt GPIO 38
+I (1259) waveshare: production image: no USB watch-control endpoint
+I (1259) physical-input: physical input ready: touch, GPIO0 and the AXP2101 power key
+I (1259) co5300_spi: set brightness to 5% (hardware value: 12)
+I (1259) waveshare: UI ready: AMOLED brightness 5%, touch present, RTC present
+I (1259) attadipa_mesh_ble: no MeshCore node pinned; the first node that answers will be adopted as this watch's node
+I (1259) BLE_INIT: BT controller compile version [51d9dfd]
+I (1259) BLE_INIT: Using main XTAL as clock source
+I (1259) BLE_INIT: Feature Config, ADV:1, BLE_50:1, DTM:1, SCAN:1, CCA:0, SMP:1, CONNECT:1
+I (1259) BLE_INIT: Bluetooth MAC: 28:84:85:b2:18:a6
+I (1259) phy_init: phy_version 712,87e8c20e,Apr 13 2026,18:51:10
+I (1359) attadipa_mesh_ble: no MeshCore passkey stored; BLE stays unconfigured
+I (1359) attadipa_mesh_ble: Position   : pos UNKNOWN,UNKNOWN src Unknown fix Unknown validity NoFix age_us UNKNOWN age_src UNKNOWN recv unknown avail unreachable trust NotEvaluated node UNKNOWN
+I (1359) attadipa: Link model : Attached (MeshCore companion over BLE)
+I (2359) attadipa: alive 1s, heap 118151
+I (3359) attadipa: alive 2s, heap 118151
+I (4359) attadipa: alive 3s, heap 118151
+I (5359) attadipa: alive 4s, heap 118151
+I (6359) attadipa: alive 5s, heap 118151
+I (7359) attadipa: alive 6s, heap 118151
+I (8359) attadipa: alive 7s, heap 118151
+I (9359) attadipa: alive 8s, heap 118151

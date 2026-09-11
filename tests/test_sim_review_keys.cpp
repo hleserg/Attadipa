@@ -18,6 +18,7 @@
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/apps/navigation.h"
 #include "attadipa/ui/color.h"
+#include "attadipa/ui/tokens.h"
 #include "attadipa/ui/nav_face.h"
 
 #include "boot_screen.h"
@@ -1006,6 +1007,105 @@ void shared_status_reaches_the_rendered_screen(const platform::BoardProfile &boa
   panel.close();
 }
 
+lv_obj_t *label_starting_with(lv_obj_t *object, const char *text) {
+  if (lv_obj_check_type(object, &lv_label_class) &&
+      std::strncmp(lv_label_get_text(object), text, std::strlen(text)) == 0) return object;
+  for (std::uint32_t i = 0; i < lv_obj_get_child_count(object); ++i) {
+    if (auto *found = label_starting_with(lv_obj_get_child(object, i), text)) return found;
+  }
+  return nullptr;
+}
+
+lv_obj_t *slider_in(lv_obj_t *object) {
+  if (lv_obj_check_type(object, &lv_slider_class)) return object;
+  for (std::uint32_t i = 0; i < lv_obj_get_child_count(object); ++i) {
+    if (auto *found = slider_in(lv_obj_get_child(object, i))) return found;
+  }
+  return nullptr;
+}
+
+void brightness_uses_the_real_settings_flow(const platform::BoardProfile &board) {
+  for (auto locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+    for (auto theme : {ui::Theme::Day, ui::Theme::Night}) {
+      Panel panel;
+      panel.open(board);
+      l10n::set_locale_changed_handler(nullptr);
+      l10n::set_locale(locale);
+      apps::ClockState clock{};
+      sim::build_clock_screen(board, theme, clock, false);
+      run_frames(2);
+      lv_obj_send_event(lv_screen_active(), LV_EVENT_SHORT_CLICKED, nullptr);
+      run_frames(2);
+      const int offset = lv_obj_get_y(application_surface());
+      CHECK(offset > 0);
+      auto header = pixels();
+      header.resize(static_cast<std::size_t>(board.display.width_px) * 2 * offset);
+      const auto check_frame = [&] {
+        run_frames(2);
+        CHECK(lv_obj_get_y(application_surface()) == offset);
+        const auto frame = pixels();
+        CHECK(frame.size() >= header.size());
+        CHECK(std::equal(header.begin(), header.end(), frame.begin()));
+      };
+      const auto click = [&](const char *text) {
+        auto *label = label_starting_with(application_surface(), text);
+        CHECK(label != nullptr);
+        if (label == nullptr) return;
+        auto *button = lv_obj_get_parent(label);
+        CHECK(lv_obj_check_type(button, &lv_button_class));
+        const int target = ui::Metrics::for_dpi(board.display.dpi()).px(ui::dp_of(ui::TouchTarget::Adult));
+        CHECK(lv_obj_get_width(button) >= target);
+        CHECK(lv_obj_get_height(button) >= target);
+        lv_obj_send_event(button, LV_EVENT_CLICKED, nullptr);
+        check_frame();
+      };
+      const auto initial = pixels();
+      click(l10n::tr(l10n::StringId::SettingsDisplay));
+      CHECK(pixels() != initial); // counter-check: an actual page transition
+      click(l10n::tr(l10n::StringId::SettingsBrightness));
+      auto *slider = slider_in(application_surface());
+      CHECK(slider != nullptr);
+      if (slider != nullptr) {
+        // All four corners of the full adult row route to the thin slider.
+        // The painted knob must not be the only responsive touch area.
+        lv_area_t area{};
+        lv_obj_get_coords(lv_obj_get_parent(slider), &area);
+        for (auto point : {lv_point_t{area.x1 + 1, area.y1 + 1},
+                           lv_point_t{area.x2 - 1, area.y1 + 1},
+                           lv_point_t{area.x1 + 1, area.y2 - 1},
+                           lv_point_t{area.x2 - 1, area.y2 - 1}}) {
+          CHECK(lv_indev_search_obj(lv_screen_active(), &point) == slider);
+        }
+        lv_slider_set_value(slider, 65, LV_ANIM_OFF);
+        lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, nullptr);
+        CHECK(label_starting_with(application_surface(), "65%") != nullptr);
+      }
+      click(l10n::tr(l10n::StringId::ProvisionKeySave));
+      click(l10n::tr(l10n::StringId::SettingsBrightness));
+      click("+");
+      CHECK(label_starting_with(application_surface(), "70%") != nullptr);
+      click(l10n::tr(l10n::StringId::SettingsCancel));
+      click(l10n::tr(l10n::StringId::SettingsBrightness));
+      CHECK(label_starting_with(application_surface(), "65%") != nullptr);
+      click("-");
+      CHECK(label_starting_with(application_surface(), "60%") != nullptr);
+      press('T');
+      CHECK(label_starting_with(application_surface(), "60%") != nullptr);
+      CHECK(lv_obj_get_y(application_surface()) == offset);
+      press('L');
+      CHECK(label_starting_with(application_surface(), "60%") != nullptr);
+      CHECK(lv_obj_get_y(application_surface()) == offset);
+      // Cancel after locale/theme changes still restores the committed value.
+      auto *cancel = label_starting_with(application_surface(), l10n::tr(l10n::StringId::SettingsCancel));
+      CHECK(cancel != nullptr);
+      if (cancel != nullptr) lv_obj_send_event(lv_obj_get_parent(cancel), LV_EVENT_CLICKED, nullptr);
+      run_frames(2);
+      CHECK(label_starting_with(application_surface(), l10n::tr(l10n::StringId::SettingsBrightness)) != nullptr);
+      panel.close();
+    }
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1020,6 +1120,7 @@ int main() {
   // panel and picks its palette from the panel technology, so the 240x240 IPS
   // and the 410x502 AMOLED are two different answers to the same keypress.
   for (std::uint8_t i = 0; i < count; ++i) {
+    brightness_uses_the_real_settings_flow(profiles[i]);
     shared_status_reaches_the_rendered_screen(profiles[i]);
     nav_follows_the_theme_key(profiles[i]);
     the_trail_points_where_the_readout_says(profiles[i]);

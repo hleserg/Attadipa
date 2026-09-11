@@ -10,6 +10,7 @@
 #include "attadipa/apps/app_registry.h"
 #include "attadipa/apps/clock.h"
 #include "attadipa/apps/provisioning.h"
+#include "attadipa/apps/brightness.h"
 #include "attadipa/core/provisioning.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/ui/clock_face.h"
@@ -19,6 +20,7 @@
 
 #include "review_keys.h"
 #include "attadipa/ui/status_frame.h"
+#include "attadipa/ui/settings_face.h"
 #include "mesh_screen.h"
 
 namespace attadipa::sim {
@@ -32,6 +34,24 @@ ui::ClockFaceConfig g_clock_config;
 apps::ClockState g_clock_state;
 bool g_clock_active = false;
 bool g_clock_live = false;
+
+// Volatile desktop state: actual persistence and panel output are native
+// acceptance. This port exercises the same editing and rendering callers.
+struct SimBrightness final : apps::BrightnessPort {
+  std::uint8_t stored = 5;
+  apps::BrightnessRead load(std::uint8_t &value) override {
+    value = stored;
+    return apps::BrightnessRead::Present;
+  }
+  bool apply(std::uint8_t) override { return true; }
+  apps::BrightnessWrite store(std::uint8_t value) override {
+    stored = value;
+    return apps::BrightnessWrite::Saved;
+  }
+  void restart() override {} // This port cannot have an uncertain flash write.
+} g_brightness_port;
+apps::BrightnessSettings g_brightness(g_brightness_port, 5, 5, 5);
+ui::SettingsFace g_settings_face;
 
 // A board that takes whatever it is given. The simulator has no RTC and no
 // radio to hand a value to, so the seam ends here, out loud.
@@ -49,9 +69,21 @@ struct AcceptingProvisioner final : core::Provisioner {
                 static_cast<int>(entry.timezone_offset_minutes));
     return core::ProvisionOutcome::Accepted;
   }
+  // THE DIGITS DO NOT GO TO STDOUT, and no derivative of them does either.
+  //
+  // This line used to print `%06u`. A fake node does not make a typed number
+  // fake: the six digits a person enters here are as likely to be the bench
+  // node's live PIN as an invented one, and nothing on this side of the seam
+  // can tell those apart -- while stdout is a terminal scrollback, a shell
+  // redirect and a CI artefact at once.
+  // `docs/research/OWNER_DECISIONS.md:1143` -- "device access credential"; and
+  // one layer down, `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:595` --
+  // "Do not log the passkey through the watch's". Queued and armed are the two
+  // facts somebody watching this console is waiting for, and neither of them
+  // is the number (#316).
   core::ProvisionOutcome set_mesh_passkey(std::uint32_t passkey) override {
-    std::printf("provision: passkey %06u queued\n",
-                static_cast<unsigned>(passkey));
+    (void)passkey;
+    std::printf("provision: passkey queued\n");
     in_flight_ = true;
     return core::ProvisionOutcome::Pending;
   }
@@ -134,6 +166,42 @@ ui::Theme toggle_clock_theme() {
   return g_clock_config.theme;
 }
 
+void rebuild_settings_screen() {
+  const auto page = g_settings_face.page();
+  g_settings_face.clear();
+  g_frame.build(lv_screen_active(), {g_clock_config.width_px,
+                g_clock_config.height_px, g_clock_config.theme,
+                g_clock_config.pixel_cost, g_clock_config.metrics});
+  auto content = g_clock_config;
+  content.height_px = g_frame.content_height();
+  g_settings_face.build(g_frame.content(), content, g_brightness, [] {
+    g_settings_face.clear();
+    g_clock_active = true;
+    l10n::set_locale_changed_handler(rebuild_clock_screen);
+    set_theme_toggle(toggle_clock_theme);
+    rebuild_clock_screen();
+  }, page);
+  g_frame.restore_content_geometry();
+  g_frame.update(apps::format_mesh(staged_mesh_status(), l10n::locale()));
+}
+
+ui::Theme toggle_settings_theme() {
+  g_clock_config.theme = g_clock_config.theme == ui::Theme::Day
+      ? ui::Theme::Night : ui::Theme::Day;
+  rebuild_settings_screen();
+  return g_clock_config.theme;
+}
+
+void open_settings(lv_event_t *) {
+  if (!g_clock_active) return;
+  g_clock_face.clear();
+  g_clock_active = false;
+  g_settings_face.clear();
+  l10n::set_locale_changed_handler(rebuild_settings_screen);
+  set_theme_toggle(toggle_settings_theme);
+  rebuild_settings_screen();
+}
+
 ui::Theme toggle_provision_theme() {
   g_provision_config.theme = g_provision_config.theme == ui::Theme::Day
                                  ? ui::Theme::Night
@@ -151,6 +219,20 @@ ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
 // back to the clock when the holder leaves. Here it is an LVGL timer that
 // deletes itself; there it is the clock's own refresh timer.
 void leave_provisioning(lv_timer_t *timer) {
+  // A TIMER MAY OUTLIVE THE ENTRY IT POLLS, AND ONLY THIS SAYS SO.
+  //
+  // One timer per entry holds only while `enter_provisioning` is called once,
+  // which is true of `sim/main.cpp` and not true of anything else -- a test
+  // that walks two board profiles calls it twice, and if the first walk never
+  // reaches `Exit` this timer is still alive when the second `emplace()`
+  // replaces the entry under it. Two timers then poll one optional: the first
+  // to see `finished()` resets it, and the second dereferences a destroyed
+  // `ProvisioningEntry`. The timer that finds nothing engaged is the one with
+  // nothing left to do.
+  if (!g_entry) {
+    lv_timer_delete(timer);
+    return;
+  }
   // The board polls the passkey on its clock tick; here it is this timer, and
   // it is the only thing that can end the wait. The tick that hears the answer
   // draws it and stops there, and nothing takes the receipt away afterwards:
@@ -207,6 +289,8 @@ void build_clock_screen(const platform::BoardProfile &board, ui::Theme theme,
                         const apps::ClockState &state, bool live) {
   g_clock_active = true;
   g_clock_live = live;
+  g_settings_face.clear();
+  g_brightness.load();
   g_clock_config = {
       board.display.width_px,
       board.display.height_px,
@@ -230,6 +314,7 @@ void build_clock_screen(const platform::BoardProfile &board, ui::Theme theme,
   }
   lv_obj_add_event_cb(lv_screen_active(), on_long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
+  lv_obj_add_event_cb(lv_screen_active(), open_settings, LV_EVENT_SHORT_CLICKED, nullptr);
 }
 
 void rebuild_clock_screen() {

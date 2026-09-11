@@ -2547,9 +2547,9 @@ table as source-pinned board data **if and only if** the experiment proves it
 necessary; `REJECT` every vendor BSP as a link-time dependency.
 
 **Reason:** the shipping tree already exposes the right seam —
-`waveshare_board.cpp:132-136` — "esp_lcd_panel_handle_t panel" — hands on an
+`waveshare_board.cpp:137-141` — "esp_lcd_panel_handle_t panel" — hands on an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, and
-`physical_input.cpp:523` — "start_physical_input(esp_lcd_touch_handle_t touch"
+`physical_input.cpp:558` — "start_physical_input(esp_lcd_touch_handle_t touch"
 — takes exactly those.
 A second backend that reuses it needs no `#ifdef` anywhere above the board
 layer, which is what lets `core/` and `apps/` keep asking what a device can do
