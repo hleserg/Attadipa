@@ -947,7 +947,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2181`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2200`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1650,8 +1650,13 @@ still to take.
   the part number is not.
 - **Source:** S9, corroborating S6's `GD25Q256EYIGR` at `U3`.
 - **Impact:** modest but structural. Whatever is in the SoC package is **not
-  flash**, which is what an `R8` suffix means. It corroborates the octal-PSRAM
-  conclusion without re-deriving it. Capacity is now also measured on silicon:
+  flash**, which is what an `R8` suffix means — and **corrected 2026-09-08**,
+  that conclusion belongs to the eFuse read, not to this photograph: an external
+  package being present does not by itself rule out memory inside the SoC,
+  `docs/research/WAVESHARE_BOARD_RECEIVED.md:110` — "**An external flash package is physically present.** That observation alone".
+  The conclusion survives; the attribution is what was wrong. The photograph
+  corroborates the octal-PSRAM result without re-deriving it. Capacity is now
+  also measured on silicon:
   `flash-id` and Attadipa's flash boot both reported JEDEC `c8 40 19`, 32 MB —
   [BRINGUP_2026-08-25](../hardware/BRINGUP_2026-08-25.md).
 
@@ -1668,7 +1673,12 @@ still to take.
   Impedance and rated power are not published for this part number — `UNKNOWN`.
 - **Source:** S9.
 - **Impact:** small and practical. Both the speaker and any future motor attach
-  by solder, so opening this watch twice means desoldering twice.
+  by solder. **Corrected 2026-09-08:** that does not make opening the watch a
+  desoldering job, which is what this entry used to say. The September
+  photographs show the back cover open with the speaker's red/black pair still
+  connected — `docs/research/WAVESHARE_BOARD_RECEIVED.md:241` — "**solder pads and wires**, not by a connector. **Correction, 2026-09-08:** the"
+  — so opening means supporting both pieces within the wires' slack.
+  *Fully separating* the cover from the board is what needs the iron.
 
 ## Read off the silicon of that unit (S10)
 
@@ -2115,11 +2125,20 @@ constants.
   §8.2. The md5 matches the copy `MAGNETOMETER_RETROFIT` M1 already cited.
 - **Checked:** 2026-08-24.
 - **What this does *not* establish:** whether the CJMCU-9911 breakout routes the
-  ball to its silkscreened `RST` pad, and whether it ties it to `VID`. Both are
-  `UNKNOWN` and need an ohmmeter on a module nobody has yet —
-  [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.6.
-- **Impact:** the retrofit is **five wires by default, not four**. It also
-  supersedes the weaker source this was previously known from — a comment in
+  ball to its silkscreened `RST` pad, and whether it ties it to `VID`. The
+  ohmmeter this asked for went on the module on **2026-09-08** and did not
+  settle it: `RST`→`VCC` and `RST`→`GND` both read OL, which establishes
+  neither a broken trace nor a valid reset-high voltage, so pad-to-die stays
+  `UNKNOWN`. The reading that could settle it is `RST` against the identified
+  `VID` rail — [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.6,
+  [MAGNETOMETER_BENCH_2026-09-08](MAGNETOMETER_BENCH_2026-09-08.md).
+- **Impact:** `RSTN` must not float, and on this module it does not have to be
+  held from the watch. **Corrected 2026-09-09:** the part ran on the Waveshare
+  with `CAD`/`RST` held high **on the module itself** and answered at `0x0D`, so
+  the retrofit was **four wires from the watch, not five** — this entry used to
+  say five by default. The datasheet requirement is unchanged; what is
+  superseded is the wire count drawn from it. It also supersedes the weaker
+  source this was previously known from — a comment in
   `drivers/iio/magnetometer/ak8975.c` — which was right and is no longer what
   anything rests on.
 
@@ -2799,7 +2818,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2718` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2737` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -2885,7 +2904,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2641` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2660` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.

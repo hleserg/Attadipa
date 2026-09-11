@@ -182,14 +182,17 @@ Written 2026-08-24, after an independent cold read of the repository.
 > until a *remote* node's coordinate can be fetched, which OD-28 leaves open.
 >
 > **What hardware does gate is the arrow, and H16 is no longer where it
-> stops.** The modules arrived 2026-09-05
-> ([BENCH_DEVICES](research/BENCH_DEVICES.md)), were probed unpowered
-> 2026-09-08, and one is soldered to the Waveshare and answering as of
-> 2026-09-09. This paragraph used to say no magnetometer goes on a board until
-> H16 is answered; one went on a board first. What the probing found is that
-> H16's `SDA`→`VCC` recipe cannot read a pull-up through the module's own
-> regulator, and that `RST`'s OL says nothing either way, so the pad-to-die
-> half is still `UNKNOWN`. H16 records both, and neither now blocks wiring.
+> stops.** Both modules arrived 2026-09-05
+> ([BENCH_DEVICES](research/BENCH_DEVICES.md)); the **purple CJMCU-9911** was
+> probed unpowered 2026-09-08 and is the one soldered to the Waveshare and
+> answering as of 2026-09-09. The blue GY-271 has been neither probed nor
+> wired, and H16 keeps that as its remaining half. This paragraph used to say
+> no magnetometer goes on a board until H16 is answered; one went on a board
+> first. What the probing found is that H16's `SDA`→`VCC` recipe cannot read a
+> pull-up through the module's own regulator, and that `RST`'s OL says nothing
+> either way, so the pad-to-die half is still `UNKNOWN`. Neither blocks wiring
+> the purple module. Wiring the blue one would mean reading its pull-up first,
+> which nothing has done.
 > What still blocks the motor is that one on a board has not yet read
 > *correctly*: raw counts with an unexplained `CNTL2` readback and authenticity
 > `UNKNOWN` are a capture, not a working compass, and a motor beside an
