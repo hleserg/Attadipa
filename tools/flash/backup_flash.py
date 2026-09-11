@@ -159,7 +159,16 @@ def main() -> int:
 
     sha = digest.hexdigest()
     print(f"\n{written} bytes  sha256 {sha}")
-    if sha == KNOWN_FACTORY_SHA256:
+    # THE RECORDED DIGEST IS ONE IMAGE'S, NOT ONE BOARD'S. It was taken over
+    # the whole 0x2000000 part, so a shorter read cannot equal it -- and the
+    # 16 MiB read is not a rare one, it is the size `--restore` accepts. Printed
+    # unconditionally, "does NOT match the recorded factory image" was a false
+    # alarm on every such backup, one line above the sentence that then offers
+    # the same backup as a restore source. Found in review.
+    if args.size != FLASH_SIZE:
+        print(f"# no recorded image to compare a 0x{args.size:x} read against "
+              f"— the digest on file is the whole 0x{FLASH_SIZE:x} part's")
+    elif sha == KNOWN_FACTORY_SHA256:
         print("# matches the recorded factory image — the part is as it was found")
     else:
         print("# does NOT match the recorded factory image "

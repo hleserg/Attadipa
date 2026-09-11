@@ -51,7 +51,15 @@ def run(output: Path, verification: CompletedProcess,
             said.append(spoken.getvalue())
 
 
+CHECKED = 0
+
+
 def check(condition: bool, message: str, failures: list[str]) -> None:
+    # Counted rather than announced. The closing line used to carry a hand-
+    # written total, and it was already wrong by two before this change added
+    # three more checks to it.
+    global CHECKED
+    CHECKED += 1
     if not condition:
         failures.append(message)
 
@@ -126,11 +134,36 @@ def main() -> int:
         check("NOT a restore source" in said[0],
               "nothing told the operator why that image is not one", failures)
 
+    # And the digest line above that advice has to be true of the image it is
+    # describing. The recorded SHA-256 is the 32 MB part's, so comparing a
+    # 16 MiB read against it warned of a mismatch that could not have been
+    # anything else -- immediately before offering that same image as a
+    # restore source. Found in review.
+    with tempfile.TemporaryDirectory() as raw:
+        output = Path(raw) / "factory.bin"
+        said = []
+        run(output, CompletedProcess([], 0, "Verification successful", ""),
+            size=backup.FACTORY_FLASH_BYTES, said=said)
+        check("does NOT match" not in said[0],
+              "a 16 MiB read was reported as failing to match a digest taken "
+              "over the whole 32 MB part", failures)
+        check("no recorded image" in said[0],
+              "nothing said why that image has no recorded digest", failures)
+
+    with tempfile.TemporaryDirectory() as raw:
+        output = Path(raw) / "factory.bin"
+        said = []
+        run(output, CompletedProcess([], 0, "Verification successful", ""),
+            size=backup.FLASH_SIZE, said=said)
+        check("does NOT match" in said[0],
+              "a full-size read was not compared against the recorded digest, "
+              "so the comparison this tool exists for no longer runs", failures)
+
     if failures:
         for failure in failures:
             print(f"FAIL: {failure}")
         return 1
-    print("backup_flash self-test: 7 cases passed")
+    print(f"backup_flash self-test: {CHECKED} checks passed")
     return 0
 
 

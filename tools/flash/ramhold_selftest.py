@@ -85,6 +85,19 @@ def check(tmp: Path) -> list[str]:
     if "more than one" not in refusal_in(ambiguous, WATCH):
         failures.append("two links matching one serial were not refused")
 
+    # Case. The by-id name carries whatever case udev read off the descriptor;
+    # a serial typed by hand is whatever the hand typed, and `identity_mismatch`
+    # in flash_no_reset.py already folds it. LOWER is the direction that
+    # exercises the fold, the constants here being upper case.
+    try:
+        lowered = resolve_in(both, WATCH.lower())
+    except SystemExit:
+        lowered = None      # a refusal is the failure, not an abort of the run
+    if lowered != str(tmp / "ttyACM1"):
+        failures.append("a lower-case serial did not find the port, so it "
+                        "passes every later identity check and then resolves "
+                        "to nothing")
+
     # The directory itself missing — a host with no udev by-id links at all.
     if "does not exist" not in refusal_in(tmp / "absent", WATCH):
         failures.append("a missing by-id directory was not reported as one")
