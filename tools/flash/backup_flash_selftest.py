@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from contextlib import redirect_stdout
+import io
 from subprocess import CompletedProcess
 import sys
 import tempfile
@@ -18,7 +20,8 @@ SPEC.loader.exec_module(backup)
 
 
 def run(output: Path, verification: CompletedProcess,
-        *, no_verify: bool = False) -> tuple[int | None, str | None, list[tuple]]:
+        *, no_verify: bool = False, size: int = 8,
+        said: list[str] | None = None) -> tuple[int | None, str | None, list[tuple]]:
     calls: list[tuple] = []
 
     def fake_read(_python: str, _port: str, offset: int, size: int,
@@ -32,16 +35,31 @@ def run(output: Path, verification: CompletedProcess,
     backup.resolve_port = lambda _serial: "/dev/fake"
     backup.read_chunk = fake_read
     backup.esptool = fake_esptool
-    sys.argv = [str(SCRIPT), str(output), "--size", "8", "--chunk", "4"]
+    sys.argv = [str(SCRIPT), str(output), "--size", str(size),
+                "--chunk", str(size // 2)]
     if no_verify:
         sys.argv.append("--no-verify")
+    spoken = io.StringIO()
     try:
-        return backup.main(), None, calls
+        with redirect_stdout(spoken):
+            code = backup.main()
+        return code, None, calls
     except SystemExit as exc:
         return None, str(exc), calls
+    finally:
+        if said is not None:
+            said.append(spoken.getvalue())
+
+
+CHECKED = 0
 
 
 def check(condition: bool, message: str, failures: list[str]) -> None:
+    # Counted rather than announced. The closing line used to carry a hand-
+    # written total, and it was already wrong by two before this change added
+    # three more checks to it.
+    global CHECKED
+    CHECKED += 1
     if not condition:
         failures.append(message)
 
@@ -90,11 +108,62 @@ def main() -> int:
         check(bool(calls) and Path(calls[-1][-2]) != output,
               "successful verification did not check the candidate", failures)
 
+    # THE RESTORE ADVICE IS ONLY TRUE FOR AN IMAGE `--restore` WILL LOOK AT.
+    # It refuses on size before it reads `VERIFIED_BACKUPS` at all, and this
+    # tool's default is the OTHER board's 32 MB part -- so printed
+    # unconditionally, the line sent the operator to edit the table that admits
+    # a backup, to add a row that authorises nothing and could not have been
+    # read. Found in review.
+    advice = "add its sha256 to VERIFIED_BACKUPS"
+    with tempfile.TemporaryDirectory() as raw:
+        output = Path(raw) / "factory.bin"
+        said: list[str] = []
+        run(output, CompletedProcess([], 0, "Verification successful", ""),
+            size=backup.FACTORY_FLASH_BYTES, said=said)
+        check(advice in said[0],
+              "a 16 MiB backup was not offered as a restore source", failures)
+
+    with tempfile.TemporaryDirectory() as raw:
+        output = Path(raw) / "factory.bin"
+        said = []
+        run(output, CompletedProcess([], 0, "Verification successful", ""),
+            size=backup.FACTORY_FLASH_BYTES * 2, said=said)
+        check(advice not in said[0],
+              "a backup --restore refuses on size was still offered as a "
+              "restore source", failures)
+        check("NOT a restore source" in said[0],
+              "nothing told the operator why that image is not one", failures)
+
+    # And the digest line above that advice has to be true of the image it is
+    # describing. The recorded SHA-256 is the 32 MB part's, so comparing a
+    # 16 MiB read against it warned of a mismatch that could not have been
+    # anything else -- immediately before offering that same image as a
+    # restore source. Found in review.
+    with tempfile.TemporaryDirectory() as raw:
+        output = Path(raw) / "factory.bin"
+        said = []
+        run(output, CompletedProcess([], 0, "Verification successful", ""),
+            size=backup.FACTORY_FLASH_BYTES, said=said)
+        check("does NOT match" not in said[0],
+              "a 16 MiB read was reported as failing to match a digest taken "
+              "over the whole 32 MB part", failures)
+        check("no recorded image" in said[0],
+              "nothing said why that image has no recorded digest", failures)
+
+    with tempfile.TemporaryDirectory() as raw:
+        output = Path(raw) / "factory.bin"
+        said = []
+        run(output, CompletedProcess([], 0, "Verification successful", ""),
+            size=backup.FLASH_SIZE, said=said)
+        check("does NOT match" in said[0],
+              "a full-size read was not compared against the recorded digest, "
+              "so the comparison this tool exists for no longer runs", failures)
+
     if failures:
         for failure in failures:
             print(f"FAIL: {failure}")
         return 1
-    print("backup_flash self-test: 4 cases passed")
+    print(f"backup_flash self-test: {CHECKED} checks passed")
     return 0
 
 

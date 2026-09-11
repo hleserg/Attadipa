@@ -75,7 +75,7 @@
 # CEILING       the convergence ceiling, a round number past which NOTHING
 #               holds the pull request -- floor findings included. Optional;
 #               ATTADIPA_REVIEW_CEILING is the default when it is absent, and
-#               that defaults to 5. A ceiling below the floor is raised to the
+#               that defaults to 3. A ceiling below the floor is raised to the
 #               floor, because a ceiling that fires before the floor would make
 #               the floor unreachable and silently delete the older rule.
 # HEAD_SHA      the object id of the commit this round reviewed — the head the
@@ -135,7 +135,7 @@
 #
 #   <!-- attadipa-review-ledger-state
 #   round=7
-#   floor=4
+#   floor=2
 #   head_sha=0f0a1c8f9d4b6e2a7c3d5e1f8b9a0c2d4e6f8a1b
 #   deferred_issue=170
 #   gnss-trust-source | 2 | floor | open | The trust state is claimed with no source
@@ -259,7 +259,7 @@ _attadipa_oid() {
 attadipa_review_verdict() {
   local prev="${1:-}" findings="${2:-}" floor="${3:-}" \
         ledger_out="${4:-}" deferred_out="${5:-}" pr="${6:-}" \
-        ceiling="${7:-${ATTADIPA_REVIEW_CEILING:-5}}" head_sha=""
+        ceiling="${7:-${ATTADIPA_REVIEW_CEILING:-3}}" head_sha=""
 
   # The head this round is about, or nothing. Nothing is a caller that did not
   # say which commit it reviewed, and the ledger then records no head at all --
@@ -283,7 +283,7 @@ attadipa_review_verdict() {
   # floor unreachable -- the older rule would never get a round to apply in --
   # so it is raised to the floor, where the two rules coincide instead of one
   # deleting the other.
-  _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=5
+  _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=3
   [ "$ceiling" -ge "$floor" ] || ceiling="$floor"
 
   declare -A first_round=() category=() status=() title=()
@@ -571,16 +571,17 @@ _attadipa_render_deferred() {
 # still ran to produce them. #382 ran eight rounds that way, and rounds six,
 # seven and eight could not change its verdict by construction -- three model
 # invocations whose only possible answer was the one already reached. OD-25's
-# five rounds are now five rounds of *reviewing*, decided before the model is
-# invoked rather than after it has answered.
+# rounds are now rounds of *reviewing*, decided before the model is invoked
+# rather than after it has answered.
 #
-# This does not touch which findings hold a pull request. Rounds one to five are
-# judged exactly as before, and OD-25's rule that nothing holds past the ceiling
-# is unchanged -- there is simply no longer a sixth round for it to apply to.
+# This does not touch which findings hold a pull request. Every round up to the
+# ceiling is judged exactly as before, and OD-25's rule that nothing holds past
+# it is unchanged -- there is simply no longer a round past it for the rule to
+# apply to.
 #
 # PREV_LEDGER   the ledger comment body from the last round, as above. Missing
 #               or empty means no round has published yet.
-# CEILING       as above. ATTADIPA_REVIEW_CEILING is the default, itself 5.
+# CEILING       as above. ATTADIPA_REVIEW_CEILING is the default, itself 3.
 # PAID          how many findings blocks the reviewer has actually published on
 #               this pull request, counted by the caller. Optional; unreadable
 #               or absent counts as zero.
@@ -596,13 +597,17 @@ _attadipa_render_deferred() {
 # four more times, at 16:08, 16:34, 17:26 and 17:59, and converge was `skipped`
 # on every one of them. Nine paid rounds, a ledger that says five.
 #
-# A cap that read only the ledger would inherit that. Frozen at five it happens
-# to be right, frozen at three it never fires at all and the ceiling silently
-# stops existing -- the failure this whole function is here to prevent, arriving
-# by a route the function could not see. So the caller counts the published
-# blocks, which is the thing being paid for and cannot freeze while rounds run,
-# and this takes whichever number is larger. The ledger still wins when it is
-# ahead, which is what happens when a round published nothing readable.
+# A cap that read only the ledger would inherit that. A ledger frozen at or past
+# the ceiling happens to be right; one frozen below it never fires at all and the
+# ceiling silently stops existing -- the failure this whole function is here to
+# prevent, arriving by a route the function could not see. Which of the two
+# #382's freeze at five was depended entirely on where the ceiling stood: right
+# under the ceiling of that day, right under today's three as well, and a freeze
+# one round below either would have hidden every round after it. So the caller
+# counts the published blocks, which is the thing being paid for and cannot
+# freeze while rounds run, and this takes whichever number is larger. The ledger
+# still wins when it is ahead, which is what happens when a round published
+# nothing readable.
 #
 # Prints `key=value` lines on stdout and nothing else:
 #
@@ -620,8 +625,8 @@ _attadipa_render_deferred() {
 # the review itself. The caller must fail the same way -- a gate that could not
 # execute means run, never means pass.
 attadipa_review_gate() {
-  local prev="${1:-}" ceiling="${2:-${ATTADIPA_REVIEW_CEILING:-5}}" paid="${3:-0}"
-  _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=5
+  local prev="${1:-}" ceiling="${2:-${ATTADIPA_REVIEW_CEILING:-3}}" paid="${3:-0}"
+  _attadipa_is_uint "$ceiling" && [ "$ceiling" -ge 1 ] || ceiling=3
   _attadipa_is_uint "$paid" || paid=0
 
   local prev_round=0 open_n=0 prev_block line rest id st

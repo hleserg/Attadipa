@@ -3,7 +3,7 @@
 #
 # `review-verdict-test.sh` asserts what `review-verdict.sh gate` and
 # `review-verdict.sh cap` answer. This file asserts what `claude-pr-review.yml`
-# does with the second of those once the five rounds are gone -- specifically
+# does with the second of those once the rounds are gone -- specifically
 # the question the invalidation step is not entitled to ask and this one is: is
 # the standing block still about the commit being merged? #445 merged carrying
 # one no push could clear, because nothing asked it. A guard whose failure mode
@@ -67,7 +67,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin" "$work/mutant"
 
-CAP=$(extract_run_block "Has this review already had its five rounds" "$WF")
+CAP=$(extract_run_block "Has this review already had all its rounds" "$WF")
 if [ -z "$CAP" ]; then
   bad "the cap step's shell can be extracted and run"
   printf '\n%d passed, %d failed\n' "$pass" "$fail"

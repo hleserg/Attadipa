@@ -3,15 +3,25 @@
 
 // A bring-up instrument, not a GNSS driver.
 //
-// The T-Watch carries a GNSS module this firmware has never spoken to. Which
-// one is `UNKNOWN` — `docs/research/OPEN_QUESTIONS.md:35` says the answer rests
-// on "the owner's recollection" and that "a listing is a seller's claim and a
-// recollection is weaker still". This asks the part instead.
+// The T-Watch's GNSS module is a u-blox MIA-M10Q, and THIS FILE IS WHAT
+// ESTABLISHED IT. A `UBX-MON-VER` poll over the watch's own UART on 2026-09-05
+// came back with the module naming its own part number —
+// `docs/research/TWATCH_GNSS_READOFF_2026-09-05.md:22` — "ext : MOD=MIA-M10Q".
+// Before that the answer rested on a recollection, and an earlier draft of this
+// header still said the firmware had never spoken to the module. It had; the
+// run is in the report above, and the row that used to be the reason to ask
+// now records the answer — `docs/research/OPEN_QUESTIONS.md:35` — "The GNSS
+// half was read off the part on 2026-09-05".
+//
+// WHAT IS STILL OPEN IS THE DRIVER. There is none, and reading a part number is
+// not agreement with a datasheet: what the module accepts, what DC4 must hold
+// for it, and what assistance costs are all still unmeasured here.
 //
 // It knows the pins and the candidate protocols and nothing else. It asserts no
-// module identity, writes no GNSS configuration, and saves nothing anywhere:
-// every command it sends is a version query. Nothing here may be promoted into
-// a driver — a driver is written once this and a datasheet agree.
+// module identity of its own — it prints what the port answers — writes no GNSS
+// configuration, and saves nothing anywhere: every command it sends is a
+// version query. Nothing here may be promoted into a driver — a driver is
+// written once this and a datasheet agree.
 
 #pragma once
 

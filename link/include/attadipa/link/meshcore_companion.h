@@ -235,7 +235,8 @@ private:
 
     // Liveness zero: disabled. BLE reports connection and disconnection, so a
     // silence timer would only invent a second, worse answer to a question the
-    // transport already answers (link_state.cpp:211). This is the only place
+    // transport already answers -- `link/src/link_state.cpp:211` --
+    // "if (config_.liveness.value == 0) {". This is the only place
     // the config is written -- the constructor used to override a value stated
     // here, which is how a comment came to source a constant to a window that
     // did not exist.
@@ -334,7 +335,7 @@ private:
     // ANSWERS. The frame carries no correlation field, and a defined command
     // that fails its own guard is refused with the code an undefined one gets:
     // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:525` -- "indistinguishable
-    // from a genuinely unknown opcode". So there is nothing on the wire to read
+    // from a" genuinely unknown opcode. So there is nothing on the wire to read
     // and no flag combination to infer it from; what is left is that the node
     // answers in the order it was asked, and this queue is FIFO, so the order
     // it was asked in is the order `enqueue()` handed out. `tx_seq_` records

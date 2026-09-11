@@ -613,11 +613,15 @@ out=$(run "$(_ceiling_ledger 5)" "$f_fixed" 4 5)
 check "a fixed finding past the ceiling is not reported as the ceiling" nothing-holding "$(key reason)"
 
 # A caller typo must not restore the sixteen-round behaviour this rule stops.
-out=$(run "$(_ceiling_ledger 5)" "$f" 4 "not-a-number")
-check "an unreadable ceiling falls back to the default" 5 "$(key ceiling)"
+# The floor here is 2, the one in force, and not the 4 the cases above use: the
+# default ceiling is 3, a ceiling below the floor is raised to it, and a floor of
+# 4 would therefore answer 4 to every one of these no matter what the default
+# is. That is the raise being tested a few lines down, not the default.
+out=$(run "$(_ceiling_ledger 5)" "$f" 2 "not-a-number")
+check "an unreadable ceiling falls back to the default" 3 "$(key ceiling)"
 check "so it still fires rather than disabling itself" ceiling "$(key reason)"
-out=$(run "$(_ceiling_ledger 5)" "$f" 4 0)
-check "a zero ceiling falls back too" 5 "$(key ceiling)"
+out=$(run "$(_ceiling_ledger 5)" "$f" 2 0)
+check "a zero ceiling falls back too" 3 "$(key ceiling)"
 
 # A ceiling below the floor would make the floor unreachable, so it is raised to
 # it: the older rule keeps at least the rounds it was written for.
@@ -626,12 +630,15 @@ check "a ceiling under the floor is raised to the floor" 4 "$(key ceiling)"
 check "so round 2 is still inside the floor regime" ai-review:blocking "$(key label)"
 
 echo
-echo "The cap — five rounds of reviewing, not five rounds of holding"
+echo "The cap — rounds of reviewing, not rounds of holding"
 
 # `gate` answers before the model is invoked, from the ledger alone. The ceiling
 # tested above decides which findings hold; this decides whether there is a
-# round for it to decide about. The two must agree on where five ends, so these
-# use the same `_ceiling_ledger` and the same ceiling of 5.
+# round for it to decide about. The two must agree on where the last round ends,
+# so these pass the same explicit ceiling of 5 as the cases above rather than
+# leaning on the default -- the default is asserted on its own further down, and
+# a suite that only ever exercised it would move every case here the next time
+# the owner changes the number.
 gate() {
   bash "$script" gate "${1:-}" "${2:-}" "${3:-}"
 }
@@ -688,10 +695,24 @@ check "an unreadable round runs rather than caps" yes "$(key run)"
 
 # The ceiling is one constant. A gate with its own default would be a second.
 out=$(gate "$(_ceiling_ledger 5)" "")
-check "an absent ceiling defaults to five" 5 "$(key ceiling)"
+check "an absent ceiling defaults to three" 3 "$(key ceiling)"
 check "so five published still caps on the default" no "$(key run)"
+# THE GATE'S DEFAULT AND THE VERDICT'S ARE ONE NUMBER, and the suite asserts it
+# rather than trusting that they were edited together: the failure a split
+# default produces is a review that reviews four times and judges as though it
+# reviewed three, which no single-function test can see.
+# Not through `run`, which supplies a ceiling of its own so that the cases above
+# can name one: the argument has to be genuinely absent for the default to be
+# what answers.
+out=$(bash "$script" "$(_ceiling_ledger 5)" "$f" 2 "$work/ledger.md" \
+      "$work/deferred.md" 139)
+check "and it is the same default the verdict falls back to" 3 "$(key ceiling)"
+out=$(gate "$(_ceiling_ledger 2)" "")
+check "two published still runs the third on the default" yes "$(key run)"
+out=$(gate "$(_ceiling_ledger 3)" "")
+check "three published does not run a fourth" no "$(key run)"
 out=$(gate "$(_ceiling_ledger 5)" not-a-number)
-check "an unreadable ceiling falls back to five rather than to none" no "$(key run)"
+check "an unreadable ceiling falls back to the default rather than to none" no "$(key run)"
 out=$(gate "$(_ceiling_ledger 5)" 7)
 check "and a raised ceiling raises the cap with it" yes "$(key run)"
 

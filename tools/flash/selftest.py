@@ -310,9 +310,10 @@ def check_the_flash_size_is_a_rule_of_its_own(tmp: Path) -> list[str]:
     Two consequences, and the second is the one that bites. Today a T-Watch
     table that runs off the end of the part is refused with a sentence about
     "the unverified half" and a document that says at
-    FLASH_ADDRESSING_LIMITS.md:315 "The T-Watch is unaffected" — the right
+    FLASH_ADDRESSING_LIMITS.md:320 "The T-Watch is unaffected" — the right
     refusal for the wrong reason. And when the ceiling moves, which
-    partition_check.py:26-30 plans for in one commit, that table goes green: a
+    partition_check.py:26-30 "There is deliberately **no flag to switch this
+    off.**" plans for in one commit, that table goes green: a
     partition past the end of the part, passing, in a commit whose diff is
     entirely about the other board.
 

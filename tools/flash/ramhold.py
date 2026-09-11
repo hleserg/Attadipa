@@ -58,7 +58,14 @@ def resolve_port(serial: str) -> str:
     if not BY_ID.is_dir():
         raise SystemExit(f"{BY_ID} does not exist — no udev by-id links on this host")
 
-    matches = [link for link in sorted(BY_ID.iterdir()) if serial in link.name]
+    # Case-folded, because case is not identity here either: the by-id name
+    # carries the serial in the case udev got from the descriptor, the loader
+    # reports the same MAC in lower case, and `identity_mismatch` already folds
+    # it -- so a lower-case serial passed every later check and then found no
+    # port at all. Found in review.
+    want = serial.casefold()
+    matches = [link for link in sorted(BY_ID.iterdir())
+               if want in link.name.casefold()]
     if not matches:
         available = "\n  ".join(link.name for link in sorted(BY_ID.iterdir())) or "(none)"
         raise SystemExit(

@@ -14,6 +14,45 @@ lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost,
   return value ? lv_color_hex(value->packed()) : fallback;
 }
 
+// So that the two fallbacks below stay the colours `build()` already falls back
+// to rather than becoming a pair of numbers written here -- which is what
+// `tools/ui/check_raw_values.py` refuses, and rightly.
+Rgb rgb_of(lv_color_t colour) {
+  return Rgb{colour.red, colour.green, colour.blue};
+}
+
+// The same resolution before it is flattened into an LVGL colour. Choosing
+// which of two inks may sit on a fill is a measurement, and `lv_color_t` has
+// thrown the numbers away by the time the choice has to be made.
+Rgb resolved_rgb(ColorRole role, Theme theme, PixelCost pixel_cost,
+                 Rgb fallback) {
+  const auto value = color(role, theme, pixel_cost);
+  return value ? *value : fallback;
+}
+
+// The label on a filled key is whichever defined ink reads better ON THAT
+// FILL. Measured here, not named in advance.
+//
+// Naming one in advance is what put a 2.19:1 word on the acting key in day.
+// `page` is the right answer on night's amber -- 7.73:1 -- and the wrong one on
+// day's orange, where #FFF6E8 on #FF8A40 measures 2.19:1 against the threshold
+// `ui/AGENTS.md:40` — "- **Contrast decides whether a state may be a word.** The night table measures"
+// — points at; `ink` on that same orange is 5.08:1. Which of the two wins
+// depends on the fill, and the fill depends on the theme AND on which key the
+// model is calling `acting` this frame, so here is the only place that can
+// answer it.
+//
+// It invents no colour: the choice is between the two the table already
+// defines, which is why it is not the owner's decision the `Danger` gap in
+// `update()` is.
+lv_color_t legible_on(Rgb fill, Rgb first, Rgb second) {
+  const Rgb ink = contrast_ratio_centi(first, fill) >=
+                          contrast_ratio_centi(second, fill)
+                      ? first
+                      : second;
+  return lv_color_hex(ink.packed());
+}
+
 void bare(lv_obj_t *object) {
   lv_obj_remove_style_all(object);
   lv_obj_remove_flag(object, LV_OBJ_FLAG_SCROLLABLE);
@@ -42,6 +81,38 @@ constexpr apps::EntryKey kKeys[] = {
 };
 constexpr unsigned kColumns = 3;
 constexpr unsigned kRows = 2;
+
+// A PRESSED KEY IS STILL A WORD, AND IT IS ALSO STILL PRESSED. Both halves
+// have been broken here, one after the other.
+//
+// The pressed style used to be an OPACITY, which blends the key's colour
+// toward the page behind it -- and every step toward the page is a step away
+// from the ink `legible_on` chose against the resting fill. Day-emissive
+// orange on ink olive measures 5.08:1 at rest and 3.23:1 under the LV_OPA_70
+// it was, against the 4.50:1 `kContrastBodyText` a word needs.
+//
+// RAISING THAT OPACITY FIXED THE WORD AND ERASED THE PRESS. The four keys the
+// model is not calling `acting` are filled `raised`, which is 22/26/38 from
+// the day page and 13/6/5 from night's; a few per cent of that is one or two
+// parts in 255, and `sim/lv_conf_simulator.h:69` — "#define LV_COLOR_DEPTH 16"
+// — buckets by `r >> 3`, `g >> 2`, `b >> 3`, so the pressed key was THE SAME
+// PIXEL as the resting one. Found in review, against a test that measured
+// both states and never asked whether they differ.
+//
+// SO THE PRESS MOVES TOWARD THE INK, NOT TOWARD THE PAGE. The ink is the
+// farthest defined colour from the fill -- that is what `legible_on` picked it
+// for -- so the same small mix that is invisible toward a near page is several
+// RGB565 steps toward it, in both themes and on both panels, and it invents no
+// colour the table does not already hold. It still costs contrast, because the
+// fill is moving toward the word on it, so the number is bounded at both ends
+// and is written out rather than named: at 16 every fill crosses at least one
+// RGB565 bucket in two of three channels, and the tightest word -- day-emissive
+// orange on ink olive -- holds 4.59:1. At 20 that word is 4.48:1.
+//
+// Neither half is a promise: `tests/test_sim_provision_fit.cpp` reads the
+// pressed fill out of the pressed style on every key of every field, measures
+// the word on it, AND fails if that fill is the resting one's pixel.
+constexpr lv_opa_t kPressedMix = 16;
 static_assert(sizeof(kKeys) / sizeof(kKeys[0]) == ProvisionFace::kKeyCount,
               "every EntryKey is drawn");
 
@@ -79,17 +150,11 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
   const lv_color_t page =
       resolved(ColorRole::BackgroundPrimary, config.theme, config.pixel_cost,
                lv_color_black());
-  // Night has no `BackgroundRaised` -- DESIGN_SYSTEM records that as a gap
-  // rather than inventing a value (`ui/src/color.cpp` — "    {ColorRole::BackgroundRaised, ColorKind::Background, kSoftClay, std::nullopt, std::nullopt},").
-  // Falling through to the page would make every key that is not the accent
-  // one look like plain text, which is what the pad this replaced did. Surface
-  // is defined in both themes and is the nearest thing the system actually
-  // states.
-  const lv_color_t surface =
-      resolved(ColorRole::BackgroundSurface, config.theme, config.pixel_cost,
-               page);
-  const lv_color_t raised = resolved(ColorRole::BackgroundRaised, config.theme,
-                                     config.pixel_cost, surface);
+  // No key fill here. `build()` paints the page and the lines; every key's fill
+  // and every key's label colour are decided in `update()`, because both depend
+  // on which key the model is calling `acting` and that changes without a
+  // rebuild. The raised and surface pair this used to resolve beside `page` was
+  // read by nothing -- the comment explaining the fall-through moved with them.
   const lv_color_t ink = resolved(ColorRole::TextPrimary, config.theme,
                                   config.pixel_cost, lv_color_white());
   const lv_color_t muted =
@@ -136,9 +201,12 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
   lv_obj_set_size(keypad_, keypad_width, keypad_height);
   lv_obj_align(keypad_, LV_ALIGN_BOTTOM_MID, 0, -margin);
 
-  // Whatever the keys leave. The lines stack from the top and the column
+  // Whatever the keys leave. The lines are centred in that and the column
   // clips rather than scrolls: a screen this one has too much to say on is a
-  // layout to fix, not a scrollbar to grow.
+  // layout to fix, not a scrollbar to grow. Centred, it clips at BOTH ends and
+  // the title is what goes first, so the fit is a test rather than a promise --
+  // `tests/test_sim_provision_fit.cpp` walks every field of every task in both
+  // locales on both geometries and fails if any line leaves this box.
   lines_ = lv_obj_create(screen);
   bare(lines_);
   lv_obj_set_size(lines_, width,
@@ -185,9 +253,6 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
                    static_cast<int>(i / kColumns) * (key_height + gap));
     lv_obj_set_style_radius(button, radius, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(
-        button, LV_OPA_70,
-        static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
     // No border: a rounded border is the one thing on this screen the
     // software renderer cannot draw into a snapshot twice -- the second
     // 617 kB capture of thirteen of them found no room in LVGL's pool, on
@@ -275,17 +340,23 @@ void ProvisionFace::update() {
         colour ? lv_color_hex(colour->packed()) : lv_color_white(), LV_PART_MAIN);
   }
 
-  const lv_color_t page =
-      resolved(ColorRole::BackgroundPrimary, config_.theme, config_.pixel_cost,
-               lv_color_black());
-  const lv_color_t ink = resolved(ColorRole::TextPrimary, config_.theme,
-                                  config_.pixel_cost, lv_color_white());
-  const lv_color_t surface = resolved(ColorRole::BackgroundSurface,
-                                      config_.theme, config_.pixel_cost, page);
-  const lv_color_t raised = resolved(ColorRole::BackgroundRaised, config_.theme,
-                                     config_.pixel_cost, surface);
-  const lv_color_t accent = resolved(ColorRole::AccentPrimary, config_.theme,
-                                     config_.pixel_cost, ink);
+  const Rgb page =
+      resolved_rgb(ColorRole::BackgroundPrimary, config_.theme,
+                   config_.pixel_cost, rgb_of(lv_color_black()));
+  const Rgb ink = resolved_rgb(ColorRole::TextPrimary, config_.theme,
+                               config_.pixel_cost, rgb_of(lv_color_white()));
+  // Night has no `BackgroundRaised` -- DESIGN_SYSTEM records that as a gap
+  // rather than inventing a value (`ui/src/color.cpp` — "    {ColorRole::BackgroundRaised, ColorKind::Background, kSoftClay, std::nullopt, std::nullopt},").
+  // Falling through to the page would make every key that is not the acting
+  // one look like plain text, which is what the pad this replaced did. Surface
+  // is defined in both themes and is the nearest thing the system actually
+  // states.
+  const Rgb surface = resolved_rgb(ColorRole::BackgroundSurface, config_.theme,
+                                   config_.pixel_cost, page);
+  const Rgb raised = resolved_rgb(ColorRole::BackgroundRaised, config_.theme,
+                                  config_.pixel_cost, surface);
+  const Rgb accent = resolved_rgb(ColorRole::AccentPrimary, config_.theme,
+                                  config_.pixel_cost, ink);
   // The palette has no red in either theme and inventing one is the owner's
   // decision, not this file's (`ui/src/color.cpp` — "  //   - `Danger` has no
   // value in either theme."). Warning is the strongest thing that is actually
@@ -299,17 +370,28 @@ void ProvisionFace::update() {
   // **Only night separates the two colours, and this is the honest extent of
   // the marking.** Warning is orange in day and undefined in night, where a
   // foreground role falls through to day (`ui/src/color.cpp:66` —
-  // "    {ColorRole::Warning, ColorKind::Foreground, kAttadipaOrange, std::nullopt, kAttadipaOrange},"),
+  // "{ColorRole::Warning, ColorKind::Foreground, kAttadipaOrange,"),
   // while AccentPrimary is amber in night and that same orange in both day
   // columns (`ui/src/color.cpp:63` —
-  // "    {ColorRole::AccentPrimary, ColorKind::Foreground, kAttadipaOrange, kGlowAmber, kAttadipaOrange},").
+  // "{ColorRole::AccentPrimary, ColorKind::Foreground, kAttadipaOrange,").
   // So in day `danger == accent` exactly, and the fill there says "this key
   // acts", not "this key destroys" — the word on it is the whole of the
   // warning. Closing that gap means giving `Danger` a value, which is the
   // owner's call, so the code does not paper over it with an invented red.
-  const lv_color_t danger = resolved(ColorRole::Warning, config_.theme,
-                                     config_.pixel_cost, accent);
+  //
+  // That last sentence is a promise about a *word*, so the word has to be
+  // readable: `legible_on` picks the key's label from the two inks the table
+  // defines by measuring both against the fill. Day used to paint `page` on
+  // both filled keys at 2.19:1 -- an unreadable warning is not a warning.
+  const Rgb danger = resolved_rgb(ColorRole::Warning, config_.theme,
+                                  config_.pixel_cost, accent);
   const bool confirming = entry_->field() == apps::EntryField::ForgetConfirm;
+  // Three fills exist, so three measurements do. The loop below used to call
+  // `legible_on` once per key, which is twelve `pow()` per channel per frame to
+  // answer the same three questions six times.
+  const lv_color_t word_on_raised = legible_on(raised, page, ink);
+  const lv_color_t word_on_accent = legible_on(accent, page, ink);
+  const lv_color_t word_on_danger = legible_on(danger, page, ink);
 
   for (unsigned i = 0; i < kKeyCount; ++i) {
     const char *label = label_of(kKeys[i], text);
@@ -324,11 +406,19 @@ void ProvisionFace::update() {
     // the first time the model moved it.
     const bool through = kKeys[i] == text.acting;
     const bool destructive = confirming && through;
-    const lv_color_t fill = destructive ? danger : (through ? accent : raised);
-    lv_obj_set_style_bg_color(keys_[i], fill, LV_PART_MAIN);
+    const Rgb fill = destructive ? danger : (through ? accent : raised);
+    const lv_color_t word = destructive ? word_on_danger
+                          : through     ? word_on_accent
+                                        : word_on_raised;
+    const lv_color_t resting = lv_color_hex(fill.packed());
+    lv_obj_set_style_bg_color(keys_[i], resting, LV_PART_MAIN);
+    // The pressed fill is decided here for the same reason the resting one is:
+    // it is `resting` and `word`, and both of those change with the field.
+    lv_obj_set_style_bg_color(
+        keys_[i], lv_color_mix(word, resting, kPressedMix),
+        static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
     lv_obj_t *text_of_key = lv_obj_get_child(keys_[i], 0);
-    lv_obj_set_style_text_color(text_of_key, through ? page : ink,
-                                LV_PART_MAIN);
+    lv_obj_set_style_text_color(text_of_key, word, LV_PART_MAIN);
     lv_label_set_text(text_of_key, label);
   }
 }

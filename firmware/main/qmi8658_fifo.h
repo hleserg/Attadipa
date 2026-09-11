@@ -362,7 +362,7 @@ private:
     if (result != QmiResult::Ok)
       return result;
     // READ MODE AND THE FROZEN COUNT, BOTH CHECKED THE WAY `read()` CHECKS
-    // THEM -- `firmware/main/qmi8658_fifo.h:169` — "    if (!(control & 0x80) || words * 2 > 16 * frame_bytes_ ||".
+    // THEM -- `firmware/main/qmi8658_fifo.h:182` — "    if (!(control & 0x80) || words * 2 > 16 * frame_bytes_ ||".
     //
     // A request that moves nothing is not a hypothesis: the refused run of
     // 2026-09-11 logged three words of `0x8000` with the count unmoved after.

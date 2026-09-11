@@ -122,7 +122,7 @@
 // `core::PositionSample` a flag saying its `observed_at` is an observation time
 // rather than an arrival stamp, and let `poll()` refresh on a repeat only for
 // providers that set it. That cannot be done by comparing `observed_at`
-// directly — `link/src/meshcore_companion.cpp:610` — "node_position_at_ = now;"
+// directly — `link/src/meshcore_companion.cpp:612` — "node_position_at_ = now;"
 // — restamps on every accepted frame whether or not the coordinate moved, so a
 // stamp comparison would switch the rule off exactly where it belongs.
 
@@ -175,8 +175,8 @@ public:
     // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
     // control a module on that pad, and `Off` becomes reachable — but only for
     // a caller that owns the rail and passes the state in. Nothing gates ALDO1
-    // on this board today: `firmware/main/board_power.cpp:118` — "    {0x92, \"ALDO1\", RailPolicy::NotAuthorised," —
-    // leaves it as the PMU brings it up.
+    // on this board today: `firmware/main/board_power.cpp:118` —
+    // "{0x92, " — leaves it as the PMU brings it up.
     core::Availability availability() const override;
 
     bool sample(core::PositionSample& out) const override;

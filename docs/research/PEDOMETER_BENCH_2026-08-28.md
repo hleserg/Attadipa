@@ -36,7 +36,7 @@ lower bound, which makes the negative result stronger, not weaker.
 
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
 `(hi - lo) * 1000 / ACCEL_LSB_PER_G`
-(`pedometer-bench-2026-08-28/probe/pedo.c:402` — "(hi[a] - lo[a]) * 1000"), and
+(`pedometer-bench-2026-08-28/probe/pedo.c:403` — "(hi[a] - lo[a]) * 1000"), and
 no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
 prints `+/-8 g` — but that label is itself one of the stale four, listed below in
@@ -184,12 +184,12 @@ The CTRL9 handshake was confirmed on every run — both `0x0D` calls acknowledge
 with CmdDone set and cleared — so the engine **processed both Configure
 Pedometer commands**. It does not follow that the parameters were in place when
 it did, and this report no longer says it does: `configure_pedometer()`
-(`pedometer-bench-2026-08-28/probe/pedo.c:194-224` —
+(`pedometer-bench-2026-08-28/probe/pedo.c:195-225` —
 "static bool configure_pedometer(void)") discards every `wr()`
 return for the eighteen
 `CAL1_L..CAL4_H` bytes — the only checked calls are the two `ctrl9()`s — and
 nothing reads those registers back. `shake.log:53-54` is not a readback either;
-`pedometer-bench-2026-08-28/probe/pedo.c:317-322` — "sample_cnt=%d" prints
+`pedometer-bench-2026-08-28/probe/pedo.c:318-323` — "sample_cnt=%d" prints
 the `#define`s. **A return check on the `CAL`
 writes and a readback before the second `0x0D` are required before the
 read-after-walk run #116 needs, and are not in this pull request.** The probe
