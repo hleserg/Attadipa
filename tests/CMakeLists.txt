@@ -374,6 +374,26 @@ if(ATTADIPA_BUILD_SIMULATOR)
     add_test(NAME sim_review_keys COMMAND test_sim_review_keys)
     set_tests_properties(sim_review_keys PROPERTIES LABELS "simulator;design")
 
+    # The provisioning console, driven with a finger and read off the file
+    # descriptor (#316).
+    #
+    # Here for the reason above: it presses the shipping entry screen through
+    # LVGL's own pointer path, so it needs LVGL, which only a simulator build
+    # configures. Its own binary rather than a case inside the review-keys test
+    # because it redirects stdout and stderr around the walk, and a redirect
+    # that also swallowed a neighbouring case's failure message would be a test
+    # that hides tests.
+    add_executable(test_sim_provision_secrecy test_sim_provision_secrecy.cpp)
+    target_link_libraries(test_sim_provision_secrecy PRIVATE attadipa_sim_screens)
+    add_test(NAME sim_provision_secrecy COMMAND test_sim_provision_secrecy)
+    # The walk is a few hundred milliseconds of frames. The `TIMEOUT` is the
+    # outer bound on a hang the test's own `alarm()` cannot answer -- one that
+    # stops the process before it arms, or after `end()` disarms it. Without
+    # one, ctest waits out its 1500 s default and then sends `SIGKILL`, which
+    # spills nothing.
+    set_tests_properties(sim_provision_secrecy
+                         PROPERTIES LABELS "simulator;security" TIMEOUT 180)
+
     # The raw-value checker is only complete if its written LVGL inventory is
     # held against the headers used by this simulator build.
     if(Python3_Interpreter_FOUND)
