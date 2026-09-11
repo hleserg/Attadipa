@@ -1676,26 +1676,27 @@ being true of the product image at #346, not at this decision —
 ADR-0014 now points here for what replaces it. The sentence itself was
 rewritten when the entry screen shipped, so it and the code changed together.
 
-## OD-25 — The independent review gets five rounds, then it files rather than holds
+## OD-25 — The independent review gets three rounds, then it files rather than holds
 
 **Decided:** 2026-08-31, by the owner, in conversation.
 
 **What he decided:** the independent review may hold a pull request for at most
-**five rounds**. From round six on, no open finding blocks the merge — a `floor`
-finding included. Findings are still published, still recorded in the ledger and
-still filed as the follow-up issue the review already produces; only the "holds
-the merge" column changes. What he weighed: shipping a mistake and fixing it
-costs less than proof-reading one change fifteen times over, so past five rounds
-the merge goes ahead unless something risks a serious breakage.
+**five rounds** — three since the second amendment below. Past the last of them,
+no open finding blocks the merge — a `floor` finding included. Findings are
+still published, still recorded in the ledger and still filed as the follow-up
+issue the review already produces; only the "holds the merge" column changes.
+What he weighed: shipping a mistake and fixing it costs less than proof-reading
+one change fifteen times over, so past the last round the merge goes ahead
+unless something risks a serious breakage.
 
 **What prompted it:** #338 ran **sixteen** rounds. The convergence floor of #169
-(OD is `review-verdict.sh`'s `FLOOR`, set to 4) caps which *categories* may hold
-a pull request late, not how many rounds there can be, and a `floor` finding
-blocks at any round however late. That rule did converge in the sense that each
-round found less, but every round's own fix minted the next round's floor
-finding inside the same document — round 14 fixed five and created three, one of
-them `floor`. Sixteen review cycles at roughly twenty minutes each is over five
-hours of wall clock for a documentation change.
+(OD is `review-verdict.sh`'s `FLOOR`, 4 then and 2 now) caps which *categories*
+may hold a pull request late, not how many rounds there can be, and a `floor`
+finding blocks at any round however late. That rule did converge in the sense
+that each round found less, but every round's own fix minted the next round's
+floor finding inside the same document — round 14 fixed five and created three,
+one of them `floor`. Sixteen review cycles at roughly twenty minutes each is
+over five hours of wall clock for a documentation change.
 
 **Amended 2026-09-01, by the owner, in conversation:** the five rounds are five
 rounds of *reviewing*. Until this amendment the cap was applied after the model
@@ -1708,13 +1709,23 @@ longer run at all: `attadipa_review_gate` reads the round out of the same ledger
 before the model is invoked, and the workflow skips the paid step and hands over
 the verdict round six could only have reached.
 
+**Amended 2026-09-11, by the owner, in conversation — «Сокращай максимальное
+количество ревью до 3».** Five rounds become **three**, and the convergence
+floor moves from 4 to **2** with it. The floor moves because it must:
+`attadipa_review_verdict` raises a ceiling that sits below the floor back up to
+the floor, so leaving the floor at 4 under a ceiling of 3 would put a ceiling of
+4 in force and the owner's number would not be the one running. It moves to
+ceiling − 1, the shape it already had — round one holds a `normal` finding,
+rounds two and three defer it, and there is no round four to buy. `floor`
+category is untouched, and so is everything in the paragraph below.
+
 **What this does not change:** what the reviewer is asked to look for, the floor
 list itself, the rule that a deferred finding never ages into a blocker, and
-which findings hold a pull request in rounds one to five. The ceiling caps
-holding and, since the amendment, reviewing. It has never capped *recording*:
-every finding still open when the cap falls stays in the ledger comment on the
-pull request, and the cap posts a note saying so rather than letting a skipped
-review read as a clean one.
+which findings hold a pull request in the rounds below the floor. The ceiling
+caps holding and, since the 2026-09-01 amendment, reviewing. It has never capped
+*recording*: every finding still open when the cap falls stays in the ledger
+comment on the pull request, and the cap posts a note saying so rather than
+letting a skipped review read as a clean one.
 
 **One claim in this entry was never true.** "Still filed as the follow-up issue
 the review already produces" describes a mechanism that is not wired:
@@ -1724,10 +1735,15 @@ recording OD-25 relies on is the ledger comment, which is real and is what the
 cap's note cites. Filing the issue is worth doing and is not part of the cap;
 recorded here so the next reader does not take the promise for the mechanism.
 
-**Where it lives:** `CEILING` in `.github/scripts/review-verdict.sh`, passed as
-`5` from `.github/workflows/claude-pr-review.yml` to both the verdict and the
-gate, asserted in `.github/tests/review-verdict-test.sh`. Raising or lowering it
-is an owner decision; edit this entry when it changes.
+**Where it lives:** `CEILING` in `.github/scripts/review-verdict.sh`, whose
+default is the number in force, passed as `3` from
+`.github/workflows/claude-pr-review.yml` to both the verdict and the gate
+alongside the floor's `2`, and asserted in
+`.github/tests/review-verdict-test.sh`. Nothing else spells it out: the cap's
+notices read it back off the gate's own `ceiling=` line, because a step name or
+a sentence that says "five" in words is what goes stale the next time this
+number changes — and it has now changed twice. Raising or lowering it is an
+owner decision; edit this entry when it does.
 
 ## OD-24 — Language follows the reader
 

@@ -141,9 +141,11 @@ python3 tools/ui/make_mockups.py --font artifacts/ui/NunitoSans.ttf --out artifa
   claim marked `kind=hosted` belongs to a running workflow; do not break it.
 - **A merged status is not an approving review.** Read the `ai-review:blocking`
   label, not the merge box.
-- **The review caps at five rounds.** Past the cap `ai-review:pass` means the
-  review *ended*, not that it passed. Read `round=N` from the ledger comment's
-  state block; the comment is edited in place, so counting comments misleads.
+- **The review caps at three rounds** (five until 2026-09-11; OD-25 is where the
+  number lives). Past the cap `ai-review:pass` means the review *ended*, not that
+  it passed. Read `round=N` from the ledger comment's state block, and the
+  ceiling from the same block rather than from this sentence; the comment is
+  edited in place, so counting comments misleads.
 - **A pull request conflicting with `main` fires no checks at all.** Zero runs
   looks the same as parked runs and is not.
 - **A review run that dies posts no verdict and leaves the check green.**

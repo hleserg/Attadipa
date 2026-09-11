@@ -179,25 +179,31 @@ own fix is the next round's subject. Two rules bound it, both in
 `.github/scripts/review-verdict.sh`, and the ledger comment on the pull request
 states both every round.
 
-**The floor is round 4.** From it on, an open finding holds the merge only if it
+**The floor is round 2.** From it on, an open finding holds the merge only if it
 is *floor*-category — a hardware fact with no source, a `PASS` for a test that
 did not run on a board, an application-layer hardware access, or an
-architecture-boundary violation — or if it was first raised before round 4 and
+architecture-boundary violation — or if it was first raised before round 2 and
 the pushes since did not fix it. Everything else is published, marked deferred,
 and filed as a follow-up issue instead of held. The round a finding was first
 seen is read from the ledger the script itself wrote, never from what the
 reviewer says this round, so a finding cannot be re-aged into a blocker.
 
-**The ceiling is round 5, and round six does not run.** The floor caps which
+**The ceiling is round 3, and a fourth round does not run.** The floor caps which
 categories may hold late; it does not cap how many rounds there can be, and #338
 ran sixteen because every round's fix minted the next round's floor finding in
-the same document. Past round five nothing holds at all, *floor* included — so a
-sixth round could only ever return the verdict already reached, and since
+the same document. Past the ceiling nothing holds at all, *floor* included — so a
+further round could only ever return the verdict already reached, and since
 2026-09-01 it is not bought. `attadipa_review_gate` reads the round out of the
-ledger before the model is invoked; the `Has this review already had its five
+ledger before the model is invoked; the `Has this review already had all its
 rounds` step skips the paid step, applies `ai-review:pass` and posts a note
 saying the review is over rather than that it found nothing. Findings open at
 the cap stay in the ledger comment, which is where that note points.
+
+The floor sits one round under the ceiling and has since both numbers were five
+and four. That is not decoration: `attadipa_review_verdict` raises a ceiling
+below the floor back up to the floor, so a floor left at 4 under a ceiling of 3
+would put a ceiling of 4 in force and the owner's number would not be the one
+running. Move one and the other moves with it.
 
 The cap counts paid rounds two ways and takes the larger, because the ledger's
 own count stops. `Converge the published reviewer verdict` is what advances
@@ -207,8 +213,8 @@ to be silenced with `2>/dev/null`, so nothing was written and nothing was said;
 the run stayed green. #382 is the worked example: its ledger says `round=5`, last
 edited at 15:35:45, and the reviewer published findings four more times — 16:08,
 16:34, 17:26, 17:59 — with converge `skipped` on every one. Nine paid rounds, a
-ledger claiming five. Frozen at five the ledger happens to cap correctly; frozen
-at three it would never cap at all. So the gate is also handed a count of the
+ledger claiming five. A ledger frozen at or past the ceiling happens to cap
+correctly; one frozen below it would never cap at all. So the gate is also handed a count of the
 published findings blocks, which measures what is being paid for and cannot
 freeze while rounds run, and it judges the larger of the two. Since #391 the
 read is retried and an `unknown` fails the publication step, so a ledger this
