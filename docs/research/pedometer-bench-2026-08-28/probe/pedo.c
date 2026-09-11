@@ -104,7 +104,7 @@
  * but that says nothing about the vendor, and nothing about Attadipa either:
  * ITS WRITER CANNOT BE IDENTIFIED AT ALL. T-166 replaced this unit's factory
  * image on 2026-08-25, so found state here is whatever the last program left.
- * `docs/research/VERIFIED_FACTS.md:2239` -- "which a second draft asserted and
+ * `docs/research/VERIFIED_FACTS.md:2258` -- "which a second draft asserted and
  * cannot be supported" -- refuses attributing it to Attadipa's own firmware.
  * Two earlier versions of this comment drew an
  * attribution -- first to the vendor, then to Attadipa -- and both were wrong;

@@ -84,7 +84,8 @@ namespace attadipa::core {
 // `firmware/main/meshcore_ble.cpp:1278` — "        case SessionStep::Fault:".
 // Every `ble_gap_disc_cancel()` in that file sits on a path that is not a fault
 // — a matched advertisement, forget-node, deconfigure — so the unbounded scan
-// started at `:1271` can outlive the phase that dropped the lease. Released
+// started at `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load())
+// start_scan();" — can outlive the phase that dropped the lease. Released
 // anyway, and deliberately: `Faulted` needs a reset rather than a retry, so a
 // declaration that held through it would refuse every sleep until that reset
 // arrived, on a watch whose power key is the thing asking. The defect is the

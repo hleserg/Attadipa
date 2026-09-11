@@ -123,15 +123,52 @@ COMMENT_MARKERS = {
 
 SOURCE_SUFFIXES = tuple(COMMENT_MARKERS)
 
+# CMake is selected by NAME, not by suffix. The `.cmake` entry above admits a
+# suffix no file in this repository has: all seventeen CMake files are called
+# `CMakeLists.txt`, so the entry added for them selected none of them, and the
+# grep offered as evidence that the gap was empty covered two of the seventeen.
+# `gnss/CMakeLists.txt:9` — "It is *not* in `platform/`, which is where issue
+# #429 asked for it. That" — was the fifteenth, and it was stale. In review.
+CMAKE_FILENAME = "CMakeLists.txt"
+
+# A comment OPENS anywhere on its line -- `int x = 0;  // FOO.md:12 "..."` and
+# `a = b; /* ... */` both say so. The one marker that does not is `*`, which is
+# a comment only as the continuation of a `/* ... */` block and is a dereference
+# or a multiplication everywhere else. Found in review: `startswith` alone was
+# the whole test, so every trailing comment in the tree was emptied along with
+# its code and the mandatory-fingerprint rule never reached one.
+START_ONLY = ("*",)
+
+# A Python docstring is a comment that happens to be a string, and this
+# repository writes its `tools/` prose in one. Keeping only `#` lines left
+# `tools/flash/selftest.py` citing a line five out of date and reported the
+# tree green. A triple quote counts only when it OPENS the line, which is how
+# every docstring here is written and is what keeps `sep = '\"\"\"'` from
+# swallowing the file after it. Found in review.
+TRIPLE_QUOTES = ('"""', "'''")
+STRING_PREFIX = "rRbBuUfF"
+
+
+def markers_for(path: str) -> tuple[str, ...]:
+    if os.path.basename(path) == CMAKE_FILENAME:
+        return COMMENT_MARKERS[".cmake"]
+    return COMMENT_MARKERS[os.path.splitext(path)[1]]
+
 
 def source_files(root: str) -> list[str]:
     found = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
-            if name.endswith(SOURCE_SUFFIXES):
+            if name.endswith(SOURCE_SUFFIXES) or name == CMAKE_FILENAME:
                 found.append(os.path.join(dirpath, name))
     return sorted(found)
+
+
+def opening_triple(stripped: str) -> str | None:
+    """The triple quote this line opens a docstring with, if it opens one."""
+    head = stripped[1:] if stripped[:1] in STRING_PREFIX else stripped
+    return next((q for q in TRIPLE_QUOTES if head.startswith(q)), None)
 
 
 def comment_lines(path: str, text: str) -> str:
@@ -140,20 +177,46 @@ def comment_lines(path: str, text: str) -> str:
     Every other line becomes empty. Line numbers therefore still mean what
     they mean in the file itself -- which is the point: the citation loop
     reports `path:lineno`, and a synthetic text that renumbered lines would
-    name a line nobody can open. Emptying the code rather than dropping it
-    also excludes string literals by construction, so a fixture that builds a
-    fake citation to test this very checker is not itself checked.
+    name a line nobody can open.
+
+    Emptying the code rather than dropping it keeps an ordinary string literal
+    out of the scan, so a fixture that builds a fake citation to test this very
+    checker is not itself checked. That is a consequence of where comments
+    start, NOT a guarantee about quotes: a trailing `// "..."` is kept from the
+    marker on, whatever is around it, and a Python docstring is kept entire. A
+    fixture that must not be read is written with the `EXAMPLE.md` placeholder,
+    which resolves to nothing; that reservation is the guarantee.
     """
-    markers = COMMENT_MARKERS[os.path.splitext(path)[1]]
+    markers = markers_for(path)
+    triples = TRIPLE_QUOTES if path.endswith(".py") else ()
     out = []
+    fence = None
     for line in text.split("\n"):
+        if fence is not None:
+            end = line.find(fence)
+            out.append(line[: end if end >= 0 else len(line)].strip())
+            if end >= 0:
+                fence = None
+            continue
         stripped = line.lstrip()
+        opened = opening_triple(stripped) if triples else None
+        if opened is not None:
+            body = stripped.split(opened, 1)[1]
+            out.append((body.split(opened, 1)[0] if opened in body else body).strip())
+            if opened not in body:
+                fence = opened
+            continue
+        # The EARLIEST marker on the line wins, so a `//` inside a `/* ... */`
+        # body does not re-open anything and a trailing comment is found where
+        # it actually is.
+        best = None
         for marker in markers:
-            if stripped.startswith(marker):
-                out.append(stripped[len(marker):].lstrip())
-                break
-        else:
-            out.append("")
+            at = stripped.find(marker)
+            if at < 0 or (at > 0 and marker in START_ONLY):
+                continue
+            if best is None or at < best[0]:
+                best = (at, marker)
+        out.append(stripped[best[0] + len(best[1]):].lstrip() if best else "")
     return "\n".join(out)
 
 
@@ -390,11 +453,14 @@ CITED_SUFFIXES = (
 def basename_index(root: str) -> dict[str, str]:
     """Every citable file, by basename, where exactly one file answers to it.
 
-    A citation is written with a path only when the writer thought of one.
-    `ARCHITECTURE.md:139` from `docs/research/` resolved neither beside the
-    citing document nor at the repository root, so it was skipped as "somebody
-    else's tree" -- and it was wrong: 139 is inside a `HardwareFeature` enum
-    fence, and the `has()` sites it claims to cite are at 215, 223 and 659.
+    A citation is written with a path only when the writer thought of one. A
+    bare `ARCHITECTURE.md` at line 139, cited from `docs/research/`, resolved
+    neither beside the citing document nor at the repository root, so it was
+    skipped as "somebody else's tree" -- and it was wrong: 139 is inside a
+    `HardwareFeature` enum fence, and the `has()` sites it claimed to cite are
+    at 215, 223 and 659. It is written out in words here rather than in this
+    repository's citation syntax because it is an example of a citation that
+    does NOT resolve, and docstrings are read by this checker now.
     Four citations were being skipped this way. Ambiguity is still a skip: two
     files with one basename cannot be told apart from the citation alone, and
     guessing between them would report a line number from the wrong file.

@@ -700,6 +700,85 @@ def main() -> int:
             any("which is now at :2" in problem
                 for problem in check_docs.check_citation_lines(root)),
         )
+        # A LINE COMMENT OPENS ANYWHERE ON ITS LINE. `startswith` was the whole
+        # test, so a trailing comment was emptied along with the code in front
+        # of it and the mandatory-fingerprint rule never reached one. None
+        # existed in the tree when that was found, which is exactly when it is
+        # cheap to fix and the moment nothing is asserting it either way.
+        write(root, "src/citer.cpp",
+              'int x = 0;  // See `core/thing.h:3` -- "beta gamma delta".\n')
+        case(
+            "a trailing `//` comment is read",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # ...and a BLOCK continuation does not. `*` is a marker only at the
+        # start of a line; mid-line it is a dereference or a multiplication,
+        # and reading the rest of such a line as prose is how code becomes
+        # comment text.
+        write(root, "src/citer.cpp",
+              'int y = a * b; /* and `core/thing.h:3` */\n')
+        case(
+            "a `/* ... */` body on one line is read from the opener",
+            "check_citation_lines",
+            any("with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "src/citer.cpp",
+              'int y = a * `core/thing.h:3`;\n')
+        case(
+            "a `*` that does not open the line is not a comment marker",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # The `#` half had no case at all: every source-comment case above is
+        # `//` in a `.cpp`, so Python, shell, YAML and CMake were widened by a
+        # table entry that nothing exercised.
+        for name in ("tools/citer.py", "tools/citer.sh", ".github/workflows/citer.yml"):
+            write(root, name, 'run  # See `core/thing.h:3` -- "beta gamma delta".\n')
+            case(
+                "a `#` comment is read in %s" % name.rsplit(".", 1)[1],
+                "check_citation_lines",
+                any(name in problem and "which is now at :2" in problem
+                    for problem in check_docs.check_citation_lines(root)),
+            )
+            write(root, name, "")
+        # CMAKE IS SELECTED BY NAME. `.cmake` admits a suffix no file in this
+        # repository has -- all seventeen are `CMakeLists.txt` -- so the entry
+        # added for CMake selected none of them, and one of the fifteen the
+        # supporting grep missed was carrying a stale citation.
+        write(root, "gnss/CMakeLists.txt",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        case(
+            "CMakeLists.txt is walked, though nothing here ends in .cmake",
+            "check_citation_lines",
+            any("gnss/CMakeLists.txt" in problem and "which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "gnss/CMakeLists.txt", "")
+        # A PYTHON DOCSTRING IS A COMMENT THAT HAPPENS TO BE A STRING, and this
+        # repository writes its `tools/` prose in one. Keeping only `#` lines
+        # left a real citation in `tools/flash/selftest.py` five lines out of
+        # date and reported the tree green.
+        write(root, "tools/citer.py",
+              'def f():\n    """See `core/thing.h:3` -- "beta gamma delta".\n    """\n')
+        case(
+            "a citation in a Python docstring is checked",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # ...but only where a docstring actually opens. A triple quote inside
+        # an expression would otherwise swallow every line after it as prose.
+        write(root, "tools/citer.py",
+              'sep = \'\'\'x\'\'\'\nfixture = "See `core/thing.h:3`."\n')
+        case(
+            "a triple quote that does not open the line opens no docstring",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "tools/citer.py", "")
 
     missing = {function for _title, function in check_docs.CHECKS} - called
     if missing:
