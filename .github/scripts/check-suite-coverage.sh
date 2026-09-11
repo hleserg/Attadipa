@@ -19,9 +19,9 @@
 # THERE ARE TWO WAYS TO RUN A SUITE HERE, and the first draft of this guard knew
 # only one. A `run:` line in a workflow is one. Registration as a `ctest` test in
 # `tests/CMakeLists.txt` is the other, and it is the one this repository
-# prefers: `tests/CMakeLists.txt:95` -- "# They are ctest entries rather than
+# prefers: `tests/CMakeLists.txt:141` -- "# They are ctest entries rather than
 # CI-only steps so that a local run and CI" -- says why. It counts
-# because `ctest` is not conditional on anything: `CMakeLists.txt:56` --
+# because `ctest` is not conditional on anything: `CMakeLists.txt:58` --
 # "add_subdirectory(tests)" -- is outside every `if()`, and six jobs run the
 # result, the first at `.github/workflows/ci.yml:43` -- "run: ctest --test-dir
 # build --output-on-failure".
@@ -116,7 +116,7 @@ triggered_workflow_text() {
 # `add_test` inside an `if()` with no `else()` runs in some jobs and not others.
 # Answering that needs `ctest --show-only=json-v1` against a configured build
 # tree, which this script does not have and a lint job will not build. The
-# convention that holds it up meanwhile is visible at `tests/CMakeLists.txt:247`
+# convention that holds it up meanwhile is visible at `tests/CMakeLists.txt:293`
 # -- "add_test(NAME l10n_checks_unavailable" -- a gate that cannot register the
 # real test registers a failing one instead of registering nothing.
 add_test_text() {

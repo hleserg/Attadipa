@@ -218,7 +218,7 @@ std::atomic_bool send_claimed{false};
 // and which `MeshCoreCompanion` now reads. Neither identifier available here is
 // permanent, and the key is chosen because it is the only one this repository
 // has *measured* to outlive a connection
-// (`docs/research/OWNER_DECISIONS.md:1182` -- "identity that outlives a
+// (`docs/research/OWNER_DECISIONS.md:1183` -- "identity that outlives a
 // connection"). A factory reset on the node
 // regenerates it (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:50` "a factory
 // reset regenerates it"), which is a new identity by design.
@@ -228,7 +228,7 @@ std::atomic_bool send_claimed{false};
 // the one address measured is random type 1
 // (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:47` "random"), read once and
 // never read again, so whether it stays put or rotates is `UNKNOWN`
-// (`docs/research/OWNER_DECISIONS.md:1177` -- "kind that rotates is therefore
+// (`docs/research/OWNER_DECISIONS.md:1178` -- "kind that rotates is therefore
 // `UNKNOWN`").
 // Nothing below depends on the answer; see `kRefusedNodeCooldownMs` in
 // `firmware/main/meshcore_node_pin.h` for why the cooldown does not either.
@@ -1620,11 +1620,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:167` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:189` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1452` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1677` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:840` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:931` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2098,10 +2098,10 @@ esp_err_t start_meshcore_ble()
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
-    // `firmware/main/waveshare_board.cpp:245` --
+    // `firmware/main/waveshare_board.cpp:322` --
     // "state.metadata_storage = nvs_flash_init();"
-    // -- and `firmware/main/attadipa_main.cpp:319` --
-    // "ESP_LOGE(kTag, \"Board UI failed safely: %s\", esp_err_to_name(ui_err));"
+    // -- and `firmware/main/attadipa_main.cpp:323` --
+    // "Board UI failed safely: %s"
     // -- logs a UI failure and starts the mesh anyway, so on that path the pin
     // would be read out of an uninitialised partition.
     //

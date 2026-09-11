@@ -142,7 +142,8 @@ void test_a_contact_dropped_by_type_leaves_retained_below_reported()
 // nodes apart. `advertises_meshcore()` matches a service UUID or a name
 // substring and takes whichever advertisement arrives first, and the bench had
 // two nodes answering both -- so a run's node was not a choice the firmware
-// made (docs/research/MESHCORE_T114_FIRST_CONTACT.md:54).
+// made -- `docs/research/MESHCORE_T114_FIRST_CONTACT.md:54` -- "There are two
+// MeshCore nodes in range, and the transport picks either".
 core::MeshPeerId key_of(std::uint8_t seed)
 {
     core::MeshPeerId id{};
@@ -983,7 +984,8 @@ void test_bad_frames_and_disconnect_fail_closed()
 // The frames a hostile or broken node can put on the wire, at the seam the BLE
 // transport actually hands over.
 //
-// MESHCORE_COMPANION_PROTOCOL.md:175-177 is the reason this is one test rather
+// `docs/research/MESHCORE_COMPANION_PROTOCOL.md:175-177` -- "no chunking and
+// no reassembly code" -- is the reason this is one test rather
 // than a reassembly test: "No length prefix, no delimiter, no checksum, no
 // chunking and no reassembly code anywhere in the repository. One GATT
 // operation carries one whole companion frame." So a frame that arrives split
@@ -1001,7 +1003,8 @@ void test_hostile_frames_are_bounded_and_the_session_survives()
     std::uint32_t expected = client.malformed_frames();
 
     // Over size. kMeshCoreFrameBytes is MeshCore's own MAX_FRAME_SIZE 176
-    // (MESHCORE_BLE_FRAME_CAPACITY.md:31); on nRF52 the buffer binds and not
+    // (`docs/research/MESHCORE_BLE_FRAME_CAPACITY.md:31` -- "**Protocol /
+    // buffer maximum**"); on nRF52 the buffer binds and not
     // the link, so 176 is the ceiling whatever MTU was negotiated (:58-60).
     // One byte past it is refused before a payload byte is read.
     std::uint8_t oversize[attadipa::link::kMeshCoreFrameBytes + 1]{};
@@ -1018,7 +1021,8 @@ void test_hostile_frames_are_bounded_and_the_session_survives()
     CHECK(client.status().availability == Availability::Ready);
 
     // A garbage first byte. The payload's own first byte is the response code
-    // (MESHCORE_COMPANION_PROTOCOL.md:177). One this build does not know is
+    // (`docs/research/MESHCORE_COMPANION_PROTOCOL.md:177` -- "own first byte
+    // is the command or response code"). One this build does not know is
     // counted and refused, never accepted by silence.
     for (const std::uint8_t code : {std::uint8_t{0x00}, std::uint8_t{0x7f},
                                     std::uint8_t{0xa5}, std::uint8_t{0xff}}) {

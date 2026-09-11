@@ -36,8 +36,9 @@ case "$op" in
     # wip-limit.sh reads as the designed 2: an unreachable API must not be a way
     # to widen the queue.
     if [ -z "${ATTADIPA_WIP_LIMIT-}" ]; then
-      # NOT `2>/dev/null`, for the reason wip-limit.sh:143 gives about the same
-      # CLI: the refusal is the only evidence of what went wrong. Two answers
+      # NOT `2>/dev/null`, for the reason `.github/scripts/wip-limit.sh:159` --
+      # "The refusal is the only evidence of what went wrong" -- gives about the
+      # same CLI. Two answers
       # arrive here as the same empty string. "Nobody set a width" is correct
       # and correctly silent; "this token may not read it" is not -- reading
       # Actions variables is its own permission, which a fine-grained token or

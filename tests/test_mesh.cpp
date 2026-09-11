@@ -178,7 +178,8 @@ void a_terminal_verdict_outranks_a_refusal() {
     // And the two keys, which are the point of this screen carrying them: the
     // reset the note asks for clears the fault and leaves the refusal, so the
     // pointer to the entry screen's node field has to survive here. Narrowing
-    // `apps/src/mesh.cpp:201` back to the screen that usually reports a refusal
+    // `apps/src/mesh.cpp:201` -- "if (status.has_refused &&
+    // status.has_pinned)" -- back to the screen that usually reports a refusal
     // empties both of these and changes nothing else asserted above.
     CHECK(std::strstr(text.pinned, "4c9a2f7b") != nullptr);
     CHECK(std::strstr(text.answered, "9e14c003") != nullptr);

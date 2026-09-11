@@ -93,8 +93,8 @@ private:
   // almost always identical, and running the layout for it re-measured and
   // re-aligned forty widgets, invalidating the panel each time, to arrive at
   // the pixels that were already there. `NavFace` keeps the same kind of guard
-  // over its trail (`ui/lvgl/nav_face.cpp:445` —
-  // "    if (trail_drawn_ && trail_centideg_ == drawn_centideg &&").
+  // over its trail (`ui/lvgl/nav_face.cpp:448` —
+  // "if (trail_drawn_ && trail_centideg_ == drawn_centideg &&").
   //
   // The flag answers a different question from the struct. "Unchanged" and
   // "never drawn" are not the same state, and a zeroed `shown_` conflates

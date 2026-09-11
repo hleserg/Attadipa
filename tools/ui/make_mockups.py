@@ -52,7 +52,8 @@ import pathlib
 import subprocess
 import sys
 
-# ui/src/color.cpp:14-24, the night column of kTable.
+# ui/src/color.cpp:14-24 -- "constexpr Rgb kInkOlive{0x2F, 0x3A, 0x2E};" --
+# the palette constants the night column of kTable names.
 PAGE, SURFACE = "#2F3A2E", "#3C4033"
 INK, MUTED, ACCENT = "#FFF6E8", "#A7B49C", "#FFC857"
 WARNING, SUCCESS = "#FF8A40", "#6FA07A"

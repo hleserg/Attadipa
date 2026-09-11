@@ -5,7 +5,8 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
 # THE AMBIENT ENVIRONMENT DOES NOT GET TO DECIDE WHAT THIS SUITE PROVES,
-# the same reason wip-limit-test.sh:29 says it. This suite is the one that
+# the same reason `.github/tests/wip-limit-test.sh:29` --
+# "unset ATTADIPA_WIP_LIMIT" -- says it. This suite is the one that
 # proves the local writer reads the repository width, and every case below
 # states the width it runs under by prefix assignment -- which ADDS to the
 # child environment without clearing it. `ATTADIPA_WIP_LIMIT=4` exported by

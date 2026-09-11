@@ -36,7 +36,7 @@ lower bound, which makes the negative result stronger, not weaker.
 
 **The milligravity scale is UNKNOWN.** Every `p2p` figure above is
 `(hi - lo) * 1000 / ACCEL_LSB_PER_G`
-(`pedometer-bench-2026-08-28/probe/pedo.c:402` — "(hi[a] - lo[a]) * 1000"), and
+(`pedometer-bench-2026-08-28/probe/pedo.c:403` — "(hi[a] - lo[a]) * 1000"), and
 no capture
 records which divisor its binary used. `shake.log:49`, the run's own header,
 prints `+/-8 g` — but that label is itself one of the stale four, listed below in

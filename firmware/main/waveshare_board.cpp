@@ -902,7 +902,7 @@ void refresh_clock(lv_timer_t *timer) {
 // down. All face `clear()` calls are idempotent, so calling them all is
 // cheaper than asking which face was up -- but they are not all harmless.
 // `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
-// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:515` — "    lv_obj_clean(screen_);"
+// `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:518` — "    lv_obj_clean(screen_);"
 // and `MeshFace::clear()` does the same, so this leaves the panel with nothing
 // on it, and **every caller must draw the incoming page before it returns**.
 void show_page(Page next) {
@@ -998,8 +998,9 @@ void refresh_nav() {
   //
   // With CONFIG_ATTADIPA_GNSS_LOCAL off — which is the default, because no
   // module is fitted (`docs/research/HARDWARE_MATRIX.md:407` — "| GNSS | — | **not present** | — | — | VERIFIED |")
-  // — this returns the honest default, `Unprovisioned`: "a supported provider
-  // would give it; none is bound" (`core/include/attadipa/core/availability.h:18`).
+  // — this returns the honest default, `Unprovisioned` —
+  // `core/include/attadipa/core/availability.h:18` — "a supported provider
+  // would give it; none is bound".
   // Not `Unsupported`, which is terminal; this device's configuration is
   // exactly what would change the answer, and the readout still says
   // "Waiting for GPS" and draws no needle.

@@ -557,7 +557,7 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
 }
 
 // The device does not rebuild this face every tick. It builds once and calls
-// `update()` — `firmware/main/waveshare_board.cpp:959` —
+// `update()` — `firmware/main/waveshare_board.cpp:1010` —
 // "    state.nav_face.update(text);" — and the simulator only ever builds, so
 // the trail's hide-and-show path has never had a caller any test could reach.
 // It is the path that decides whether a watch that loses its bearing and gets
@@ -622,7 +622,7 @@ void the_ring_turns_with_the_wrist(const platform::BoardProfile &board) {
   turned.target.position.value = {5110000, 10020000};
   turned.target.validity = core::PositionValidity::NoFix;
   turned.target.source = core::PositionSource::NodeGnss;
-  // The `head-up` fixture's own heading -- `sim/nav_screen.cpp:112` --
+  // The `head-up` fixture's own heading -- `sim/nav_screen.cpp:115` --
   // "    g_state.heading.source = core::HeadingSource::Magnetometer;"
   turned.heading.source = core::HeadingSource::Magnetometer;
   turned.heading.frame = core::ReferenceFrame::WatchBody;

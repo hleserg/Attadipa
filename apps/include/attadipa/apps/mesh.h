@@ -109,7 +109,7 @@ struct MeshText {
     // carrying them. `message_partial` is a tail the node sent and the watch
     // no longer has: `MeshCoreCompanion::accept_message()` copies into
     // `core::MeshStatus::last_message` and reports the overflow
-    // (`core/include/attadipa/core/mesh_service.h:96` — "    bool message_truncated = false;").
+    // (`core/include/attadipa/core/mesh_service.h:103` — "    bool message_truncated = false;").
     // The face's one-line ellipsis is a different statement -- "the rest of
     // this is off the edge of a 240 px panel" -- and it is recoverable by
     // definition, because the bytes are still in `message`. A wearer reading

@@ -3,10 +3,10 @@
 
 // A bring-up instrument, not a GNSS driver.
 //
-// The T-Watch carries a GNSS module this firmware has never spoken to. Which
-// one is `UNKNOWN` — `docs/research/OPEN_QUESTIONS.md:35` says the answer rests
-// on "the owner's recollection" and that "a listing is a seller's claim and a
-// recollection is weaker still". This asks the part instead.
+// The T-Watch carries a GNSS module this firmware has never spoken to. What
+// answers on that UART is a question for the part, not for a listing —
+// `docs/research/OPEN_QUESTIONS.md:35` — "A listing is a seller's claim and a
+// recollection is weaker still". This asks the part.
 //
 // It knows the pins and the candidate protocols and nothing else. It asserts no
 // module identity, writes no GNSS configuration, and saves nothing anywhere:
