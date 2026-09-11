@@ -35,12 +35,12 @@ if [ "$target_state" != open ]; then
 fi
 
 labels="$(printf '%s' "$target" | jq -r '[.labels[].name] | join("\n")')"
-if printf '%s\n' "$labels" | grep -Fxq queue:parked; then
+if grep -Fxq queue:parked <<<"$labels"; then
   emit false parked unknown target-parked
   exit 0
 fi
 
-if printf '%s\n' "$labels" | grep -Fxq queue:emergency; then
+if grep -Fxq queue:emergency <<<"$labels"; then
   emit true emergency unknown emergency-recovery
   exit 0
 fi

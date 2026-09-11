@@ -469,7 +469,7 @@ else
   printf '  FAIL  the shipping sweep does not pass HEAD_OID to both Codex checks\n'
   fail=$((fail + 1))
 fi
-if printf '%s\n' "$SWEEP_BODY" | grep -q 'original_commit_id'; then
+if grep -q 'original_commit_id' <<<"$SWEEP_BODY"; then
   printf '  ok    the sweep gathers the commit each inline review comment covers\n'
   pass=$((pass + 1))
 else
@@ -482,7 +482,7 @@ fi
 # explaining why it was wrong, and a test that cannot tell an explanation from
 # an implementation would either fail on the explanation or force it to be
 # deleted. The comment is the most valuable line in the block.
-if printf '%s\n' "$SWEEP_BODY" | grep -q 'select(.bot | not)'; then
+if grep -q 'select(.bot | not)' <<<"$SWEEP_BODY"; then
   printf '  FAIL  the sweep is back to treating non-bot as an authorisation\n'; fail=$((fail + 1))
 else
   printf '  ok    the sweep no longer reads non-bot as an authorisation\n'; pass=$((pass + 1))

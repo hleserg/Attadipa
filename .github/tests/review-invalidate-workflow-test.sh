@@ -81,7 +81,7 @@ ok "both steps' shell can be extracted and run"
 PUBLISHED_STEP=$(extract_step "Establish whether the review was published" "$WF")
 WHY_STEP=$(extract_step "Work out why the review did not happen" "$WF")
 NORUN_STEP=$(extract_step "Say that the review did not happen" "$WF")
-if printf '%s\n' "$PUBLISHED_STEP" | grep -Fq "steps.review.outcome != 'failure'"; then
+if grep -Fq "steps.review.outcome != 'failure'" <<<"$PUBLISHED_STEP"; then
   no "a failed action still checks whether its verdict was published" \
      "the publication step is skipped on failure"
 else
@@ -89,7 +89,7 @@ else
 fi
 check_published_guard() {
   local block="$1" what="$2"
-  if printf '%s\n' "$block" | grep -Fq "steps.published.outputs.state != 'published'"; then
+  if grep -Fq "steps.published.outputs.state != 'published'" <<<"$block"; then
     ok "$what excludes an already-published verdict"
   else
     no "$what excludes an already-published verdict" \
@@ -103,7 +103,7 @@ for pair in "SILENT:the silent step" "NORUN:the did-not-run step" "EARLY:the ear
   var=${pair%%:*}
   what=${pair#*:}
   # shellcheck disable=SC2016  # the literal characters ${{ are the thing sought.
-  if printf '%s' "${!var}" | grep -q '\${{'; then
+  if grep -q '\${{' <<<"${!var}"; then
     no "$what takes every value through env:, not \${{ }}" \
        "a \${{ }} expression appeared in the body; besides being an injection surface, it makes the block unexecutable and this test blind"
   else
@@ -298,7 +298,7 @@ say '...and names the label it could not remove' \
 
 # The `if:` is the half that decides WHEN, and it cannot be executed here.
 EARLY_STEP=$(extract_step "Drop the previous head's pass before reviewing this one" "$WF")
-if printf '%s\n' "$EARLY_STEP" | grep -Fq "github.event.action == 'synchronize'"; then
+if grep -Fq "github.event.action == 'synchronize'" <<<"$EARLY_STEP"; then
   ok "and it fires on a new head rather than on every event"
 else
   no "and it fires on a new head rather than on every event" \

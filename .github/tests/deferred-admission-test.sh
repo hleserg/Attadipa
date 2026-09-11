@@ -21,8 +21,8 @@ pass=0
 fail=0
 ok() { printf '  ok    %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL  %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
-has() { if printf '%s' "$2" | grep -qF -- "$3"; then ok "$1"; else no "$1" "expected to find '$3'"; fi; }
-hasnt() { if printf '%s' "$2" | grep -qF -- "$3"; then no "$1" "did not expect '$3'"; else ok "$1"; fi; }
+has() { if grep -qF -- "$3" <<<"$2"; then ok "$1"; else no "$1" "expected to find '$3'"; fi; }
+hasnt() { if grep -qF -- "$3" <<<"$2"; then no "$1" "did not expect '$3'"; else ok "$1"; fi; }
 say() { if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "wanted '$3', got '$2'"; fi; }
 
 WF=.github/workflows/claude-agent.yml
@@ -292,7 +292,7 @@ MUT_IF=$(step_if "Decide" "$work/mutant.yml")
 if [ "$MUT_IF" = "$DECIDE_IF" ]; then
   no "the mutation actually changed Decide's condition" \
      "the perl substitution matched nothing -- this test can no longer prove anything"
-elif printf '%s' "$MUT_IF" | grep -qF "admission"; then
+elif grep -qF "admission" <<<"$MUT_IF"; then
   ok "restoring 'admit before decide' is detected by the assertion above"
 else
   no "restoring 'admit before decide' is detected by the assertion above" \
@@ -354,7 +354,7 @@ if [ "$M2" = "$DEFERRED_RUN" ]; then
   no "the inert-label mutation changed something" "the sed matched nothing"
 else
   run_mutant_deferred "$M2"
-  if printf '%s' "$MLABELS" | grep -qF "agent:ready"; then
+  if grep -qF "agent:ready" <<<"$MLABELS"; then
     ok "dropping the pull-request guard puts the inert label back"
   else
     no "dropping the pull-request guard puts the inert label back" \
@@ -399,7 +399,7 @@ if cmp -s "$work/m4-say.sh" .github/scripts/agent-say.sh; then
   no "the parked-instruction mutation changed something" "the sed matched nothing"
 else
   M4OUT=$(bash "$work/m4-say.sh" deferred http://r/1 quality-audit P1 issue_comment hleserg parked 1 pull-request)
-  if printf '%s' "$M4OUT" | grep -qF "once capacity returns"; then
+  if grep -qF "once capacity returns" <<<"$M4OUT"; then
     ok "telling a parked pull request to wait for capacity is detected"
   else
     no "telling a parked pull request to wait for capacity is detected" \

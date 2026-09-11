@@ -46,8 +46,8 @@ extract_run_block() {
 
 wiring_ok() {
   block=$1
-  printf '%s\n' "$block" | grep -Fqx '    name: Required CI' || return 1
-  printf '%s\n' "$block" | grep -Fqx '    if: always()' || return 1
+  grep -Fqx '    name: Required CI' <<<"$block" || return 1
+  grep -Fqx '    if: always()' <<<"$block" || return 1
 
   expected=$(printf '%s\n' "$required_jobs" | cut -d: -f1 | sort)
   actual=$(printf '%s\n' "$block" | awk '
@@ -64,7 +64,7 @@ wiring_ok() {
 $required_jobs
 EOF
 
-  printf '%s\n' "$block" | grep -Fq 'run: |' || return 1
+  grep -Fq 'run: |' <<<"$block" || return 1
 }
 
 execute_gate() {

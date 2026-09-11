@@ -254,14 +254,14 @@ fi
 # match nothing while looking correct.
 # shellcheck disable=SC2016  # the \$CANDIDATE is sed's literal, not a shell expansion
 ESCALATION="$(sed -n '/gh issue comment "\$CANDIDATE"/,/|| true/p' "$WATCHDOG" | tr -d '\\`')"
-if printf '%s' "$ESCALATION" | grep -q 'remove agent:blocked'; then
+if grep -q 'remove agent:blocked' <<<"$ESCALATION"; then
   ok "and the escalation comment says to remove agent:blocked, not just to add agent:ready"
 else
   no "and the escalation comment says to remove agent:blocked, not just to add agent:ready" \
      "the comment tells a person to restart a task in a way that cannot work; that is the promise-the-labels-forbid shape #82 exists to remove"
 fi
 
-if printf '%s' "$ESCALATION" | grep -q 'comment @claude'; then
+if grep -q 'comment @claude' <<<"$ESCALATION"; then
   ok "and offers the @claude route, which needs no label surgery at all"
 else
   no "and offers the @claude route, which needs no label surgery at all" \
@@ -277,7 +277,7 @@ fi
 # The printf FORMAT line is where a `\n` is supposed to be, so it is dropped
 # before the search; anything left is prose.
 ESCALATION_RAW="$(sed -n '/gh issue comment/,/|| true/p' "$WATCHDOG" | grep -v "printf '%s")"
-if printf '%s' "$ESCALATION_RAW" | grep -q '\\n'; then
+if grep -q '\\n' <<<"$ESCALATION_RAW"; then
   no "no comment body carries a literal backslash-n" \
      "a \\n in a double-quoted shell string is two characters, not a line break; use printf '%s\\n\\n%s' with the paragraphs as arguments (a heredoc will not do -- its body must start at column 0, which ends the YAML block scalar)"
 else

@@ -178,7 +178,7 @@ fi
 ok "the Hand over step's shell can be extracted and run"
 
 # shellcheck disable=SC2016  # the literal characters ${{ are the thing sought.
-if printf '%s' "$BLOCK" | grep -q '\${{'; then
+if grep -q '\${{' <<<"$BLOCK"; then
   no "the Hand over shell takes every value through env:, not \${{ }}" \
      "a \${{ }} expression appeared in the body; besides being an injection surface for model-adjacent text, it makes this block unexecutable and this test blind"
 else

@@ -66,7 +66,7 @@ claim_field() { printf '%s\n' "$1" | sed -n "s/^$2=//p"; }
 # local is never reaped by the clock (#254).
 claim_message() {
   printf '%s\n' "$1"
-  if [ "${GITHUB_ACTIONS-}" = true ] && printf '%s' "${GITHUB_RUN_ID-}" | grep -Eq '^[0-9]+$'; then
+  if [ "${GITHUB_ACTIONS-}" = true ] && grep -Eq '^[0-9]+$' <<<"${GITHUB_RUN_ID-}"; then
     printf 'kind=hosted\nrun=%s\nattempt=%s\n' "$GITHUB_RUN_ID" "${GITHUB_RUN_ATTEMPT:-1}"
   else
     printf 'kind=local\n'
@@ -165,7 +165,7 @@ reject_unsafe_holder() {
 [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
       printf 'holder looks like a GitHub credential, not an agent id\n' >&2; return 1 ;;
   esac
-  if ! printf '%s' "$1" | grep -Eq '^[A-Za-z0-9._-]{1,64}$'; then
+  if ! grep -Eq '^[A-Za-z0-9._-]{1,64}$' <<<"$1"; then
     printf 'holder must match ^[A-Za-z0-9._-]{1,64}$\n' >&2; return 1
   fi
 }
@@ -325,7 +325,7 @@ claim_finished() {
       return 1 ;;
   esac
   run="$(claim_field "$message" run)"
-  if ! printf '%s' "$run" | grep -Eq '^[0-9]+$'; then
+  if ! grep -Eq '^[0-9]+$' <<<"$run"; then
     printf 'hosted claim by %s names no Actions run\n' "$holder" >&2
     return 1
   fi

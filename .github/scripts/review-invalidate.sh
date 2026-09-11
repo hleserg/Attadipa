@@ -66,7 +66,7 @@ done
 marker="attadipa-review-not-published:${SHA}"
 seen=unknown
 if bodies="$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' 2>/dev/null)"; then
-  if printf '%s\n' "$bodies" | grep -Fq "$marker"; then seen=yes; else seen=no; fi
+  if grep -Fq "$marker" <<<"$bodies"; then seen=yes; else seen=no; fi
 fi
 
 if [ "$seen" = yes ]; then
