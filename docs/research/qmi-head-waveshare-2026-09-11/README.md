@@ -14,7 +14,7 @@ the round-4 fix was written for, measured rather than modelled.
 
 | capture | source | binary | segments, bytes |
 |---|---|---|---|
-| `console-head-A.txt`, `console-head-B.txt` | the tree later committed as `e0e2ea78` (#515) | 190592, SHA-256 `54ca8cacf00fbc9a85f529596b53ca56f703a0b61299977fa34b90ed3c99f758` | 63928 / 464 / 126076 / 32 |
+| `console-head-A.txt`, `console-head-B.txt` | `102be3d4` (#515) — the commit whose message names these runs; the edits it makes to comments after the load leave the binary byte-identical, which the hash beside it is the check on | 190592, SHA-256 `54ca8cacf00fbc9a85f529596b53ca56f703a0b61299977fa34b90ed3c99f758` | 63928 / 464 / 126076 / 32 |
 | `NORMAL_BOOT.txt` | the unit's own flash image | — | — |
 
 `sdkconfig` SHA-256 `78f28143efa1f788cba52e68cdb02eff0520f3a5c2f28ad7dc7a4e62cb8928a7`
