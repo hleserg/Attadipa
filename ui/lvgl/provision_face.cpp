@@ -81,6 +81,24 @@ constexpr apps::EntryKey kKeys[] = {
 };
 constexpr unsigned kColumns = 3;
 constexpr unsigned kRows = 2;
+
+// A PRESSED KEY IS STILL A WORD, AND THE PRESS USED TO TAKE THE WORD AWAY.
+// The pressed style is an opacity, so the fill under the label becomes this
+// much of the key's colour over the page behind it -- and every step toward
+// the page is a step away from the ink `legible_on` chose against the resting
+// fill. It costs the most where the page is darkest and the ink is therefore
+// the dark one: day-emissive orange on ink olive measures 5.08:1 at rest and
+// 3.23:1 under the LV_OPA_70 this was, against the 4.50:1 `kContrastBodyText`
+// a word needs. Night's warning key is the same pair and the same two numbers.
+//
+// 235 is the lowest opacity at which no key, in either theme, on either panel,
+// falls below that while pressed -- `LV_OPA_90` is 229 and reaches 4.40:1, so
+// the named constant is not enough and the number is written out. The press is
+// still visible; it is 8% of the page rather than 30%.
+//
+// It is not a promise: `tests/test_sim_provision_fit.cpp` blends this opacity
+// the way LVGL does and measures the pressed fill on every key of every field.
+constexpr lv_opa_t kPressedOpa = 235;
 static_assert(sizeof(kKeys) / sizeof(kKeys[0]) == ProvisionFace::kKeyCount,
               "every EntryKey is drawn");
 
@@ -222,7 +240,7 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
     lv_obj_set_style_radius(button, radius, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(
-        button, LV_OPA_70,
+        button, kPressedOpa,
         static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
     // No border: a rounded border is the one thing on this screen the
     // software renderer cannot draw into a snapshot twice -- the second
@@ -357,6 +375,12 @@ void ProvisionFace::update() {
   const Rgb danger = resolved_rgb(ColorRole::Warning, config_.theme,
                                   config_.pixel_cost, accent);
   const bool confirming = entry_->field() == apps::EntryField::ForgetConfirm;
+  // Three fills exist, so three measurements do. The loop below used to call
+  // `legible_on` once per key, which is twelve `pow()` per channel per frame to
+  // answer the same three questions six times.
+  const lv_color_t word_on_raised = legible_on(raised, page, ink);
+  const lv_color_t word_on_accent = legible_on(accent, page, ink);
+  const lv_color_t word_on_danger = legible_on(danger, page, ink);
 
   for (unsigned i = 0; i < kKeyCount; ++i) {
     const char *label = label_of(kKeys[i], text);
@@ -372,11 +396,13 @@ void ProvisionFace::update() {
     const bool through = kKeys[i] == text.acting;
     const bool destructive = confirming && through;
     const Rgb fill = destructive ? danger : (through ? accent : raised);
+    const lv_color_t word = destructive ? word_on_danger
+                          : through     ? word_on_accent
+                                        : word_on_raised;
     lv_obj_set_style_bg_color(keys_[i], lv_color_hex(fill.packed()),
                               LV_PART_MAIN);
     lv_obj_t *text_of_key = lv_obj_get_child(keys_[i], 0);
-    lv_obj_set_style_text_color(text_of_key, legible_on(fill, page, ink),
-                                LV_PART_MAIN);
+    lv_obj_set_style_text_color(text_of_key, word, LV_PART_MAIN);
     lv_label_set_text(text_of_key, label);
   }
 }

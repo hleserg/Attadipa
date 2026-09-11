@@ -11,6 +11,7 @@
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/ui/color.h"
+#include "attadipa/ui/provision_face.h"
 
 #include "clock_screen.h"
 
@@ -100,8 +101,10 @@ void run_frames(int frames) {
   }
 }
 
-// Kept for the whole run rather than with the panel that uses one: every face
-// here is a file-static holding pointers into the screen it last built.
+// One per walk, and popped by the walk that finishes. It is still a deque and
+// not a member of `Panel` because a walk that could NOT leave the entry screen
+// keeps its display (see `Panel::close`), and a display that is still being
+// rendered needs the memory it renders into to outlive the walk with it.
 std::deque<std::vector<std::uint8_t>> g_buffers;
 
 struct Panel {
@@ -131,16 +134,54 @@ struct Panel {
     lv_indev_set_display(touch, display);
   }
 
-  void close() {
+  // `left` is whether the walk got the entry all the way to `EntryField::Exit`.
+  //
+  // THE POLL TIMER IS WHY THIS TAKES AN ARGUMENT. `enter_provisioning` creates
+  // one timer per entry and only `leave_provisioning` deletes it, on the tick
+  // that finds the entry finished -- and its period is
+  // `ui::Motion::Slow * 8`, 2560 ms, where a walk is some four hundred. So a
+  // walk that just stopped left a timer running: the next `emplace()` replaces
+  // the entry under it and two timers then poll one optional, which is what
+  // `sim/clock_screen.cpp:222` -- "  // A TIMER MAY OUTLIVE THE ENTRY IT
+  // POLLS, AND ONLY THIS SAYS SO." -- is about. 64 frames is 3200 ms, one
+  // period and a half, so the timer collects itself here rather than being
+  // deleted from under the function that owns it.
+  //
+  // And that is also why the display is deleted only when the walk left. If it
+  // did not, the entry is alive, the timer is alive, and its next `update()`
+  // would run on keys this deleted: `g_provision_face` is a file static still
+  // holding those pointers. A leaked display is the safe half of that trade,
+  // and the walk has already failed by the time it is taken.
+  void close(bool left) {
+    run_frames(64);
     lv_indev_delete(touch);
     touch = nullptr;
+    if (!left) {
+      return;
+    }
+    lv_display_delete(display);
+    display = nullptr;
+    g_buffers.pop_back();
   }
 };
 
 // --------------------------------------------------------------------------
-// Reaching the keys. `lv_button_create` is called in exactly one place in this
-// repository, so a button in this tree is one of the six the face lays out, in
-// the order `kKeys` names them.
+// Reaching the keys.
+//
+// NOT BY POSITION, AND NOT ON A CLAIM ABOUT THE REPOSITORY. This used to say
+// `lv_button_create` has one caller, so the nth button in the tree is the nth
+// key. It has two -- `ui/lvgl/provision_face.cpp:230` -- "    lv_obj_add_event_cb(button, key_event, LV_EVENT_CLICKED, this);"
+// -- and `ui/lvgl/settings_face.cpp:47` -- "  lv_obj_t *button = lv_button_create(screen_);"
+// -- and a claim like that is false the first time either face is put on a
+// screen this one also uses, in a way that shifts every tap by a slot and
+// still passes.
+//
+// So the keys are read back by the identity the face stamped on each of them
+// (`ui/lvgl/provision_face.cpp:233` -- "    lv_obj_set_user_data(button, reinterpret_cast<void *>("),
+// and the screen has to hold exactly one button per `EntryKey` and nothing
+// else. A seventh button, a missing one, or two claiming a slot empties the
+// keypad, and an empty keypad fails the walk at its first check instead of
+// moving it.
 
 void collect_buttons(lv_obj_t *object, std::vector<lv_obj_t *> &out) {
   if (lv_obj_check_type(object, &lv_button_class)) {
@@ -153,25 +194,29 @@ void collect_buttons(lv_obj_t *object, std::vector<lv_obj_t *> &out) {
   }
 }
 
-enum class Key : std::size_t {
-  Minus = 0,
-  Plus = 1,
-  Forget = 2,
-  Previous = 3,
-  Next = 4,
-  Leave = 5,
-};
-
+// Empty unless the active screen holds one button for each `EntryKey`.
 std::vector<lv_obj_t *> keypad() {
-  std::vector<lv_obj_t *> buttons;
-  collect_buttons(lv_screen_active(), buttons);
-  return buttons;
+  std::vector<lv_obj_t *> found;
+  collect_buttons(lv_screen_active(), found);
+  std::vector<lv_obj_t *> keys(ui::ProvisionFace::kKeyCount, nullptr);
+  if (found.size() != keys.size()) {
+    return {};
+  }
+  for (lv_obj_t *button : found) {
+    const auto slot = reinterpret_cast<std::uintptr_t>(
+        lv_obj_get_user_data(button));
+    if (slot >= keys.size() || keys[slot] != nullptr) {
+      return {};
+    }
+    keys[slot] = button;
+  }
+  return keys;
 }
 
 // A hidden key is a key the model does not offer here, and LVGL will not
 // hit-test one: tapping it would silently do nothing and the walk would run
 // off the rails several presses later, somewhere else.
-bool tap(Key key) {
+bool tap(apps::EntryKey key) {
   const std::vector<lv_obj_t *> buttons = keypad();
   const auto index = static_cast<std::size_t>(key);
   if (index >= buttons.size()) {
@@ -239,9 +284,43 @@ void every_line_fits(lv_obj_t *object) {
   }
 }
 
-// Every key that is drawn says its word in an ink that reads on its own fill.
-// Read back off the widget, so it is the colour the face set and not the
-// colour a second copy of `update()` would have chosen.
+// What is behind a key. The keypad the keys sit in is `bare()`, so the thing an
+// opacity blends into is whatever paints next: the page the frame fills the
+// screen with. Walked rather than assumed, because a container acquiring a fill
+// would change the answer and nothing else here would notice.
+lv_color_t backdrop_of(lv_obj_t *object) {
+  for (lv_obj_t *at = lv_obj_get_parent(object); at != nullptr;
+       at = lv_obj_get_parent(at)) {
+    if (lv_obj_get_style_bg_opa(at, LV_PART_MAIN) == LV_OPA_COVER) {
+      return lv_obj_get_style_bg_color(at, LV_PART_MAIN);
+    }
+  }
+  return lv_color_black();
+}
+
+// The fill this key is drawn in while a finger is on it. The opacity is read
+// out of the pressed style by putting the widget in that state -- the style
+// system answers, not a constant copied out of the face -- and the blend is
+// `lv_color_mix`, which is the function the renderer itself would use.
+ui::Rgb pressed_fill(lv_obj_t *button) {
+  lv_obj_add_state(button, LV_STATE_PRESSED);
+  const lv_opa_t opa = lv_obj_get_style_bg_opa(button, LV_PART_MAIN);
+  const lv_color_t fill = lv_obj_get_style_bg_color(button, LV_PART_MAIN);
+  lv_obj_remove_state(button, LV_STATE_PRESSED);
+  return rgb_of(lv_color_mix(fill, backdrop_of(button), opa));
+}
+
+// Every key that is drawn says its word in an ink that reads on its own fill --
+// in BOTH the states that fill has. Read back off the widget, so it is the
+// colour the face set and not the colour a second copy of `update()` would
+// have chosen.
+//
+// The pressed state is not a detail that can be left out of a claim about
+// whether a key's word is readable: it is an opacity, so pressing a key moves
+// its fill toward the page and the ink that was chosen against the resting
+// fill goes with it. Under the LV_OPA_70 this screen used to press at, the
+// day-emissive accent key fell from 5.08:1 to 3.23:1 and this test said the
+// screen was readable.
 void every_key_is_readable() {
   const std::vector<lv_obj_t *> buttons = keypad();
   for (lv_obj_t *button : buttons) {
@@ -249,22 +328,34 @@ void every_key_is_readable() {
       continue;
     }
     lv_obj_t *word = lv_obj_get_child(button, 0);
-    const ui::Rgb fill =
-        rgb_of(lv_obj_get_style_bg_color(button, LV_PART_MAIN));
     const ui::Rgb ink = rgb_of(lv_obj_get_style_text_color(word, LV_PART_MAIN));
-    const std::uint16_t measured = ui::contrast_ratio_centi(ink, fill);
-    if (measured < ui::kContrastBodyText) {
-      char said[200];
-      std::snprintf(said, sizeof said,
-                    "\"%s\" is #%02X%02X%02X on #%02X%02X%02X -- %u.%02u:1, "
-                    "under the %u.%02u:1 a word needs",
-                    lv_label_get_text(word), ink.r, ink.g, ink.b, fill.r,
-                    fill.g, fill.b, measured / 100u, measured % 100u,
-                    ui::kContrastBodyText / 100u, ui::kContrastBodyText % 100u);
-      fail(said);
+    const struct {
+      const char *state;
+      ui::Rgb fill;
+    } states[] = {
+        {"at rest", rgb_of(lv_obj_get_style_bg_color(button, LV_PART_MAIN))},
+        {"pressed", pressed_fill(button)},
+    };
+    for (const auto &one : states) {
+      const std::uint16_t measured = ui::contrast_ratio_centi(ink, one.fill);
+      if (measured < ui::kContrastBodyText) {
+        char said[240];
+        std::snprintf(said, sizeof said,
+                      "\"%s\" %s is #%02X%02X%02X on #%02X%02X%02X -- "
+                      "%u.%02u:1, under the %u.%02u:1 a word needs",
+                      lv_label_get_text(word), one.state, ink.r, ink.g, ink.b,
+                      one.fill.r, one.fill.g, one.fill.b, measured / 100u,
+                      measured % 100u, ui::kContrastBodyText / 100u,
+                      ui::kContrastBodyText % 100u);
+        fail(said);
+      }
     }
   }
 }
+
+// How many screens this walk actually looked at. A walk that cannot reach the
+// keys performs no checks and, counting nothing, used to print success.
+int screens_checked = 0;
 
 void check_this_screen(const char *step) {
   lv_obj_update_layout(lv_screen_active());
@@ -273,14 +364,36 @@ void check_this_screen(const char *step) {
   every_line_fits(lv_screen_active());
   every_key_is_readable();
   where = outer;
+  ++screens_checked;
 }
 
 // --------------------------------------------------------------------------
 
 // Next until the walk stops offering it. Every task ends on a screen whose
 // Next is hidden -- `EntryField::Exit` draws nothing at all -- so the budget is
-// a guard against a model that loops, not the normal way out.
+// a guard against a model that loops, not the normal way out, and reaching it
+// is a failure rather than the end of the walk. Nineteen presses is the longest
+// real route; the budget is loose on purpose, because what it is guarding
+// against is a loop and not a fifth digit.
 constexpr int kSteps = 24;
+
+// Leave, from anywhere, takes at most three presses. The confirmation answers
+// its question and stays on the node, the waiting frame becomes the abandoned
+// receipt, and every other field goes straight out.
+constexpr int kWaysOut = 3;
+
+// Nothing is drawn on `EntryField::Exit`: `text()` returns before it labels a
+// single key, and a key with no label is hidden. So "no key is on the screen"
+// is how this walk reads "the holder has left", off the tree rather than off
+// the model it is testing.
+bool left_the_entry() {
+  for (lv_obj_t *button : keypad()) {
+    if (visible(button)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 void the_entry_screen_fits_and_reads(const platform::BoardProfile &board,
                                      ui::Theme theme, l10n::Locale locale,
@@ -302,25 +415,37 @@ void the_entry_screen_fits_and_reads(const platform::BoardProfile &board,
                 locale == l10n::Locale::Ru ? "ru" : "en");
   where = label;
 
+  // BEFORE ANY OF IT: is the entry screen even on the panel? `tap` cannot tell
+  // "this key is not offered here" from "there are no keys", and a walk that
+  // finds nothing to press performs no checks and reports success -- which is
+  // what this test would have done if `enter_provisioning` had quietly not
+  // built anything.
+  if (keypad().empty()) {
+    fail("the six keys the face lays out are not on this screen, so nothing "
+         "below this line would have checked anything");
+    where.clear();
+    panel.close(false);
+    return;
+  }
+
+  screens_checked = 0;
   check_this_screen("start");
 
   // The Forget branch on the way past the node. It is the one screen a Next
   // walk cannot reach -- `EntryField::ForgetConfirm` draws no Next at all --
   // and the one whose keys carry the `Warning` fill, so it is where the
   // contrast check has the most to say.
-  if (task != apps::EntryTask::LocalTime && tap(Key::Forget)) {
+  if (task != apps::EntryTask::LocalTime && tap(apps::EntryKey::Forget)) {
     check_this_screen("forget-confirm");
     // Back, not out: on this screen Leave is Back.
-    if (!tap(Key::Leave)) {
+    if (!tap(apps::EntryKey::Leave)) {
       fail("could not leave the forget confirmation");
     }
     check_this_screen("back from forget-confirm");
   }
 
-  for (int step = 0; step < kSteps; ++step) {
-    if (!tap(Key::Next)) {
-      break;
-    }
+  int step = 0;
+  for (; step < kSteps && tap(apps::EntryKey::Next); ++step) {
     // The board answers on a later tick, the way a radio does; a receipt this
     // walk read before the answer is a receipt with nothing on it.
     run_frames(8);
@@ -328,9 +453,42 @@ void the_entry_screen_fits_and_reads(const platform::BoardProfile &board,
     std::snprintf(said, sizeof said, "after %d x Next", step + 1);
     check_this_screen(said);
   }
+  if (step == kSteps) {
+    fail("the Next walk ran out of budget instead of running out of screens, "
+         "so the model is looping and everything after the loop is unchecked");
+  }
+
+  // WHERE THE REFUSED RECEIPTS LIVE. A Next walk cannot reach one: the
+  // simulator's provisioner accepts everything it is given, and the passkey it
+  // accepts goes to the radio, so the walk ends on the waiting frame -- the one
+  // frame that draws Leave and nothing else. Pressing it is what makes an
+  // `EntryVerdict::Abandoned`, whose line is the longest of the whole set (49
+  // characters in English against the 44 of `ProvisionTimeUncertain`), and the
+  // fit half of this test had never once drawn it.
+  //
+  // It is also how every walk ends on `EntryField::Exit`, which is what lets
+  // `Panel::close` delete the display: see the note there.
+  for (int out = 0; out < kWaysOut && tap(apps::EntryKey::Leave); ++out) {
+    run_frames(8);
+    char said[32];
+    std::snprintf(said, sizeof said, "after %d x Leave", out + 1);
+    check_this_screen(said);
+  }
+
+  const bool left = left_the_entry();
+  if (!left) {
+    fail("the walk could not leave the entry screen, so its poll timer is "
+         "still running and the next walk would share it");
+  }
+  // Every task offers more than one screen, so a walk that checked one checked
+  // the screen it started on and nothing the presses were supposed to reach.
+  if (screens_checked < 2) {
+    fail("the walk checked only the screen it started on: every press it made "
+         "was refused, and a walk that checks nothing passes");
+  }
 
   where.clear();
-  panel.close();
+  panel.close(left);
 }
 
 } // namespace
