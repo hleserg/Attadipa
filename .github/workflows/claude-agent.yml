@@ -1691,7 +1691,7 @@ jobs:
           PR_HEAD_AT=""
           case "$KIND" in
             done_pr)
-              if printf '%s' "${DETAIL:-}" | grep -qE '^[0-9]+$'; then
+              if grep -qE '^[0-9]+$' <<<"${DETAIL:-}"; then
                 # shellcheck disable=SC2016  # GraphQL variables, bound by -F.
                 read -r PR_CREATED PR_HEAD_AT <<< "$(gh api graphql -f query='
                   query($owner:String!, $repo:String!, $number:Int!) {
@@ -1722,7 +1722,7 @@ jobs:
             done_pr|done_here)
               if [ "${PROMOTE%% *}" != "promote" ]; then
                 echo "::notice::#${DETAIL:-?} stays a draft: ${PROMOTE#hold }"
-              elif printf '%s' "${DETAIL:-}" | grep -qE '^[0-9]+$'; then
+              elif grep -qE '^[0-9]+$' <<<"${DETAIL:-}"; then
                 gh pr ready "$DETAIL" --repo "$REPO" \
                   && echo "::notice::marked pull request #$DETAIL ready for review" \
                   || echo "::warning::could not mark #$DETAIL ready for review; it stays a draft and a person has to press the button"

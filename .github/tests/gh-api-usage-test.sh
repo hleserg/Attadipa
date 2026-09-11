@@ -157,7 +157,7 @@ printf_pipe_offenders() {
   ' "$@"
 }
 
-found="$(printf_pipe_offenders .github/scripts/*.sh .github/tests/*.sh)"
+found="$(printf_pipe_offenders "${shipping[@]}" .github/tests/*.sh)"
 if [ -z "$found" ]; then
   # shellcheck disable=SC2016  # `$VAR` here is prose about shell text, not an expansion.
   ok 'no `printf ... | grep -q` can lose its race with pipefail'
