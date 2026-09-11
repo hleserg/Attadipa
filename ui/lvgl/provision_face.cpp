@@ -14,6 +14,13 @@ lv_color_t resolved(ColorRole role, Theme theme, PixelCost pixel_cost,
   return value ? lv_color_hex(value->packed()) : fallback;
 }
 
+// So that the two fallbacks below stay the colours `build()` already falls back
+// to rather than becoming a pair of numbers written here -- which is what
+// `tools/ui/check_raw_values.py` refuses, and rightly.
+Rgb rgb_of(lv_color_t colour) {
+  return Rgb{colour.red, colour.green, colour.blue};
+}
+
 // The same resolution before it is flattened into an LVGL colour. Choosing
 // which of two inks may sit on a fill is a measurement, and `lv_color_t` has
 // thrown the numbers away by the time the choice has to be made.
@@ -162,9 +169,12 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
   lv_obj_set_size(keypad_, keypad_width, keypad_height);
   lv_obj_align(keypad_, LV_ALIGN_BOTTOM_MID, 0, -margin);
 
-  // Whatever the keys leave. The lines stack from the top and the column
+  // Whatever the keys leave. The lines are centred in that and the column
   // clips rather than scrolls: a screen this one has too much to say on is a
-  // layout to fix, not a scrollbar to grow.
+  // layout to fix, not a scrollbar to grow. Centred, it clips at BOTH ends and
+  // the title is what goes first, so the fit is a test rather than a promise --
+  // `tests/test_sim_provision_fit.cpp` walks every field of every task in both
+  // locales on both geometries and fails if any line leaves this box.
   lines_ = lv_obj_create(screen);
   bare(lines_);
   lv_obj_set_size(lines_, width,
@@ -301,10 +311,11 @@ void ProvisionFace::update() {
         colour ? lv_color_hex(colour->packed()) : lv_color_white(), LV_PART_MAIN);
   }
 
-  const Rgb page = resolved_rgb(ColorRole::BackgroundPrimary, config_.theme,
-                               config_.pixel_cost, Rgb{});
+  const Rgb page =
+      resolved_rgb(ColorRole::BackgroundPrimary, config_.theme,
+                   config_.pixel_cost, rgb_of(lv_color_black()));
   const Rgb ink = resolved_rgb(ColorRole::TextPrimary, config_.theme,
-                               config_.pixel_cost, Rgb{0xFF, 0xFF, 0xFF});
+                               config_.pixel_cost, rgb_of(lv_color_white()));
   // Night has no `BackgroundRaised` -- DESIGN_SYSTEM records that as a gap
   // rather than inventing a value (`ui/src/color.cpp` — "    {ColorRole::BackgroundRaised, ColorKind::Background, kSoftClay, std::nullopt, std::nullopt},").
   // Falling through to the page would make every key that is not the acting

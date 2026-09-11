@@ -21,7 +21,7 @@ authority this file points at rather than repeats.
   and the price is usually the layout, not the token.** The entry screen used
   to cap its key at the touch minimum and land under it, because fourteen keys
   do not fit a 240 px panel at any cell size. Six do, at the full target:
-  `ui/lvgl/provision_face.cpp:121` — "  // Six keys, not fourteen, so a key can be a full touch target on both".
+  `ui/lvgl/provision_face.cpp:154` — "  // Six keys, not fourteen, so a key can be a full touch target on both".
   Name the constraint that won, in the file that loses -- and check first
   whether the count is what has to lose.
 - **An undefined colour resolves to black, in four separate copies.**

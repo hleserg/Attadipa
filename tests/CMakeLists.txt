@@ -394,6 +394,18 @@ if(ATTADIPA_BUILD_SIMULATOR)
     set_tests_properties(sim_provision_secrecy
                          PROPERTIES LABELS "simulator;security" TIMEOUT 180)
 
+    # And the two things a screenshot shows one board, one theme and one locale
+    # of at a time: nothing the entry screen draws leaves the box it was put
+    # in, and every key's word reads on that key's own fill. Both are measured
+    # off the LVGL tree after the shipping screen laid itself out, on both
+    # geometries, so neither can be satisfied by a second copy of the
+    # arithmetic in `ui/lvgl/provision_face.cpp`.
+    add_executable(test_sim_provision_fit test_sim_provision_fit.cpp)
+    target_link_libraries(test_sim_provision_fit PRIVATE attadipa_sim_screens)
+    add_test(NAME sim_provision_fit COMMAND test_sim_provision_fit)
+    set_tests_properties(sim_provision_fit
+                         PROPERTIES LABELS "simulator;ui" TIMEOUT 180)
+
     # The raw-value checker is only complete if its written LVGL inventory is
     # held against the headers used by this simulator build.
     if(Python3_Interpreter_FOUND)
