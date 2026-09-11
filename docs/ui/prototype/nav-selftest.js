@@ -123,23 +123,45 @@
           const stroke = parseFloat(ringStyle.strokeWidth)
             * (ringStyle.vectorEffect === "non-scaling-stroke" ? 1 : scale);
           assert(stroke >= 1, `${context}: dial strokes are at least a rendered pixel wide (${stroke.toFixed(2)})`);
-          const label = dial.querySelector("text");
+          // Painted pixels, and both boxes measured the same way. The pair of
+          // assertions this replaces worked in the user units `fitDialLabel`
+          // computes in and compared the label's `getBBox().y` against
+          // `ringTop + band / 2` -- the very expression `place()` had just
+          // written, plus exactly the one unit of slack the fix adds. It passed
+          // by arithmetic for any font, any `--caption` and any radius, and the
+          // only mutation it could ever see was deleting the fix outright.
+          const ringBox = ring.getBoundingClientRect();
+          const inner = Math.min(ringBox.width, ringBox.height) / 2 - stroke / 2;
+          const cx = (ringBox.left + ringBox.right) / 2;
+          const cy = (ringBox.top + ringBox.bottom) / 2;
+          const offCentre = (box) => Math.hypot((box.left + box.right) / 2 - cx, (box.top + box.bottom) / 2 - cy);
+          const label = dial.querySelector("text.cardinal");
           if (label) {
             const caption = parseFloat(getComputedStyle(screen).getPropertyValue("--caption"));
             const rendered = parseFloat(getComputedStyle(label).fontSize) * scale;
             assert(rendered >= caption - 0.5, `${context}: the cardinal is no smaller than the panel's smallest type (${rendered.toFixed(1)} vs ${caption})`);
-            // Size was the only thing checked here, and fitting the size is
-            // what pushed the glyph up through the ring: 30.9 user units of
-            // type on a baseline of 27 puts the cap top at y ~= 5.2, while the
-            // ring runs through y = 14 and is painted about 4.1 units wide.
-            // Where the letter lands is the assertion that was missing.
-            const ringStyleB = getComputedStyle(ring);
-            const band = parseFloat(ringStyleB.strokeWidth)
-              * (ringStyleB.vectorEffect === "non-scaling-stroke" ? 1 / scale : 1);
-            const ringTop = ring.cy.baseVal.value - ring.r.baseVal.value;
-            const ink = label.getBBox();
-            assert(ink.y >= ringTop + band / 2, `${context}: the cardinal clears the dial ring (ink top ${ink.y.toFixed(1)} vs band ${(ringTop + band / 2).toFixed(1)})`);
-            assert(ink.y + ink.height <= 90 - 4, `${context}: the cardinal stays out of the dial's centre (${(ink.y + ink.height).toFixed(1)})`);
+            // The corners, not the top edge: the dial counter-rotates the
+            // cardinal around the ring, so at head-up it rides at 45 degrees
+            // and a top-edge comparison is vacuous there. Every corner inside
+            // the ring's painted inner edge is the whole claim -- "the ring is
+            // not drawn through the letter" -- at every rotation.
+            // `getBoundingClientRect` carries the transform `getBBox` ignores.
+            const ink = label.getBoundingClientRect();
+            const far = Math.max(...[[ink.left, ink.top], [ink.right, ink.top], [ink.left, ink.bottom], [ink.right, ink.bottom]]
+              .map(([x, y]) => Math.hypot(x - cx, y - cy)));
+            assert(far <= inner, `${context}: the whole cardinal is inside the dial ring (${far.toFixed(2)} of ${inner.toFixed(2)})`);
+            assert(offCentre(ink) >= inner / 2, `${context}: the cardinal stays out of the dial's centre (${offCentre(ink).toFixed(2)} of ${(inner / 2).toFixed(2)})`);
+          } else {
+            // The other half of the same claim, and the half nothing asserted:
+            // where there is no direction at all, the dial's one mark belongs
+            // at its centre. `fitDialLabel` took "the first text in the dial"
+            // and hoisted the em-dash to the top of the ring -- to twelve
+            // o'clock, where a bearing due north is drawn -- in all 16 `no-fix`
+            // and `node-unknown` cells, and 1914 checks passed.
+            const dash = dial.querySelector("text");
+            assert(!!dash, `${context}: a dial with no direction still draws the mark that says so`);
+            if (dash)
+              assert(offCentre(dash.getBoundingClientRect()) <= inner / 2, `${context}: the no-direction mark stays at the dial's centre (${offCentre(dash.getBoundingClientRect()).toFixed(2)} of ${(inner / 2).toFixed(2)})`);
           }
           if (theme === "night")
             assert(getComputedStyle(dial).backgroundColor !== "rgba(0, 0, 0, 0)", `${context}: the dial keeps a ground to be read against`);

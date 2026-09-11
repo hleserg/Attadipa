@@ -1869,7 +1869,7 @@
       const mark = !present ? `<text x="90" y="96" text-anchor="middle">—</text>` : wrist
         ? `<g class="wrist-arrow" transform="rotate(${drawn} 90 90)"><path d="M90 49 109 114 90 102 71 114Z" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/></g>`
         : `<g class="bearing-mark" transform="rotate(${drawn} 90 90)"><path d="M90 90V43" stroke="var(--text)" stroke-dasharray="2 6"/><circle cx="90" cy="35" r="9" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/><circle cx="90" cy="90" r="4" fill="var(--text)"/></g>`;
-      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg class="dial" viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? bearingText : ""}</span></div><div class="nav-condition"><span>${present ? glanceAngle ? `${reason} · ${glanceAngle}` : reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${view.state === "uncalibrated" ? action(c.calibrate, "nav-calibrate") : ""}${action(t("details"), "nav-details")}</div></div>`;
+      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg class="dial" viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text class="cardinal" x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? bearingText : ""}</span></div><div class="nav-condition"><span>${present ? glanceAngle ? `${reason} · ${glanceAngle}` : reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${view.state === "uncalibrated" ? action(c.calibrate, "nav-calibrate") : ""}${action(t("details"), "nav-details")}</div></div>`;
     }
     function navStudyCalibrate() {
       const c = navCopy();
@@ -2008,7 +2008,12 @@
       // units and shifts 1:1 with y, so no assumption about a font is needed.
       // The counter-rotation origin follows the baseline, because it is the
       // glyph's own anchor -- rotating about the old one would displace it.
-      const label = dial.querySelector("text");
+      // The cardinal by name, not "the first text in the dial". In `no-fix`
+      // and `node-unknown` the dial's only <text> is the em-dash the markup
+      // centres at y="96" to say there is no direction at all, and an unscoped
+      // selector hoisted it to the top of the ring -- to twelve o'clock, where
+      // a bearing due north is drawn.
+      const label = dial.querySelector("text.cardinal");
       const ring = dial.querySelector("circle");
       if (!label || !ring) return;
       const spin = label.getAttribute("transform")?.match(/rotate\(\s*(-?[\d.]+)/)?.[1];
@@ -2023,9 +2028,19 @@
       // divided by the scale -- 4.1 units at 240x240, not 1.6.
       const band = parseFloat(ringStyle.strokeWidth)
         * (ringStyle.vectorEffect === "non-scaling-stroke" ? 1 / scale : 1);
-      const clear = ring.cy.baseVal.value - ring.r.baseVal.value + band / 2 + 1;
       const box = label.getBBox();
-      if (box.height) place(Number((27 + (clear - box.y)).toFixed(2)));
+      if (box.height) {
+        // Clearing the ring's TOP EDGE is not the same as being inside the
+        // ring, and the difference is where the letter actually is: a box in a
+        // circle touches it at the top CORNERS, so the constraint is
+        // Pythagorean rather than a subtraction. Subtracting left 0.07px of
+        // margin at 240x240 -- which is to say it ran the ring through a corner
+        // and let the arithmetic report clearance.
+        const inner = ring.r.baseVal.value - band / 2;
+        const half = box.width / 2;
+        const reach = Math.sqrt(Math.max(inner * inner - half * half, 0));
+        place(Number((27 + (ring.cy.baseVal.value - reach + 1 - box.y)).toFixed(2)));
+      }
     }
     function render() {
       document.querySelector("#motion").disabled = reducedMotion.matches;
