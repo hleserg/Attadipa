@@ -1,10 +1,10 @@
 # Which device is which on the bench
 
-> **Status:** read off the hardware, 2026-08-25 and 2026-08-27, on the
-> development host.
-> Every value below came from `esptool flash-id` and `udevadm`; nothing here is
-> inferred from a product name — **except** the listing rows of "Two GNSS
-> modules", whose read-off row is evidence, and all of the 2026-09-05 section.
+> **Status:** board USB/flash identification from 2026-08-25 and 2026-08-27;
+> module observations are dated in their own sections.
+> USB/flash values came from `esptool flash-id` and `udevadm`. Module
+> identity and electrical readings use the cited bench evidence; seller
+> listing names and owner-reported delivery dates remain labelled separately.
 
 This document exists because of one sentence in
 [WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 that was true and
@@ -24,12 +24,44 @@ number will eventually pick the wrong board.
 | PSRAM | **8 MB, `AP_3v3`** | **8 MB, `AP_3v3`** | 2 MB, `AP_3v3` |
 | Flash | **`0xC8 0x4019` — GigaDevice, 32 MB** | **`0xEF 0x4018` — Winbond, 16 MB** | `0x68 0x4018` — 16 MB |
 | Identification | Waveshare `ESP32-S3-Touch-AMOLED-2.06` | LilyGO T-Watch S3 Plus; the shipped firmware's own FQBN is `esp32:esp32:twatchs3:Revision=Radio_SX1262` | a MeshCore node, per [#116](https://github.com/hleserg/Attadipa/issues/116) |
-| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **factory, untouched** — nothing has ever been written to this unit | unchanged; do not write |
+| Current firmware | **Attadipa T-166 bench candidate**; display at the measured 5% visible floor and physical touch working | **Attadipa bring-up image** — panel up, GNSS rail up, LoRa rail down; not a product build and not an idle one — built `Sep  5 2026 22:07:42` and written on or after that — the write itself is not recorded, and the stamp is a compile time; the factory image is backed up and restorable | unchanged; do not write |
 
-The **T-Watch column is the only one of the three whose flash is still exactly
-as the factory shipped it.** A complete 16 777 216-byte image was read off it on
-2026-08-27 and proved three independent ways — on-chip MD5, a second byte-identical
-read, and a structural parse — before anything else was attempted. Its SHA-256 is
+This table said until 2026-09-08 that the T-Watch was **the only one of the
+three whose flash was still exactly as the factory shipped it**, and that
+nothing had ever been written to the unit. Both were false, and a reader would
+have drawn the wrong conclusion from either: that the shipped firmware is what
+answers on the port, and that this unit still needs its first backup.
+
+Its `factory` partition holds this repository's own firmware. The
+`esp_app_desc_t` at `0x10020` carries magic `0xabcd5432`, `project_name`
+`attadipa`, `version` `attadipa-claim-writer-local-hle`, built `Sep  5 2026
+22:07:42` against `idf_ver` `v5.5.5-dirty`, with `app_elf_sha256`
+`53fdd0d8ebd6898d3583e315503dc8e850ac85257ccff22e81595d6d8a7977f1`. The
+partition table is **this repository's own** — `nvs`, `phy_init`, and one 4 MB
+`factory` app, offset for offset
+`firmware/partitions.csv:24` — "factory,     app,  factory,  0x10000,   0x400000,",
+selected by `firmware/sdkconfig.defaults:120` — "CONFIG_PARTITION_TABLE_CUSTOM=y".
+It is **not** ESP-IDF's default, which sizes a single `factory` app at 1 MB, and
+not the `app0`/`app1`/`spiffs` shape the shipped Arduino image used, so the
+table was overwritten too. Naming the writer is the stronger fact: it says which
+build put it there rather than only which one did not. Both were read back with
+`esptool read_flash` on 2026-09-08; that command only reads, and nothing was
+written to establish this.
+
+**Reading the serial port would not have caught this, and nearly did not.** Two
+`cat` of the port a minute apart returned device uptimes 38 minutes apart,
+because a tty hands back what it buffered rather than what the board is saying
+now. The app description in flash is the evidence; the log is not.
+
+The consequence for the bench is the good one: OD-19's precondition was met
+before the unit was ever flashed, so a further reversible flash — a GNSS probe
+build for [#442](https://github.com/hleserg/Attadipa/issues/442), for instance —
+needs no new backup, and the restore path is the image below.
+
+What that backup is remains exactly as recorded. A complete 16 777 216-byte
+image was read off this unit on 2026-08-27 and proved three independent ways —
+on-chip MD5, a second byte-identical read, and a structural parse — before
+anything else was attempted. Its SHA-256 is
 `e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`; the evidence and
 the reproduction notes are
 [TWATCH_S3_PLUS_BRINGUP_2026-08-27](TWATCH_S3_PLUS_BRINGUP_2026-08-27.md), and as with
@@ -277,7 +309,9 @@ not 5 V tolerant, so the unmeasured TX idle voltage above — and, on the GT-U12
 the unexplained path that keeps it running with `VCC` off — is what stands
 between here and a wire.
 
-## Magnetometer modules and vibration motors, delivered 2026-09-05 — NOT READ OFF
+## Magnetometer modules and vibration motors, delivered 2026-09-05
+
+**Delivery snapshot, 2026-09-05 — historical.**
 
 The owner ordered the two magnetometer candidate modules
 [OD-17](OWNER_DECISIONS.md#od-17--a5-and-a6-a-watch-retrofit-may-have-a-magnetometer-the-node-will-not)
@@ -303,6 +337,22 @@ on delivery and is now waiting on an ohmmeter. Every electrical number in
 [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) is still a datasheet quote,
 every test in it is still `NOT EXECUTED — HARDWARE REQUIRED`, and no
 magnetometer is fitted to any board.
+
+**Current status, 2026-09-09 — MEASURED.** The AK09911-compatible module
+selected for the first Waveshare integration is now soldered to and read by the
+watch. [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §2.1 holds the
+verified register source, connection and module-identity evidence, including the
+unconfirmed fuse-mode behavior. The [corrected-image bench record](ak09911-waveshare-2026-09-09/README.md)
+records the exact source/image identity, raw acquisition, power-down and return
+to installed firmware. The delivery snapshot above is historical: its blanket
+no-read-off/no-fitted-module statements no longer describe the selected AK.
+
+This is raw acquisition evidence. Silicon authenticity, fixed mounting,
+QMI-to-watch frame validation, iron calibration, tilt, heading accuracy and
+vibration A/B are not established by it. Motor installation follows a working
+calibrated compass; this update makes no current characterization claim about
+the other candidate modules or motors. Electrical mapping remains traceable
+through [H16](OPEN_QUESTIONS.md) and the linked bench evidence.
 
 ## What this does not say
 

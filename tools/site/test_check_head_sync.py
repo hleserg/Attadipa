@@ -213,7 +213,7 @@ def main() -> int:
     scenario(
         "og:description's string diverging is caught by the comparison",
         lambda html, js: edit(
-            js, "cardDescription: 'LoRa MeshCore", "cardDescription: 'Open-source ESP32-S3"
+            js, "cardDescription: 'Your device", "cardDescription: 'Open-source ESP32-S3"
         ),
         expect_fail=True,
         needle="cardDescription differs",
@@ -297,7 +297,7 @@ def main() -> int:
     )
     scenario(
         "the meta description diverges",
-        lambda html, js: edit(js, "description: 'Open-source", "description: 'The open-source"),
+        lambda html, js: edit(js, "description: 'Meet Atta-dipa", "description: 'Explore Atta-dipa"),
         expect_fail=True,
         needle="description differs",
     )
@@ -331,7 +331,7 @@ def main() -> int:
         "twitter:description drifts from og:description",
         lambda html, js: edit(
             html,
-            '<meta name="twitter:description" content="LoRa MeshCore',
+            '<meta name="twitter:description" content="Your device',
             '<meta name="twitter:description" content="MeshCore',
         ),
         expect_fail=True,
@@ -507,8 +507,8 @@ def main() -> int:
         "the JSON-LD description drifts from the meta description",
         lambda html, js: edit(
             html,
-            '"description": "Open-source ESP32-S3 smartwatch firmware:',
-            '"description": "Open source ESP32-S3 smartwatch firmware:',
+            '"description": "Meet Atta-dipa, an open operating system',
+            '"description": "Open source ESP32-S3 smartwatch project',
         ),
         expect_fail=True,
         needle="have diverged",

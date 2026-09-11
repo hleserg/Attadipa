@@ -8,9 +8,9 @@
 
 CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS=y
 
-# Slice #417 owns only panel, touch and their rails. Inheriting Bluetooth from
-# sdkconfig.defaults would start MeshCore and default NVS after the screen,
-# changing preserved state that this bring-up image explicitly does not own.
+# Native T-Watch keeps Bluetooth disabled; no MeshCore backend is started.
+# Brightness initializes default NVS during board boot and writes only on Save.
+# This does not grant runtime sleep, node or time-provisioning capabilities.
 # CONFIG_BT_ENABLED is not set
 
 # Flash: Winbond W25Q128JW (JEDEC 0xEF 0x4018), 16 MB. The factory image's

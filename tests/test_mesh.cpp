@@ -299,9 +299,48 @@ void the_longest_message_arrives_whole() {
   CHECK(std::strcmp(text.message, status.last_message.data()) == 0);
 }
 
+void separate_batteries_never_invent_a_percentage() {
+  auto status = linked_status();
+  status.has_node_id = true;
+  status.node_battery.separate_supply = true;
+  for (auto locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+    const bool ru = locale == l10n::Locale::Ru;
+    auto text = apps::format_mesh(status, locale);
+    CHECK(std::strcmp(text.watch_power, ru ? "Часы —" : "Watch —") == 0);
+    CHECK(std::strcmp(text.node_power, ru ? "Нода —" : "Node —") == 0);
+    status.node_battery.millivolts = 3701;
+    status.node_battery.validity = core::Validity::Valid;
+    text = apps::format_mesh(status, locale);
+    CHECK(std::strcmp(text.node_power, ru ? "Нода 3,701 В" : "Node 3.701 V") == 0);
+    status.node_battery.validity = core::Validity::Stale;
+    text = apps::format_mesh(status, locale);
+    CHECK(std::strcmp(text.node_power, ru ? "Нода уст." : "Node old") == 0);
+    status.node_battery.validity = core::Validity::Valid;
+    status.transport = core::TransportPhase::Absent;
+    CHECK(std::strcmp(apps::format_mesh(status, locale).node_power,
+                      ru ? "Нода уст." : "Node old") == 0);
+    status.has_node_id = false;
+    CHECK(std::strcmp(apps::format_mesh(status, locale).node_power,
+                      ru ? "Нода —" : "Node —") == 0);
+    status.has_node_id = true;
+    status.transport = core::TransportPhase::Ready;
+    status.node_battery.millivolts = 65535;
+    CHECK(std::strcmp(apps::format_mesh(status, locale).node_power,
+                      ru ? "Нода 65,535 В" : "Node 65.535 V") == 0);
+    status.node_battery.millivolts = 0;
+    CHECK(std::strcmp(apps::format_mesh(status, locale).node_power,
+                      ru ? "Нода —" : "Node —") == 0);
+    status.node_battery.separate_supply = false;
+    CHECK(apps::format_mesh(status, locale).node_power[0] == '\0');
+    status.node_battery.separate_supply = true;
+    status.node_battery.validity = core::Validity::Unknown;
+  }
+}
+
 }  // namespace
 
 int main() {
+  separate_batteries_never_invent_a_percentage();
   every_phase_has_its_own_word();
   an_unnamed_node_reports_no_measurements();
   an_impossible_state_offers_no_instruction();

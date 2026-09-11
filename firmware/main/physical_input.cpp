@@ -240,6 +240,23 @@ private:
     const attadipa::core::SleepReport report =
         attadipa::firmware::board_power_owner().sleep(plan, now);
 
+    // THE TOUCH THAT ENDED THE SLEEP IS NOT A GESTURE.
+    //
+    // Waking is what the finger asked for, and it has already happened by the
+    // time this returns. The finger is usually still down, so the next read
+    // makes a fresh `PointerDown` and its lift makes a `PointerUp` -- a
+    // complete click, delivered to whatever the screen does with one. On this
+    // board a short tap of the clock opens Settings, so tapping the glass to
+    // see the time put a brightness editor on the screen instead.
+    //
+    // Swallowed here rather than in each page because this is the one place
+    // that knows a wake happened; a page cannot tell that press from any
+    // other. LVGL is reset as well: it may be holding a press of its own from
+    // before the sleep, and that one has no lift coming either.
+    swallow_wake_touch_ = true;
+    physical_pressed_ = false;
+    lv_indev_reset(nullptr, nullptr);
+
     // The screen is back, or the owner never took it away. Either way LVGL has
     // to be told, and on the refused paths it costs one redraw of a screen that
     // was never dark.
@@ -310,6 +327,11 @@ private:
       return;
     }
     if (!physical_pressed_ && gpio_get_level(kTouchInterrupt) != 0) {
+      // The idle interrupt line is the cheapest evidence that the glass is
+      // empty, and it has to clear the wake swallow as well: this return is
+      // taken before any read, so a lift seen only here would otherwise leave
+      // the swallow armed and every later touch discarded.
+      swallow_wake_touch_ = false;
       return;
     }
     if (esp_lcd_touch_read_data(touch_) != ESP_OK) {
@@ -322,6 +344,17 @@ private:
       return;
     }
     const bool has_point = count > 0;
+
+    if (swallow_wake_touch_) {
+      // Until the finger that woke the watch comes off the glass, nothing it
+      // does is a gesture: no down, no move, and no up for a down nobody was
+      // told about. The first press after the lift is a real one.
+      if (has_point) {
+        return;
+      }
+      swallow_wake_touch_ = false;
+      return;
+    }
 
     attadipa::core::InputEvent event{};
     event.origin = attadipa::core::InputOrigin::Physical;
@@ -504,6 +537,8 @@ private:
   attadipa::core::InputQueue input_queue_{};
   attadipa::core::InputState input_state_{};
   bool physical_pressed_ = false;
+  // Set when a sleep returns, cleared when the glass is next empty.
+  bool swallow_wake_touch_ = false;
   std::int16_t physical_x_ = 0;
   std::int16_t physical_y_ = 0;
   bool pointer_pressed_ = false;

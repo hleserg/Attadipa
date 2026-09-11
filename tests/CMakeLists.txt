@@ -17,6 +17,15 @@ target_link_libraries(test_capability_registry PRIVATE
 )
 add_test(NAME capability_registry COMMAND test_capability_registry)
 
+# The registry a composition root iterates, and the cadence it spends.
+add_executable(test_app_registry test_app_registry.cpp)
+target_link_libraries(test_app_registry PRIVATE
+    attadipa_platform
+    attadipa_core
+    attadipa_apps
+)
+add_test(NAME app_registry COMMAND test_app_registry)
+
 # ---------------------------------------------------------------------------
 # The layer boundary, checked rather than trusted.
 #
@@ -70,6 +79,11 @@ add_test(NAME provisioning COMMAND test_provisioning)
 add_executable(test_clock test_clock.cpp)
 target_link_libraries(test_clock PRIVATE attadipa_apps)
 add_test(NAME clock COMMAND test_clock)
+
+add_executable(test_brightness test_brightness.cpp)
+target_include_directories(test_brightness PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+target_link_libraries(test_brightness PRIVATE attadipa_apps)
+add_test(NAME brightness COMMAND test_brightness)
 
 add_executable(test_mesh test_mesh.cpp)
 target_link_libraries(test_mesh PRIVATE attadipa_apps)
@@ -359,6 +373,26 @@ if(ATTADIPA_BUILD_SIMULATOR)
     target_link_libraries(test_sim_review_keys PRIVATE attadipa_sim_screens)
     add_test(NAME sim_review_keys COMMAND test_sim_review_keys)
     set_tests_properties(sim_review_keys PROPERTIES LABELS "simulator;design")
+
+    # The provisioning console, driven with a finger and read off the file
+    # descriptor (#316).
+    #
+    # Here for the reason above: it presses the shipping entry screen through
+    # LVGL's own pointer path, so it needs LVGL, which only a simulator build
+    # configures. Its own binary rather than a case inside the review-keys test
+    # because it redirects stdout and stderr around the walk, and a redirect
+    # that also swallowed a neighbouring case's failure message would be a test
+    # that hides tests.
+    add_executable(test_sim_provision_secrecy test_sim_provision_secrecy.cpp)
+    target_link_libraries(test_sim_provision_secrecy PRIVATE attadipa_sim_screens)
+    add_test(NAME sim_provision_secrecy COMMAND test_sim_provision_secrecy)
+    # The walk is a few hundred milliseconds of frames. The `TIMEOUT` is the
+    # outer bound on a hang the test's own `alarm()` cannot answer -- one that
+    # stops the process before it arms, or after `end()` disarms it. Without
+    # one, ctest waits out its 1500 s default and then sends `SIGKILL`, which
+    # spills nothing.
+    set_tests_properties(sim_provision_secrecy
+                         PROPERTIES LABELS "simulator;security" TIMEOUT 180)
 
     # The raw-value checker is only complete if its written LVGL inventory is
     # held against the headers used by this simulator build.
@@ -690,3 +724,8 @@ add_executable(test_ui_tokens test_ui_tokens.cpp)
 target_link_libraries(test_ui_tokens PRIVATE attadipa_ui)
 add_test(NAME ui_tokens COMMAND test_ui_tokens)
 set_tests_properties(ui_tokens PROPERTIES LABELS design)
+
+# Exercise the same AK09911 register sequence the physical probe instantiates.
+add_executable(test_ak09911 test_ak09911.cpp)
+target_include_directories(test_ak09911 PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME ak09911 COMMAND test_ak09911)

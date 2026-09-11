@@ -34,14 +34,20 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 
+#include "attadipa/apps/app_registry.h"
 #include "attadipa/apps/clock.h"
 #include "attadipa/apps/mesh.h"
 #include "attadipa/apps/navigation.h"
+#include "attadipa/apps/brightness.h"
 #include "attadipa/apps/provisioning.h"
+#include "attadipa/core/capability_registry.h"
 #include "attadipa/core/time_service.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
+#include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/ui/clock_face.h"
+#include "attadipa/ui/status_frame.h"
+#include "attadipa/ui/settings_face.h"
 #include "attadipa/ui/mesh_face.h"
 #include "attadipa/ui/nav_face.h"
 #include "attadipa/ui/provision_face.h"
@@ -53,6 +59,8 @@
 #include "meshcore_passkey.h" // plain C++, no NimBLE behind it: every image
 
 #include "physical_input.h"
+#include "brightness_nvs.h"
+#include "esp_system.h"
 
 #if CONFIG_ATTADIPA_WATCH_CONTROL
 #include "attadipa/debug/bridge.h"
@@ -67,7 +75,9 @@ constexpr char kBoardProfileId[] = "waveshare-amoled-206";
 constexpr int kWidth = 410;
 constexpr int kHeight = 502;
 constexpr int kPanelGapX = 0x16;
-constexpr int kBrightnessPercent = 5;
+// 5% restored the owner's visible bench swatches (BRINGUP_2026-08-25).
+// This is a recovery policy, not a universal measured readability floor.
+constexpr std::uint8_t kBrightnessDefault = 5;
 
 constexpr gpio_num_t kLcdCs = GPIO_NUM_12;
 constexpr gpio_num_t kLcdClock = GPIO_NUM_11;
@@ -101,8 +111,7 @@ constexpr std::uint8_t kRows[] = {0x00, 0x00, 0x01, 0xF5};
 
 // The exact panel sequence used by the known-working vendor implementation,
 // except display-on is delayed until the black UI objects exist. Brightness
-// starts at zero and is raised to the measured 5% visible floor only after
-// that.
+// starts at zero and is raised to the saved request only after that.
 constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
     {0x11, nullptr, 0, 120},
     {0xC4, kC4, sizeof(kC4), 0},
@@ -118,7 +127,7 @@ constexpr co5300_lcd_init_cmd_t kPanelInit[] = {
 // Which of the four faces is on the screen. `Entry` is a page like the rest:
 // it cleans the screen too, and forgetting that is how a long press used to
 // strand the clock's timer.
-enum class Page { Clock, Entry, Mesh, Nav };
+enum class Page { Clock, Entry, Mesh, Nav, Settings };
 
 struct BoardState {
   // Every handle boot creates, kept so that boot can un-create it. A null is
@@ -135,14 +144,13 @@ struct BoardState {
   esp_lcd_panel_io_handle_t touch_io = nullptr;
   esp_lcd_touch_handle_t touch = nullptr;
   lv_display_t *display = nullptr;
+  attadipa::ui::StatusFrame status_frame;
+  attadipa::ui::SettingsFace settings_face;
   attadipa::ui::ClockFace clock_face;
   attadipa::ui::ProvisionFace provision_face;
   // Present while the entry screen is up; a fresh one for each visit, so a
   // half-typed date from last time is not waiting on the next.
   std::optional<attadipa::apps::ProvisioningEntry> entry;
-  // Ticks of `refresh_ui` the Done screen has been showing; the clock comes
-  // back after kDoneTicks of them.
-  unsigned done_ticks = 0;
   attadipa::core::TimeService time_service;
   // Default NVS, classified once at boot: ESP_OK, or the `nvs_flash_init()`
   // verdict that stands for the rest of this boot. Read by `BoardTimeOps`.
@@ -166,6 +174,27 @@ struct BoardState {
 };
 
 BoardState state;
+
+struct BoardBrightness final : attadipa::apps::BrightnessPort {
+  attadipa::apps::BrightnessRead load(std::uint8_t &percent) override {
+    return attadipa::firmware::load_brightness(state.metadata_storage, percent);
+  }
+  bool apply(std::uint8_t percent) override {
+    return attadipa::firmware::board_power_preview_brightness(percent) == ESP_OK;
+  }
+  attadipa::apps::BrightnessWrite store(std::uint8_t percent) override {
+    using attadipa::apps::BrightnessWrite;
+    const auto result =
+        attadipa::firmware::persist_brightness(state.metadata_storage, percent);
+    if (result == BrightnessWrite::Saved) {
+      attadipa::firmware::board_power_remember_brightness(percent);
+    }
+    return result;
+  }
+  void restart() override { esp_restart(); }
+} brightness_port;
+attadipa::apps::BrightnessSettings brightness(
+    brightness_port, kBrightnessDefault, kBrightnessDefault, 5);
 #if CONFIG_BT_NIMBLE_ENABLED
 std::atomic_bool mesh_screen_requested{false};
 #endif
@@ -767,16 +796,110 @@ attadipa::apps::ClockText clock_text() {
   return attadipa::apps::format_clock(clock, false);
 }
 
+// The slowest this board will let its one UI timer run.
+//
+// Not a preference: `refresh_ui()` drains the GNSS UART ring on every tick,
+// above every early return, whatever page is up. So an application's declared
+// cadence is spent through `apps::ui_period()` and clamped here rather than
+// used raw -- a manifest asking for 5 s would leave the ring unread for 5 s,
+// and a manifest asking for nothing at all would stop the timer.
+constexpr attadipa::core::Millis kBoardTickPeriod{1000};
+
+#if CONFIG_BT_NIMBLE_ENABLED
+// The node readout has no manifest, so its cadence stays a board number. It
+// arrived with the first physical contact over BLE (#297) and the navigation
+// page inherited it only by sharing this branch; navigation declares its own
+// 1000 ms and now gets it.
+constexpr attadipa::core::Millis kMeshPagePeriod{500};
+#endif
+
+// This board's capability registry, and the first one in this firmware.
+//
+// `apps::launcher_entry()` needs something to ask, and until now nothing on a
+// device had one: ADR-0007's availability rule was implemented, tested, and
+// unreachable from anything that runs on a board. Static storage, no heap and
+// no new task. It answers null when this build has no profile, because a
+// registry over a profile that is not there would answer confidently about a
+// board it cannot describe.
+attadipa::core::CapabilityRegistry *board_capabilities() {
+  static const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  if (profile == nullptr) {
+    return nullptr;
+  }
+  static attadipa::platform::ProfileInventory inventory(*profile);
+  static attadipa::core::CapabilityRegistry caps(inventory);
+  return &caps;
+}
+
+// What a bound node is worth to the capability layer.
+//
+// No new task, queue or atomic crosses a boundary for this: `meshcore_ble_status()`
+// is already read on the LVGL task by the mesh page, and this is the same read.
+//
+// `provides` is the stable question ADR-0007 splits out -- what a node of this
+// kind can offer at all, not what it managed this second. Messaging, because
+// the link itself is the evidence; and Position, because a MeshCore node
+// reports its own coordinate and `meshcore_ble_location()` is where the nav
+// page already takes it from. Not Heading: nothing reads a compass on the node,
+// and claiming one would be exactly the kind of confident answer about an
+// unknown that this project refuses to give.
+void refresh_node_link() {
+  attadipa::core::CapabilityRegistry *caps = board_capabilities();
+  if (caps == nullptr) {
+    return;
+  }
+  attadipa::core::NodeLink link;
+#if CONFIG_BT_NIMBLE_ENABLED
+  const attadipa::core::MeshStatus status = meshcore_ble_status();
+  link.bound = status.has_pinned || status.has_node_id;
+  link.reachable = status.availability == attadipa::core::Availability::Ready;
+  link.compatible = true;
+  link.provides =
+      attadipa::core::capability_bit(attadipa::core::Capability::MeshMessaging) |
+      attadipa::core::capability_bit(attadipa::core::Capability::Position);
+#endif
+  caps->set_node_link(link);
+}
+
+// ADR-0007 §3, asked of the pages that have a manifest to ask about. The node
+// readout has none yet, and a page with no manifest is not gated on one.
+const attadipa::apps::AppManifest *manifest_for(Page page) {
+  switch (page) {
+  case Page::Clock:
+    return &attadipa::apps::clock_manifest();
+  case Page::Nav:
+    return &attadipa::apps::navigation_manifest();
+  default:
+    return nullptr;
+  }
+}
+
+// Whether this board offers a page at all. False only when a required
+// capability is Unsupported here -- no configuration of this device would
+// change the answer, so opening it would be a promise the hardware cannot keep.
+bool page_is_offered(Page page) {
+  const attadipa::apps::AppManifest *manifest = manifest_for(page);
+  attadipa::core::CapabilityRegistry *caps = board_capabilities();
+  if (manifest == nullptr || caps == nullptr) {
+    return true;
+  }
+  return attadipa::apps::launcher_entry(*manifest, *caps) !=
+         attadipa::apps::LauncherEntry::Hidden;
+}
+
 void refresh_clock(lv_timer_t *timer) {
   state.clock_face.update(clock_text());
   if (timer != nullptr) {
     lv_timer_set_period(timer,
-                        attadipa::apps::clock_manifest().tick_period.value);
+                        attadipa::apps::ui_period(
+                            attadipa::apps::clock_manifest(), kBoardTickPeriod)
+                            .value);
   }
 }
 
 // The one place a page changes, and the only one that tears the outgoing face
-// down. All four `clear()` calls are idempotent, so calling them all is
+// down. All face `clear()` calls are idempotent, so calling them all is
 // cheaper than asking which face was up -- but they are not all harmless.
 // `ClockFace::clear()` and `ProvisionFace::clear()` delete no LVGL object;
 // `NavFace::clear()` reaches `ui/lvgl/nav_face.cpp:515` — "    lv_obj_clean(screen_);"
@@ -788,13 +911,14 @@ void show_page(Page next) {
   }
   state.clock_face.clear();
   state.nav_face.clear();
+  if (state.page == Page::Settings) (void)brightness.cancel();
+  state.settings_face.clear();
   state.provision_face.clear();
   state.mesh_face.clear();
   state.entry.reset();
   state.page = next;
 }
 
-#if CONFIG_BT_NIMBLE_ENABLED
 // The panel's density, for the two faces that ask for it. One lookup, because
 // two copies of it are two places to forget the null check.
 unsigned panel_dpi() {
@@ -803,8 +927,26 @@ unsigned panel_dpi() {
   return profile != nullptr ? profile->display.dpi() : 0;
 }
 
+void refresh_status() {
+  attadipa::core::MeshStatus status{};
+#if CONFIG_BT_NIMBLE_ENABLED
+  status = meshcore_ble_status();
+#endif
+  state.status_frame.update(
+      attadipa::apps::format_mesh(status, attadipa::l10n::locale()));
+}
+
+void build_status_frame() {
+  state.status_frame.build(lv_screen_active(),
+      {kWidth, kHeight, attadipa::ui::Theme::Night,
+       attadipa::ui::PixelCost::PerPixel,
+       attadipa::ui::Metrics::for_dpi(panel_dpi())});
+  refresh_status();
+}
+
+#if CONFIG_BT_NIMBLE_ENABLED
 attadipa::ui::MeshFaceConfig mesh_config() {
-  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+  return {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
           attadipa::ui::PixelCost::PerPixel,
           attadipa::ui::Metrics::for_dpi(panel_dpi())};
 }
@@ -822,7 +964,9 @@ void refresh_mesh() {
   // fact. The four label pointers this replaced were a second copy.
   if (!state.mesh_face.built()) {
     show_page(Page::Mesh);
-    state.mesh_face.build(lv_screen_active(), mesh_config(), text);
+    build_status_frame();
+    state.mesh_face.build(state.status_frame.content(), mesh_config(), text);
+    state.status_frame.restore_content_geometry();
     return;
   }
   state.mesh_face.update(text);
@@ -831,7 +975,7 @@ void refresh_mesh() {
 
 #if CONFIG_BT_NIMBLE_ENABLED
 attadipa::ui::NavFaceConfig nav_config() {
-  return {kWidth, kHeight, attadipa::ui::Theme::Night,
+  return {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
           attadipa::ui::PixelCost::PerPixel,
           attadipa::ui::Metrics::for_dpi(panel_dpi())};
 }
@@ -844,7 +988,7 @@ void refresh_nav() {
   attadipa::apps::NavState nav;
   // The same locale the clock takes, and from the same place, so the two pages
   // of one watch never disagree about their language.
-  nav.locale = attadipa::l10n::Locale::En;
+  nav.locale = attadipa::l10n::locale();
   nav.target = meshcore_ble_location();
   // Two positions, two instances of one class, and neither knows about the
   // other. `own` comes from the receiver on this board's pads and carries a
@@ -864,14 +1008,21 @@ void refresh_nav() {
   if (state.nav_face.built()) {
     state.nav_face.update(text);
   } else {
-    state.nav_face.build(lv_screen_active(), nav_config(), text);
+    build_status_frame();
+    state.nav_face.build(state.status_frame.content(), nav_config(), text);
+    state.status_frame.restore_content_geometry();
   }
 }
 
 // A short tap on the node pages between the two things there are to say about
-// it: what the link is doing, and where it is. It does nothing anywhere else --
-// the clock's gesture is a long press and this must not steal it, and a long
-// press on the node itself must do nothing rather than page away.
+// it: what the link is doing, and where it is. It does nothing anywhere else.
+//
+// The clock's own gestures are the other half of the rule and they changed
+// when Settings arrived: a short tap of the clock opens Settings and a long
+// press opens provisioning, so this handler must not take a short tap there.
+// A long press on a node page opens Settings too -- that is the only way in
+// once a connection has taken the clock over -- so the older rule that a long
+// press on the node itself does nothing no longer holds.
 void node_page_turn(lv_event_t *) {
   // The page, not the request flag. The flag is true from the moment the
   // worker sets it, which is up to a tick before the mesh page is actually
@@ -881,9 +1032,20 @@ void node_page_turn(lv_event_t *) {
   if (state.page != Page::Mesh && state.page != Page::Nav) {
     return;
   }
-  show_page(state.page == Page::Nav ? Page::Mesh : Page::Nav);
+  const Page next = state.page == Page::Nav ? Page::Mesh : Page::Nav;
+  // The launcher's rule, at the one place a person reaches a second page: a
+  // page this board can never run is not turned to. Refusing here rather than
+  // inside `show_page()` is deliberate -- `refresh_nav()` calls that and then
+  // draws unconditionally, so a refusal in there would leave a face building
+  // onto a screen another face still owns.
+  if (!page_is_offered(next)) {
+    ESP_LOGW(kTag, "%s is not offered on this board", manifest_for(next)->id);
+    return;
+  }
+  show_page(next);
   // Draw here, not on the next tick. `show_page()` has just emptied the screen
-  // and the node pages tick at 500 ms, so returning without drawing shows a
+  // and the node pages tick at half a second or a second, so returning
+  // without drawing shows a
   // bare background for up to half a second -- which on a watch that used to
   // reboot reads as a crash. Both are idempotent: `refresh_mesh()` builds only
   // when its labels are gone, `refresh_nav()` only when the face is not built.
@@ -898,39 +1060,92 @@ void node_page_turn(lv_event_t *) {
 void build_clock_screen() {
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
-  state.clock_face.build(lv_screen_active(),
-                         {kWidth, kHeight, attadipa::ui::Theme::Night,
+  state.clock_face.clear();
+  build_status_frame();
+  state.clock_face.build(state.status_frame.content(),
+                         {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
                           attadipa::ui::PixelCost::PerPixel,
                           attadipa::ui::Metrics::for_dpi(
                               profile != nullptr ? profile->display.dpi() : 0)},
                          clock_text());
+  state.status_frame.restore_content_geometry();
 }
-
-constexpr unsigned kDoneTicks = 3;
 
 // A long press on the clock opens the entry screen. It is on the screen
 // object, which both faces share, so it needs adding once; the clock face
 // leaves its children unclickable and the press lands here, while the
 // keypad's buttons take theirs and never let one through.
+void enter_settings();
+
 void long_press(lv_event_t *) {
+  // Node pages already use short tap for their page turn. Holding either
+  // keeps Settings reachable after the first connection takes over Clock.
+  if (state.page == Page::Mesh || state.page == Page::Nav) {
+    enter_settings();
+    return;
+  }
   if (state.page != Page::Clock) {
     return;
   }
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
+  // The clock this watch already believes, so the entry opens on it rather
+  // than on 2000-01-01 and a correction is a nudge instead of a retyped date.
+  // Seeded only when both halves are genuinely known: an instant the service
+  // will not vouch for, or an offset nobody has ever set, would put a guess on
+  // screen wearing the clock's clothes. The entry drops a seed it cannot make
+  // a civil date out of, so this cannot smuggle one in either.
+  const attadipa::core::MonotonicTime seed_now{
+      static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
+  const attadipa::core::TimeState seed_time = state.time_service.state(seed_now);
+  attadipa::apps::EntrySeed seed{};
+  if (seed_time.utc.validity == attadipa::core::Validity::Valid &&
+      seed_time.timezone_valid) {
+    seed.valid = true;
+    seed.utc = seed_time.utc.value;
+    // The service's own number, not `local - utc`: reaching through
+    // `.unix_seconds` to subtract two `WallTime`s is the shape
+    // `core/include/attadipa/core/clock.h` removes `operator-` to prevent, and
+    // it only happens to be exact here because `local` is `utc` plus this very
+    // offset. Give `local` a second correction term one day and that
+    // arithmetic seeds a wrong draft with `seeded = true` beside it.
+    seed.offset_minutes = seed_time.timezone_offset_minutes;
+  }
   // The page first: it clears the clock face, and `state.entry` with it, so
   // the emplace below has to follow rather than precede it.
   show_page(Page::Entry);
-  state.entry.emplace(provisioner);
-  state.done_ticks = 0;
+  // `All`, and not `LocalTime`, because nothing on this board chooses between
+  // the two narrow tasks yet. With `LocalTime` alone a product image can never
+  // reach `set_mesh_passkey` or `forget_mesh_node` -- the watch would have no
+  // way to be told its node, `meshcore_ble.cpp` would never start scanning,
+  // and #411's recovery would lose its only gesture. `All` is the single walk
+  // this flow had before the model was split, and it goes when the entry
+  // screen gets its chooser (#469).
+  state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);
+  build_status_frame();
   state.provision_face.build(
-      lv_screen_active(),
-      {kWidth, kHeight, attadipa::ui::Theme::Night,
+      state.status_frame.content(),
+      {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
        attadipa::ui::PixelCost::PerPixel,
        attadipa::ui::Metrics::for_dpi(profile != nullptr ? profile->display.dpi()
                                                           : 0),
-       attadipa::l10n::Locale::En},
+       attadipa::l10n::locale()},
       *state.entry);
+  state.status_frame.restore_content_geometry();
+}
+
+void enter_settings() {
+  show_page(Page::Settings);
+  build_status_frame();
+  state.settings_face.build(state.status_frame.content(),
+      {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
+       attadipa::ui::PixelCost::PerPixel, attadipa::ui::Metrics::for_dpi(panel_dpi())},
+      brightness, [] { show_page(Page::Clock); build_clock_screen(); });
+  state.status_frame.restore_content_geometry();
+}
+
+void open_settings(lv_event_t *) {
+  if (state.page == Page::Clock) enter_settings();
 }
 
 void refresh_ui(lv_timer_t *timer) {
@@ -940,6 +1155,18 @@ void refresh_ui(lv_timer_t *timer) {
   // navigated to it. It is a no-op when the feature is off or the port never
   // opened.
   attadipa::firmware::local_gnss_tick();
+  // And second, for the same reason: what the capability layer knows about the
+  // node has to be true on every page, not only on the one that shows it. A
+  // registry stood up and never told the link state would answer
+  // NeedsAttention with a node attached, which is a lie about state rather
+  // than a missing feature.
+  refresh_node_link();
+  refresh_status();
+  // A reconnect can update the header, but cannot discard an active editor.
+  if (state.page == Page::Settings) {
+    state.settings_face.update();
+    return;
+  }
 #if CONFIG_BT_NIMBLE_ENABLED
   if (mesh_screen_requested.load()) {
     // The node pages clean the LVGL screen under whatever is on it. An entry
@@ -955,7 +1182,15 @@ void refresh_ui(lv_timer_t *timer) {
       refresh_mesh();
     }
     if (timer != nullptr) {
-      lv_timer_set_period(timer, 500);
+      // Each page's own cadence, rather than one number for both: navigation
+      // declares 1000 ms and had been running at the node readout's 500.
+      lv_timer_set_period(
+          timer, state.page == Page::Nav
+                     ? attadipa::apps::ui_period(
+                           attadipa::apps::navigation_manifest(),
+                           kBoardTickPeriod)
+                           .value
+                     : kMeshPagePeriod.value);
     }
     return;
   }
@@ -969,7 +1204,11 @@ void refresh_ui(lv_timer_t *timer) {
     if (state.entry->poll()) {
       state.provision_face.update();
     }
-    if (!state.entry->finished() || ++state.done_ticks < kDoneTicks) {
+    // `finished()` is the entry's `Exit` field and nothing else: the receipt
+    // that says what the board did is a field the holder leaves, not a screen
+    // a timer takes away. So there is no tick count here any more -- the clock
+    // comes back on the press that asked for it and not a moment before.
+    if (!state.entry->finished()) {
       return;
     }
     show_page(Page::Clock);
@@ -1083,6 +1322,7 @@ esp_err_t initialize_touch() {
 }
 
 void create_ui() {
+  lv_obj_add_event_cb(lv_screen_active(), open_settings, LV_EVENT_SHORT_CLICKED, nullptr);
   build_clock_screen();
   lv_obj_add_event_cb(lv_screen_active(), long_press, LV_EVENT_LONG_PRESSED,
                       nullptr);
@@ -1093,8 +1333,14 @@ void create_ui() {
   lv_obj_add_event_cb(lv_screen_active(), node_page_turn,
                       LV_EVENT_SHORT_CLICKED, nullptr);
 #endif
+  // The clock is the first page, so it is the first cadence. Every later
+  // period comes from whichever manifest is on screen, in `refresh_ui()`.
   state.ui_timer = lv_timer_create(
-      refresh_ui, attadipa::apps::clock_manifest().tick_period.value, nullptr);
+      refresh_ui,
+      attadipa::apps::ui_period(attadipa::apps::clock_manifest(),
+                                kBoardTickPeriod)
+          .value,
+      nullptr);
 }
 
 // One teardown step: issue it, keep the first failure, and null the handle
@@ -1230,6 +1476,7 @@ esp_err_t start_waveshare_ui() {
   // Every failure inside says so itself, and the clock runs without the
   // metadata either way.
   (void)restore_time_metadata();
+  brightness.load();
   const attadipa::apps::ClockState clock = read_clock_state();
   ESP_LOGI(kTag, "PCF85063: %s",
            clock.availability == attadipa::core::Availability::Ready
@@ -1271,7 +1518,10 @@ esp_err_t start_waveshare_ui() {
   // sleep work in a production image that has no transport at all (#346).
   const esp_err_t physical_result =
       start_physical_input(state.touch, state.pmu, state.panel,
-                           kBrightnessPercent, [] { refresh_ui(nullptr); });
+                           brightness.saved(), [] {
+                             (void)brightness.cancel();
+                             refresh_ui(nullptr);
+                           });
 #if CONFIG_ATTADIPA_WATCH_CONTROL
   const esp_err_t watch_control_result =
       physical_result != ESP_OK ? ESP_OK
@@ -1301,6 +1551,7 @@ esp_err_t start_waveshare_ui() {
     // `clear()` deletes the timer and the transient animation and removes the
     // handler. It deletes no LVGL object, so the face stays drawn.
     lv_obj_remove_event_cb(lv_screen_active(), long_press);
+    lv_obj_remove_event_cb(lv_screen_active(), open_settings);
 #if CONFIG_BT_NIMBLE_ENABLED
     lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);
 #endif
@@ -1333,7 +1584,7 @@ esp_err_t start_waveshare_ui() {
   // is what talks to it next, and ADR-0016 §4 is what it does with a refusal.
   err = esp_lcd_panel_disp_on_off(state.panel, true);
   if (err == ESP_OK) {
-    err = esp_lcd_panel_co5300_set_brightness(state.panel, kBrightnessPercent);
+    err = attadipa::firmware::board_power_preview_brightness(brightness.saved());
   }
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "CO5300 did not turn on (%s): the UI runs on a dark panel",
@@ -1345,8 +1596,9 @@ esp_err_t start_waveshare_ui() {
   // watch. Nothing after this can fail, so no rollback step has to learn to
   // undo it and `boot_rollback.h` is untouched.
   (void)attadipa::firmware::local_gnss_start();
-  ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%%, touch %s, RTC %s",
-           kBrightnessPercent, state.touch != nullptr ? "present" : "absent",
+  ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%% (%s), touch %s, RTC %s",
+           brightness.saved(), attadipa::apps::describe(brightness.origin()),
+           state.touch != nullptr ? "present" : "absent",
            state.rtc != nullptr ? "present" : "absent");
   return ESP_OK;
 }

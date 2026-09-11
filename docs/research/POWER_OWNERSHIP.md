@@ -29,7 +29,7 @@ must guarantee before the second consumer is allowed to have an opinion.
 | XPowersLib builds against ESP-IDF's `driver/i2c_master.h`, not only Arduino | **VERIFIED** — XPowersLib `d699758`, §3.3 |
 | The IRQ byte-order bug that pin exists for cannot reach this firmware today | **VERIFIED** — §3.3 |
 | Which loads sit on each Waveshare AXP2101 rail | **VERIFIED** — D13, resolved 2026-08-28, §6.1 |
-| Current draw per power state, on either board | **PARTIAL** — H1. **One idle state on the Waveshare is MEASURED**, 2026-09-05, S16 — the figure, its conditions and its residual unknowns are in [VERIFIED_FACTS](VERIFIED_FACTS.md) and are not restated here. It is input power at VBUS, upstream of the PMU, so it separates no rail. Every other state, and the whole T-Watch, is still **NOT EXECUTED — HARDWARE REQUIRED** |
+| Current draw per power state, on either board | **PARTIAL** — H1. **One idle state is now MEASURED on each board** — the Waveshare 2026-09-05 (S16) and the T-Watch 2026-09-08 (S17). Each figure, its conditions and its residual unknowns are in [VERIFIED_FACTS](VERIFIED_FACTS.md) and are not restated here. Both are input power upstream of the PMU, so neither separates a rail, and the T-Watch figure carries a powered GNSS receiver in an `UNKNOWN` state. Every other state on both boards is still **NOT EXECUTED — HARDWARE REQUIRED** |
 | Whether the AXP2101 on these boards can measure current at all | **NO** — H2, answered 2026-09-05 from both AXP2101 datasheets: the ADC has five channels and every one is a voltage or a temperature. Whether either *board* fits a sense resistor is the half still open |
 | Which wake sources are usable in practice and what each costs | **NOT EXECUTED — HARDWARE REQUIRED** — H5 |
 | AMOLED brightness against power | **NOT EXECUTED — HARDWARE REQUIRED** — H6 |
@@ -91,7 +91,7 @@ recursiveness and per-handle thread-safety caveat (§3.1), and the XPowersLib
 [`firmware/main/physical_input.cpp:170`](../../firmware/main/physical_input.cpp) —
 "void maybe_sleep() {". It is the only caller of `esp_light_sleep_start()` in
 the tree — now
-[`firmware/main/board_power.cpp:417`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:428`](../../firmware/main/board_power.cpp) —
 "const esp_err_t result = esp_light_sleep_start();" — and the only caller of any
 `esp_sleep_enable_*`.
 
@@ -109,14 +109,14 @@ What it does not have is a way for anyone else to take part.
 ### 2.2 One rail writer, which is accidentally right
 
 `initialize_pmu()` programs three rails and enables two:
-[`firmware/main/board_power.cpp:598`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:609`](../../firmware/main/board_power.cpp) —
 "DC1 3.3 V", then ALDO1 and
-[`firmware/main/board_power.cpp:600`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:611`](../../firmware/main/board_power.cpp) —
 "ALDO2 3.3 V", enabling them read-modify-write at
-[`firmware/main/board_power.cpp:607`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:618`](../../firmware/main/board_power.cpp) —
 "ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,". Its comment
 states the discipline it is keeping —
-[`firmware/main/board_power.cpp:596`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:607`](../../firmware/main/board_power.cpp) —
 "// Preserve unrelated rails. The known-working board implementation needs".
 The three writes moved into the owner unchanged; `initialize_pmu()` now calls
 `board_power_bring_up_rails()` and the boot sequence is byte-identical.
@@ -179,10 +179,10 @@ strongest available argument for the contract in §4 — because they are what
 
 **The armed wake plan is never reconciled with hardware.** *Fixed by the owner;
 this is what it was.* Before sleeping, the code armed a GPIO wake — the call is
-now [`firmware/main/board_power.cpp:322`](../../firmware/main/board_power.cpp) —
+now [`firmware/main/board_power.cpp:333`](../../firmware/main/board_power.cpp) —
 "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);",
 reached only from `arm_wake()` and journaled. On the way out it disarmed exactly
-one source — [`firmware/main/board_power.cpp:353`](../../firmware/main/board_power.cpp) —
+one source — [`firmware/main/board_power.cpp:364`](../../firmware/main/board_power.cpp) —
 "result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);", which is now
 one arm of a `disarm_wake()` that the transaction calls for each source it
 recorded — and
@@ -218,10 +218,10 @@ firmware already treats as a transaction.
 **One wake cause is read where a bitmap is available.** *Fixed by the owner.*
 The code read `esp_sleep_get_wakeup_cause()` and then decided touch by
 re-reading the pin. It now reads the bitmap —
-[`firmware/main/board_power.cpp:430`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:441`](../../firmware/main/board_power.cpp) —
 "const std::uint32_t soc = esp_sleep_get_wakeup_causes();" — and the pin is a
 corroborating signal that only logs a warning:
-[`firmware/main/board_power.cpp:441`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:452`](../../firmware/main/board_power.cpp) —
 "gpio_get_level(touch_interrupt_) != 0) {". ESP-IDF's own header says of the
 single-cause API: *"This API will only return one wakeup source. If multiple
 wakeup sources wake up at the same time, the wakeup source information may be
@@ -247,7 +247,7 @@ nothing torn down — a partially initialised board reported as a failure.
 
 The owner contract's `prepare → commit → rollback` shape is the same shape
 boot needs, and boot has it now. Each required-step failure calls
-[`firmware/main/waveshare_board.cpp:1191`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1437`](../../firmware/main/waveshare_board.cpp) —
 "esp_err_t abandon_board() {", which reads the journal from `BoardState`'s
 handles. Before an LVGL display exists, it releases every completed step in
 reverse. After a display exists, the display stack is deliberately retained;
@@ -261,7 +261,7 @@ Two things the rollback leaves behind, on purpose. The rails, always: the
 bring-up wrote them, and switching any of them off is authorised by a
 measurement nobody has made (ADR-0016; ALDO2 is the `DSI_PWR_EN` pull-up, not
 a supply), so they stay as written and the log says so:
-[`firmware/main/waveshare_board.cpp:1181`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1427`](../../firmware/main/waveshare_board.cpp) —
 "rails stay as written". And the whole display stack — LVGL, the display, the
 panel, its IO and the QSPI host — whenever rollback cannot prove that a queued
 transfer has completed. The LVGL mutex serialises API calls; it is not a QSPI
@@ -288,7 +288,7 @@ The decision is written once, board-agnostic and template-only, in
 argument above reaches the display stack and nothing else: it authorises
 retaining neither board's I2C. What separates the answers is who owns the
 touch handle. On the T-Watch the LVGL port does —
-[`firmware/main/twatch_board.cpp:734`](../../firmware/main/twatch_board.cpp) —
+[`firmware/main/twatch_board.cpp:826`](../../firmware/main/twatch_board.cpp) —
 "state.indev = lvgl_port_add_touch(&touch);" — and rollback removes no indev,
 so an LVGL still running still reads that `esp_lcd_touch_t`; retaining the
 display has to retain touch and its bus with it. On the Waveshare the input
@@ -299,21 +299,21 @@ service owns its own `lv_indev_t` and deletes it on its own failure
 so nothing LVGL keeps points at the touch controller and only the display stack
 is retained.
 That path is reached both when boot's LVGL lock times out
-([`firmware/main/waveshare_board.cpp:1255`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1502`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(ESP_ERR_TIMEOUT,") and when
 physical-input startup fails after `create_ui()` may have queued the first frame
-([`firmware/main/waveshare_board.cpp:1318`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1569`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
 use-after-free. On the physical-input failure, everything `create_ui()` armed
 is disarmed while the caller still owns the LVGL lock — five things, not two:
-[`firmware/main/waveshare_board.cpp:1303`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1553`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), long_press);" — removes the path
 into provisioning/RTC,
-[`firmware/main/waveshare_board.cpp:1305`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1556`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);" — removes the
 node page turn, the adjacent timer deletion removes `refresh_ui()`, and
-[`firmware/main/waveshare_board.cpp:1311`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1562`](../../firmware/main/waveshare_board.cpp) —
 "state.clock_face.clear();" — takes the two the clock face installs on the same
 screen. The second of those is the one that matters, and it is a power defect
 rather than a tidiness one: the retain branch skips `lvgl_port_deinit()`, so a
@@ -326,11 +326,11 @@ no path into Light-sleep, behind a panel this path leaves dark. Its own pause at
 [`ui/lvgl/clock_face.cpp:179`](../../ui/lvgl/clock_face.cpp) —
 "lv_timer_pause(motion_timer_);" does not save it: that is for a theme without
 fireflies, and this board asks for Night
-([`firmware/main/waveshare_board.cpp:902`](../../firmware/main/waveshare_board.cpp) —
-"{kWidth, kHeight, attadipa::ui::Theme::Night,"). The current cost is
+([`firmware/main/waveshare_board.cpp:1066`](../../firmware/main/waveshare_board.cpp) —
+"{kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,"). The current cost is
 **ESTIMATED** from the period; nothing has been measured on a board.
 The board power adapter is detached before its PMU handle and I2C bus are
-released ([`firmware/main/waveshare_board.cpp:1169`](../../firmware/main/waveshare_board.cpp) —
+released ([`firmware/main/waveshare_board.cpp:1415`](../../firmware/main/waveshare_board.cpp) —
 "attadipa::firmware::board_power_detach();"), so the retained panel cannot
 leave the owner paired with a dangling PMU handle. The retained UI stays
 allocated and is left with nothing armed on it — no callback, no timer, no
@@ -440,7 +440,7 @@ actually used, not the file.
 `getIrqStatus()` assembles three status bytes into one word (lines 2590–2596),
 and earlier revisions got the order wrong. Attadipa never assembles that word:
 it reads register `0x49` as a single byte and masks it —
-[`firmware/main/board_power.cpp:473`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:484`](../../firmware/main/board_power.cpp) —
 "const esp_err_t read_result = read_reg(pmu_, kAxpInterruptStatus2, &status);" against
 the mask in `firmware/main/power_button_edges.h`. The known bug is real and the
 pin is right, and neither is currently load-bearing here.

@@ -1,0 +1,21 @@
+{
+  "source_commit": "3cd2b66ea7e13d9e2ad19e1d613cda7873ce2993",
+  "image": "/home/hleserg/temp/magneto/AK09911C/bench-waveshare-2026-09-09/ak09911-20260909T060654Z-3cd2b66e/ak09911-waveshare.bin",
+  "out": "/home/hleserg/temp/magneto/AK09911C/bench-waveshare-2026-09-09/ak09911-20260909T060654Z-3cd2b66e",
+  "image_sha256": "85f70ac2c6e08f2251cf93278ac6128518dd519b16330d5fc1ec26cd651aa939",
+  "image_size": 185536,
+  "source_files": {
+    "firmware/main/ak09911.h": "cc952e932a9ac113ad10d0ba56f890a10c683d4a6f5aa15a421185313b24173a",
+    "firmware/main/ak09911_i2c.h": "68d2dd2c9c560e669239532815fc16d9c50d64905392d602dbe137822069bfb0",
+    "firmware/main/i2c_probe.cpp": "7b772aafa8e4485167d5dee3dd3d7861942796d584b1baefadf59d3c76345ef1"
+  },
+  "probe_seconds": 20,
+  "hold_seconds": 40,
+  "resolved_port": "/dev/ttyACM1",
+  "serial": "28:84:85:B2:18:A4",
+  "project_version": "attadipa-claim-writer-local-codex-shell-497-4-g1c15d7a9-dirty",
+  "version_note": "Fresh CI-step image built immediately before the correction commit; acquisition source bytes match committed 3cd2b66e exactly. Cached git-describe banner is not the source identity. Identify by image SHA-256 and source hashes.",
+  "loader_sha256": "809120281bb5207b0904219669b75a3d512253a9a6b389bf9436958d361ae36d",
+  "raw_unit": "signed sensor-axis counts; no mounting transform, iron calibration or heading",
+  "started_utc": "2026-09-09T06:07:28.379567+00:00"
+}

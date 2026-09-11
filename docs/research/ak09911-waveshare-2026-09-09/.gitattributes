@@ -1,0 +1,4 @@
+# Preserve archived bytes, including measured console CRLF and trailing spaces.
+* -text
+console.txt -whitespace
+NORMAL_BOOT.txt -whitespace

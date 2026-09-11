@@ -122,7 +122,7 @@
 // `core::PositionSample` a flag saying its `observed_at` is an observation time
 // rather than an arrival stamp, and let `poll()` refresh on a repeat only for
 // providers that set it. That cannot be done by comparing `observed_at`
-// directly — `link/src/meshcore_companion.cpp:416` — "node_position_at_ = now;"
+// directly — `link/src/meshcore_companion.cpp:610` — "node_position_at_ = now;"
 // — restamps on every accepted frame whether or not the coordinate moved, so a
 // stamp comparison would switch the rule off exactly where it belongs.
 
@@ -171,7 +171,7 @@ public:
     //
     // The board fact is deliberately not asserted here, because this repository
     // records it as unknown:
-    // `docs/research/MAGNETOMETER_RETROFIT.md:1878` — "**Q5 · Is the `+3V3` expansion pad always-on or `ALDO1`-switched?**"
+    // `docs/research/MAGNETOMETER_RETROFIT.md:1909` — "**Q5 · Is the `+3V3` expansion pad always-on or `ALDO1`-switched?**"
     // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
     // control a module on that pad, and `Off` becomes reachable — but only for
     // a caller that owns the rail and passes the state in. Nothing gates ALDO1

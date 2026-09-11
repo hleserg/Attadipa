@@ -6,9 +6,9 @@
 // below is the VERIFIED row of docs/research/HARDWARE_MATRIX.md for this board.
 //
 // Not here, on purpose: the PCF8563 RTC (a different register map from the
-// Waveshare's PCF85063), NVS, the physical-input poller (its interrupt pins are
-// the Waveshare's), sleep, the sensors, radio, GNSS, audio. This image exists to
-// produce one photograph; what it shows decides the next slice.
+// Waveshare's PCF85063), the physical-input poller (its interrupt pins are
+// the Waveshare's), runtime sleep, the sensors, radio and audio. The diagnostic
+// panel remains the entry screen; holding it after the exercise opens Settings.
 
 #include "twatch_board.h"
 
@@ -17,6 +17,7 @@
 
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_lcd_panel_io.h"
@@ -27,13 +28,19 @@
 #include "esp_lvgl_port.h"
 #include "esp_lvgl_port_touch.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #include "attadipa/platform/board_profile.h"
+#include "attadipa/l10n/tr.h"
+#include "attadipa/ui/settings_face.h"
+#include "attadipa/ui/status_frame.h"
 #include "board_power.h"
+#include "brightness_nvs.h"
 #include "boot_rollback.h"
 #include "local_gnss.h"
 #include "twatch_panel_exercise.h"
@@ -63,10 +70,19 @@ constexpr gpio_num_t kLcdMosi = GPIO_NUM_13;
 constexpr gpio_num_t kLcdSck = GPIO_NUM_18;
 constexpr gpio_num_t kLcdDc = GPIO_NUM_38;
 // GPIO 45 is also the VDD_SPI strap. The backlight transistor is active-high
-// and dark at reset, so the pin is a plain output that is driven low first and
-// high only once a frame is in GRAM — and it is never pulled up
+// and dark at reset, so the pin is driven low first. PWM starts dark and the
+// saved request is applied only once a frame is in GRAM; it is never pulled up
 // (HARDWARE_MATRIX.md, "Pins firmware cannot control").
 constexpr gpio_num_t kBacklight = GPIO_NUM_45;
+// LilyGoLib@38e6f8d uses 1000 Hz / 8-bit LEDC on this pin. At 8 bits IDF's
+// full-on duty is 256 (Arduino maps its public 255 to that value).
+constexpr std::uint32_t kBacklightFrequencyHz = 1000;
+constexpr ledc_mode_t kBacklightMode = LEDC_LOW_SPEED_MODE;
+constexpr ledc_timer_t kBacklightTimer = LEDC_TIMER_0;
+constexpr ledc_channel_t kBacklightChannel = LEDC_CHANNEL_0;
+// Retain the previous full-on default/recovery policy. 5% is a provisional
+// nonzero editor floor, not a measured readable minimum for this panel.
+constexpr std::uint8_t kBrightnessDefault = 100;
 
 // Touch: FT6336U on its own bus. RESET is not fitted (R39 NC) and INT is the
 // only line besides the bus.
@@ -124,6 +140,11 @@ struct State {
   std::uint32_t panel_settle_ms = 0;
   std::uint32_t reset_interval_ms = 0;
   unsigned touch_attempts = 0;
+  bool backlight_up = false;
+  bool settings_active = false;
+  esp_err_t brightness_storage = ESP_ERR_NVS_NOT_INITIALIZED;
+  attadipa::ui::StatusFrame status_frame;
+  attadipa::ui::SettingsFace settings_face;
 };
 State state;
 
@@ -149,7 +170,7 @@ esp_err_t new_i2c_bus(i2c_port_num_t port, gpio_num_t sda, gpio_num_t scl,
   return i2c_new_master_bus(&config, out);
 }
 
-esp_err_t backlight(bool on) {
+esp_err_t initialize_backlight() {
   gpio_config_t config{};
   config.pin_bit_mask = 1ULL << kBacklight;
   config.mode = GPIO_MODE_OUTPUT;
@@ -157,8 +178,48 @@ esp_err_t backlight(bool on) {
   config.pull_down_en = GPIO_PULLDOWN_DISABLE;
   config.intr_type = GPIO_INTR_DISABLE;
   ESP_RETURN_ON_ERROR(gpio_config(&config), kTag, "backlight GPIO");
-  return gpio_set_level(kBacklight, on ? 1 : 0);
+  ESP_RETURN_ON_ERROR(gpio_set_level(kBacklight, 0), kTag, "backlight dark");
+  ledc_timer_config_t timer{};
+  timer.speed_mode = kBacklightMode;
+  timer.duty_resolution = LEDC_TIMER_8_BIT;
+  timer.timer_num = kBacklightTimer;
+  timer.freq_hz = kBacklightFrequencyHz;
+  timer.clk_cfg = LEDC_AUTO_CLK;
+  ESP_RETURN_ON_ERROR(ledc_timer_config(&timer), kTag, "backlight timer");
+  ledc_channel_config_t channel{};
+  channel.gpio_num = kBacklight;
+  channel.speed_mode = kBacklightMode;
+  channel.channel = kBacklightChannel;
+  channel.timer_sel = kBacklightTimer;
+  channel.duty = 0;
+  ESP_RETURN_ON_ERROR(ledc_channel_config(&channel), kTag, "backlight channel");
+  state.backlight_up = true;
+  return ESP_OK;
 }
+
+esp_err_t backlight(std::uint8_t percent) {
+  if (!state.backlight_up || percent == 0 || percent > 100) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  // Boot finishes before Settings can write; LVGL serializes every later write.
+  // The combined IDF API requires a fade service that this fixed PWM does not use.
+  ESP_RETURN_ON_ERROR(ledc_set_duty(kBacklightMode, kBacklightChannel,
+      static_cast<std::uint32_t>(percent) * 256U / 100U), kTag, "backlight duty");
+  return ledc_update_duty(kBacklightMode, kBacklightChannel);
+}
+
+struct BoardBrightness final : attadipa::apps::BrightnessPort {
+  attadipa::apps::BrightnessRead load(std::uint8_t &percent) override {
+    return attadipa::firmware::load_brightness(state.brightness_storage, percent);
+  }
+  bool apply(std::uint8_t percent) override { return backlight(percent) == ESP_OK; }
+  attadipa::apps::BrightnessWrite store(std::uint8_t percent) override {
+    return attadipa::firmware::persist_brightness(state.brightness_storage, percent);
+  }
+  void restart() override { esp_restart(); }
+} brightness_port;
+attadipa::apps::BrightnessSettings brightness(brightness_port, 5,
+                                              kBrightnessDefault, 5);
 
 esp_err_t initialize_pmu() {
   ESP_RETURN_ON_ERROR(new_i2c_bus(I2C_NUM_0, kMainSda, kMainScl, &state.main_i2c),
@@ -413,8 +474,8 @@ lv_obj_t *corner(lv_obj_t *parent, lv_align_t align, const char *text) {
 // rotation; named corners show orientation; the ramp exposes gamma/banding;
 // the canvas makes a literal one-pixel checkerboard.
 void build_bringup_screen() {
-  lvgl_port_lock(0);
   lv_obj_t *screen = lv_screen_active();
+  lv_obj_clean(screen);
   lv_obj_remove_style_all(screen);
   lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
@@ -468,7 +529,32 @@ void build_bringup_screen() {
   lv_obj_add_event_cb(screen, on_touch, LV_EVENT_PRESSED, nullptr);
   lv_obj_add_event_cb(screen, on_touch, LV_EVENT_PRESSING, nullptr);
   lv_obj_add_event_cb(screen, on_touch, LV_EVENT_RELEASED, nullptr);
-  lvgl_port_unlock();
+}
+
+void leave_settings() {
+  (void)brightness.cancel();
+  state.settings_face.clear();
+  state.settings_active = false;
+  build_bringup_screen();
+}
+
+void enter_settings(lv_event_t *) {
+  if (state.settings_active) return;
+  const auto *profile = attadipa::platform::find_board_profile(kBoardProfileId);
+  if (profile == nullptr) return;
+  lv_obj_t *screen = lv_screen_active();
+  // All three diagnostic callbacks touch objects the Settings frame deletes.
+  while (lv_obj_remove_event_cb(screen, on_touch)) {}
+  state.marker = state.readout = state.partial_patch = nullptr;
+  state.settings_active = true;
+  const auto metrics = attadipa::ui::Metrics::for_dpi(profile->display.dpi());
+  state.status_frame.build(screen, {kWidth, kHeight, attadipa::ui::Theme::Night,
+                                   attadipa::ui::PixelCost::Fixed, metrics});
+  state.status_frame.update(attadipa::apps::format_mesh({}, attadipa::l10n::locale()));
+  state.settings_face.build(state.status_frame.content(),
+      {kWidth, state.status_frame.content_height(), attadipa::ui::Theme::Night,
+       attadipa::ui::PixelCost::Fixed, metrics}, brightness, leave_settings);
+  state.status_frame.restore_content_geometry();
 }
 
 struct TwatchPanelExerciseOps {
@@ -695,7 +781,13 @@ esp_err_t start_twatch_ui() {
                       ESP_ERR_INVALID_STATE, kTag,
                       "profile geometry disagrees with this backend");
 
-  esp_err_t err = backlight(false);
+  state.brightness_storage = nvs_flash_init();
+  if (state.brightness_storage != ESP_OK) {
+    ESP_LOGW(kTag, "brightness storage unavailable: %s; NVS is not erased",
+             esp_err_to_name(state.brightness_storage));
+  }
+  brightness.load();
+  esp_err_t err = initialize_backlight();
   if (err != ESP_OK) {
     return abandon_twatch_after(err, "hold the backlight dark");
   }
@@ -738,7 +830,9 @@ esp_err_t start_twatch_ui() {
         abandon_touch();
       }
     }
+    lvgl_port_lock(0);
     build_bringup_screen();
+    lvgl_port_unlock();
 #if CONFIG_ATTADIPA_GNSS_LOCAL
     // The tick this board does not otherwise have. On the Waveshare the ring is
     // read from `refresh_ui`, the timer that already draws the clock; this
@@ -748,8 +842,8 @@ esp_err_t start_twatch_ui() {
     // Not a new task: `esp_lvgl_port` runs one already -- `lvgl_port_init()` in
     // initialize_panel() -- and every `lv_timer` rides it, which is why
     // `local_gnss.h`'s "everything runs on the LVGL task and there is no lock"
-    // stays true here. Registered under the port lock for the reason
-    // build_bringup_screen() takes it: that task is running by now.
+    // stays true here. Registered under the port lock, like the bring-up
+    // screen above: that task is running by now.
     //
     // Registered here because this is where LVGL is known to be up, and left
     // running while the port is still shut: `local_gnss_start()` is the last
@@ -776,7 +870,7 @@ esp_err_t start_twatch_ui() {
 #endif
     // Two LVGL refresh periods: the first frame is in GRAM before the LED is.
     vTaskDelay(pdMS_TO_TICKS(200));
-    err = backlight(true);
+    err = backlight(brightness.saved());
     if (err != ESP_OK) {
       return abandon_twatch_after(err, "backlight on");
     }
@@ -813,6 +907,18 @@ esp_err_t start_twatch_ui() {
   if (panel_err != ESP_OK) {
     return abandon_twatch_after(panel_err, "display capability");
   }
+
+  // The exercise still owns diagnostic objects and panel geometry until here.
+  // This callback and Settings' buttons then run on the existing LVGL task.
+  lvgl_port_lock(0);
+  lv_obj_add_event_cb(lv_screen_active(), enter_settings, LV_EVENT_LONG_PRESSED,
+                       nullptr);
+  lvgl_port_unlock();
+  // The word, not only the percentage: this line is the one executed result
+  // this path has on this board, and a fallback 100% printed as `brightness
+  // 100%` is byte-identical to a restored one.
+  ESP_LOGI(kTag, "brightness %u%% (%s); hold the diagnostic screen for Settings",
+           brightness.saved(), attadipa::apps::describe(brightness.origin()));
 
   // LAST, AND PAST EVERY abandon_twatch_after ABOVE. `local_gnss.h` says the
   // UART driver's RX ring is allocated once and never freed because the call

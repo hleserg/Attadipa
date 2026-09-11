@@ -84,6 +84,8 @@ void print_usage(const char *argv0) {
       "  --no-touch       the Clock as a board shows it when touch did not come "
       "up\n"
       "  --child          render the Clock in Child mode\n"
+      "  --provision-node open that entry screen on the node passkey alone\n"
+      "  --provision-time open it on the time alone\n"
       "  --provision      open the Clock's entry screen for the time and the "
       "node passkey\n"
       "  --nav            show the node navigation readout\n"
@@ -94,7 +96,8 @@ void print_usage(const char *argv0) {
       "                   compass-node, compass-stale\n"
       "  --mesh           show the mesh link screen\n"
       "  --mesh-state <name> unprovisioned, absent, attached, connecting,\n"
-      "                   ready, suspended, faulted, refused\n"
+      "                   ready, suspended, faulted, refused, battery-unknown,\n"
+      "                   battery-stale, battery-low, integrated (all screens)\n"
       "  --no-bring-up    leave every part untouched instead of pretending it "
       "came up\n"
       "  --list-boards    print the board profiles this build knows about\n"
@@ -152,6 +155,16 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     }
     if (std::strcmp(arg, "--clock") == 0) {
       out.clock_screen = true;
+      continue;
+    }
+    if (std::strcmp(arg, "--provision-node") == 0) {
+      out.provision_screen = true;
+      out.provision_node = true;
+      continue;
+    }
+    if (std::strcmp(arg, "--provision-time") == 0) {
+      out.provision_screen = true;
+      out.provision_time = true;
       continue;
     }
     if (std::strcmp(arg, "--provision") == 0) {

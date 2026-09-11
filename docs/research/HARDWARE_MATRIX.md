@@ -14,8 +14,8 @@ What is actually on each board, and how it is wired.
 Everything below is `VERIFIED` against vendor documentation, vendor board
 support code, or the published schematic, unless the row says otherwise.
 **Some of this now rests on a bench**: the source list below reaches the
-physical unit, most recently the power measurement S16. GNSS performance,
-interference and every other power state stay in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+physical unit, most recently the power measurements S16 and S17. GNSS
+performance, interference and every other power state stay in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 Sources are listed at the bottom.
 
@@ -100,7 +100,7 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 | Accelerometer | BMA423 — **no gyroscope** | main I2C, INT1 → GPIO 14. **INT2 is bonded out but not routed** (R12, R15 not fitted) | 0x19 | +3V3 | VERIFIED |
 | Haptic | DRV2605 | main I2C | 0x5A | **BLDO2 (enable)** | VERIFIED |
 | Radio | Schematic fits **HPD16B3** (SX1262-class pinout); vendor header builds **SX1280 / CC1101 / LR1121 / SI4432** variants by order. Only the SX1262 path is MeshCore-supported at the pinned revision, and CC1101/SI4432 cannot do LoRa at all — [ADR-0003](../adr/0003-radio-not-lora.md) | SPI: SCK 3, MISO 4, MOSI 1, CS 5, RST 8, BUSY 7, DIO1 9, **DIO3 6 — ⚠️ never driven as an output, see below** | — | ALDO4 via R61 0 Ω (net `GPS_VDD`) | VERIFIED |
-| GNSS | **u-blox MIA-M10Q** on the bench unit, read off the part 2026-09-05 — `MOD=MIA-M10Q`, `FWVER=SPG 5.10`, `PROTVER=34.10`, [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md). The product ships **MIA-M10Q or Quectel LS550G** and this row does not retire that; on a 13-pin 0.3 mm FPC daughterboard | UART: TX 42, RX 41 — **from the CPU's side, confirmed by sweeping both orientations**: GPIO 41 is the module's TX, GPIO 42 its RX, at **38400 baud**; **PPS not connected** — the net exists on the daughterboard but `PPS` appears nowhere in the main-board schematic | — | BLDO1 (+ DC4 @850 mV for LS550G); enable net `GPS_LDO` on FPC pin 3 | VERIFIED |
+| GNSS | **u-blox MIA-M10Q** on the bench unit, read off the part 2026-09-05 — `MOD=MIA-M10Q`, `FWVER=SPG 5.10`, `PROTVER=34.10`, [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md). The product ships **MIA-M10Q or Quectel LS550G** and this row does not retire that; on a 13-pin 0.3 mm FPC daughterboard | UART: TX 42, RX 41 — **from the CPU's side, confirmed by sweeping both orientations**: GPIO 41 is the module's TX, GPIO 42 its RX, at **38400 baud**; **PPS not connected** — the net exists on the daughterboard but `PPS` appears nowhere in the main-board schematic | — | BLDO1 (+ DC4 @850 mV for LS550G); crosses to the module as `GPS_LDO` on FPC pin 3 | VERIFIED |
 | Microphone | SPM1423HM4H-B, PDM | CLK 44, DATA 47. **`SELECT` is resistor-strapped (R80, R81 not fitted)** — channel fixed in hardware | — | +3V3 | VERIFIED |
 | Amplifier | MAX98357A, 3.2 W class-D | I2S: BCLK 48, WCLK 15, DIN 46. **`SD_MODE` is resistor-strapped (R14 = 1 MΩ; R74, R76 not fitted) — no GPIO reaches it** | — | `DLDO1` pin (DLDO1/DC1SW) via R18 0 Ω → `SPK_VDD` | VERIFIED |
 | IR transmitter | IR12-21C | GPIO 2 → R64 0 Ω → base of Q15 (MMBT3904, NPN low-side); LED anode at +3V3. **GPIO 2 high = LED conducts; inactive level is LOW** | — | +3V3 | VERIFIED |
@@ -249,7 +249,7 @@ board. What matters is what else rides that connector.
 |---|---|---|
 | 1 | `GPIO41 / MTDI` | GNSS UART |
 | 2 | `IO0` | **BOOT button** |
-| 3 | `GPS_LDO` | GNSS supply / enable |
+| 3 | `GPS_LDO` | GNSS supply |
 | 5 | `IO2` | main-board net, unconnected on the daughterboard |
 | 6 | `RST / EN` | **RESET button** |
 | 7 | `IO10` | **main I2C `SDA`** |
@@ -551,5 +551,7 @@ a typed descriptor rather than a flag.
 
 | S16 | **the received Waveshare unit, measured at its USB-C input 2026-09-05** by a FNIRSI **FNB-58** inline power meter — sold as an FNB-C5, but the USB identity is `2e3c:5558` `FNIRSI`/`FNB-58`, one of the four the `baryluk/fnirsi-usb-power-data-logger` protocol covers. **Data comes off the HID interface; the `ttyACM` the meter also exposes returns nothing, passively or to the vendor's start sequence.** The meter measures the *input*, upstream of the AXP2101: conversion losses are inside the number and rail-level draw is not. The **cell was disconnected**, which is the only reason the reading is board consumption rather than board-plus-charger. Trigger and PD were kept off at plain 5 V — AXP2101 datasheet V1.4 §5.1 Table 5-1 puts `VBUS` absolute maximum at **12 V**, and §6.5.4.3 "Power Off" says *"When VSYS<VOFF or VBUS>7V, AXP2101 will be powered off"*; the SWcharge V1.0 datasheet carries both unchanged. The meter's rated accuracy is `UNKNOWN`; a **2.484 mA** zero offset, self-measured with the output open, was subtracted. Raw logs are bench-only and not committed, and are pinned by sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), which is also where the figure, its residual unknowns and the conditions live |
 
+| S17 | **the bench T-Watch S3 Plus, measured at its micro-USB input 2026-09-08** by the same FNIRSI **FNB-58** meter as S16, reached through a USB-C-to-micro-USB adapter the owner fitted that day. **A separate source from S16, deliberately**: different unit, different port, three days apart, and a **different decoder copy** — S16 records its decode as `baryluk/fnirsi-usb-power-data-logger` at an `UNKNOWN` revision with the working copy not kept, while this run used a copy fetched 2026-09-07 and pinned by sha256 `388061ae…` (bench-only, and its own upstream revision is `UNKNOWN` for the same reason), so **whether the two decoders agree is `UNKNOWN` and is not claimed**. Like S16 it measures the *input*, upstream of the AXP2101: conversion losses are inside the number and rail-level draw is not. **Unlike S16 the cell state is `UNKNOWN`** — whether a cell was in the watch was never established, so an unknown share of the reading may be charge current, and **no zero offset was subtracted**; S16's self-measured 2.484 mA was not re-measured for this run and is carried as a known 1.6 % bias rather than silently applied. The unit was **not** factory at the time: it had run this repository's own firmware since 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)). Raw capture is bench-only and not committed, pinned by sha256 in [VERIFIED_FACTS](VERIFIED_FACTS.md), which is also where the figure, its conditions and its residual unknowns live |
+
 S1–S8 checked 2026-08-21; S9, S10, S11 and S12 on 2026-08-22; S13 and S14 on
-2026-08-23; S15 on 2026-08-28; S16 on 2026-09-05.
+2026-08-23; S15 on 2026-08-28; S16 on 2026-09-05; S17 on 2026-09-08.

@@ -26,7 +26,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > in doubt — the watch pins one by its public key and terminates every other
 > connection (`firmware/main/meshcore_node_pin.h`), and draws four bytes of that
 > key beside the name:
-> `apps/include/attadipa/apps/mesh.h:108` — "// Four bytes of a node's public key as hex, into a nine-byte buffer."
+> `apps/include/attadipa/apps/mesh.h:113` — "// Four bytes of a node's public key as hex, into a nine-byte buffer."
 > The delivery and the reply are the parts that remain `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 
@@ -89,7 +89,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > **And the link carries one coordinate, not two.** The readout needs a place
 > to walk from and a place to walk to. What arrives over BLE is the connected
 > node's own position, out of `RESP_CODE_SELF_INFO`:
-> `link/src/meshcore_companion.cpp:646` — "        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every"
+> `link/src/meshcore_companion.cpp:745` — "        // THE COORDINATE, AND ONLY FROM A NODE THIS WATCH ACCEPTED. Every"
 > Nothing in **this repository** parses a remote peer's: a contact record is a
 > public key and a name and nothing else —
 > `core/include/attadipa/core/mesh_service.h:27` — "struct MeshPeer {".
@@ -159,7 +159,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > receiver is on the same body and the rule is satisfied rather than lifted.
 > What holds `own` off on the T-Watch is neither hardware nor a rule but a
 > default waiting for a caller —
-> `firmware/main/Kconfig.projbuild:173` — "        bring-up slice, so listening to it is opt-in until something above" —
+> `firmware/main/Kconfig.projbuild:186` — "        bring-up slice, so listening to it is opt-in until something above" —
 > and [#442](https://github.com/hleserg/Attadipa/issues/442) is the task that
 > supplies one. So the two are not a choice: **#450 is the split topology's
 > vertical slice and #442 is the self-contained one's**, they close different
@@ -168,7 +168,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 >
 > **And whatever answers it runs into one more rule.** Every position the MeshCore channel
 > produces states no fix type and therefore classifies `NoFix`:
-> `link/src/meshcore_companion.cpp:664` — "path in this repository can reach `PositionValidity::Valid` from it."
+> `link/src/meshcore_companion.cpp:763` — "path in this repository can reach `PositionValidity::Valid` from it."
 > And `NoFix` is exactly what an own position may not be —
 > `apps/src/navigation.cpp:148` — "const bool own_ok = usable(state.own) &&" — on
 > purpose. **ADR-0019 answered that gate by moving `own_ok` rather than by

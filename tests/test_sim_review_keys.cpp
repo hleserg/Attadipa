@@ -11,18 +11,21 @@
 #include "lvgl.h"
 
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/mesh.h"
 #include "attadipa/core/capability_registry.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/platform/board_profile.h"
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/apps/navigation.h"
 #include "attadipa/ui/color.h"
+#include "attadipa/ui/tokens.h"
 #include "attadipa/ui/nav_face.h"
 
 #include "boot_screen.h"
 #include "clock_screen.h"
 #include "diagnostic_screen.h"
 #include "nav_screen.h"
+#include "mesh_screen.h"
 #include "review_keys.h"
 
 // The simulator's two review keys, driven the way a person drives them.
@@ -230,10 +233,19 @@ void describe(lv_obj_t *object, std::string &out) {
   }
 }
 
+// Product faces now sit below the shared strip; isolated face tests still
+// own the full screen. Keep the existing face assertions on that same face.
+lv_obj_t *application_surface() {
+  auto *screen = lv_screen_active();
+  auto *last = lv_obj_get_child(screen, -1);
+  return last != nullptr && lv_obj_has_flag(last, LV_OBJ_FLAG_EVENT_BUBBLE)
+      ? last : screen;
+}
+
 std::string layout() {
   lv_obj_update_layout(lv_screen_active());
   std::string out;
-  describe(lv_screen_active(), out);
+  describe(application_surface(), out);
   return out;
 }
 
@@ -314,10 +326,8 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
   press('T');
   const std::vector<std::uint8_t> night = pixels();
   CHECK(night != day);
-  const bool art_reaches_the_corner =
-      board.display.width_px >= 410 && board.display.height_px >= 502;
-  CHECK((corner(night) == page_colour(ui::Theme::Night, board)) !=
-        art_reaches_the_corner);
+  // The active-screen corner belongs to the shared strip, above the art.
+  CHECK(corner(night) == page_colour(ui::Theme::Night, board));
   const std::string night_layout = layout();
   CHECK(night_layout != day_layout);
   CHECK(ends_with(rows(night_layout), rows(day_layout)));
@@ -336,6 +346,15 @@ void nav_follows_the_theme_key(const platform::BoardProfile &board) {
   const std::string russian_day = layout();
   CHECK(russian_day != day_layout);
   CHECK(corner(pixels()) == page_colour(ui::Theme::Day, board));
+  // The longer caveat must fit below the shared strip, in the shipping face.
+  auto *surface = application_surface();
+  for (std::uint32_t i = 0; i < lv_obj_get_child_count(surface); ++i) {
+    auto *child = lv_obj_get_child(surface, static_cast<std::int32_t>(i));
+    if (lv_obj_check_type(child, &lv_label_class)) {
+      CHECK(lv_obj_get_y(child) + lv_obj_get_height(child) <=
+            lv_obj_get_height(surface));
+    }
+  }
 
   press('T');
   CHECK(l10n::locale() == l10n::Locale::Ru);
@@ -379,7 +398,7 @@ struct Blob {
 // be found without asking the face for a pointer it does not hand out.
 std::vector<Blob> circles_on_the_dial(bool laid_out) {
   std::vector<Blob> found;
-  lv_obj_t *screen = lv_screen_active();
+  lv_obj_t *screen = application_surface();
   const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
   for (std::int32_t i = 0; i < children; ++i) {
     lv_obj_t *child = lv_obj_get_child(screen, i);
@@ -415,7 +434,7 @@ std::vector<Blob> circles_on_the_dial(bool laid_out) {
 // scan for three leading digits returns the distance while reading exactly like
 // a bearing. The bearing is the only row that follows its digits with U+00B0.
 bool bearing_on_screen(double &degrees) {
-  lv_obj_t *screen = lv_screen_active();
+  lv_obj_t *screen = application_surface();
   const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
   for (std::int32_t i = 0; i < children; ++i) {
     lv_obj_t *child = lv_obj_get_child(screen, i);
@@ -538,7 +557,7 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
 }
 
 // The device does not rebuild this face every tick. It builds once and calls
-// `update()` — `firmware/main/waveshare_board.cpp:865` —
+// `update()` — `firmware/main/waveshare_board.cpp:959` —
 // "    state.nav_face.update(text);" — and the simulator only ever builds, so
 // the trail's hide-and-show path has never had a caller any test could reach.
 // It is the path that decides whether a watch that loses its bearing and gets
@@ -553,7 +572,7 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
 // matched on "N" would pass for the wrong reason in English and fail in
 // Russian.
 lv_obj_t *north_marker() {
-  lv_obj_t *screen = lv_screen_active();
+  lv_obj_t *screen = application_surface();
   const auto children = static_cast<std::int32_t>(lv_obj_get_child_count(screen));
   for (std::int32_t i = 0; i < children; ++i) {
     lv_obj_t *child = lv_obj_get_child(screen, i);
@@ -946,6 +965,147 @@ void the_test_pattern_ignores_the_theme_key(
   panel.close();
 }
 
+void shared_status_reaches_the_rendered_screen(const platform::BoardProfile &board) {
+  Panel panel;
+  panel.open(board);
+  for (auto locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+    l10n::set_locale_changed_handler(nullptr);
+    l10n::set_locale(locale);
+    for (auto theme : {ui::Theme::Day, ui::Theme::Night}) {
+      std::vector<std::uint8_t> fresh;
+      for (const char *state : {"ready", "battery-stale", "battery-unknown",
+                                "absent", "battery-low", "integrated"}) {
+        CHECK(sim::stage_mesh_scenario(state));
+        sim::build_mesh_screen_sim(board, theme);
+        run_frames(2);
+        const auto expected = apps::format_mesh(sim::staged_mesh_status(), locale);
+        auto *screen = lv_screen_active();
+        auto *watch = lv_obj_get_child(screen, 0);
+        auto *node = lv_obj_get_child(screen, 1);
+        CHECK(lv_obj_check_type(watch, &lv_label_class));
+        CHECK(lv_obj_check_type(node, &lv_label_class));
+        CHECK(std::strcmp(lv_label_get_text(watch), expected.watch_power) == 0);
+        CHECK(std::strcmp(lv_label_get_text(node), expected.node_power) == 0);
+        CHECK(lv_obj_get_y(application_surface()) > 0);
+        for (auto *label : {watch, node}) {
+          lv_point_t size{};
+          lv_text_get_size(&size, lv_label_get_text(label),
+                          lv_obj_get_style_text_font(label, LV_PART_MAIN),
+                          0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+          CHECK(size.x <= lv_obj_get_width(label));
+          CHECK(size.y <= lv_obj_get_height(label));
+        }
+        auto strip = pixels();
+        strip.resize(static_cast<std::size_t>(board.display.width_px) * 2 *
+                     static_cast<std::size_t>(lv_obj_get_y(application_surface())));
+        if (std::strcmp(state, "ready") == 0) fresh = strip;
+        else CHECK(strip != fresh);
+      }
+    }
+  }
+  CHECK(sim::stage_mesh_scenario("ready"));
+  panel.close();
+}
+
+lv_obj_t *label_starting_with(lv_obj_t *object, const char *text) {
+  if (lv_obj_check_type(object, &lv_label_class) &&
+      std::strncmp(lv_label_get_text(object), text, std::strlen(text)) == 0) return object;
+  for (std::uint32_t i = 0; i < lv_obj_get_child_count(object); ++i) {
+    if (auto *found = label_starting_with(lv_obj_get_child(object, i), text)) return found;
+  }
+  return nullptr;
+}
+
+lv_obj_t *slider_in(lv_obj_t *object) {
+  if (lv_obj_check_type(object, &lv_slider_class)) return object;
+  for (std::uint32_t i = 0; i < lv_obj_get_child_count(object); ++i) {
+    if (auto *found = slider_in(lv_obj_get_child(object, i))) return found;
+  }
+  return nullptr;
+}
+
+void brightness_uses_the_real_settings_flow(const platform::BoardProfile &board) {
+  for (auto locale : {l10n::Locale::En, l10n::Locale::Ru}) {
+    for (auto theme : {ui::Theme::Day, ui::Theme::Night}) {
+      Panel panel;
+      panel.open(board);
+      l10n::set_locale_changed_handler(nullptr);
+      l10n::set_locale(locale);
+      apps::ClockState clock{};
+      sim::build_clock_screen(board, theme, clock, false);
+      run_frames(2);
+      lv_obj_send_event(lv_screen_active(), LV_EVENT_SHORT_CLICKED, nullptr);
+      run_frames(2);
+      const int offset = lv_obj_get_y(application_surface());
+      CHECK(offset > 0);
+      auto header = pixels();
+      header.resize(static_cast<std::size_t>(board.display.width_px) * 2 * offset);
+      const auto check_frame = [&] {
+        run_frames(2);
+        CHECK(lv_obj_get_y(application_surface()) == offset);
+        const auto frame = pixels();
+        CHECK(frame.size() >= header.size());
+        CHECK(std::equal(header.begin(), header.end(), frame.begin()));
+      };
+      const auto click = [&](const char *text) {
+        auto *label = label_starting_with(application_surface(), text);
+        CHECK(label != nullptr);
+        if (label == nullptr) return;
+        auto *button = lv_obj_get_parent(label);
+        CHECK(lv_obj_check_type(button, &lv_button_class));
+        const int target = ui::Metrics::for_dpi(board.display.dpi()).px(ui::dp_of(ui::TouchTarget::Adult));
+        CHECK(lv_obj_get_width(button) >= target);
+        CHECK(lv_obj_get_height(button) >= target);
+        lv_obj_send_event(button, LV_EVENT_CLICKED, nullptr);
+        check_frame();
+      };
+      const auto initial = pixels();
+      click(l10n::tr(l10n::StringId::SettingsDisplay));
+      CHECK(pixels() != initial); // counter-check: an actual page transition
+      click(l10n::tr(l10n::StringId::SettingsBrightness));
+      auto *slider = slider_in(application_surface());
+      CHECK(slider != nullptr);
+      if (slider != nullptr) {
+        // All four corners of the full adult row route to the thin slider.
+        // The painted knob must not be the only responsive touch area.
+        lv_area_t area{};
+        lv_obj_get_coords(lv_obj_get_parent(slider), &area);
+        for (auto point : {lv_point_t{area.x1 + 1, area.y1 + 1},
+                           lv_point_t{area.x2 - 1, area.y1 + 1},
+                           lv_point_t{area.x1 + 1, area.y2 - 1},
+                           lv_point_t{area.x2 - 1, area.y2 - 1}}) {
+          CHECK(lv_indev_search_obj(lv_screen_active(), &point) == slider);
+        }
+        lv_slider_set_value(slider, 65, LV_ANIM_OFF);
+        lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, nullptr);
+        CHECK(label_starting_with(application_surface(), "65%") != nullptr);
+      }
+      click(l10n::tr(l10n::StringId::ProvisionKeySave));
+      click(l10n::tr(l10n::StringId::SettingsBrightness));
+      click("+");
+      CHECK(label_starting_with(application_surface(), "70%") != nullptr);
+      click(l10n::tr(l10n::StringId::SettingsCancel));
+      click(l10n::tr(l10n::StringId::SettingsBrightness));
+      CHECK(label_starting_with(application_surface(), "65%") != nullptr);
+      click("-");
+      CHECK(label_starting_with(application_surface(), "60%") != nullptr);
+      press('T');
+      CHECK(label_starting_with(application_surface(), "60%") != nullptr);
+      CHECK(lv_obj_get_y(application_surface()) == offset);
+      press('L');
+      CHECK(label_starting_with(application_surface(), "60%") != nullptr);
+      CHECK(lv_obj_get_y(application_surface()) == offset);
+      // Cancel after locale/theme changes still restores the committed value.
+      auto *cancel = label_starting_with(application_surface(), l10n::tr(l10n::StringId::SettingsCancel));
+      CHECK(cancel != nullptr);
+      if (cancel != nullptr) lv_obj_send_event(lv_obj_get_parent(cancel), LV_EVENT_CLICKED, nullptr);
+      run_frames(2);
+      CHECK(label_starting_with(application_surface(), l10n::tr(l10n::StringId::SettingsBrightness)) != nullptr);
+      panel.close();
+    }
+  }
+}
+
 } // namespace
 
 int main() {
@@ -960,6 +1120,8 @@ int main() {
   // panel and picks its palette from the panel technology, so the 240x240 IPS
   // and the 410x502 AMOLED are two different answers to the same keypress.
   for (std::uint8_t i = 0; i < count; ++i) {
+    brightness_uses_the_real_settings_flow(profiles[i]);
+    shared_status_reaches_the_rendered_screen(profiles[i]);
     nav_follows_the_theme_key(profiles[i]);
     the_trail_points_where_the_readout_says(profiles[i]);
     the_trail_comes_back_after_it_goes(profiles[i]);

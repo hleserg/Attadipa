@@ -221,6 +221,21 @@ actually uses — deliberately chosen, not all of Unicode.
 
 ## 5. Spacing, radius, motion, size
 
+The shared active-screen status reserves one font line plus `space.xs`: 23 px
+at 240 × 240 and 30 px at 410 × 502 with the current generated fonts. Clock,
+navigation, Mesh and provisioning use the remaining ordinary child of the
+screen; the strip is part of screenshots and does not add an input or timer
+owner. Watch power stays unknown until a producer exists. A carried node shows
+reported volts, unknown or explicit old data; an integrated supply has no
+second battery. The link uses connected segments or separated ends.
+
+The small provisioning layout combines field/value and spends outer whitespace
+to preserve its two rows of 74 × 61 px adult keys. The large keys remain
+115 × 87 px. The compact Mesh layout reduces the gap above its state, while
+navigation reduces its ring to keep the Russian caveat visible. These are
+layout choices inspected in the simulator in EN/RU and day/night, not new
+physical-display measurements.
+
 Seeded from the style board's generous spacing and rounded forms; all values are
 **proposed** and none has been checked at 240 × 240.
 
@@ -436,3 +451,31 @@ See [ADR-0010](../adr/0010-localization.md) for the mechanism.
 | ~~Font pin~~ | **Resolved 2026-08-26:** Nunito Sans Regular 400; arrows are icons |
 | True black versus dark olive on AMOLED | a power measurement, not a preference |
 | Watchface catalogue | M1 delivers one; the rest is M7 |
+
+## 10. Shell Study 03: browser-only geometry proposal
+
+[The interactive shell](prototype/shell.html) preserves the adult target heights
+from §5 (61 px and 87 px) but proposes independent layouts, not a scaled Dp
+implementation. These exceptions are **proposed, browser-inspected only**; they
+do not revise firmware tokens, Child Mode, or hardware acceptance.
+
+At 240 × 240, two complete application rows and an always-visible Back target
+win over the spacing family: 27 px status + 24 px heading + 122 px list
+(two 61 px rows) + 61 px Back + two 1 px gaps + 4 px bottom = 240 px.
+Using the rounded 6 px `space.xs` for both gaps and bottom would leave only
+110 px for that list, hiding part of the second target. The price is tighter
+vertical separation, not a smaller touch target. Three-row Settings scrolls;
+its cue is shown only when the actual rows overflow.
+
+The small shell keeps 11 px horizontal padding (`space.sm` resolved at 220 dpi)
+but proposes an 18 px frame/list radius. The 410 × 502 shell proposes 22 px
+horizontal padding, 12 px gaps, 16 px bottom and a 28 px frame/list radius.
+Those large-layout values and both radii are browser-study choices, **not**
+matches for the resolved Dp family. The benefit is a larger reading area with
+the full 87 px adult target; the cost is less air than resolved `space.lg`.
+Pill buttons and the existing motion durations retain their semantic rules.
+
+Before firmware adoption, resolve these choices into named tokens and inspect
+both physical displays. The browser's 1:1 pixels do not establish physical
+scale, sunlight readability, panel appearance or power consumption.
+Hardware validation: **NOT EXECUTED — HARDWARE REQUIRED**.

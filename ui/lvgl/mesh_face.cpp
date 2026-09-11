@@ -1,5 +1,7 @@
 #include "attadipa/ui/mesh_face.h"
 
+#include <algorithm>
+
 #include <cstring>
 
 #include "attadipa/ui/tokens.h"
@@ -50,9 +52,10 @@ void hide(lv_obj_t *object) { lv_obj_add_flag(object, LV_OBJ_FLAG_HIDDEN); }
 // hand and gets it about right, but it is the arithmetic `Metrics` exists to
 // do, and `tools/ui/check_raw_values.py` cannot see inside a ternary to say so.
 // Integer `Dp` has no way to write 1.5 dp, so the halving is done in pixels
-// after the scaling, which is how `ui/lvgl/provision_face.cpp:110` —
-// "  lv_obj_set_style_text_letter_space(value_, m.px(dp_of(Space::Xs)) / 2,"
-// already writes the same tracking.
+// after the scaling rather than before it -- `m.px()` first, then `/ 2`.
+// This used to cite the same shape in `provision_face.cpp`; that call went
+// with the entry screen's rewrite in #469, so the reason is written here
+// instead of pointed at.
 std::int32_t stroke(const Metrics &m) { return m.px(Dp{3}) / 2; }
 
 std::int32_t tracking_wide(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 2; }
@@ -100,7 +103,7 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   // from the entry screen left the provisioning keypad parented underneath,
   // invisible under the new paint and still CLICKABLE, eating the tap that
   // turns the page. Every other face cleans what it is given for the same
-  // reason (`ui/lvgl/provision_face.cpp:59` — "  lv_obj_clean(screen);").
+  // reason (`ui/lvgl/provision_face.cpp:73` — "  lv_obj_clean(screen);").
   lv_obj_clean(screen_);
 
   // The screen object outlives every face and carries the last one's styles
@@ -230,6 +233,8 @@ void MeshFace::update(const apps::MeshText &text) {
 void MeshFace::lay_out(const apps::MeshText &text) {
   const bool big = large();
   const bool linked = text.has_message;
+  const int inset = std::max(0, (big ? 502 : 240) -
+                                  static_cast<int>(config_.height_px));
   const auto w = static_cast<std::int32_t>(config_.width_px);
 
   show(title_, text.title);
@@ -249,7 +254,7 @@ void MeshFace::lay_out(const apps::MeshText &text) {
   lv_obj_set_style_text_align(way_out_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
   if (linked) {
-    lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, big ? 196 : 84);
+    lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, (big ? 196 : 84) - inset);
     // 240 px spends the row under the state word on the node key, which is the
     // identity. Drawing the note there too put one on top of the other.
     if (big) {
@@ -278,7 +283,7 @@ void MeshFace::lay_out(const apps::MeshText &text) {
                       lv_font_get_line_height(
                           lv_obj_get_style_text_font(node_name_, LV_PART_MAIN)));
     lv_label_set_long_mode(node_name_, LV_LABEL_LONG_DOT);
-    lv_obj_align(node_name_, LV_ALIGN_TOP_LEFT, margin, big ? 312 : 132);
+    lv_obj_align(node_name_, LV_ALIGN_TOP_LEFT, margin, (big ? 312 : 132) - inset);
     if (!big) {
       // 240 px has room for the key or the name, not both, and the key is the
       // identity -- the two bench nodes had interchangeable names.
@@ -290,14 +295,14 @@ void MeshFace::lay_out(const apps::MeshText &text) {
       lv_obj_set_style_text_align(node_key_, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     }
     lv_obj_align(node_key_, LV_ALIGN_TOP_LEFT, big ? margin : 0,
-                 big ? 284 : 112);
+                 (big ? 284 : 112) - inset);
     hide(pinned_);
     hide(answered_);
     hide(way_out_);
 
     lv_obj_remove_flag(rule_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_size(rule_, w - margin * 2, config_.metrics.px(Dp{1}));
-    lv_obj_align(rule_, LV_ALIGN_TOP_LEFT, margin, big ? 352 : 136);
+    lv_obj_align(rule_, LV_ALIGN_TOP_LEFT, margin, (big ? 352 : 136) - inset);
 
     show(msg_heading_, text.message_heading);
     lv_obj_set_style_text_color(
@@ -328,8 +333,8 @@ void MeshFace::lay_out(const apps::MeshText &text) {
       lv_obj_set_style_text_align(msg_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
     lv_obj_align(msg_heading_, LV_ALIGN_TOP_LEFT, big ? margin : 0,
-                 big ? 368 : 148);
-    lv_obj_align(msg_, LV_ALIGN_TOP_LEFT, margin, big ? 394 : 168);
+                 (big ? 368 : 148) - inset);
+    lv_obj_align(msg_, LV_ALIGN_TOP_LEFT, margin, (big ? 394 : 168) - inset);
 
     // Sender and delivery share a line: on their own neither is evidence of
     // anything, and together they are the whole story of one message.
@@ -372,13 +377,13 @@ void MeshFace::lay_out(const apps::MeshText &text) {
       show(label_[i], labels[i]);
       lv_obj_set_style_text_opa(value_[i], text.live ? LV_OPA_COVER : LV_OPA_50,
                                 LV_PART_MAIN);
-      lv_obj_align(value_[i], LV_ALIGN_TOP_LEFT, column[i], big ? 452 : 192);
-      lv_obj_align(label_[i], LV_ALIGN_TOP_LEFT, column[i], big ? 478 : 214);
+      lv_obj_align(value_[i], LV_ALIGN_TOP_LEFT, column[i], (big ? 452 : 192) - inset);
+      lv_obj_align(label_[i], LV_ALIGN_TOP_LEFT, column[i], (big ? 478 : 214) - inset);
     }
   } else {
-    lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, big ? 262 : 132);
+    lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, (big ? 262 : 132) - inset);
     show(note_, text.note);
-    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, big ? 304 : 162);
+    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, (big ? 304 : 162) - inset);
 
     hide(node_key_);
     hide(node_name_);
@@ -397,14 +402,14 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_width(answered_, w);
     lv_obj_set_style_text_align(pinned_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(answered_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, big ? 350 : 162);
-    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, big ? 376 : 184);
+    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, (big ? 350 : 162) - inset);
+    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, (big ? 376 : 184) - inset);
     if (!big && text.pinned[0] != '\0') {
       hide(note_);  // the two key lines say it, and 240 px has room for one
     }
 
     show(way_out_, text.way_out);
-    lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, big ? 444 : 210);
+    lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, (big ? 444 : 210) - inset);
   }
 }
 
@@ -413,9 +418,12 @@ void MeshFace::lay_out(const apps::MeshText &text) {
 void MeshFace::paint_channel(const apps::MeshText &text) {
   const bool big = large();
   const bool linked = text.has_message;
+  const int inset = std::max(0, (big ? 502 : 240) -
+                                  static_cast<int>(config_.height_px));
   const auto cx = static_cast<std::int32_t>(config_.width_px) / 2;
-  const std::int32_t cy = linked ? (big ? 128 : 58) : (big ? 176 : 78);
-  const std::int32_t r = linked ? (big ? 26 : 15) : (big ? 30 : 18);
+  const std::int32_t cy = (linked ? (big ? 128 : 58) : (big ? 176 : 78)) - inset / 2;
+  const std::int32_t r = (linked ? (big ? 26 : 15) : (big ? 30 : 18)) -
+      (!big && linked ? inset / 5 : 0);
   const std::int32_t span = big ? 250 : 150;
   const lv_color_t colour =
       resolved(role_for(text.link), config_.theme, config_.pixel_cost);
