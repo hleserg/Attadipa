@@ -80,6 +80,11 @@ add_executable(test_clock test_clock.cpp)
 target_link_libraries(test_clock PRIVATE attadipa_apps)
 add_test(NAME clock COMMAND test_clock)
 
+add_executable(test_brightness test_brightness.cpp)
+target_include_directories(test_brightness PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
+target_link_libraries(test_brightness PRIVATE attadipa_apps)
+add_test(NAME brightness COMMAND test_brightness)
+
 add_executable(test_mesh test_mesh.cpp)
 target_link_libraries(test_mesh PRIVATE attadipa_apps)
 add_test(NAME mesh COMMAND test_mesh)

@@ -222,6 +222,17 @@ public:
 
   void set_debug_timer_wake(bool on) { debug_timer_wake_ = on; }
 
+  esp_err_t preview_brightness(std::uint8_t percent) {
+    if (panel_ == nullptr || percent == 0 || percent > 100) {
+      return ESP_ERR_INVALID_ARG;
+    }
+    return esp_lcd_panel_co5300_set_brightness(panel_, percent);
+  }
+
+  void remember_brightness(std::uint8_t percent) {
+    if (percent > 0 && percent <= 100) awake_brightness_ = percent;
+  }
+
   void detach() {
     pmu_ = nullptr;
     panel_ = nullptr;
@@ -621,6 +632,14 @@ esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
 }
 
 void board_power_detach() { hardware.detach(); }
+
+esp_err_t board_power_preview_brightness(std::uint8_t percent) {
+  return hardware.preview_brightness(percent);
+}
+
+void board_power_remember_brightness(std::uint8_t percent) {
+  hardware.remember_brightness(percent);
+}
 
 attadipa::core::PowerOwner &board_power_owner() { return owner; }
 

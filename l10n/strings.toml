@@ -923,3 +923,43 @@ ru = "Нода %u,%03u В"
 [status_node_stale]
 en = "Node old"
 ru = "Нода уст."
+
+[settings_title]
+en = "Settings"
+ru = "Настройки"
+
+[settings_display]
+en = "Display"
+ru = "Экран"
+
+[settings_brightness]
+en = "Brightness"
+ru = "Яркость"
+
+[settings_back]
+en = "Back"
+ru = "Назад"
+
+[settings_cancel]
+en = "Cancel"
+ru = "Отмена"
+
+[brightness_not_loaded]
+en = "Using default"
+ru = "По умолчанию"
+
+[brightness_not_applied]
+en = "Not applied"
+ru = "Не применено"
+
+[brightness_not_saved]
+en = "Not saved"
+ru = "Не сохранено"
+
+[brightness_restart_check]
+en = "Restart to check"
+ru = "Нужен перезапуск"
+
+[brightness_restart]
+en = "Restart"
+ru = "Перезапуск"

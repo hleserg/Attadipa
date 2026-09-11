@@ -27,7 +27,7 @@ at [`assets/fonts/attadipa_fonts.h:25`](../../assets/fonts/attadipa_fonts.h) —
 [`core/clock.h:160`](../../core/include/attadipa/core/clock.h) —
 "days_from_civil"; the
 temporal strings at
-[`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) —
+[`l10n/string_id.h:47`](../../l10n/include/attadipa/l10n/string_id.h) —
 "ClockMonthJan"; the simulator's state injection at
 [`sim/options.cpp:202`](../../sim/options.cpp) — "out.child_mode = true;" and
 [`sim/options.cpp:213`](../../sim/options.cpp) — "out.clock_time_set = true;"; and the tick period
@@ -87,7 +87,7 @@ two answered.
 > calendar arithmetic exists —
 > [`core/clock.h:160`](../../core/include/attadipa/core/clock.h) — "days_from_civil";
 > the catalogue is temporal —
-> [`l10n/string_id.h:42`](../../l10n/include/attadipa/l10n/string_id.h) — "ClockMonthJan";
+> [`l10n/string_id.h:47`](../../l10n/include/attadipa/l10n/string_id.h) — "ClockMonthJan";
 > the manifest carries a tick period —
 > [`apps/app_manifest.h:36`](../../apps/include/attadipa/apps/app_manifest.h) — "core::Millis tick_period";
 > the simulator has the Adult/Child switch —
@@ -652,7 +652,7 @@ foreach(_board t-watch-s3-plus waveshare-amoled-206)
                      --screenshot ${_attadipa_shot_dir}/${_board}.png)
 ```
 
-— [`tests/CMakeLists.txt:315`](../../tests/CMakeLists.txt) —
+— [`tests/CMakeLists.txt:320`](../../tests/CMakeLists.txt) —
 "foreach(_board t-watch-s3-plus waveshare-amoled-206)". Two boards, EN,
 Day, Adult, the boot screen, and the assertion is that the PNG exists and is not
 empty. **That is 2 of 16 configurations, of a screen that is not the Clock, with
