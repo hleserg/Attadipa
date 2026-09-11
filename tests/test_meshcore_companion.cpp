@@ -1037,8 +1037,11 @@ void test_hostile_frames_are_bounded_and_the_session_survives()
     CHECK(!client.receive(nullptr, 4, at(23)));
     CHECK(client.malformed_frames() == ++expected);
 
-    // Truncated: every response this client parses, one byte short of the
-    // length its own reader requires. Each is refused before the read.
+    // Truncated: every frame this client reads at a fixed offset, one byte
+    // short of the length its own reader requires. Each is refused before the
+    // read. Responses and unsolicited pushes alike -- `0x82` arrives without
+    // being asked for, which makes it *more* exposed to a truncation than a
+    // response is, not less, and it was the one shape missing here (#478).
     const struct { std::uint8_t code; std::size_t minimum; } truncated[] = {
         {13, 82},   // device info
         {5, 58},    // self info
@@ -1047,6 +1050,7 @@ void test_hostile_frames_are_bounded_and_the_session_survives()
         {4, 5},     // contacts end
         {16, 13},   // contact message
         {0x84, 16}, // contact message v3
+        {0x82, 5},  // send confirmed: opcode and the four ack bytes
     };
     for (const auto& shape : truncated) {
         std::uint8_t frame[176]{};
@@ -1127,7 +1131,9 @@ void test_one_send_is_in_flight_at_a_time()
     // Between RESP_CODE_SENT and the confirmation is the window the old code
     // released the slot in: `expected_ack_` is spoken for, and a second send
     // would overwrite it and leave this operation with no way to reach a
-    // verdict. est_timeout is 0x0966 = 2406 ms, the value MEASURED on the T114.
+    // verdict. est_timeout is 0x0966 = 2406 ms, the round trip the T114
+    // ESTIMATED for this send -- the measured one was 720 ms, and the two are
+    // different claims.
     const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
     CHECK(client.receive(sent, sizeof(sent), at(8)));
     CHECK(service.status().delivery == MeshDelivery::Accepted);
@@ -1154,6 +1160,108 @@ void test_one_send_is_in_flight_at_a_time()
     CHECK(client.receive(ack, sizeof(ack), at(11)));
     CHECK(service.status().delivery == MeshDelivery::Queued);
     CHECK(client.send_busy());
+}
+
+// #478: a PUSH_CODE_SEND_CONFIRMED too short to hold the ack it exists to
+// carry. The table in test_hostile_frames_are_bounded_and_the_session_survives
+// now covers the refusal; what it cannot see is the half of the defect that
+// made it worth fixing -- the frame was silently accepted *while an operation
+// was in flight*, so a truncation a third party on the air can produce left the
+// single send slot claimed with no trace in the only diagnostic counter there
+// is. The counting and the lifecycle are asserted together here because it was
+// the pair that was wrong: the frame vanished, and the send it did not answer
+// waited out its budget for it.
+void test_a_short_send_confirmed_is_refused_and_the_send_still_lives()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    CHECK(service.send_private(peer.id, "first", WallTime{1000}));
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    // est_timeout 0x0966 = 2406 ms -- the node's own ESTIMATE of the round
+    // trip, captured on the T114 and not a measurement of one. The ack this
+    // operation is now waiting for is 01 02 03 04.
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(client.send_busy());
+
+    std::uint32_t expected = client.malformed_frames();
+
+    // Every truncation, including the one carrying three of the four ack bytes
+    // correctly -- a prefix of the right answer is not the right answer, and
+    // the guard is the frame's shape rather than how much of it looks familiar.
+    const std::uint8_t short_ack[] = {0x82, 1, 2, 3};
+    for (std::size_t size = 1; size <= sizeof(short_ack); ++size) {
+        CHECK(!client.receive(short_ack, size, at(9)));
+        // Exactly one, per frame: not one per missing byte, and not none.
+        CHECK(client.malformed_frames() == ++expected);
+        CHECK(service.status().delivery == MeshDelivery::Accepted);
+        // And the malformed frame did not end somebody else's operation. The
+        // slot is released by the budget, a disconnect or a matching ack, and
+        // a frame we refused to read is none of the three.
+        CHECK(client.send_busy());
+    }
+
+    // Availability is asked through a tick on purpose. The refusal path returns
+    // before `update_availability()`, so reading the field straight after a
+    // refused frame reports what the handshake left there; the tick recomputes
+    // it, which is what makes this an assertion about the session rather than
+    // about a cached value. At ms 10 against an operation answered at ms 8 the
+    // 2406 ms budget cannot have expired, so the tick decides nothing else.
+    client.tick(at(10));
+    CHECK(client.status().availability == Availability::Ready);
+    CHECK(client.send_busy());
+    CHECK(client.malformed_frames() == expected);
+
+    // The session is not merely alive, it is still correlating: the ack this
+    // send has been waiting for all along still confirms it.
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
+    CHECK(client.receive(ack, sizeof(ack), at(11)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+    CHECK(!client.send_busy());
+    CHECK(client.malformed_frames() == expected);
+
+    // The bound is a floor and not an equality. The bench transcript's own
+    // confirmation was nine bytes --
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298`
+    // "PUSH_CODE_SEND_CONFIRMED  82 38 66 6c b8 1b 03 00 00" -- so four bytes
+    // this build does not read follow the ack on real hardware, and calling
+    // them malformed would refuse every confirmation the T114 sends.
+    CHECK(service.send_private(peer.id, "second", WallTime{1001}));
+    CHECK(client.next_tx(frame));
+    CHECK(client.receive(sent, sizeof(sent), at(12)));
+    const std::uint8_t trailing[] = {0x82, 1, 2, 3, 4, 0x1b, 3, 0, 0};
+    CHECK(client.receive(trailing, sizeof(trailing), at(13)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+    CHECK(!client.send_busy());
+    CHECK(client.malformed_frames() == expected);
+
+    // A well-formed ack for a message this client never sent stays what it
+    // always was -- a correlation outcome, not a length error. Nothing is
+    // counted against the node for it.
+    CHECK(service.send_private(peer.id, "third", WallTime{1002}));
+    CHECK(client.next_tx(frame));
+    CHECK(client.receive(sent, sizeof(sent), at(14)));
+    const std::uint8_t other_ack[] = {0x82, 9, 9, 9, 9};
+    CHECK(client.receive(other_ack, sizeof(other_ack), at(15)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(client.send_busy());
+    CHECK(client.malformed_frames() == expected);
+
+    // And the shape is checked before there is anything to correlate against,
+    // because that is the order the counter has to be right in: a truncated
+    // push arriving with no send in flight is still a frame we could not read.
+    CHECK(client.receive(ack, sizeof(ack), at(16)));
+    CHECK(!client.send_busy());
+    CHECK(!client.receive(short_ack, sizeof(short_ack), at(17)));
+    CHECK(client.malformed_frames() == ++expected);
+    client.tick(at(18));
+    CHECK(client.status().availability == Availability::Ready);
 }
 
 // The Room flow is one owned operation from CMD_SEND_LOGIN to the ack for the
@@ -2145,6 +2253,7 @@ int main()
     test_bad_frames_and_disconnect_fail_closed();
     test_hostile_frames_are_bounded_and_the_session_survives();
     test_one_send_is_in_flight_at_a_time();
+    test_a_short_send_confirmed_is_refused_and_the_send_still_lives();
     test_a_room_send_owns_the_slot_through_its_login();
     test_a_room_login_that_is_never_answered_still_ends();
     test_a_send_that_is_never_confirmed_still_ends();
