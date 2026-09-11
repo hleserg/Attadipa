@@ -184,6 +184,31 @@ def check_links(root: str) -> list[str]:
     return problems
 
 
+# EVERY SUFFIX A CITATION MAY NAME, written once. Two lists said this before,
+# one inside `CITATION` and one beside `basename_index`, with a comment asking
+# a reader to keep them equal -- and `csv` went into the first and not the
+# second, so a citation written with a path was checked and the same citation
+# written by basename was not. The failure is silent in the worst way: an
+# absent suffix does not report a bad citation, it stops the text BEING a
+# citation. Found in review; one tuple is the fix, not a third check.
+CITED_SUFFIXES = (
+    ".md", ".cpp", ".c", ".h", ".hpp", ".py", ".sh", ".yml", ".yaml",
+    ".json", ".jq", ".txt", ".cmake", ".csv",
+)
+
+# LONGEST FIRST -- and the honest reason is not the one the old comment gave.
+# It said `c` had to sit after `cpp` or `foo.cpp:1` would match as `foo.c` with
+# `pp:1` left over. Measured with the alternation deliberately sorted the other
+# way, that is false: the `:` after the group forces the engine to backtrack
+# and it lands on `foo.cpp` either way. So the order is a property of THIS
+# pattern rather than of alternation, the sort is here to stop the next editor
+# having to know which, and neither is what went wrong -- `.c` was MISSING,
+# and `probe/pedo.c:402`, the divisor a bench report's every milligravity
+# figure rests on, was not a citation to this file at all. Sorting is cheap
+# insurance; the tuple being single is the fix.
+CITED_ALTERNATION = "|".join(
+    sorted((suffix[1:] for suffix in CITED_SUFFIXES), key=len, reverse=True))
+
 # A citation of the form `path/to/file.md:123` or `file.h:12-34`, as this
 # repository writes them: inside backticks, in a link, or bare in prose. The
 # suffix list is the file kinds actually cited here; widening it would start
@@ -203,12 +228,7 @@ def check_links(root: str) -> list[str]:
 # in review; `\.?` before the first path character is the whole fix.
 CITATION = re.compile(
     r"(?<![A-Za-z0-9_./-])((?:\.{1,2}/)*\.?[A-Za-z0-9_][A-Za-z0-9_./-]*"
-    # `c` sits after `cpp` for a reader, not for the engine: alternation
-    # backtracks, so `foo.cpp:1` never matches as `foo.c` with `pp:1` left over.
-    # It was missing entirely, and `probe/pedo.c:402` -- the divisor a bench
-    # report's every milligravity figure rests on -- was therefore not a
-    # citation to this file at all, and could not be asked for a fingerprint.
-    r"\.(?:md|cpp|c|h|hpp|py|sh|yml|yaml|json|jq|txt|cmake|csv))"
+    rf"\.(?:{CITED_ALTERNATION}))"
     # The `)` is a Markdown link closing before the line number:
     # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
     #
@@ -322,15 +342,6 @@ def bare_document_index(root: str) -> dict[str, str]:
         stem = os.path.basename(path)[: -len(".md")]
         index.setdefault(stem, []).append(path)
     return {name: paths[0] for name, paths in index.items() if len(paths) == 1}
-
-
-# CITED_SUFFIXES mirrors the suffix list inside CITATION: the same file kinds,
-# indexed by basename so a citation written without a path can still be
-# resolved.
-CITED_SUFFIXES = (
-    ".md", ".cpp", ".c", ".h", ".hpp", ".py", ".sh", ".yml", ".yaml",
-    ".json", ".jq", ".txt", ".cmake", ".csv",
-)
 
 
 def basename_index(root: str) -> dict[str, str]:

@@ -131,6 +131,22 @@ def main() -> int:
             any("which is now at :2" in problem
                 for problem in check_docs.check_citation_lines(root)),
         )
+        # AND BY BASENAME, which is the half the two cases above never reach.
+        # A citation written with a path resolves relative to the citing
+        # document; one written without a path goes through `basename_index`,
+        # and that index is the only consumer of `CITED_SUFFIXES`. `csv` went
+        # into the alternation and not into the tuple, so the same citation was
+        # checked one way and invisible the other -- which is why the two are
+        # one tuple now and why this case exists to hold them together. Found
+        # in review.
+        write(root, "docs/research/CITER.md",
+              'See `partitions.csv:3` -- "nvs, data".\n')
+        case(
+            "a .csv cited by basename alone is checked too",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
 
         # A fingerprint that WRAPPED onto the next line. This is the shape that
         # hid a real drift: WAVESHARE_ARRIVAL cited HARDWARE_MATRIX for
