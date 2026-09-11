@@ -439,6 +439,7 @@
     .screen .step-head,
     .screen .message,
     .screen .details dl,
+    .screen .nav-study-details p:not(.sub),
     .screen .message-body {
       background: color-mix(in srgb, var(--bg) 90%, transparent);
       box-shadow: 0 0 0 6px color-mix(in srgb, var(--bg) 90%, transparent);
@@ -1156,16 +1157,19 @@
       gap: 8px;
     }
     .screen .instrument svg {
-      width: 180px;
-      height: 180px;
+      height: min(100%, 180px);
+      width: auto;
+      aspect-ratio: 1;
       flex-shrink: 0;
       background: var(--bg);
       border-radius: 50%;
     }
+    .instrument svg * { vector-effect: non-scaling-stroke; }
     .instrument text {
       fill: var(--text);
       stroke: none;
       font: 16px Nunito, sans-serif;
+      font-size: var(--dial-label, 16px);
     }
     .instrument .range {
       text-align: right;
@@ -1208,7 +1212,6 @@
       background-image: url("clock_meadow_night_410x502.png");
     }
     .night .nav-study .nav-destination,
-    .night .nav-study .instrument svg,
     .night .nav-study .range,
     .night .nav-study .direction-mode {
       background: transparent;
@@ -1217,8 +1220,6 @@
     .screen.small .nav-study { gap: 4px; }
     .small .nav-destination { font-size: 18px; }
     .small .instrument { gap: 4px; }
-    .screen.small .instrument svg { width: 80px; height: 80px; }
-    .small .instrument text { font-size: 26px; }
     .small .range strong { font-size: 44px; }
     .small .range span { font-size: 16px; }
     .small .direction-mode { font-size: 12px; }
@@ -1808,7 +1809,10 @@
     }
     const navCopy = () => document.querySelector("#locale").value === "ru" ? {
       target: "Узел на хребте", fromNorth: "От севера", fromWatch: "От часов",
-      bearing: "057° СВ", received: "Получено 3 с назад", old: "Данные устарели · 2 мин",
+      bearingNorth: "057° СВ", received: "Получено 3 с назад", old: "Данные устарели · 2 мин",
+      orient: "Пройдите несколько шагов, чтобы сориентироваться",
+      calibrate: "Калибровка",
+      calibrateHow: "Опишите часами восьмёрку в воздухе, пока компас не примет данные.",
       unconfirmed: "Фиксация не подтверждена", nofix: "Нет вашей позиции",
       unknown: "Нет позиции цели", waiting: "Ждём координаты", outdoors: "Выйдите под открытое небо",
       staleHeading: "Компас: данные устарели", uncalibrated: "Компас не откалиброван",
@@ -1816,7 +1820,10 @@
       age: "Получено часами", reason: "Режим",
     } : {
       target: "Ridge node", fromNorth: "North-up", fromWatch: "Watch-relative",
-      bearing: "057° NE", received: "Received 3 s ago", old: "Old data · 2 min",
+      bearingNorth: "057° NE", received: "Received 3 s ago", old: "Old data · 2 min",
+      orient: "Walk a few steps to orient",
+      calibrate: "Calibrate",
+      calibrateHow: "Trace a figure eight in the air with the watch until the compass accepts the data.",
       unconfirmed: "Fix unconfirmed", nofix: "No own position",
       unknown: "No target position", waiting: "Waiting for coordinates", outdoors: "Move into open sky",
       staleHeading: "Compass data stale", uncalibrated: "Compass uncalibrated",
@@ -1829,11 +1836,23 @@
       const present = !["no-fix", "node-unknown"].includes(view.state);
       const wrist = present && view.state === "head-up";
       const heading = wrist ? 45 : 0;
-      const reason = view.state === "compass-stale" ? c.staleHeading : view.state === "uncalibrated" ? c.uncalibrated : view.state === "stale" ? c.old : c.received;
+      // One angle drives the mark's rotation and the number beside the mode, so
+      // they cannot drift apart. Watch-relative is 057 minus the heading, and a
+      // relative angle has no cardinal: NE is a fact about north, not about the
+      // wrist. ADR-0009 §5 — "north-up, bearing marked, \"walk a few steps to
+      // orient\"" — is why a north-up screen with no heading says so.
+      const bearingFromNorth = 57;
+      const drawn = (bearingFromNorth - heading + 360) % 360;
+      const bearingText = wrist ? `${String(drawn).padStart(3, "0")}°` : c.bearingNorth;
+      const reason = view.state === "compass-stale" ? c.staleHeading : view.state === "uncalibrated" ? c.uncalibrated : view.state === "stale" ? c.old : wrist ? c.received : c.orient;
       const mark = !present ? `<text x="90" y="96" text-anchor="middle">—</text>` : wrist
-        ? `<g class="wrist-arrow" transform="rotate(12 90 90)"><path d="M90 49 109 114 90 102 71 114Z" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/></g>`
-        : `<g class="bearing-mark" transform="rotate(57 90 90)"><path d="M90 90V43" stroke="var(--text)" stroke-dasharray="2 6"/><circle cx="90" cy="35" r="9" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/><circle cx="90" cy="90" r="4" fill="var(--text)"/></g>`;
-      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? c.bearing : ""}</span></div><div class="nav-condition"><span>${present ? reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${action(t("details"), "nav-details")}</div></div>`;
+        ? `<g class="wrist-arrow" transform="rotate(${drawn} 90 90)"><path d="M90 49 109 114 90 102 71 114Z" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/></g>`
+        : `<g class="bearing-mark" transform="rotate(${drawn} 90 90)"><path d="M90 90V43" stroke="var(--text)" stroke-dasharray="2 6"/><circle cx="90" cy="35" r="9" fill="var(--accent)" stroke="var(--text)" stroke-width="2"/><circle cx="90" cy="90" r="4" fill="var(--text)"/></g>`;
+      return `<div class="content nav-study" data-condition="${escapeText(view.state)}"><h3 class="nav-destination">${c.target}</h3><div class="instrument"><svg viewBox="0 0 180 180" role="img" aria-label="${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}"><circle cx="90" cy="90" r="76" stroke="var(--muted)" ${present ? "" : 'stroke-dasharray="3 8"'}/>${present ? `<g transform="rotate(${-heading} 90 90)"><text x="90" y="27" text-anchor="middle" transform="rotate(${heading} 90 27)">${t("north")}</text><path d="M164 90h-6M90 164v-6M16 90h6" stroke="var(--muted)"/></g>` : ""}${mark}</svg><div class="range"><strong>${present ? t("distance") : "—"}</strong><span>${present ? t("km") : ""}</span></div></div><div class="direction-mode"><b>${present ? wrist ? c.fromWatch : c.fromNorth : c.missing}</b><span>${present ? bearingText : ""}</span></div><div class="nav-condition"><span>${present ? reason : view.state === "no-fix" ? c.nofix : c.unknown}</span><span class="qualification">${present ? c.unconfirmed : view.state === "no-fix" ? c.outdoors : c.waiting}</span></div><div class="actions">${home()}${view.state === "uncalibrated" ? action(c.calibrate, "nav-calibrate") : ""}${action(t("details"), "nav-details")}</div></div>`;
+    }
+    function navStudyCalibrate() {
+      const c = navCopy();
+      return `<div class="content details nav-study-details"><h3 class="title">${c.calibrate}</h3><p>${c.calibrateHow}</p><p class="sub">${c.simulation}</p><div class="actions">${action(t("back"), "nav-return")}</div></div>`;
     }
     function navStudyDetails(state) {
       const c = navCopy();
@@ -1927,6 +1946,8 @@
       if (view.page === "clock") screen.innerHTML = clock(view, id);
       else if (view.page === "nav") screen.innerHTML = nav(view);
       else if (view.page === "mesh") screen.innerHTML = mesh(view);
+      else if (view.page === "nav-calibrate")
+        screen.innerHTML = navStudyCalibrate();
       else if (view.page.endsWith("-details"))
         screen.innerHTML = details(view.page, view.state);
       else if (view.page === "message")
@@ -1936,12 +1957,26 @@
         "afterbegin",
         `<div class="scene-art" aria-hidden="true"></div>${motionEnabled(view) ? '<div class="fireflies" aria-hidden="true"><i></i><i></i><i></i></div>' : ""}`,
       );
+      fitDialLabel(screen);
       renderReview(id);
       if (focused)
         (
           screen.querySelector(`[data-action="${focused}"]`) ||
           screen.querySelector("button:not(:disabled)")
         )?.focus({ preventScroll: true });
+    }
+    // The dial sizes itself from the row it is in, so a font-size written in
+    // user units renders at whatever scale that leaves -- 9.5px in Russian at
+    // 240x240, under the panel's own smallest type token. Convert the token
+    // into user units once the dial has a measured width, and the cardinal
+    // renders at exactly --caption on both panels and in both locales.
+    function fitDialLabel(screen) {
+      const dial = screen.querySelector(".instrument svg");
+      if (!dial) return;
+      const scale = dial.getBoundingClientRect().width / dial.viewBox.baseVal.width;
+      if (!scale) return;
+      const caption = parseFloat(getComputedStyle(screen).getPropertyValue("--caption"));
+      dial.style.setProperty("--dial-label", `${caption / scale}px`);
     }
     function render() {
       document.querySelector("#motion").disabled = reducedMotion.matches;
@@ -1999,6 +2034,7 @@
       const v = views[id],
         wizard = wizards[id];
       if (command === "nav-return") return go(id, "nav", v.state);
+      if (command === "nav-calibrate") return go(id, "nav-calibrate", v.state);
       if (command === "home") return go(id, "clock");
       if (command === "node-back")
         return go(id, wizard.nodeReturn.page, wizard.nodeReturn.state);
