@@ -244,12 +244,21 @@ std::string on_screen() {
 // THE CAPTURE HAS TO SURVIVE THE PROCESS IT CAPTURES.
 //
 // Everything from `enter_provisioning` to the last frame runs with fd 1 and
-// fd 2 pointing at a temporary file that only `end()` reads. An `LV_ASSERT`, a
-// segfault or any `abort()` in there ends the process with the redirect still
-// installed: `ctest --output-on-failure` prints the header and nothing else,
-// and the one copy of the message is a file in `/tmp` that outlives no CI
-// runner. A regression in the shipping entry screen would arrive as an
-// undiagnosable crash instead of a named failure.
+// fd 2 pointing at a temporary file that only `end()` reads. A segfault or any
+// `abort()` in there ends the process with the redirect still installed:
+// `ctest --output-on-failure` prints the header and nothing else, and the one
+// copy of the message is a file in `/tmp` that outlives no CI runner. A
+// regression in the shipping entry screen would arrive as an undiagnosable
+// crash instead of a named failure.
+//
+// An `LV_ASSERT` is the same failure and not the same signal. This build halts
+// on one -- `sim/lv_conf_simulator.h:553` — "#define LV_ASSERT_HANDLER while(1);     /**< Halt by default */"
+// -- so it raises nothing, spins with both descriptors still redirected, and
+// waits for ctest to `SIGKILL` it, which no handler catches. `LV_USE_ASSERT_OBJ`
+// is on and this walk hands raw `lv_obj_t *` to LVGL, so the trigger is real.
+// `alarm()` is what turns that halt back into a signal: the walk is a few
+// hundred milliseconds of frames, so a minute of it is a hang by any reading,
+// and `SIGALRM` arrives at the same handler as the deaths that do raise one.
 //
 // So a handler puts the real stderr back and pours the capture into it before
 // the default disposition runs. Only `dup2`, `lseek`, `read`, `write`,
@@ -257,6 +266,12 @@ std::string on_screen() {
 // to call; `fflush` is not among them, so whatever `stdout` was still holding
 // is lost -- the assertion text itself is written to the unbuffered stderr and
 // is not.
+// Long enough that no machine this runs on is merely slow, short enough that a
+// halt is a failure a person reads rather than a job they cancel. The ctest
+// case carries a `TIMEOUT` above it as the outer bound, for a hang that stops
+// this process reaching the signal at all.
+constexpr unsigned kWalkSeconds = 60;
+
 volatile std::sig_atomic_t g_console_err = -1;
 volatile std::sig_atomic_t g_console_file = -1;
 
@@ -313,15 +328,26 @@ public:
     std::signal(SIGABRT, spill_console_on_crash);
     std::signal(SIGSEGV, spill_console_on_crash);
     std::signal(SIGBUS, spill_console_on_crash);
+    std::signal(SIGALRM, spill_console_on_crash);
+    (void)alarm(kWalkSeconds);
+    // And LVGL's own words on the way out. `LV_LOG_PRINTF` is 0 here and no
+    // callback is registered anywhere in this repository, so an `LV_ASSERT`
+    // message currently goes nowhere at all -- the spill would recover a
+    // console that never held the reason for the halt. Registered here rather
+    // than in the simulator because it is this capture that needs it.
+    lv_log_register_print_cb(
+        [](lv_log_level_t, const char *text) { std::fputs(text, stdout); });
     return true;
   }
 
   std::string end() {
     // Handlers first: they hold the two descriptors this function is about to
     // close, and a crash between the close and the reset would follow them.
+    (void)alarm(0);
     std::signal(SIGABRT, SIG_DFL);
     std::signal(SIGSEGV, SIG_DFL);
     std::signal(SIGBUS, SIG_DFL);
+    std::signal(SIGALRM, SIG_DFL);
     g_console_err = -1;
     g_console_file = -1;
     (void)std::setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
