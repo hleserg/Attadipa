@@ -36,6 +36,12 @@ struct Bus {
   // before that write is correct on the part in hand and undefined on the one
   // the datasheet describes, and only a model that can be both asks it.
   bool cmddone_needs_handshake = false;
+  // A part that empties its queue on the bypass-to-FIFO transition. What that
+  // transition does to a count accumulated in bypass is UNKNOWN on the bench
+  // part, so the other answer is modelled too: the drain enters FIFO mode
+  // itself, and a payload sized from the count it saw before that write would
+  // read filler out of an emptied queue and publish it as somebody's residue.
+  bool flush_on_fifo_entry = false;
   bool retain_on_reset = false, mismatch_watermark_restore = false;
   bool sticky_fifo = false; // a count that a payload read does not consume
   bool pending_watermark_mismatch = false;
@@ -59,7 +65,8 @@ struct Bus {
       return true;
     }
     if (reg == 0x17) {
-      if (request_ignored && !(regs[0x14] & 0x80)) {
+      if ((request_ignored && !(regs[0x14] & 0x80)) ||
+          (flush_on_fifo_entry && cursor + n > fifo.size())) {
         // 0x8000, word after word: what a part that ignored the request hands
         // back, and the byte the drain must not read as a sample.
         for (std::size_t i = 0; i < n; ++i)
@@ -96,6 +103,9 @@ struct Bus {
     if (reg == 9)
       CHECK((value & 0x1f) == (regs[9] & 0x1f)); // no engine toggles
     writes.push_back({reg, value});
+    if (reg == 0x14 && flush_on_fifo_entry && (value & 3) && !(regs[0x14] & 3)) {
+      fifo.clear(); cursor = 0; extra_status = 0;
+    }
     regs[reg] = value;
     if (reg == 0x13 && value == 0 && mismatch_watermark_restore)
       pending_watermark_mismatch = true;
@@ -247,6 +257,28 @@ int main() {
     Qmi8658Fifo sensor(bus);
     CHECK(sensor.start(true) == QmiResult::InvalidData);
     CHECK(sensor.stale_words() == 0);
+    CHECK(sensor.stop() == QmiResult::Ok);
+  }
+  {
+    // A COUNT CAPTURED BEFORE THE FREEZE IS NOT THE COUNT THE PAYLOAD HAS.
+    //
+    // The drain does the bypass-to-FIFO transition itself. If that transition
+    // empties the queue, the three words `start()` saw are gone before `0x17`
+    // is read, and a payload sized from the entry count reads filler and
+    // publishes it as "what the previous owner left" -- the same false record
+    // the ignored-request case is about, reached the other way. Sizing from
+    // the count re-read after `REQ_FIFO` reports zero, which is the truth: the
+    // drain found nothing to move.
+    Bus bus;
+    bus.flush_on_fifo_entry = true;
+    bus.frame(0x1234, -5, 0x0678);
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start(true) == QmiResult::Ok);
+    CHECK(sensor.stale_words() == 0);
+    QmiBatch batch;
+    bus.frame(7, 8, 9);
+    CHECK(sensor.read(batch) == QmiResult::Samples);
+    CHECK(batch.count == 1 && batch.accel[0][0] == 7 && batch.accel[0][2] == 9);
     CHECK(sensor.stop() == QmiResult::Ok);
   }
   {

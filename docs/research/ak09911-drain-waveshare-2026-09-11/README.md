@@ -58,8 +58,11 @@ three words in the QMI8658 FIFO that `stop()` could not reset, `FIFO=00`
   bytes of instruction segment, and the second also carries the change that
   lets the AK09911 outlive a refusal, which is why only one of them has a
   40-second magnetometer window. What is held constant across the pair is the
-  board, the residue and the request; what changed about the request is the
-  mode it was issued from.
+  board, the three words and the request; what changed about the request is the
+  mode it was issued from. What those words *are* stays UNKNOWN: `00 80` is a
+  plausible sample and also what `0x17` returned in the refused attempt, where
+  the request moved nothing. The count is the measured thing here, not the
+  payload.
 - **Accepted** (`console.txt`, drain entering a FIFO mode first):
   `QMI start=0`, `QMI drained stale_words=3 (entry succeeded)`, the same three
   `00 80` words recorded, and the count clear. Then **398 AK09911 samples and
@@ -71,6 +74,16 @@ holds three words when acquisition stops. That is the separate stop-path finding
 already recorded in [the stop diagnostic](../qmi-stop-waveshare-2026-09-09/README.md)
 and it is not resolved here. What changed is that the state it leaves behind no
 longer locks the next run out.
+
+**NOT EXECUTED — HARDWARE REQUIRED: nothing here re-ran on the current head.**
+Every capture in this archive belongs to the image named for it in the table
+above. `b4a8f45b` is not the head of #515: `1df9fcfb` moved the CTRL8 handshake
+write ahead of the drain's own CTRL9 command, and the drain now re-reads the
+frozen count after `REQ_FIFO` rather than sizing the payload from the entry
+snapshot (`17337383` touched only the host test). Both changes are covered by
+the host transport model and by no bench run. The 40-second paired capture has
+not been re-run on the head yet; the readings below are not restated as its
+result.
 
 ## MEASURED — four cold loads of an untouched board, raw counts
 

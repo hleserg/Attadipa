@@ -39,8 +39,12 @@ def summary(path, pattern):
 paired = run / 'console.txt'
 text = paired.read_text(errors='strict')
 
-# The entry the bypass attempt could not reach. `stale_words=3` and the three
-# 0x8000 words are what the previous run left in the FIFO, read out and kept.
+# The entry the bypass attempt could not reach. `stale_words=3` is the count
+# `start()` saw on entry; this image sized the payload read from it, and whether
+# the count the part froze agreed is exactly what the head now re-reads. What
+# the three words themselves are is UNKNOWN: `00 80` is both a plausible sample
+# and the value 0x17 returned in the refused attempt below, where the request
+# had moved nothing at all.
 assert 'QMI start=0 ' in text, 'paired entry did not succeed'
 assert 'QMI drained stale_words=3 (entry succeeded)' in text
 assert text.count('QMISTALE,') == 3

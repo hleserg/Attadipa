@@ -120,6 +120,16 @@ does not resolve `stop=4`: that state is still produced at the end of every
 paired run and is still UNKNOWN, with the one candidate this session earned
 recorded in [the stop diagnostic](qmi-stop-waveshare-2026-09-09/README.md).
 
+**NOT EXECUTED — HARDWARE REQUIRED: the head is not the image that ran.** The
+accepted capture was produced by `b4a8f45b`. Two changes to the entry sequence
+have landed on this branch since, neither of them on hardware: `1df9fcfb` moved
+the CTRL8 handshake write ahead of the drain's own CTRL9 command, and the count
+the drain sizes its payload from is now re-read after `REQ_FIFO` instead of
+taken from the entry snapshot (`17337383` touched only the host test). Both are
+exercised by the transport model in
+`tests/test_qmi8658_fifo.cpp` and by nothing physical. The numbers above stay
+MEASURED for the image that produced them and are not a result for this head.
+
 That archive also carries the first stationary AK09911 readings and the
 **retraction** of the hard-iron estimate taken from them — four cold loads agree
 within 1.33 counts per axis, and the same part read a magnitude four times

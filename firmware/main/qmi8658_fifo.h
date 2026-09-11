@@ -121,7 +121,7 @@ public:
       return result;
     // After the byte order is explicit, because the payload read depends on it.
     if (words != 0) {
-      result = drain_stale(words);
+      result = drain_stale();
       if (result != QmiResult::Ok)
         return result;
       if (!fifo_words(words))
@@ -337,7 +337,7 @@ private:
       return QmiResult::IoError;
     return finish_command();
   }
-  QmiResult drain_stale(unsigned words) {
+  QmiResult drain_stale() {
     // The count survives `reset_fifo` in bypass: 2026-09-11 on the Waveshare
     // read three words of 0x8000 with `FIFO=00` and the count still 3 after.
     // `read()` only ever requests a batch with FIFO_CTRL already in FIFO mode,
@@ -348,22 +348,31 @@ private:
     result = command(0x05);
     if (result != QmiResult::Ok)
       return result;
-    // READ MODE, CHECKED THE WAY `read()` CHECKS IT AT `:172`.
+    // READ MODE AND THE FROZEN COUNT, BOTH CHECKED THE WAY `read()` CHECKS
+    // THEM -- `firmware/main/qmi8658_fifo.h:169` — "    if (!(control & 0x80) || words * 2 > 16 * frame_bytes_ ||".
     //
-    // A request that moves nothing is not a hypothesis here: the refused run
-    // of 2026-09-11 logged three words of `0x8000` with the count unmoved
-    // after. Without this the drain would read those words anyway and report
-    // them as the residue, and the only thing that noticed was the re-count in
-    // `start()` -- which protects entry and says nothing about the log. The
-    // words are the previous owner's or they are not reported at all.
+    // A request that moves nothing is not a hypothesis: the refused run of
+    // 2026-09-11 logged three words of `0x8000` with the count unmoved after.
+    // Without the read-mode half the drain would read those words anyway and
+    // publish them as the residue.
+    //
+    // The count is re-read for the same reason `read()` re-reads it, and the
+    // reason is stronger here: the drain does the bypass-to-FIFO transition
+    // itself, one line above, and what that does to a count accumulated in
+    // bypass is UNKNOWN on this part. Sizing the payload from the entry count
+    // assumed the two are equal -- if the transition empties the queue, `0x17`
+    // returns filler and the entry count publishes six bytes of it as "what
+    // the previous owner left". Whatever the frozen count says is what is read
+    // and what `stale_words()` reports, including zero.
     std::uint8_t control = 0;
-    if (!byte(0x14, control))
+    unsigned frozen = 0;
+    if (!byte(0x14, control) || !fifo_words(frozen))
       return QmiResult::IoError;
-    if (!(control & 0x80))
+    if (!(control & 0x80) || frozen * 2 > sizeof(stale_bytes_))
       return QmiResult::InvalidData;
-    if (!io_.read(0x17, stale_bytes_, words * 2))
+    if (frozen != 0 && !io_.read(0x17, stale_bytes_, frozen * 2))
       return QmiResult::IoError;
-    stale_words_ = words;
+    stale_words_ = frozen;
     // Back to whatever the entry snapshot found, not to this owner's mode: the
     // drain has not decided yet that entry succeeds.
     return set(0x14, before_.regs[7]);
