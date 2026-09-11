@@ -6,17 +6,27 @@ open-question IDs unique, reject unexpected tracked root files, and verify that
 line-number citations still land on nonblank content -- and, where the citation
 names a source file this repository tracks, on the text it was cited for.
 
+WHAT IT STILL DOES NOT OPEN, so that a reader does not mistake a green run for
+a complete one: `.html`. `docs/ui/prototype/index.html:1840` carries a live
+`//` citation into an ADR this repository edits -- correct today and checked by
+nobody. It is the only one outside the corpus, swept for in review, and `.html`
+is left out on purpose: the file carries two comment syntaxes at once, and a
+suffix entry that reads `<!-- -->` and `//` off the same line would be a third
+scanner where `tokenize` has just replaced two.
+
 Run: python3 tools/docs/check_docs.py [root]
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tokenize
 
 # ](target), ](target#anchor) and ](#anchor). Excludes targets containing
 # whitespace, which in Markdown would carry a title string we do not want to
@@ -170,11 +180,26 @@ START_ONLY = ("*",)
 # A Python docstring is a comment that happens to be a string, and this
 # repository writes its `tools/` prose in one. Keeping only `#` lines left
 # `tools/flash/selftest.py` citing a line five out of date and reported the
-# tree green. A triple quote counts only when it OPENS the line, which is how
-# every docstring here is written and is what keeps `sep = '\"\"\"'` from
-# swallowing the file after it. Found in review.
-TRIPLE_QUOTES = ('"""', "'''")
-STRING_PREFIX = "rRbBuUfF"
+# tree green.
+#
+# WHICH STRINGS ARE PROSE IS A QUESTION FOR THE PYTHON GRAMMAR, and two
+# hand-written scanners answered it wrong before this one stopped trying. The
+# first read "a triple quote opens the line", so the delimiter CLOSING a string
+# opened mid-line read as opening a docstring and the file below it came out
+# inside out. The second remembered an open literal -- and a triple quote
+# written INSIDE an ordinary one-line string still looked unclosed to it, on
+# the very line that used to define the delimiters here, so the checker
+# inverted its own source. Both were found in review, and the second was the
+# fix for the first.
+#
+# `tokenize` is the grammar itself: a `#` inside a string is a STRING, a triple
+# quote inside a string is part of that STRING, and a docstring is a STRING
+# that BEGINS a logical line -- which is the rule the first scanner was
+# reaching for and could not state. It DELETES `opening_triple`,
+# `strip_literals`, the delimiter table, the prefix table and both of the
+# loop's state variables rather than adding a third guess to them.
+DOCSTRING_OPENS_A_LINE = (tokenize.NEWLINE, tokenize.NL, tokenize.INDENT,
+                          tokenize.DEDENT)
 
 
 def markers_for(path: str) -> tuple[str, ...]:
@@ -197,48 +222,44 @@ def source_files(root: str) -> list[str]:
     return sorted(found)
 
 
-def opening_triple(stripped: str) -> str | None:
-    """The triple quote this line opens a docstring with, if it opens one."""
-    head = stripped[1:] if stripped[:1] in STRING_PREFIX else stripped
-    return next((q for q in TRIPLE_QUOTES if head.startswith(q)), None)
+def python_prose(text: str) -> list[str] | None:
+    """Every comment and docstring of a Python file, one entry per line.
 
+    `None` when Python cannot tokenise the text, so the caller falls back to
+    the `#` scan: a file the grammar rejects would not compile either, and
+    reading nothing of it is the wrong kind of quiet.
 
-def strip_literals(stripped: str,
-                   triples: tuple[str, ...]) -> tuple[str, str | None]:
-    """The line with its complete triple-quoted spans blanked, and the open one.
-
-    A TRIPLE QUOTE THAT DOES NOT OPEN ITS LINE OPENS A STRING, NOT A DOCSTRING,
-    and the delimiter closing it is written at column 0 -- where
-    `opening_triple` reads it as opening one and the polarity of everything
-    below it inverts: code is scanned as prose and the real docstrings are
-    emptied as code. `tools/flash/spiffs_selftest.py:247` --
-    "UNDER_A_SIZE_LIMIT = " -- opens such a string, and the bare triple quote
-    five lines below it closed it. Four more files in `tools/` share the shape,
-    so the support this file adds for docstrings was inverted in five of them.
-    Nothing fired -- none of the five holds a citation below that line -- which
-    is why it was latent rather than red, and is the reason it is worth a case.
-    Found in review.
-
-    A span that opens and closes on one line is neither: `sep = '\'\'\'x'\'\''`
-    is code with a trailing comment still to find, so it is blanked and the
-    scan continues past it rather than stopping there.
+    A docstring is placed line for line, so a citation inside one is reported
+    at the line a reader can open -- the contract `comment_lines` keeps.
     """
-    kept = []
-    at = 0
-    while at < len(stripped):
-        start, quote = len(stripped), None
-        for candidate in triples:
-            found = stripped.find(candidate, at)
-            if 0 <= found < start:
-                start, quote = found, candidate
-        kept.append(stripped[at:start])
-        if quote is None:
-            break
-        end = stripped.find(quote, start + len(quote))
-        if end < 0:
-            return "".join(kept), quote
-        at = end + len(quote)
-    return "".join(kept), None
+    out = [""] * len(text.split("\n"))
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    previous = tokenize.NEWLINE
+    for token in tokens:
+        if token.type == tokenize.COMMENT:
+            out[token.start[0] - 1] = token.string.lstrip("#").strip()
+        elif (token.type == tokenize.STRING
+              and previous in DOCSTRING_OPENS_A_LINE):
+            body = undelimited(token.string).split("\n")
+            for offset, one in enumerate(body):
+                out[token.start[0] - 1 + offset] = one.strip()
+        previous = token.type
+    return out
+
+
+def undelimited(literal: str) -> str:
+    """A string token without its prefix letters and its quotes."""
+    body = literal.lstrip("rRbBuUfF")
+    for quote in ('"' * 3, "'" * 3, '"', "'"):
+        if body.startswith(quote):
+            body = body[len(quote):]
+            return body[: -len(quote)] if body.endswith(quote) else body
+    return body
+
+
 
 
 def comment_lines(path: str, text: str) -> str:
@@ -258,34 +279,13 @@ def comment_lines(path: str, text: str) -> str:
     which resolves to nothing; that reservation is the guarantee.
     """
     markers = markers_for(path)
-    triples = TRIPLE_QUOTES if path.endswith(".py") else ()
+    if path.endswith(".py"):
+        prose = python_prose(text)
+        if prose is not None:
+            return "\n".join(prose)
     out = []
-    fence = None    # inside a docstring: its body is prose
-    literal = None  # inside a string opened mid-line: its body is code
     for line in text.split("\n"):
-        if fence is not None:
-            end = line.find(fence)
-            out.append(line[: end if end >= 0 else len(line)].strip())
-            if end >= 0:
-                fence = None
-            continue
-        if literal is not None:
-            end = line.find(literal)
-            if end < 0:
-                out.append("")
-                continue
-            line = line[end + len(literal):]
-            literal = None
         stripped = line.lstrip()
-        opened = opening_triple(stripped) if triples else None
-        if opened is not None:
-            body = stripped.split(opened, 1)[1]
-            out.append((body.split(opened, 1)[0] if opened in body else body).strip())
-            if opened not in body:
-                fence = opened
-            continue
-        if triples:
-            stripped, literal = strip_literals(stripped, TRIPLE_QUOTES)
         # The EARLIEST marker on the line wins, so a `//` inside a `/* ... */`
         # body does not re-open anything and a trailing comment is found where
         # it actually is.

@@ -839,6 +839,25 @@ def main() -> int:
             and not any("core/thing.h:1" in problem for problem in problems),
         )
         write(root, "tools/citer.py", "")
+        # AND THE SHAPE BOTH HAND-WRITTEN SCANNERS MISSED: a triple quote
+        # written inside an ORDINARY one-line string. The second scanner read
+        # it as a literal that never closes, so it emptied the docstrings
+        # below and handed the code between them to the citation scan as
+        # prose -- and the line it did that on was the one defining its own
+        # delimiters, in `check_docs.py` itself. `tokenize` is what ended the
+        # guessing: to the grammar that is one STRING token and nothing about
+        # it opens anything. Found in review, twice; the fix for the first
+        # instance is what produced the second.
+        write(root, "tools/citer.py",
+              'QUOTES = (\'"\' * 3,)\ndef f():\n'
+              '    """See `core/thing.h:3` -- "beta gamma delta".\n    """\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a triple quote inside a one-line string opens nothing",
+            "check_citation_lines",
+            any("which is now at :2" in problem for problem in problems),
+        )
+        write(root, "tools/citer.py", "")
 
     missing = {function for _title, function in check_docs.CHECKS} - called
     if missing:
