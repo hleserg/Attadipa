@@ -263,9 +263,13 @@ std::string on_screen() {
 // So a handler puts the real stderr back and pours the capture into it before
 // the default disposition runs. Only `dup2`, `lseek`, `read`, `write`,
 // `signal` and `raise` appear below, which is what a signal handler is allowed
-// to call; `fflush` is not among them, so whatever `stdout` was still holding
-// is lost -- the assertion text itself is written to the unbuffered stderr and
-// is not.
+// to call; `fflush` is not among them, and does not need to be. Both streams
+// are unbuffered for the length of the capture -- the `setvbuf` pair in
+// `begin()` below -- so every line has already reached the file when the
+// handler starts reading it. That includes the assertion text, which the print
+// callback registered there writes to `stdout`, not to `stderr`. Dropping the
+// `stdout` half was tried: the spill then recovers the banner and nothing
+// after it, which is finding 1's failure mode with an extra step.
 // Long enough that no machine this runs on is merely slow, short enough that a
 // halt is a failure a person reads rather than a job they cancel. The ctest
 // case carries a `TIMEOUT` above it as the outer bound, for a hang that stops
