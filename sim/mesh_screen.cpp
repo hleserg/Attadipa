@@ -59,6 +59,8 @@ void with_session(core::MeshStatus &status) {
   status.snr_quarter_db = 29; // 7.25 dB
   status.has_snr = true;
   status.peers_reported = 3;
+  status.peers_retained = 3; // the whole list kept: one number, not a pair
+  status.peers_complete = true;
   status.mtu = 244;
   status.node_battery.millivolts = 3700;
   status.node_battery.validity = core::Validity::Valid;
@@ -154,7 +156,7 @@ bool stage_mesh_scenario(const char *name) {
     g_status.message_truncated = true;
     g_status.peers_reported = 40;
     g_status.peers_retained = 16;
-    g_status.peers_truncated = true;
+    g_status.peers_complete = true;
   } else {
     std::fprintf(stderr,
                  "unknown --mesh-state '%s'\n"

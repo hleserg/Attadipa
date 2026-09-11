@@ -253,14 +253,20 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
         // of them", which is the only difference this face is in a position to
         // make. It needs no word, so it needs no translation.
         //
-        // The flag alone is not that condition. `peers_truncated` is set by the
-        // seventeenth distinct contact frame; `peers_reported` is the node's own
-        // `RESP_CODE_CONTACTS_START` count, and the two are collected from
-        // different frames and can disagree in either direction. Gated on the
-        // flag alone the pair reads `16/16`, which says the difference this face
-        // exists to make and then denies it, or `16/5`, which says the watch
-        // kept more than the node has. Both numbers have to be present AND
-        // different for the pair to mean anything.
+        // WHAT THE GATE IS NOT: a truncation flag. That flag had one writer,
+        // the seventeenth distinct contact frame, and the far commoner way to
+        // keep fewer than the node reports never reached it -- a contact whose
+        // advert type is not chat is dropped before any count moves, and the
+        // project's own bench node has two of them. Gated on truncation this
+        // face printed one number on exactly the list the pair exists for.
+        //
+        // What it is instead is `peers_complete`, because the two numbers are
+        // only comparable once the node's iteration has ended: mid-sync the
+        // retained count climbs from zero against a total that is already
+        // final, and the pair would count up through `3/40`. Both numbers also
+        // have to be present AND different -- `16/16` says the difference this
+        // face exists to make and then denies it, and `16/5` says the watch
+        // kept more than the node has.
         // And the pair means "I have this many of those", so it is printed
         // only where the watch actually kept FEWER than the node claims.
         // `16/16` states the difference and denies it in the same breath;
@@ -273,7 +279,7 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
         // stays the reported count everywhere it already was.
         const auto retained = static_cast<unsigned>(status.peers_retained);
         const auto reported = static_cast<unsigned>(status.peers_reported);
-        if (status.peers_truncated && retained < reported) {
+        if (status.peers_complete && retained < reported) {
             std::snprintf(text.peers, sizeof(text.peers), "%u/%u", retained,
                           reported);
         } else {

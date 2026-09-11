@@ -346,7 +346,7 @@ void no_field_is_ever_cut_short() {
             status.pinned_id = key(0x11223344U);
             status.refused_id = key(0x55667788U);
             status.message_truncated = cut != 0;
-            status.peers_truncated = cut != 0;
+            status.peers_complete = true;
             status.peers_reported = cut != 0 ? 65535 : 3;
             status.peers_retained = cut != 0 ? 16 : 3;
             // The longest name and sender either side can carry, because a
@@ -476,14 +476,32 @@ void a_capped_peer_list_shows_both_numbers() {
 
   status.peers_reported = 40;
   status.peers_retained = 16;
-  status.peers_truncated = true;
+  status.peers_complete = true;
   const apps::MeshText some = apps::format_mesh(status, l10n::Locale::En);
   CHECK(std::strcmp(some.peers, "16/40") == 0);
 
-  // The flag is not the condition. These two arrive from different frames --
-  // the cap is counted off contact frames, the total off the node's own
-  // CONTACTS_START -- so a truncated list whose numbers happen to agree, or
-  // disagree the wrong way, must still print one number.
+  // THE CAP IS NOT THE ONLY WAY TO KEEP FEWER, AND WAS NEVER THE COMMON ONE.
+  // A contact whose advert type is not chat is dropped before any count moves,
+  // so nothing flags it: four reported, two kept, no truncation anywhere. This
+  // is the list the pair exists for, and gated on a truncation flag the face
+  // printed `4` on it.
+  status.peers_reported = 4;
+  status.peers_retained = 2;
+  CHECK(std::strcmp(apps::format_mesh(status, l10n::Locale::En).peers, "2/4") == 0);
+
+  // And the pair waits for the iteration to end. Mid-sync the retained count
+  // is climbing from zero against a total that is already final, so a pair
+  // printed then counts up through 3/40.
+  status.peers_complete = false;
+  status.peers_retained = 3;
+  status.peers_reported = 40;
+  CHECK(std::strcmp(apps::format_mesh(status, l10n::Locale::En).peers, "40") == 0);
+  status.peers_complete = true;
+
+  // Both numbers present and different. These two arrive from different frames
+  // -- the contacts are counted off contact frames, the total off the node's
+  // own CONTACTS_START -- so a list whose numbers happen to agree, or disagree
+  // the wrong way, must still print one number.
   status.peers_reported = 16;
   status.peers_retained = 16;
   CHECK(std::strcmp(apps::format_mesh(status, l10n::Locale::En).peers, "16") == 0);

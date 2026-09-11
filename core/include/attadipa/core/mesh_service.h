@@ -92,7 +92,14 @@ struct MeshStatus {
     std::uint16_t peers_retained = 0;
     std::int8_t snr_quarter_db = 0;
     bool has_snr = false;
-    bool peers_truncated = false;
+    // Set when the node's contacts iteration has finished, cleared when one
+    // starts. It is what makes `peers_retained` comparable to
+    // `peers_reported`: mid-sync the retained count is climbing from zero
+    // while the reported total is already final, and a pair printed then
+    // counts up through 3/40. It replaces the old truncation flag, which only
+    // ever meant "the 16 slots filled" -- a contact the watch drops by advert
+    // type never reached that flag and is the ordinary case, not the corner.
+    bool peers_complete = false;
     bool message_truncated = false;
 };
 

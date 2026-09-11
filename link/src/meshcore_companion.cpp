@@ -168,7 +168,7 @@ void MeshCoreCompanion::reset_session()
     status_.peers_reported = 0;
     status_.peers_retained = 0;
     status_.has_snr = false;
-    status_.peers_truncated = false;
+    status_.peers_complete = false;
     status_.message_truncated = false;
     peer_count_ = 0;
     tx_head_ = 0;
@@ -449,9 +449,11 @@ void MeshCoreCompanion::accept_contact(const std::uint8_t* data,
     if (peer_count_ < peers_.size()) {
         peers_[peer_count_++] = candidate;
         status_.peers_retained = static_cast<std::uint16_t>(peer_count_);
-    } else {
-        status_.peers_truncated = true;
     }
+    // A seventeenth distinct contact is dropped and nothing is flagged for it.
+    // It is not a separate condition: `peers_retained < peers_reported` already
+    // covers it, and covers the contact dropped by advert type above, which no
+    // flag ever did.
 }
 
 const core::MeshPeer*
@@ -779,7 +781,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
                                     std::numeric_limits<std::uint16_t>::max()));
         peer_count_ = 0;
         status_.peers_retained = 0;
-        status_.peers_truncated = false;
+        status_.peers_complete = false;
         contacts_complete_ = false;
         break;
     case kResponseContact:
@@ -789,6 +791,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
         contacts_complete_ = true;
+        status_.peers_complete = true;
         if (!request_next_message(now)) {
             ++malformed_frames_;
             return false;

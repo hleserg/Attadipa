@@ -635,7 +635,7 @@ that the Clock is one of the six minimum screens.
 | Axis | Today | Evidence |
 |---|---|---|
 | geometry | **yes** — `--board t-watch-s3-plus` / `waveshare-amoled-206` | `sim/options.cpp:271` — "out.board = *found;" |
-| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:296-310` — "out.theme = ui::Theme::Day;" |
+| theme | **yes** — `--theme`, and `T` at runtime | `sim/options.cpp:304-318` — "out.theme = ui::Theme::Day;" |
 | locale | **yes** — `--locale`, and `L` at runtime | `sim/options.cpp:282-295` — "out.locale = l10n::Locale::En;" |
 | Adult/Child | **yes** — `--child` | [`sim/options.cpp:203`](../../sim/options.cpp) — "out.child_mode = true;", rendered at [`sim/main.cpp:243`](../../sim/main.cpp) — "apps::ClockMode::Child" |
 | a specific time | **yes** — `--clock-time <unix seconds>` | [`sim/options.cpp:214`](../../sim/options.cpp) — "out.clock_time_set = true;", consumed at [`sim/main.cpp:245`](../../sim/main.cpp) — "!options.clock_time_set" and passed to `build_clock_screen` as its `live` argument |

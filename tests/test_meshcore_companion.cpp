@@ -94,6 +94,50 @@ void connect_and_handshake(MeshCoreCompanion& client)
     CHECK(!client.next_tx(frame));
 }
 
+// A CONTACT THE NODE COUNTS AND THE WATCH DOES NOT KEEP, WITH NOTHING CAPPED.
+//
+// `accept_contact()` returns before any count moves when the advert type is not
+// chat, so `peers_retained` stays below the node's own `CONTACTS_START` total
+// with no flag raised anywhere -- the bench fleet has a Room Server and a
+// repeater, so this is the ordinary shape of a contact list. The face pairs the
+// two numbers on `peers_complete`, which is what this asserts the provider
+// sets, and when: not while the iteration is running.
+void test_a_contact_dropped_by_type_leaves_retained_below_reported()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+
+    const std::uint8_t start[] = {2, 3, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(10)));
+    CHECK(client.status().peers_reported == 3);
+    CHECK(client.status().peers_retained == 0);
+    CHECK(!client.status().peers_complete); // an iteration is running
+
+    for (std::uint8_t n = 0; n < 3; ++n) {
+        std::uint8_t contact[148]{};
+        contact[0] = 3;
+        for (std::size_t i = 0; i < 32; ++i)
+            contact[1 + i] = static_cast<std::uint8_t>(i + 1 + n * 32);
+        // The middle one is a Room Server rather than a chat contact.
+        contact[33] = n == 1 ? 3 : 1;
+        std::memcpy(&contact[100], "Peer", 4);
+        CHECK(client.receive(contact, sizeof(contact), at(11 + n)));
+    }
+    CHECK(client.status().peers_retained == 2);
+    CHECK(!client.status().peers_complete); // still running, still no pair
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(20)));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().peers_retained == 2 &&
+          client.status().peers_reported == 3);
+
+    // A second sync clears it again, so a stale pair cannot survive one.
+    const std::uint8_t restart[] = {2, 4, 0, 0, 0};
+    CHECK(client.receive(restart, sizeof(restart), at(21)));
+    CHECK(!client.status().peers_complete);
+}
+
 // The node's own key is the only thing on this wire that tells two MeshCore
 // nodes apart. `advertises_meshcore()` matches a service UUID or a name
 // substring and takes whichever advertisement arrives first, and the bench had
@@ -2085,6 +2129,7 @@ int main()
     test_typed_battery_failure_does_not_create_err_ambiguity();
     test_attached_node_battery_uses_the_live_queue_and_public_status();
     test_handshake_contacts_and_service_boundary();
+    test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();
     test_send_and_receive();
     test_connected_ble_does_not_expire_while_idle();
