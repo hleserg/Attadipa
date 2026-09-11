@@ -115,13 +115,12 @@ struct MeshText {
     // definition, because the bytes are still in `message`. A wearer reading
     // dots cannot tell the two apart, so the words say which it is.
     //
-    // `peers_partial` is the same shape one field over: the watch retains a
-    // fixed 16 contacts and the node may have more. It costs a wearer nothing
-    // on this face except that a sender past the cap cannot be named, so the
-    // treatment is to print both counts rather than the reported one alone.
-    // There is no peer picker here to make it cost anything else.
+    // The peer cap is the same shape one field over and gets no flag, because
+    // it needs none: the watch retains a fixed 16 contacts, the node may have
+    // more, and the whole treatment is that `peers` reads `16/40` instead of
+    // `40`. The string is the cue. A parallel bool that no renderer reads is a
+    // second way to ask the same question and a second thing to keep true.
     bool message_partial = false;
-    bool peers_partial   = false;
 
     // Shared active-screen status. No watch battery producer is bound yet.
     // Empty node_power means one integrated supply; unknown is a visible word.

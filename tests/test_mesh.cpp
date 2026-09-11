@@ -443,15 +443,27 @@ void a_capped_peer_list_shows_both_numbers() {
   status.peers_reported = 3;
   status.peers_retained = 3;
   const apps::MeshText all = apps::format_mesh(status, l10n::Locale::En);
-  CHECK(!all.peers_partial);
   CHECK(std::strcmp(all.peers, "3") == 0);
 
   status.peers_reported = 40;
   status.peers_retained = 16;
   status.peers_truncated = true;
   const apps::MeshText some = apps::format_mesh(status, l10n::Locale::En);
-  CHECK(some.peers_partial);
   CHECK(std::strcmp(some.peers, "16/40") == 0);
+
+  // The flag is not the condition. These two arrive from different frames --
+  // the cap is counted off contact frames, the total off the node's own
+  // CONTACTS_START -- so a truncated list whose numbers happen to agree, or
+  // disagree the wrong way, must still print one number.
+  status.peers_reported = 16;
+  status.peers_retained = 16;
+  CHECK(std::strcmp(apps::format_mesh(status, l10n::Locale::En).peers, "16") == 0);
+  // And the node's count can be the stale one. Twenty contact frames after a
+  // CONTACTS_START of 5 is a truncated list whose reported total is below what
+  // the watch kept: one number, and the one not already known to be wrong.
+  status.peers_reported = 5;
+  CHECK(std::strcmp(apps::format_mesh(status, l10n::Locale::En).peers, "16") == 0);
+  status.peers_reported = 40;
   CHECK(std::memcmp(&all, &some, sizeof(all)) != 0);
 
   // The widest either number can be. `peers_reported` is a `uint16_t` off the

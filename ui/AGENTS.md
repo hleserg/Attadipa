@@ -47,7 +47,7 @@ authority this file points at rather than repeats.
 - **LVGL's three label traps, all three already paid for.**
   `LV_LABEL_LONG_DOT` ellipsises only where the height is FIXED — with the
   height left at content the label grows downward through whatever is beneath
-  it: `ui/lvgl/mesh_face.cpp:336` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
+  it: `ui/lvgl/mesh_face.cpp:343` — "    // `LV_LABEL_LONG_DOT` puts the dots in only where the height is fixed;".
   **A label created bare is that same trap with nothing to read.** There is no
   long-mode call to find, and the default is content height with
   `LV_LABEL_LONG_WRAP`, so one line break in text that arrived off the link

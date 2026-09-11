@@ -190,7 +190,15 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
         put(text.node_name, sizeof(text.node_name), status.node_name.data());
     }
 
-    if (text.link == MeshLink::TurnedAway) {
+    // A latched refusal, not the screen that usually reports one. `TurnedAway`
+    // is the answer only while the transport is non-terminal; once it faults,
+    // `link_of()` ranks the fault first and the screen becomes `Broken`. The
+    // refusal is still latched there -- `reset_session()` keeps the pin and the
+    // refusal across a disconnect on purpose -- so the reset that screen asks
+    // for clears the fault and leaves the refusal. Withholding the two keys
+    // exactly there took the only pointer to the entry screen's node field off
+    // the one screen whose recommended action does not lead out of it.
+    if (status.has_refused && status.has_pinned) {
         char want[9];
         char bad[9];
         mesh_key_prefix(status.pinned_id, want);
@@ -244,14 +252,33 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
         // where it did not reads as "there are this many and I have that many
         // of them", which is the only difference this face is in a position to
         // make. It needs no word, so it needs no translation.
-        text.peers_partial = status.peers_truncated;
-        if (text.peers_partial) {
-            std::snprintf(text.peers, sizeof(text.peers), "%u/%u",
-                          static_cast<unsigned>(status.peers_retained),
-                          static_cast<unsigned>(status.peers_reported));
+        //
+        // The flag alone is not that condition. `peers_truncated` is set by the
+        // seventeenth distinct contact frame; `peers_reported` is the node's own
+        // `RESP_CODE_CONTACTS_START` count, and the two are collected from
+        // different frames and can disagree in either direction. Gated on the
+        // flag alone the pair reads `16/16`, which says the difference this face
+        // exists to make and then denies it, or `16/5`, which says the watch
+        // kept more than the node has. Both numbers have to be present AND
+        // different for the pair to mean anything.
+        // And the pair means "I have this many of those", so it is printed
+        // only where the watch actually kept FEWER than the node claims.
+        // `16/16` states the difference and denies it in the same breath;
+        // `16/5` is worse, because it says the watch holds more peers than
+        // exist. Everywhere else one number -- and the larger of the two, not
+        // the node's. A node that reported 5 and then sent twenty distinct
+        // contact frames has a stale count, and printing it would put a number
+        // on this face smaller than the set the watch can name a sender from.
+        // Outside that case the two agree or the node's is the larger, so this
+        // stays the reported count everywhere it already was.
+        const auto retained = static_cast<unsigned>(status.peers_retained);
+        const auto reported = static_cast<unsigned>(status.peers_reported);
+        if (status.peers_truncated && retained < reported) {
+            std::snprintf(text.peers, sizeof(text.peers), "%u/%u", retained,
+                          reported);
         } else {
             std::snprintf(text.peers, sizeof(text.peers), "%u",
-                          static_cast<unsigned>(status.peers_reported));
+                          retained > reported ? retained : reported);
         }
 
         text.has_snr = status.has_snr;

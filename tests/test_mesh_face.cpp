@@ -461,6 +461,72 @@ void a_long_message_stays_on_its_line(const platform::BoardProfile &board,
   face.clear();
 }
 
+// The first row that belongs to the message rather than to the heading above
+// it: 394 on the tall panel, 168 on the small one, which are the message row's
+// own tops.
+std::uint32_t below_heading(bool big) { return big ? 394 : 168; }
+
+// The heading is one line too, and a catalogue cannot make it two.
+//
+// `msg_heading_` was created bare -- content height, `LV_LABEL_LONG_WRAP` --
+// and that was harmless only while the string on it was nine glyphs. The cut
+// wording doubles it: `СООБЩЕНИЕ · ОБРЕЗАНО` is 181 px of a 240 px panel by
+// the font's own advance widths, which fits, and fitting by 59 px is not a
+// guard. Nothing below the heading's own line may depend on how long the
+// heading is, and the string is a translation, so this is checked in both
+// locales like every other length on this face.
+void a_long_heading_stays_on_its_line(const platform::BoardProfile &board,
+                                      l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus status = linked();
+  // The cut heading rather than the plain one: it is the longer of the two and
+  // the one this pull request introduced.
+  status.message_truncated = true;
+  apps::MeshText text = apps::format_mesh(status, locale);
+  face.build(lv_screen_active(), config_for(board), text);
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> before = *g_frame;
+
+  // The whole buffer, because the buffer is what bounds a heading -- no
+  // catalogue entry can be longer, and anything shorter leaves the question of
+  // how much shorter is still safe.
+  std::memset(text.message_heading, 'W', sizeof(text.message_heading) - 1);
+  text.message_heading[sizeof(text.message_heading) - 1] = '\0';
+  face.update(text);
+  lv_refr_now(display);
+
+  const std::size_t from =
+      static_cast<std::size_t>(below_heading(big)) * w * 2;
+  int moved = 0;
+  for (std::size_t at = from; at < before.size(); ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++moved;
+    }
+  }
+  check(moved == 0, "a full-length heading moves nothing under its line",
+        __LINE__);
+  if (moved != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed below y=%u\n", w,
+                 board.display.height_px, moved, below_heading(big));
+  }
+
+  // The counter-check, for the same reason the message row has one: two
+  // identical frames would pass the band comparison and prove nothing.
+  int drew = 0;
+  for (std::size_t at = 0; at < from; ++at) {
+    if (before[at] != (*g_frame)[at]) {
+      ++drew;
+    }
+  }
+  check(drew > 0, "the longer heading is drawn somewhere", __LINE__);
+
+  face.clear();
+}
+
 // The same readout twice does not reach the panel.
 //
 // `refresh_mesh()` calls `update()` at 2 Hz with a struct that changes only
@@ -514,6 +580,8 @@ int main() {
     // the band against the shorter string and calls the wider one covered.
     a_long_message_stays_on_its_line(*board, l10n::Locale::En);
     a_long_message_stays_on_its_line(*board, l10n::Locale::Ru);
+    a_long_heading_stays_on_its_line(*board, l10n::Locale::En);
+    a_long_heading_stays_on_its_line(*board, l10n::Locale::Ru);
     a_named_node_cannot_grow_its_row(*board, l10n::Locale::En);
     a_named_node_cannot_grow_its_row(*board, l10n::Locale::Ru);
     a_build_owns_the_screen_it_is_given(*board);

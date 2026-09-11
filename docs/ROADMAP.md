@@ -26,7 +26,7 @@ Written 2026-08-24, after an independent cold read of the repository.
 > in doubt — the watch pins one by its public key and terminates every other
 > connection (`firmware/main/meshcore_node_pin.h`), and draws four bytes of that
 > key beside the name:
-> `apps/include/attadipa/apps/mesh.h:137` — "// Four bytes of a node's public key as hex, into a nine-byte buffer."
+> `apps/include/attadipa/apps/mesh.h:136` — "// Four bytes of a node's public key as hex, into a nine-byte buffer."
 > The delivery and the reply are the parts that remain `NOT OBSERVED`. None of this is permission to change node firmware, add a
 > local radio provider, or grow a messenger UI.
 

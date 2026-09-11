@@ -311,18 +311,25 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     // distinction here rather than replacing it -- the heading's own words
     // still carry that, `LAST KNOWN · CUT` against `MESSAGE · CUT`.
     //
-    // THE COLOUR IS NOT THE CUE, AND ON THE DAY PALETTE IT COULD NOT BE.
-    // `color.warning` measures 1.93:1 on a day surface
+    // THE EMPHASIS IS WEIGHT, NOT HUE, BECAUSE THE DAY PALETTE HAS NO HUE TO
+    // SPEND HERE. `color.warning` measures 1.93:1 on a day surface
     // (`docs/ui/DESIGN_SYSTEM.md:139` — "| `color.warning` | **2.19** | **1.93** | **1.73** |"),
-    // under the 4.5:1 a word needs, so what a wearer reads is the word `CUT`
-    // and the colour only draws the eye to it -- which is the rule about not
-    // signalling a state by colour alone, paid rather than dodged. It is the
-    // price this row already paid: `AccentPrimary`, the `LAST KNOWN` colour it
-    // replaces here, is 1.93:1 in the same column.
+    // under the 4.5:1 a word needs, and `CUT` is a word that must be read. An
+    // earlier version of this line tinted it anyway and defended that as a
+    // price the row already paid. It is not: that parity holds against
+    // `AccentPrimary` for `Resting` only, and for `Linked` the colour being
+    // replaced is `TextMuted` at 4.95:1, which passes -- so tinting moved the
+    // one element carrying the cue from passing to failing.
+    // `docs/ui/DESIGN_SYSTEM.md:166` — "word — it is drawn on a dark chip rather than tinted, or it is drawn in"
+    // names the two treatments for an accent that must be read; neither is
+    // free here, and neither is needed. `TextPrimary` is 9.78:1 on a surface
+    // and 9.93:1 at night, it is stronger than both colours it replaces, and
+    // it says "read this" without asking the palette for a legibility it does
+    // not have on the day theme.
     lv_obj_set_style_text_color(
         msg_heading_,
         resolved(text.message_partial
-                     ? ColorRole::Warning
+                     ? ColorRole::TextPrimary
                      : (text.live ? ColorRole::TextMuted
                                   : ColorRole::AccentPrimary),
                  config_.theme, config_.pixel_cost),
@@ -343,6 +350,22 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_height(msg_, lv_font_get_line_height(
                                 lv_obj_get_style_text_font(msg_, LV_PART_MAIN)));
     lv_label_set_long_mode(msg_, LV_LABEL_LONG_DOT);
+
+    // The heading gets the same treatment, and now that it has to.
+    //
+    // It is a bare label -- content height, `LV_LABEL_LONG_WRAP` -- and until
+    // the cut wording arrived the string on it was nine glyphs, so the trap
+    // had nothing to spring on. `СООБЩЕНИЕ · ОБРЕЗАНО` is twenty, 181 px of a
+    // 240 px panel by the font's own advance widths, and the next translation
+    // or the next word after `CUT` is what a rendered test should not have to
+    // be re-run to survive. One line and an ellipsis leaves the message row
+    // below it out of reach of anything a catalogue can say.
+    lv_obj_set_width(msg_heading_, w - margin * 2);
+    lv_obj_set_height(
+        msg_heading_,
+        lv_font_get_line_height(
+            lv_obj_get_style_text_font(msg_heading_, LV_PART_MAIN)));
+    lv_label_set_long_mode(msg_heading_, LV_LABEL_LONG_DOT);
 
     if (!big) {
       lv_obj_set_style_text_align(msg_heading_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -399,10 +422,16 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     // anybody reading it is concerned. Bounded and ellipsised is the treatment
     // the message and the sender rows above already get, and for the same
     // reason: what decides the width of these is off the link, not here.
-    const std::int32_t last_edge = w - (big ? 32 : 12);
+    // The right edge is the same margin the rule and the message already use,
+    // not a hand-picked inset: 12 on 240 px put this row's box 8 px right of
+    // every rule above it. The gutter is a physical length too -- 4 dp is 8 px
+    // at 314 dpi and 6 px at 220, which `big ? 8 : 4` got wrong on the smaller
+    // panel in the direction that matters, too tight.
+    const std::int32_t last_edge = w - margin;
+    const std::int32_t gutter = config_.metrics.px(dp_of(Space::Xs));
     for (int i = 0; i < 3; ++i) {
       const std::int32_t gap =
-          (i < 2 ? column[i + 1] : last_edge) - column[i] - (big ? 8 : 4);
+          (i < 2 ? column[i + 1] : last_edge) - column[i] - gutter;
       show(value_[i], values[i]);
       show(label_[i], labels[i]);
       lv_obj_set_style_text_opa(value_[i], text.live ? LV_OPA_COVER : LV_OPA_50,
@@ -439,10 +468,27 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_width(answered_, w);
     lv_obj_set_style_text_align(pinned_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(answered_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, (big ? 350 : 162) - inset);
-    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, (big ? 376 : 184) - inset);
-    if (!big && text.pinned[0] != '\0') {
-      hide(note_);  // the two key lines say it, and 240 px has room for one
+    // On 240 px the note and the first key line are both y=162, so one of them
+    // moves. Which one is not a layout question. For `TurnedAway` the keys ARE
+    // the note -- "that node turned you away" says nothing the pinned and
+    // answered keys do not -- so the note goes. For a terminal fault the note
+    // is the only place the reset is named, and the keys are the evidence that
+    // the reset will not clear everything (`reset_session()` keeps the pin and
+    // the refusal on purpose), so there the keys move under it instead. On 410
+    // px both have their own row and neither question arises.
+    const bool keys_replace_note =
+        !big && text.link == apps::MeshLink::TurnedAway;
+    if (keys_replace_note) {
+      hide(note_);
+    }
+    if (big || keys_replace_note) {
+      lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, (big ? 350 : 162) - inset);
+      lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, (big ? 376 : 184) - inset);
+    } else {
+      lv_obj_align_to(pinned_, note_, LV_ALIGN_OUT_BOTTOM_MID, 0,
+                      config_.metrics.px(dp_of(Space::Xs)));
+      lv_obj_align_to(answered_, pinned_, LV_ALIGN_OUT_BOTTOM_MID, 0,
+                      config_.metrics.px(dp_of(Space::Xs)));
     }
 
     show(way_out_, text.way_out);
