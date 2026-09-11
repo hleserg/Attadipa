@@ -962,7 +962,7 @@ to every unit of the same model.
   `e093b1cc1d1cf85097f955abbea65c08`. `13-52-25`: md5
   `5a0fef65a358430d6499944a75d22e19`, fetched from the vendor's own published
   copy at `files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf` and
-  byte-identical to the copy [`MAGNETOMETER_RETROFIT.md:149`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence"
+  byte-identical to the copy [`MAGNETOMETER_RETROFIT.md:154`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence"
   already recorded, which closes that document's provenance.
 - **How to name these two, everywhere in this tree.** Write the vendor's own
   footer form in full — `13-52-27 ∙ QMI8658C Datasheet ∙ Rev A` and

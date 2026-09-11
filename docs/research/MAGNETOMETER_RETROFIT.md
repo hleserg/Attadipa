@@ -8,9 +8,14 @@
 > the later Waveshare ID/XYZ capture is `MEASURED` with its limits below. The
 > 2026-09-08 tracing was taken before the module was powered, so where it says
 > the silicon identity is `UNKNOWN` it has since been answered by the
-> 2026-09-09 capture, and where it reports resistances it has not. The proposed
-> mounting, calibration, tilt, accuracy and interference tests remain
-> **`NOT EXECUTED — HARDWARE REQUIRED`**.
+> 2026-09-09 capture, and where it reports resistances it has not. Reset is
+> split between the two rather than carried across: the tracing's `RST` OL
+> still establishes neither a broken trace nor a valid reset-high voltage, and
+> §2.1 does not answer that either — what §2.1 records is that the part ran
+> with `CAD`/`RST` held high on the module itself, which is why the retrofit
+> needed no reset wire from the watch, not evidence that the pad reaches the
+> die. The proposed mounting, calibration, tilt, accuracy and interference
+> tests remain **`NOT EXECUTED — HARDWARE REQUIRED`**.
 >
 > **Owner decision this document rests on**
 > ([#83](https://github.com/hleserg/Attadipa/issues/83), 2026-08-22): *two*

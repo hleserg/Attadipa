@@ -181,15 +181,21 @@ Written 2026-08-24, after an independent cold read of the repository.
 > `own` and is therefore **not** `target`, so the distance stays unrenderable
 > until a *remote* node's coordinate can be fetched, which OD-28 leaves open.
 >
-> **What hardware does gate is the arrow, and its first step is H16** — four
-> ohmmeter readings on two bare magnetometer modules, which arrived 2026-09-05
-> ([BENCH_DEVICES](research/BENCH_DEVICES.md)) and have not been read off, so
-> what H16 waits on now is an ohmmeter and a hand. Until it is answered no
-> magnetometer goes on a board, and until one is on a board and reads correctly
-> the vibration motor is not wired — a motor beside an uncalibrated compass
-> makes two unknowns out of one. That gate is a magnetometer gate. It is not a
-> gate on the slice, and reading it as one is what parked this direction on a
-> shipment.
+> **What hardware does gate is the arrow, and H16 is no longer where it
+> stops.** The modules arrived 2026-09-05
+> ([BENCH_DEVICES](research/BENCH_DEVICES.md)), were probed unpowered
+> 2026-09-08, and one is soldered to the Waveshare and answering as of
+> 2026-09-09. This paragraph used to say no magnetometer goes on a board until
+> H16 is answered; one went on a board first. What the probing found is that
+> H16's `SDA`→`VCC` recipe cannot read a pull-up through the module's own
+> regulator, and that `RST`'s OL says nothing either way, so the pad-to-die
+> half is still `UNKNOWN`. H16 records both, and neither now blocks wiring.
+> What still blocks the motor is that one on a board has not yet read
+> *correctly*: raw counts with an unexplained `CNTL2` readback and authenticity
+> `UNKNOWN` are a capture, not a working compass, and a motor beside an
+> uncalibrated compass makes two unknowns out of one. That gate is a
+> magnetometer gate. It is not a gate on the slice, and reading it as one is
+> what parked this direction on a shipment.
 
 ## Where the project actually is
 

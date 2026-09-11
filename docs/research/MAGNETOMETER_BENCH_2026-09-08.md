@@ -110,7 +110,11 @@ it is not evidence of an open rail or a defective watch.
 **UNKNOWN:** meter calibration/accuracy, exact watch firmware and USB/battery
 state during this reading, loaded voltage, ripple, current headroom and whether
 the expansion rail remains live in sleep. The reading does not resolve the
-rail-ownership question in [MAGNETOMETER_RETROFIT](MAGNETOMETER_RETROFIT.md) §5.9.
+rail-ownership question, which is
+`docs/research/MAGNETOMETER_RETROFIT.md:1925` —
+"**Q5 · Is the `+3V3` expansion pad always-on or `ALDO1`-switched?**": a live
+pad on a running, USB-attached watch says nothing about which regulator owns
+it, and §5.9 — *"Recommended placement"* — is not where that question lives.
 
 ## Boundary for the next bench step
 
