@@ -111,9 +111,18 @@ def main() -> int:
         # text stops being recognised, so nothing is checked and nothing is
         # said. `firmware/partitions.csv` carries the offsets that decide what
         # a flash write destroys, and the two citations into it --
-        # `tools/flash/flash_no_reset.py:28` -- "`firmware/partitions.csv:22` -- \"nvs,         data, nvs,      0x9000,    0x6000,\""
-        # and `docs/research/BENCH_DEVICES.md:42` -- "`firmware/partitions.csv:24` — \"factory,     app,  factory,  0x10000,   0x400000,\","
+        # `tools/flash/flash_no_reset.py:28` -- "nvs,         data, nvs,"
+        # and `docs/research/BENCH_DEVICES.md:42` -- "factory,     app,  factory,"
         # -- read as checked for as long as `csv` was in neither list.
+        #
+        # THOSE TWO FINGERPRINTS ARE FRAGMENTS ON PURPOSE. Quoting either
+        # citation whole puts a second `firmware/partitions.csv:NN` inside this
+        # comment, which the loop below reads as a citation of its own and asks
+        # for a fingerprint it cannot have; and the quotes inside it are
+        # backslash-escaped here and bare there, so the fingerprint stopped at
+        # the first `\` and matched nothing. Both were invisible until #538
+        # made source comments checked, and neither is a hypothetical: this is
+        # the comment that produced them.
         write(root, "firmware/partitions.csv",
               "# Name, Type\nnvs, data\nphy_init, data\n")
         write(root, "docs/research/CITER.md",

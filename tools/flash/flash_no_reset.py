@@ -92,7 +92,7 @@ FACTORY_FLASH_BYTES = 16 * 1024 * 1024
 # behaviour is the old behaviour, one argument further away.
 VERIFIED_BACKUPS = {
     # `docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:38` --
-    # "| SHA-256 | **`e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`** |"
+    # "**`e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`**"
     # -- verified three independent ways there: the chip's own MD5 over all
     # 16 MB, a second full read that matched byte for byte, and a structural
     # parse in which `app0`'s self-carried SHA-256 validates.
