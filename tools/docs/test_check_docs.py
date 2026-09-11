@@ -105,6 +105,33 @@ def main() -> int:
             bool(check_docs.check_citation_lines(root)),
         )
 
+        # A PARTITION TABLE IS A `.csv`, and the suffix list is the whole of
+        # what decides whether a citation into one is a citation at all. A
+        # suffix missing from it fails silently in the worst direction: the
+        # text stops being recognised, so nothing is checked and nothing is
+        # said. `firmware/partitions.csv` carries the offsets that decide what
+        # a flash write destroys, and the two citations into it --
+        # `tools/flash/flash_no_reset.py:28` -- "`firmware/partitions.csv:22` -- \"nvs,         data, nvs,      0x9000,    0x6000,\""
+        # and `docs/research/BENCH_DEVICES.md:42` -- "`firmware/partitions.csv:24` — \"factory,     app,  factory,  0x10000,   0x400000,\","
+        # -- read as checked for as long as `csv` was in neither list.
+        write(root, "firmware/partitions.csv",
+              "# Name, Type\nnvs, data\nphy_init, data\n")
+        write(root, "docs/research/CITER.md",
+              'See `firmware/partitions.csv:2` -- "nvs, data".\n')
+        case(
+            "a citation into a .csv is checked and holds",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "docs/research/CITER.md",
+              'See `firmware/partitions.csv:3` -- "nvs, data".\n')
+        case(
+            "a .csv citation that drifted is reported",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+
         # A fingerprint that WRAPPED onto the next line. This is the shape that
         # hid a real drift: WAVESHARE_ARRIVAL cited HARDWARE_MATRIX for
         # "8 MB **octal**" with the quote on the following line, the citation

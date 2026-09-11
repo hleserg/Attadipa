@@ -29,9 +29,20 @@ path replaces the table at 0x8000 with this repository's. Under
 -- `nvs` runs 0x9000-0xf000 and there is NO `otadata` partition at all. The
 factory Arduino layout has one --
 `docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:61` -- "otadata  data ota      0xe000      8K"
--- so on a factory unit flashed from a build directory those bytes survive the
-write and then sit inside our `nvs`. What that leftover page does to
-`nvs_flash_init()` is UNKNOWN and has not been tested.
+-- so on a factory unit flashed from a build directory those 8K survive the
+write, and 8K does not fit in what is left of our `nvs`. It STRADDLES TWO
+PARTITIONS: 0xe000-0xf000 is the last page of our `nvs`, and 0xf000-0x10000
+is the whole of our `phy_init`
+(`firmware/partitions.csv:23` -- "phy_init,    data, phy,      0xf000,    0x1000,").
+What the first page does to `nvs_flash_init()` is UNKNOWN and has not been
+tested. The second is inert here, and for a reason worth stating rather than
+assuming: no sdkconfig under `firmware/` sets
+`CONFIG_ESP_PHY_INIT_DATA_IN_PARTITION`, and ESP-IDF v5.5.5 defaults it to
+`n` (`components/esp_phy/Kconfig`, not a file of this repository), so this
+firmware compiles its PHY data into the app and never reads that partition.
+That is also why the paragraph above may count PHY data among what survives
+the write: the partition survives it, but on a factory unit what survives in
+it is otadata.
 
 `--restore` writes ONE CONTIGUOUS BLOCK, 0x0-0x410000 from a full-flash backup.
 That covers the same three images and everything between them, so `nvs` --

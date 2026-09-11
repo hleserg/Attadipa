@@ -208,7 +208,7 @@ CITATION = re.compile(
     # It was missing entirely, and `probe/pedo.c:402` -- the divisor a bench
     # report's every milligravity figure rests on -- was therefore not a
     # citation to this file at all, and could not be asked for a fingerprint.
-    r"\.(?:md|cpp|c|h|hpp|py|sh|yml|yaml|json|jq|txt|cmake))"
+    r"\.(?:md|cpp|c|h|hpp|py|sh|yml|yaml|json|jq|txt|cmake|csv))"
     # The `)` is a Markdown link closing before the line number:
     # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
     #
@@ -329,7 +329,7 @@ def bare_document_index(root: str) -> dict[str, str]:
 # resolved.
 CITED_SUFFIXES = (
     ".md", ".cpp", ".c", ".h", ".hpp", ".py", ".sh", ".yml", ".yaml",
-    ".json", ".jq", ".txt", ".cmake",
+    ".json", ".jq", ".txt", ".cmake", ".csv",
 )
 
 
