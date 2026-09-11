@@ -1,4 +1,5 @@
 #include <cctype>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -240,6 +241,46 @@ std::string on_screen() {
 // `dup2` on the file descriptors and not `freopen` on the `FILE*`: the subject
 // is the bytes that leave this process, and a check that read a string this
 // process handed itself would not be looking at the console at all.
+// THE CAPTURE HAS TO SURVIVE THE PROCESS IT CAPTURES.
+//
+// Everything from `enter_provisioning` to the last frame runs with fd 1 and
+// fd 2 pointing at a temporary file that only `end()` reads. An `LV_ASSERT`, a
+// segfault or any `abort()` in there ends the process with the redirect still
+// installed: `ctest --output-on-failure` prints the header and nothing else,
+// and the one copy of the message is a file in `/tmp` that outlives no CI
+// runner. A regression in the shipping entry screen would arrive as an
+// undiagnosable crash instead of a named failure.
+//
+// So a handler puts the real stderr back and pours the capture into it before
+// the default disposition runs. Only `dup2`, `lseek`, `read`, `write`,
+// `signal` and `raise` appear below, which is what a signal handler is allowed
+// to call; `fflush` is not among them, so whatever `stdout` was still holding
+// is lost -- the assertion text itself is written to the unbuffered stderr and
+// is not.
+volatile std::sig_atomic_t g_console_err = -1;
+volatile std::sig_atomic_t g_console_file = -1;
+
+extern "C" void spill_console_on_crash(int sig) {
+  const int err = g_console_err;
+  const int file = g_console_file;
+  if (err >= 0) {
+    (void)dup2(err, STDERR_FILENO);
+  }
+  if (file >= 0) {
+    static const char kBanner[] =
+        "\n--- captured console, recovered from a crash ---\n";
+    (void)write(STDERR_FILENO, kBanner, sizeof kBanner - 1);
+    (void)lseek(file, 0, SEEK_SET);
+    char block[512];
+    ssize_t got = 0;
+    while ((got = read(file, block, sizeof block)) > 0) {
+      (void)write(STDERR_FILENO, block, static_cast<std::size_t>(got));
+    }
+  }
+  std::signal(sig, SIG_DFL);
+  std::raise(sig);
+}
+
 class Console {
 public:
   bool begin() {
@@ -260,10 +301,31 @@ public:
       (void)end();
       return false;
     }
+    // Unbuffered, so the handler has something to recover. Redirected to a
+    // file, `stdout` is fully buffered, and a crash takes the buffer with it --
+    // the handler would then restore a console and pour an empty file into it.
+    // `fflush` is not async-signal-safe and cannot be the answer inside the
+    // handler, so the write reaches the file when it is made instead.
+    (void)std::setvbuf(stdout, nullptr, _IONBF, 0);
+    (void)std::setvbuf(stderr, nullptr, _IONBF, 0);
+    g_console_err = saved_err_;
+    g_console_file = file_;
+    std::signal(SIGABRT, spill_console_on_crash);
+    std::signal(SIGSEGV, spill_console_on_crash);
+    std::signal(SIGBUS, spill_console_on_crash);
     return true;
   }
 
   std::string end() {
+    // Handlers first: they hold the two descriptors this function is about to
+    // close, and a crash between the close and the reset would follow them.
+    std::signal(SIGABRT, SIG_DFL);
+    std::signal(SIGSEGV, SIG_DFL);
+    std::signal(SIGBUS, SIG_DFL);
+    g_console_err = -1;
+    g_console_file = -1;
+    (void)std::setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+    (void)std::setvbuf(stderr, nullptr, _IONBF, 0);
     // Redirected, stdout is a file and therefore fully buffered: without this
     // the last line of the walk is still in this process when the test reads
     // the file, and "no passkey in the output" would be true of an output that
@@ -302,18 +364,27 @@ private:
   int saved_err_ = -1;
 };
 
-// Only the lines this simulator's board wrote. Everything else on the captured
-// console belongs to LVGL, which logs at `LV_LOG_LEVEL_WARN` through the same
-// two descriptors (`sim/lv_conf_simulator.h`), and a rule about digits applied
-// to somebody else's warning is a rule that fails on a day nothing changed.
-std::string provisioning_lines(const std::string &captured) {
+// Only the lines this simulator's board wrote ABOUT THE PASSKEY. Everything
+// else on the captured console belongs to LVGL, which logs at
+// `LV_LOG_LEVEL_WARN` through the same two descriptors
+// (`sim/lv_conf_simulator.h`), and a rule about digits applied to somebody
+// else's warning is a rule that fails on a day nothing changed.
+//
+// `provision:` alone was not that anchor. Four lines wear that prefix and one
+// of them is the clock receipt, whose first field is a UNIX instant -- ten
+// digits. `EntryTask::NodePasskey` never reaches `set_wall_clock`, so the rule
+// is clean today and stops being clean the moment this walk widens to
+// `EntryTask::All`, which is the shape `sim/main.cpp` opens by default. The
+// digit rule would then redden on a console with no leak in it, saying the
+// passkey leaked, which is the exact failure its own comment warns about.
+std::string passkey_lines(const std::string &captured) {
   std::string out;
   std::size_t at = 0;
   while (at < captured.size()) {
     const std::size_t end = captured.find('\n', at);
     const std::size_t stop = end == std::string::npos ? captured.size() : end;
     const std::string line = captured.substr(at, stop - at);
-    if (line.rfind("provision:", 0) == 0) {
+    if (line.rfind("provision: passkey", 0) == 0) {
       out += line;
       out += '\n';
     }
@@ -411,7 +482,7 @@ void the_console_reports_the_passkey_without_saying_it(
 
   // And they did not come out.
   CHECK(!contains(captured, kCanary));
-  CHECK(!has_six_digit_run(provisioning_lines(captured)));
+  CHECK(!has_six_digit_run(passkey_lines(captured)));
 
   // The console still says what happened, which is the other half of the fix:
   // a line deleted rather than redacted would pass the two checks above and

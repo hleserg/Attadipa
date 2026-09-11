@@ -163,6 +163,20 @@ ui::ProvisionFaceConfig provision_config_for(const ui::ClockFaceConfig &clock) {
 // back to the clock when the holder leaves. Here it is an LVGL timer that
 // deletes itself; there it is the clock's own refresh timer.
 void leave_provisioning(lv_timer_t *timer) {
+  // A TIMER MAY OUTLIVE THE ENTRY IT POLLS, AND ONLY THIS SAYS SO.
+  //
+  // One timer per entry holds only while `enter_provisioning` is called once,
+  // which is true of `sim/main.cpp` and not true of anything else -- a test
+  // that walks two board profiles calls it twice, and if the first walk never
+  // reaches `Exit` this timer is still alive when the second `emplace()`
+  // replaces the entry under it. Two timers then poll one optional: the first
+  // to see `finished()` resets it, and the second dereferences a destroyed
+  // `ProvisioningEntry`. The timer that finds nothing engaged is the one with
+  // nothing left to do.
+  if (!g_entry) {
+    lv_timer_delete(timer);
+    return;
+  }
   // The board polls the passkey on its clock tick; here it is this timer, and
   // it is the only thing that can end the wait. The tick that hears the answer
   // draws it and stops there, and nothing takes the receipt away afterwards:
