@@ -14,17 +14,17 @@
   // The JSON-LD graph describes the canonical English document.
   const copy = {
     en: {
-      title: 'Attadipa — an open operating system for wearable devices',
-      ogTitle: 'Attadipa — open OS, personal devices, shared possibilities',
-      description: 'Meet Attadipa, an open operating system in development for watches and personal mesh devices. Independent by design, shaped by the people who use and build it.',
+      title: 'Atta-dipa — an open operating system for wearable devices',
+      ogTitle: 'Atta-dipa — open OS, personal devices, shared possibilities',
+      description: 'Meet Atta-dipa, an open operating system in development for watches and personal mesh devices. Independent by design, shaped by the people who use and build it.',
       cardDescription: 'Your device should do more than its maker imagined. We are building an open OS for wearables, with independent operation, a beautiful interface and room for new ideas.',
       locale: 'en_US',
       localeAlternate: 'ru_RU'
     },
     ru: {
-      title: 'Attadipa — открытая операционная система для носимых устройств',
-      ogTitle: 'Attadipa — открытая ОС, свои устройства, общие возможности',
-      description: 'Знакомьтесь с Attadipa — открытой ОС для часов и персональных меш-устройств. Создаём самостоятельные устройства, красивый интерфейс и общую основу для новых приложений.',
+      title: 'Atta-dipa — открытая операционная система для носимых устройств',
+      ogTitle: 'Atta-dipa — открытая ОС, свои устройства, общие возможности',
+      description: 'Знакомьтесь с Atta-dipa — открытой ОС для часов и персональных меш-устройств. Создаём самостоятельные устройства, красивый интерфейс и общую основу для новых приложений.',
       cardDescription: 'Ваше устройство должно уметь больше, чем однажды решил его производитель. Мы создаём открытую ОС для носимых устройств — с самостоятельной работой и идеями от каждого.',
       locale: 'ru_RU',
       localeAlternate: 'en_US'
