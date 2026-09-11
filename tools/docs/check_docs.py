@@ -144,9 +144,17 @@ SOURCE_SUFFIXES = tuple(COMMENT_MARKERS)
 # SOME FILES ARE SELECTED BY NAME, because their kind is in the name and not in
 # a suffix. Seventeen CMake files here are called `CMakeLists.txt`; ESP-IDF
 # names a component's options `Kconfig.projbuild` and a build profile
-# `sdkconfig.<profile>`. Each is `#`-commented and each is cited: the profiles
-# carry the provenance of a `MEASURED` label, which is the last kind of citation
-# that should rot unwatched.
+# `sdkconfig.<profile>`. Each is cited: the profiles carry the provenance of a
+# `MEASURED` label, which is the last kind of citation that should rot
+# unwatched.
+#
+# NOT ALL OF THEM ARE `#`-COMMENTED, which this sentence used to claim. A
+# `Kconfig` writes an option's explanation in a `help` block -- indentation,
+# not a marker -- and `firmware/main/Kconfig.projbuild` carries a citation into
+# `docs/research/HARDWARE_MATRIX.md` there. The `#` scan blanked every one of
+# them while keeping the tail of any help line that happened to contain a `#`,
+# so what it read of that file was an issue number mid-sentence. `kconfig_prose`
+# is the entry for it. Found in review.
 #
 # It is a table rather than three tests because the first version of it was one
 # constant for one name, and a second special case is the point at which that
@@ -198,8 +206,52 @@ START_ONLY = ("*",)
 # reaching for and could not state. It DELETES `opening_triple`,
 # `strip_literals`, the delimiter table, the prefix table and both of the
 # loop's state variables rather than adding a third guess to them.
+#
+# AND A LOGICAL LINE IS NOT A PHYSICAL ONE. Three of the four below mean a
+# logical line started; `tokenize.NL` means the opposite -- CPython emits it
+# for a newline that does NOT end one, which is to say a newline inside
+# brackets. So the first string of every bracketed continuation line was read
+# as a docstring and scanned as prose. `NL` cannot simply be dropped: a module
+# docstring after a shebang is preceded by COMMENT then NL. Bracket depth is
+# what separates the two, and a backslash continuation emits no `NL` at all.
+# Found in review, in this checker's own suite: `test_check_docs.py` builds its
+# fixture citations exactly that way, and they were silent only because the
+# paths they name do not exist in this tree.
 DOCSTRING_OPENS_A_LINE = (tokenize.NEWLINE, tokenize.NL, tokenize.INDENT,
                           tokenize.DEDENT)
+OPENING_BRACKETS = "([{"
+CLOSING_BRACKETS = ")]}"
+
+
+def kconfig_prose(text: str) -> list[str]:
+    """Every `#` comment and every `help` body of a Kconfig file, line for line.
+
+    A `help` body is the run of lines indented further than the `help` keyword
+    itself, blank lines included -- Kconfig's own rule. Inside one a `#` is
+    prose and not a marker, which is why the block is read whole rather than
+    handed back to the `#` scan.
+    """
+    out = []
+    body_of = None      # the indent of the `help` keyword, or None outside one
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if body_of is not None:
+            if not stripped:
+                out.append("")      # a blank line does not close the block
+                continue
+            if len(line) - len(stripped) > body_of:
+                out.append(stripped)
+                continue
+            body_of = None
+        at = stripped.find("#")
+        if at >= 0:
+            out.append(stripped[at + 1:].lstrip())
+        elif stripped in ("help", "---help---"):
+            body_of = len(line) - len(stripped)
+            out.append("")
+        else:
+            out.append("")
+    return out
 
 
 def markers_for(path: str) -> tuple[str, ...]:
@@ -238,10 +290,16 @@ def python_prose(text: str) -> list[str] | None:
     except (tokenize.TokenError, SyntaxError, IndentationError):
         return None
     previous = tokenize.NEWLINE
+    depth = 0
     for token in tokens:
+        if token.type == tokenize.OP:
+            if token.string in OPENING_BRACKETS:
+                depth += 1
+            elif token.string in CLOSING_BRACKETS:
+                depth -= 1
         if token.type == tokenize.COMMENT:
             out[token.start[0] - 1] = token.string.lstrip("#").strip()
-        elif (token.type == tokenize.STRING
+        elif (token.type == tokenize.STRING and depth == 0
               and previous in DOCSTRING_OPENS_A_LINE):
             body = undelimited(token.string).split("\n")
             for offset, one in enumerate(body):
@@ -283,6 +341,8 @@ def comment_lines(path: str, text: str) -> str:
         prose = python_prose(text)
         if prose is not None:
             return "\n".join(prose)
+    if os.path.basename(path).startswith("Kconfig"):
+        return "\n".join(kconfig_prose(text))
     out = []
     for line in text.split("\n"):
         stripped = line.lstrip()

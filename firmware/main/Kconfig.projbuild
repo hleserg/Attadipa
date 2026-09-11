@@ -279,12 +279,12 @@ config ATTADIPA_GNSS_LOCAL_BAUD
 
         A unit with the other part changes these two symbols and still
         does not work, because the LS550G needs a rail this firmware
-        never raises. docs/research/HARDWARE_MATRIX.md:351 -- "- **The
-        LS550G variant needs two rails** (DC4 at 850 mV *and* BLDO1 at
-        3300 mV)" -- and board_power_enable_gnss_rail() raises BLDO1
-        alone. So on such a unit these two symbols open the port onto a
-        module whose core rail is down, and the readout blames power
-        five seconds later rather than the setting. That is deliberate,
+        never raises. docs/research/HARDWARE_MATRIX.md:351 -- "LS550G
+        variant needs two rails" -- DC4 at 850 mV as well as the BLDO1
+        that board_power_enable_gnss_rail() raises alone. So on such a
+        unit these two symbols open the port onto a module whose core
+        rail is down, and the readout blames power five seconds later
+        rather than the setting. That is deliberate,
         not an oversight: firmware/main/board_power.cpp says why DC4 is
         not written blind, and firmware/main/gnss_bridge.cpp is what
         establishes which part is fitted before anyone writes it.

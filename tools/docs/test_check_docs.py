@@ -795,6 +795,36 @@ def main() -> int:
                 for name in ("firmware/sdkconfig.hil",
                              "firmware/main/Kconfig.projbuild")),
         )
+        # AND A KCONFIG WRITES ITS PROSE IN A `help` BLOCK: indentation, not a
+        # marker. Being in the corpus is not the same as being read -- the `#`
+        # scan blanked every help line, so the one citation this repository has
+        # in a `Kconfig` went unchecked, and what the scan DID read of the file
+        # was the tail of any help line carrying a `#`, which is an issue
+        # number mid-sentence. Found in review.
+        write(root, "firmware/main/Kconfig.projbuild",
+              "config A\n    bool \"a\"\n    help\n"
+              "        See core/thing.h:3 -- \"beta gamma delta\".\n"
+              "        Issue #417 is prose here, not a comment.\n"
+              "\nconfig B\n    bool \"b\"\n")
+        case(
+            "a citation in a Kconfig help block is checked",
+            "check_citation_lines",
+            any("Kconfig.projbuild" in problem and "which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # And the block ends where Kconfig says it does, at the first line
+        # indented no further than the `help` keyword -- otherwise the rest of
+        # the file is prose and every path in it is a citation.
+        write(root, "firmware/main/Kconfig.projbuild",
+              "config A\n    bool \"a\"\n    help\n"
+              "        An explanation.\n\nconfig B\n"
+              "    bool \"See core/thing.h:1 -- 'gamma'\"\n")
+        case(
+            "a Kconfig help block ends at the next unindented line",
+            "check_citation_lines",
+            not any("Kconfig.projbuild" in problem
+                    for problem in check_docs.check_citation_lines(root)),
+        )
         write(root, "l10n/strings.toml", "")
         write(root, "firmware/sdkconfig.hil", "")
         write(root, "firmware/main/Kconfig.projbuild", "")
@@ -809,6 +839,23 @@ def main() -> int:
             "check_citation_lines",
             any("which is now at :2" in problem
                 for problem in check_docs.check_citation_lines(root)),
+        )
+        # ...and only where a LOGICAL line opens. `tokenize.NL` is the
+        # newline that does NOT end one -- the newline inside brackets -- so
+        # the first string of every bracketed continuation line was read as a
+        # docstring. This suite is written in that shape: the fixture below is
+        # the same call `write(root, ..., "...")` used throughout, and the ones
+        # above it were silent only because the paths they build do not exist
+        # in this tree. Deleting `NL` is the wrong fix -- a module docstring
+        # after a shebang is preceded by COMMENT then NL -- so depth is what
+        # the scanner tracks. Found in review.
+        write(root, "tools/citer.py",
+              'write(root, "src/citer.cpp",\n'
+              '      "See `core/thing.h:1` -- \\"gamma\\".")\n')
+        case(
+            "a string opening a continuation line is not a docstring",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
         )
         # ...but only where a docstring actually opens. A triple quote inside
         # an expression would otherwise swallow every line after it as prose.
