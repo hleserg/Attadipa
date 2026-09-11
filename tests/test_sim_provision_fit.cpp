@@ -27,7 +27,7 @@
 // from the board profile would agree with a wrong `build()` forever.
 //
 // **The fit half.** `lines_` is a flex column aligned `LV_FLEX_ALIGN_CENTER`
-// (`ui/lvgl/provision_face.cpp:175` -- "  lv_obj_set_flex_align(lines_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,")
+// (`ui/lvgl/provision_face.cpp:185` -- "  lv_obj_set_flex_align(lines_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,")
 // and the comment above it says the column clips rather than scrolls. Centred,
 // it clips at BOTH ends, and the title is the line that goes first -- so the
 // failure mode is a screen that has quietly lost the word naming what the
