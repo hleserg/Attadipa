@@ -188,6 +188,16 @@ and filed as a follow-up issue instead of held. The round a finding was first
 seen is read from the ledger the script itself wrote, never from what the
 reviewer says this round, so a finding cannot be re-aged into a blocker.
 
+**"Filed as a follow-up issue" was a sentence and not a mechanism until #503.**
+The body was written to a path the workflow never opened again, so a deferred
+finding stopped blocking and survived nowhere. The round that defers now creates
+the issue and then renders its ledger a second time with the number, so the
+`holds the merge` column reads `no — deferred, filed as #N` on that same round
+rather than a round later. It is filed once because the ledger is what records
+it: `deferred_issue=` in the state block is read back every round after.
+Searching issues by title instead would file it twice, because that index lags
+and two rounds can be minutes apart.
+
 **The ceiling is round 3, and a fourth round does not run.** The floor caps which
 categories may hold late; it does not cap how many rounds there can be, and #338
 ran sixteen because every round's fix minted the next round's floor finding in

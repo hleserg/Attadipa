@@ -581,9 +581,46 @@ jobs:
           # here costs nothing.
           finding_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.user.login == env.ATTADIPA_REVIEW_ACTOR) | select((.body | startswith("<!-- attadipa-review-ledger -->")) | not) | select(.body | contains("<!-- attadipa-review-findings")) | .id' | tail -1)
           [ -z "$finding_id" ] || gh api "repos/$REPO/issues/comments/$finding_id" --jq '.body' > /tmp/findings.md
-          bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md 2 /tmp/new-ledger.md /tmp/deferred.md "$PR" 3 "$HEAD_SHA" > /tmp/verdict.txt
+          # The floor and the ceiling are named once because they are passed
+          # twice: the second pass below re-runs the same judgement with the
+          # issue number, and when #503 was merged it still carried the 4/5
+          # this repository had before OD-25 lowered them — so a filed round
+          # was re-judged against a floor no other round used.
+          floor=2 ceiling=3
+          bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md "$floor" /tmp/new-ledger.md /tmp/deferred.md "$PR" "$ceiling" "$HEAD_SHA" > /tmp/verdict.txt
           label=$(sed -n 's/^label=//p' /tmp/verdict.txt)
           [ "$label" = "ai-review:pass" ] || [ "$label" = "ai-review:blocking" ] || exit 0
+          # A DEFERRED FINDING IS PROMISED A FOLLOW-UP ISSUE, and until #503 it
+          # never got one. `/tmp/deferred.md` is the fifth argument above and was
+          # written from the first day of the rule; `grep -n deferred` over this
+          # file returned exactly that one line, so the body was written and the
+          # path never opened again. Meanwhile the ledger told every reader the
+          # finding "is still recorded in the table below and still filed as the
+          # follow-up issue". Deferral is the mechanism by which a real finding
+          # stops blocking; the promise that it survives elsewhere is the whole
+          # of what makes that acceptable.
+          #
+          # THE LEDGER IS WHAT STOPS IT BEING FILED TWICE. `deferred_issue=` is
+          # carried forward by the script from the previous round's ledger, so
+          # an empty one here means no issue exists yet. Searching issues by
+          # title would be the obvious alternative and it is the wrong one:
+          # GitHub's issue search is an index with lag, and two rounds minutes
+          # apart would file the follow-up twice — which `review-verdict.sh`
+          # already names as the hazard this design avoids.
+          deferred_title=$(sed -n 's/^deferred_title=//p' /tmp/verdict.txt)
+          deferred_issue=$(sed -n 's/^deferred_issue=//p' /tmp/verdict.txt)
+          if [ -n "$deferred_title" ] && [ -z "$deferred_issue" ] && [ -s /tmp/deferred.md ]; then
+            deferred_url=$(gh issue create --repo "$REPO" --title "$deferred_title" --body-file /tmp/deferred.md)
+            deferred_issue="${deferred_url##*/}"
+            case "$deferred_issue" in ''|*[!0-9]*) deferred_issue="" ;; esac
+            # THE SECOND PASS. The first run is the one that decides there is an
+            # issue to file at all, so it cannot know the number; without this
+            # one the round that files says `no — deferred` and names nothing,
+            # and the ledger keeps its promise only from the round after. The
+            # inputs are identical and the script reads no clock, no network and
+            # no state of its own, so the only difference is the number.
+            [ -z "$deferred_issue" ] || bash "$TRUSTED/review-verdict.sh" /tmp/previous-ledger.md /tmp/findings.md "$floor" /tmp/new-ledger.md /tmp/deferred.md "$PR" "$ceiling" "$HEAD_SHA" "$deferred_issue" > /tmp/verdict.txt
+          fi
           if [ -n "$ledger_id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$ledger_id" -F body=@/tmp/new-ledger.md > /dev/null; else gh pr comment "$PR" --repo "$REPO" --body-file /tmp/new-ledger.md; fi
           case "$label" in ai-review:pass) other=ai-review:blocking;; *) other=ai-review:pass;; esac
           gh pr edit "$PR" --repo "$REPO" --add-label "$label" --remove-label "$other"
