@@ -134,5 +134,62 @@ else
   bad 'the field guard rejects a supported literal field variable'
 fi
 
+# A third shape that fails before it reaches an API, and for the same reason the
+# two above do: the shell, not the service, decides the answer. `grep -q` exits
+# at its first match and closes the pipe; a `printf` still writing gets EPIPE,
+# and `set -o pipefail` makes that non-zero status the pipeline's. The condition
+# then reads false while being true. It is a scheduler race, so it lands on a
+# runner and almost never on a workstation -- #500 has the log line and the two
+# attempts at one commit that disagree. The fix is a here-string, which makes
+# the shell itself the writer. This guard is a tripwire for the shape coming
+# back, not a proof: a `printf` whose argument contains its own `)` is missed.
+# `q` is looked for anywhere in the short-flag cluster: `-Fxq`, `-Eq` and `-qF`
+# exit early for the same reason `-q` does, and #500's own grep, which anchored
+# on `grep -q`, missed fourteen of them -- four on the writer admission path.
+printf_pipe_offenders() {
+  awk '
+    {
+      bare = $0
+      gsub(/'"'"'[^'"'"']*'"'"'/, "", bare)
+      if (bare ~ /printf.*[^) ][[:space:]]*\|[[:space:]]*grep[[:space:]]+-[A-Za-z]*q/)
+        printf "%s:%d: %s\n", FILENAME, FNR, $0
+    }
+  ' "$@"
+}
+
+found="$(printf_pipe_offenders "${shipping[@]}" .github/tests/*.sh)"
+if [ -z "$found" ]; then
+  # shellcheck disable=SC2016  # `$VAR` here is prose about shell text, not an expansion.
+  ok 'no `printf ... | grep -q` can lose its race with pipefail'
+else
+  # shellcheck disable=SC2016  # same: the message quotes the fixed form verbatim.
+  bad 'a printf writing into `grep -q` under pipefail (use `grep -q ... <<<"$VAR"`):'
+  awk '{ print "       " $0 }' <<<"$found"
+fi
+
+# shellcheck disable=SC2016  # fixture text for the scanner, not a command to run.
+if [ -n "$(printf_pipe_offenders <(printf '%s\n' 'printf "%s" "$BODY" | grep -q needle'))" ]; then
+  ok 'the pipefail guard catches the racing pipeline'
+else
+  bad 'the pipefail guard cannot catch its target'
+fi
+# shellcheck disable=SC2016  # fixture text for the scanner, not a command to run.
+if [ -z "$(printf_pipe_offenders <(printf '%s\n' 'grep -q needle <<<"$BODY"'))" ]; then
+  ok 'the pipefail guard accepts the here-string form'
+else
+  bad 'the pipefail guard rejects the fixed form'
+fi
+# shellcheck disable=SC2016  # fixture text for the scanner, not a command to run.
+if [ -n "$(printf_pipe_offenders <(printf '%s\n' 'printf "%s" "$L" | grep -Fxq name'))" ]; then
+  ok 'the pipefail guard catches a q bundled with other short flags'
+else
+  bad 'the pipefail guard only looks for a bare -q'
+fi
+if [ -z "$(printf_pipe_offenders <(printf '%s\n' 'if json_offenders <(printf "%s" x) | grep -q y; then'))" ]; then
+  ok 'the pipefail guard leaves a process substitution alone'
+else
+  bad 'the pipefail guard flags a pipeline printf does not write'
+fi
+
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

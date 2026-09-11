@@ -224,7 +224,14 @@ ATTADIPA_MERGE_DENIED_FILES="docs/research/OWNER_DECISIONS.md"
 # labels with spaces and matched a substring, so a label literally called
 # `x ai-review:pass` passed the verdict check. Found in review.
 attadipa_merge_has_label() {
-  printf '%s\n' "$1" | grep -Fxq -- "$2"
+  # An empty NAME matches an empty LABELS exactly, and always did: the old
+  # `printf '%s\n' "$1"` wrote its newline for an empty argument too, so the
+  # pipe presented one empty line rather than no input. This guard closes a hole
+  # the here-string inherited, not one it introduced. No caller passes an empty
+  # NAME; this refuses anyway, because the one thing this helper must never do
+  # on an unattended merge path is report a label that is not there.
+  [ -n "$2" ] || return 1
+  grep -Fxq -- "$2" <<<"$1"
 }
 
 # attadipa_merge_path_allowed PATH -- 0 when the table permits it unattended.

@@ -150,7 +150,7 @@ fi
 echo
 echo "Hand over asks the decision file rather than reading the label itself"
 HANDOVER_STEP="$(sed -n '/name: Hand over/,$p' "$AGENT")"
-if printf '%s' "$HANDOVER_STEP" | grep -q 'blocked-outcome.sh'; then
+if grep -q 'blocked-outcome.sh' <<<"$HANDOVER_STEP"; then
   ok "the Hand over step calls .github/scripts/blocked-outcome.sh"
 else
   no "the Hand over step calls .github/scripts/blocked-outcome.sh" \
@@ -170,9 +170,9 @@ fi
 # died. The fallback must never be `silent`.
 # shellcheck disable=SC2016  # `$(bash` is the workflow's text, matched literally
 FALLBACK="$(printf '%s\n' "$HANDOVER_STEP" | sed -n '/BLOCKED_OUTCOME=\$(bash/,/^ *esac/p')"
-if printf '%s\n' "$FALLBACK" | grep -q 'silent|report|normal' \
-   && printf '%s\n' "$FALLBACK" | grep -q 'BLOCKED_OUTCOME=report' \
-   && ! printf '%s\n' "$FALLBACK" | grep -q 'BLOCKED_OUTCOME=silent'; then
+if grep -q 'silent|report|normal' <<<"$FALLBACK" \
+   && grep -q 'BLOCKED_OUTCOME=report' <<<"$FALLBACK" \
+   && ! grep -q 'BLOCKED_OUTCOME=silent' <<<"$FALLBACK"; then
   ok "and an unrunnable decision file falls back to reporting, never to silence"
 else
   no "and an unrunnable decision file falls back to reporting, never to silence" \
@@ -202,14 +202,14 @@ echo "Every label edit knows which object it is editing"
 # requests -- this repository has already had an error document from that field
 # end up inside an outcome comment. Three of five triggers here fire on pull
 # requests, and every call is `|| true`, so neither outcome would be reported.
-if printf '%s' "$HANDOVER_STEP" | grep -qE '^\s*gh issue (edit|comment) '; then
+if grep -qE '^\s*gh issue (edit|comment) ' <<<"$HANDOVER_STEP"; then
   no "the Hand over step edits and comments through the object-aware helper" \
      "a bare 'gh issue edit/comment' survives in Hand over; on a pull request it either silently edits one while reasoning about issues, or silently does nothing -- see .github/scripts/gh-label.sh"
 else
   ok "the Hand over step edits and comments through the object-aware helper"
 fi
 
-if [ -f .github/scripts/gh-label.sh ] && printf '%s' "$HANDOVER_STEP" | grep -q 'attadipa_label_edit'; then
+if [ -f .github/scripts/gh-label.sh ] && grep -q 'attadipa_label_edit' <<<"$HANDOVER_STEP"; then
   ok "and that helper exists and is the one it calls"
 else
   no "and that helper exists and is the one it calls" \
@@ -226,7 +226,7 @@ else
 fi
 
 ESCALATION="$(sed -n '/gh issue comment/,/|| true/p' "$WATCHDOG" | tr -d '\\`')"
-if printf '%s' "$ESCALATION" | grep -q 'comment @claude'; then
+if grep -q 'comment @claude' <<<"$ESCALATION"; then
   ok "and still offers the @claude route, which is the one this file exists for"
 else
   no "and still offers the @claude route, which is the one this file exists for" \
@@ -259,7 +259,7 @@ else
 fi
 RESET_JOB="$(sed -n '/^  reset:/,$p' "$REPAIR")"
 # shellcheck disable=SC2016  # `$label` is the workflow's variable, matched literally
-if printf '%s' "$RESET_JOB" | grep -q 'remove-label "\$label"'; then
+if grep -q 'remove-label "\$label"' <<<"$RESET_JOB"; then
   ok "and it removes labels rather than only clearing a counter"
 else
   no "and it removes labels rather than only clearing a counter" \
@@ -296,7 +296,7 @@ echo "A finished run does not leave its pull request a draft"
 # owner had to ask why. The step that decides the run is done marks it ready
 # instead of asking the model to.
 HANDOVER="$(sed -n '/read -r KIND/,/agent:failed --add-label agent:ready/p' "$AGENT")"
-if printf '%s' "$HANDOVER" | grep -q 'gh pr ready'; then
+if grep -q 'gh pr ready' <<<"$HANDOVER"; then
   ok "the hand-over step marks the pull request ready for review"
 else
   no "the hand-over step marks the pull request ready for review" \
@@ -333,14 +333,14 @@ fi
 # kinds rather than from three lines of trailing echo.
 READY_SELECTORS="$(printf '%s\n' "$READY_CASE" | grep -E '^[[:space:]]*[a-z_|]+\)[[:space:]]*$' || true)"
 
-if printf '%s' "$READY_SELECTORS" | grep -q 'done_pr_cut\|done_here_cut'; then
+if grep -q 'done_pr_cut\|done_here_cut' <<<"$READY_SELECTORS"; then
   no "and it does not promote a cut-off run" \
      "a *_cut kind selects the 'gh pr ready' branch; half-finished work must stay a draft"
 else
   ok "and it does not promote a cut-off run"
 fi
 
-if printf '%s' "$READY_SELECTORS" | grep -q 'done_here_nopush\|done_nopr'; then
+if grep -q 'done_here_nopush\|done_nopr' <<<"$READY_SELECTORS"; then
   no "and it does not promote a run with nothing to promote" \
      "done_here_nopush pushed nothing and done_nopr has no pull request; neither can be marked ready"
 else
@@ -351,7 +351,7 @@ fi
 # number came from a closing keyword anybody can write, including an abandoned
 # branch; undrafting is what makes a branch backstop-eligible, so it needs the
 # ownership evidence handover-decision.sh already demands for done_here.
-if printf '%s' "$HANDOVER" | grep -q 'promote-decision.sh'; then
+if grep -q 'promote-decision.sh' <<<"$HANDOVER"; then
   ok "and it asks promote-decision.sh whether this run owns the pull request"
 else
   no "and it asks promote-decision.sh whether this run owns the pull request" \
@@ -365,7 +365,7 @@ else
      "nothing writes ATTADIPA_RUN_STARTED_AT; promote-decision.sh would hold every done_pr, leaving finished pull requests as drafts"
 fi
 
-if printf '%s' "$HANDOVER" | grep -q 'gh pr ready.*--undo'; then
+if grep -q 'gh pr ready.*--undo' <<<"$HANDOVER"; then
   no "and it never puts one back to draft" \
      "--undo would overrule a person who deliberately marked the pull request draft again"
 else

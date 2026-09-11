@@ -48,7 +48,7 @@ attadipa_review_published() {
     echo "published $fresh reviewer comment(s) written or edited during this run"
     return 0
   fi
-  if printf '%s\n' "$labels" | grep -qxE 'ai-review:(pass|blocking)'; then
+  if grep -qxE 'ai-review:(pass|blocking)' <<<"$labels"; then
     echo 'silent a stale review label exists without a current review comment'
   else
     echo 'silent the model published neither a review comment nor a verdict label'

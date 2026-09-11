@@ -891,7 +891,7 @@ fi
 # only on the filter -- a filter can only refuse on a field the query asked for,
 # and it can only be defeated by a field the query still offers.
 for field in oid checkSuites workflowRun createdAt event; do
-  if printf '%s\n' "$QUERY_BODY" | grep -q -- "$field"; then
+  if grep -q -- "$field" <<<"$QUERY_BODY"; then
     printf '  ok    the query asks for %s\n' "$field"; pass=$((pass + 1))
   else
     printf '  FAIL  the query no longer asks for %s, so the head cannot be identified or timed\n' "$field"
@@ -906,8 +906,8 @@ done
 TRUST_BODY="$(grep -vE '^[[:space:]]*#' "$TRUST_JQ" 2>/dev/null)"
 bad_dates=""
 for field in committedDate pushedDate authoredDate; do
-  printf '%s\n' "$QUERY_BODY" | grep -q -- "$field" && bad_dates="$bad_dates query:$field"
-  printf '%s\n' "$TRUST_BODY" | grep -q -- "$field" && bad_dates="$bad_dates head-trust:$field"
+  grep -q -- "$field" <<<"$QUERY_BODY" && bad_dates="$bad_dates query:$field"
+  grep -q -- "$field" <<<"$TRUST_BODY" && bad_dates="$bad_dates head-trust:$field"
 done
 if [ -z "$bad_dates" ]; then
   printf '  ok    and neither the query nor the head-trust rule can see a date the committer chose\n'
@@ -951,7 +951,7 @@ VERDICT_CALL="$(printf '%s\n' "$SWEEP_BODY" | awk '
   /merge-candidate[.]sh/ { inside = 1 }
   inside { print; if ($0 ~ /[)]"[[:space:]]*$/) exit }')"
 VERDICT_ARGC="$(printf '%s\n' "$VERDICT_CALL" | grep -oE '"\$[A-Za-z_][A-Za-z0-9_]*"' | wc -l | tr -d ' ')"
-if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-facts[.]sh'; then
+if grep -qE 'bash .*merge-facts[.]sh' <<<"$SWEEP_BODY"; then
   printf '  ok    the sweep calls the rule that has a test\n'; pass=$((pass + 1))
   if [ "$VERDICT_ARGC" = "11" ]; then
     printf '  ok    and the verdict call passes the completeness and head arguments\n'; pass=$((pass + 1))
@@ -959,7 +959,7 @@ if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-facts[.]sh'; then
     printf '  FAIL  the sweep calls merge-facts.sh but hands merge-candidate.sh %s arguments, not 11\n' "$VERDICT_ARGC"
     fail=$((fail + 1))
   fi
-  if printf '%s\n' "$SWEEP_BODY" | grep -qE 'bash .*merge-head-trust[.]sh'; then
+  if grep -qE 'bash .*merge-head-trust[.]sh' <<<"$SWEEP_BODY"; then
     printf '  ok    and it asks GitHub when the head arrived rather than the commit\n'; pass=$((pass + 1))
   else
     printf '  FAIL  the sweep calls merge-facts.sh but not merge-head-trust.sh, so the head is timed by nothing\n'
@@ -993,7 +993,7 @@ fi
 if output=$(PATH="$sweep_probe:$real_path" GH_FAIL=1 REPO=owner/repo RUNNER_TEMP="$sweep_probe" \
      bash "$SWEEP" 2>&1); then
   printf '  FAIL  an unreadable queue was reported as a successful empty one\n'; fail=$((fail + 1))
-elif printf '%s\n' "$output" | grep -q 'could not list open pull requests'; then
+elif grep -q 'could not list open pull requests' <<<"$output"; then
   printf '  ok    an API failure is loud and fails closed\n'; pass=$((pass + 1))
 else
   printf '  FAIL  an API failure did not identify the unreadable queue\n'; fail=$((fail + 1))

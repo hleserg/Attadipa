@@ -19,7 +19,7 @@ if ! bodies="$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].bod
   echo "::warning::the existing comments on #$PR could not be read; the stale pass was removed but no duplicate-prone note was posted"
   exit 0
 fi
-if printf '%s\n' "$bodies" | grep -Fq "$marker"; then
+if grep -Fq "$marker" <<<"$bodies"; then
   echo "::notice::already said so for ${SHA:0:8} on #$PR"
   exit 0
 fi
