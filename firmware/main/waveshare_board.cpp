@@ -1015,9 +1015,14 @@ void refresh_nav() {
 }
 
 // A short tap on the node pages between the two things there are to say about
-// it: what the link is doing, and where it is. It does nothing anywhere else --
-// the clock's gesture is a long press and this must not steal it, and a long
-// press on the node itself must do nothing rather than page away.
+// it: what the link is doing, and where it is. It does nothing anywhere else.
+//
+// The clock's own gestures are the other half of the rule and they changed
+// when Settings arrived: a short tap of the clock opens Settings and a long
+// press opens provisioning, so this handler must not take a short tap there.
+// A long press on a node page opens Settings too -- that is the only way in
+// once a connection has taken the clock over -- so the older rule that a long
+// press on the node itself does nothing no longer holds.
 void node_page_turn(lv_event_t *) {
   // The page, not the request flag. The flag is true from the moment the
   // worker sets it, which is up to a tick before the mesh page is actually
@@ -1591,8 +1596,9 @@ esp_err_t start_waveshare_ui() {
   // watch. Nothing after this can fail, so no rollback step has to learn to
   // undo it and `boot_rollback.h` is untouched.
   (void)attadipa::firmware::local_gnss_start();
-  ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%%, touch %s, RTC %s",
-           brightness.saved(), state.touch != nullptr ? "present" : "absent",
+  ESP_LOGI(kTag, "UI ready: AMOLED brightness %d%% (%s), touch %s, RTC %s",
+           brightness.saved(), attadipa::apps::describe(brightness.origin()),
+           state.touch != nullptr ? "present" : "absent",
            state.rtc != nullptr ? "present" : "absent");
   return ESP_OK;
 }

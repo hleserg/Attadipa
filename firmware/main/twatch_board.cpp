@@ -914,8 +914,11 @@ esp_err_t start_twatch_ui() {
   lv_obj_add_event_cb(lv_screen_active(), enter_settings, LV_EVENT_LONG_PRESSED,
                        nullptr);
   lvgl_port_unlock();
-  ESP_LOGI(kTag, "brightness %u%%; hold the diagnostic screen for Settings",
-           brightness.saved());
+  // The word, not only the percentage: this line is the one executed result
+  // this path has on this board, and a fallback 100% printed as `brightness
+  // 100%` is byte-identical to a restored one.
+  ESP_LOGI(kTag, "brightness %u%% (%s); hold the diagnostic screen for Settings",
+           brightness.saved(), attadipa::apps::describe(brightness.origin()));
 
   // LAST, AND PAST EVERY abandon_twatch_after ABOVE. `local_gnss.h` says the
   // UART driver's RX ring is allocated once and never freed because the call

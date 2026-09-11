@@ -4,14 +4,29 @@
 
 namespace attadipa::apps {
 
+const char *describe(BrightnessOrigin origin) {
+  switch (origin) {
+  case BrightnessOrigin::Restored: return "restored";
+  case BrightnessOrigin::Default: return "default";
+  case BrightnessOrigin::Unreadable: return "unreadable";
+  }
+  return "unreadable";
+}
+
 void BrightnessSettings::load() {
   std::uint8_t value = fallback_;
   const auto result = port_.load(value);
   const bool corrupt = result == BrightnessRead::Present && !valid(value);
-  saved_ = result == BrightnessRead::Present && !corrupt ? value : fallback_;
+  const bool restored = result == BrightnessRead::Present && !corrupt;
+  saved_ = restored ? value : fallback_;
   draft_ = saved_;
   error_ = result == BrightnessRead::Failed || corrupt
                ? BrightnessError::Load : BrightnessError::None;
+  // Three outcomes, not two: a healthy store with no key yet is not a failure
+  // and is not a restore either, and the boot line has to be able to say so.
+  origin_ = restored ? BrightnessOrigin::Restored
+            : result == BrightnessRead::Missing ? BrightnessOrigin::Default
+                                                : BrightnessOrigin::Unreadable;
 }
 
 bool BrightnessSettings::preview(int percent) {
@@ -46,10 +61,13 @@ bool BrightnessSettings::save() {
 }
 
 bool BrightnessSettings::cancel() {
-  const bool applied = preview(saved_);
-  // Restore visible brightness, but keep the restart notice on screen until
-  // boot has recovered storage and read which request actually survived.
-  return applied && error_ != BrightnessError::Uncertain;
+  // Restores the last committed request and reports whether the panel took it.
+  // An `Uncertain` write is NOT a reason to answer no: what cannot be promised
+  // is that the durable value was undone, and `error_` stays `Uncertain` to say
+  // so on every later look at this screen. Folding that into the return value
+  // made the one caller keep its page, and the brightness page has no Back --
+  // so an uncertain write left rebooting as the only way off it.
+  return preview(saved_);
 }
 
 void BrightnessSettings::restart() {

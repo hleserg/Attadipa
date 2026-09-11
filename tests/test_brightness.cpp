@@ -1,6 +1,7 @@
 #include "attadipa/apps/brightness.h"
 #include "brightness_store.h"
 
+#include <cstring>
 #include <cstdio>
 #include <initializer_list>
 
@@ -66,18 +67,36 @@ int main() {
     port.stored = static_cast<std::uint8_t>(value);
     settings.load();
     check(settings.saved() == 5 && settings.error() == BrightnessError::Load, "corrupt stored value uses fallback honestly");
+    check(settings.origin() == BrightnessOrigin::Unreadable, "a corrupt value is not a restore");
   }
   port.read = BrightnessRead::Failed;
   settings.load();
   check(settings.saved() == 5 && settings.error() == BrightnessError::Load, "read failure uses fallback honestly");
+  check(std::strcmp(describe(settings.origin()), "unreadable") == 0, "and the boot line says so");
+  // The three the boot log has to tell apart, at the fallback value each time,
+  // because that is the case where the percentage alone cannot: a healthy store
+  // with no key yet reports the default, and a store holding exactly the
+  // fallback reports a restore.
+  port.read = BrightnessRead::Missing;
+  settings.load();
+  check(settings.saved() == 5 && settings.error() == BrightnessError::None &&
+        std::strcmp(describe(settings.origin()), "default") == 0,
+        "a missing key is the default and not a failure");
+  port.read = BrightnessRead::Present;
+  port.stored = 5;
+  settings.load();
+  check(settings.saved() == 5 && std::strcmp(describe(settings.origin()), "restored") == 0,
+        "a stored value equal to the fallback is still a restore");
   check(settings.save() && port.stored == 5, "Save repairs missing or invalid stored state");
   port.uncertain = true;
   check(settings.preview(80) && !settings.save() && port.stored == 80 &&
         settings.saved() == 5 && settings.error() == BrightnessError::Uncertain,
         "write can mutate flash before reporting failure");
   const auto writes_before_cancel = port.writes;
-  check(!settings.cancel() && port.applied == 5 && settings.error() == BrightnessError::Uncertain,
-        "Cancel restores visible request but retains uncertain storage warning");
+  check(settings.cancel() && port.applied == 5 && settings.error() == BrightnessError::Uncertain,
+        "Cancel restores the visible request and lets the page close");
+  check(settings.error() == BrightnessError::Uncertain,
+        "and the uncertain storage warning outlives leaving the page");
   check(settings.preview(90) && !settings.save() && port.writes == writes_before_cancel,
         "preview cannot clear uncertain outcome or permit more writes before recovery");
   settings.restart();

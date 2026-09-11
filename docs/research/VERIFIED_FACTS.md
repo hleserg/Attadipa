@@ -2776,7 +2776,7 @@ ones that heading states.
   2026-09-05 and recorded above
   (`docs/research/VERIFIED_FACTS.md:720` — "Claim, on the bench unit, MEASURED 2026-09-05"),
   and this image raises that rail on purpose
-  (`firmware/main/twatch_board.cpp:978` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
+  (`firmware/main/twatch_board.cpp:981` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
   So for the whole 45 minutes a receiver was powered, and **nothing here
   measures what it cost.** What state it was in is `UNKNOWN`: a receiver that
   never sees a satellite searches continuously and costs the most, one with a

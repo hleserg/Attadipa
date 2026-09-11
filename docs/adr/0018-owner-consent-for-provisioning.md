@@ -133,9 +133,9 @@ interchangeable: `docs/research/HARDWARE_MATRIX.md:399` — "| Buttons | **two c
 through this project's own input queue, and it is in the product image today
 with nothing gating it: `firmware/main/physical_input.cpp:63` —
 "    buttons.pin_bit_mask = 1ULL << GPIO_NUM_0;",
-`firmware/main/physical_input.cpp:516` —
+`firmware/main/physical_input.cpp:551` —
 "  PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};", and
-`firmware/main/physical_input.cpp:559` —
+`firmware/main/physical_input.cpp:594` —
 "physical input ready: %s, GPIO0 and the AXP2101 power key".
 So a gesture is not something B or C would have to invent. It costs two things
 instead: BOOT is a reset strap, so it cannot be injected remotely and a
