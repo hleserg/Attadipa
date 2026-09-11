@@ -60,8 +60,10 @@ struct Bus {
     }
     if (reg == 0x17) {
       if (request_ignored && !(regs[0x14] & 0x80)) {
+        // 0x8000, word after word: what a part that ignored the request hands
+        // back, and the byte the drain must not read as a sample.
         for (std::size_t i = 0; i < n; ++i)
-          out[i] = (i % 2) ? 0x80 : 0x00; // 0x8000, word after word
+          out[i] = static_cast<std::uint8_t>((i % 2) ? 0x80 : 0x00);
         return true;
       }
       CHECK((regs[0x14] & 0x80) != 0);
