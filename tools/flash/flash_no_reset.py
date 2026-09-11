@@ -16,11 +16,43 @@ the port is opened with rtscts/dsrdtr so pyserial never asserts DTR/RTS,
 `esptool.main(argv, esp=esp)` reuses that connection for `write_flash`, so the
 CLI's own port open — the thing the unit refuses — never happens.
 
-What is written: the bootloader, partition table and app that
-`flasher_args.json` names, at the offsets it names, and nothing else. On a
-16 MB part that is 0x0-0x410000; NVS, PHY data, the FAT and coredump regions
-of the factory layout are not touched. `--restore` writes the same span back
-from a full-flash backup and refuses a backup that is not exactly 16 MiB.
+THE TWO PATHS WRITE DIFFERENT THINGS, and the difference is what you lose.
+
+A build directory writes THREE SEPARATE SEGMENTS -- the bootloader, the
+partition table and the app that `flasher_args.json` names, at the offsets it
+names. The gaps between them are not written, so everything outside those
+three segments survives -- `nvs`, PHY data, the FAT and the coredump region.
+
+WHICH OFFSETS THOSE ARE DEPENDS ON WHICH TABLE IS ON THE PART, and the build
+path replaces the table at 0x8000 with this repository's. Under
+`firmware/partitions.csv:22` -- "nvs,         data, nvs,      0x9000,    0x6000,"
+-- `nvs` runs 0x9000-0xf000 and there is NO `otadata` partition at all. The
+factory Arduino layout has one --
+`docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:61` -- "otadata  data ota      0xe000      8K"
+-- so on a factory unit flashed from a build directory those 8K survive the
+write, and 8K does not fit in what is left of our `nvs`. It STRADDLES TWO
+PARTITIONS: 0xe000-0xf000 is the last page of our `nvs`, and 0xf000-0x10000
+is the whole of our `phy_init`
+(`firmware/partitions.csv:23` -- "phy_init,    data, phy,      0xf000,    0x1000,").
+What the first page does to `nvs_flash_init()` is UNKNOWN and has not been
+tested. The second is inert here, and for a reason worth stating rather than
+assuming: no sdkconfig under `firmware/` sets
+`CONFIG_ESP_PHY_INIT_DATA_IN_PARTITION`, and ESP-IDF v5.5.5 defaults it to
+`n` (`components/esp_phy/Kconfig`, not a file of this repository), so this
+firmware compiles its PHY data into the app and never reads that partition.
+That is also why the paragraph above may count PHY data among what survives
+the write: the partition survives it, but on a factory unit what survives in
+it is otadata.
+
+`--restore` writes ONE CONTIGUOUS BLOCK, 0x0-0x410000 from a full-flash backup.
+That covers the same three images and everything between them, so `nvs` --
+and the factory `otadata` at 0xe000, if the backup was taken from a factory
+unit -- ARE overwritten with whatever the backup holds. Pairing keys, Wi-Fi
+credentials and any OTA selection go back to their state when the backup was
+read. Above 0x410000 nothing is touched either way.
+
+A backup is accepted on its SHA-256 and the unit it was read from, not on its
+length: see `VERIFIED_BACKUPS`.
 
 After the write the default is `--after watchdog_reset`: the flasher stub arms
 the RTC watchdog, which needs no control line. If the unit instead stays in the
@@ -46,6 +78,27 @@ from ramhold import resolve_port  # noqa: E402
 # The received LilyGO T-Watch S3 Plus, by the USB serial its ROM reports.
 TWATCH_SERIAL = "DC:B4:D9:18:49:40"
 FACTORY_FLASH_BYTES = 16 * 1024 * 1024
+# A RESTORE IS AUTHENTICATED BY WHAT THE FILE IS, NOT BY HOW LONG IT IS.
+# Size was standing in for provenance, and 16 MiB of zeroes is exactly 16 MiB:
+# it passed, became one write segment at 0x0, and reached esptool. The digest
+# was computed and printed the whole time, and compared with nothing.
+#
+# Digest -> the USB serial of the unit the image was read off, because the
+# binding is both halves. A genuine backup of the wrong watch is still a wrong
+# image, and 0x0-0x410000 is the span no --restore undoes.
+#
+# Adding a row here is the explicit, reviewed action that admits a new backup.
+# There is deliberately no flag that skips this: a switch that restores the old
+# behaviour is the old behaviour, one argument further away.
+VERIFIED_BACKUPS = {
+    # `docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md:38` --
+    # "| SHA-256 | **`e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202`** |"
+    # -- verified three independent ways there: the chip's own MD5 over all
+    # 16 MB, a second full read that matched byte for byte, and a structural
+    # parse in which `app0`'s self-carried SHA-256 validates.
+    "e28f5cdd79552950d7f73fc2776023e297bfcd5dcc320d667ee065b0ebd37202":
+        TWATCH_SERIAL,
+}
 # bootloader 0x0 + table 0x8000 + app0 0x10000 of 0x400000: identical in the
 # factory (Arduino default_16MB) table and in firmware/partitions.csv.
 RESTORE_SPAN = 0x410000
@@ -202,11 +255,65 @@ def selftest() -> int:
         backup = build / "twatch_factory_16MB.bin"
         backup.write_bytes(b"\x00" * (FACTORY_FLASH_BYTES - 1))
         try:
-            plan_from_backup(backup, build)
+            plan_from_backup(backup, build, TWATCH_SERIAL)
         except SystemExit as refused:
             assert "not a full 16 MiB" in str(refused), refused
         else:
             raise AssertionError("a 16 MiB - 1 backup was not refused")
+
+        # THE CASE THE OLD SUITE DID NOT HAVE, and the one the defect lived in:
+        # right size, wrong content. 16 MiB of zeroes is exactly 16 MiB, so the
+        # length check passed it, and every other check in this file was about
+        # the build plan or the chip on the port.
+        backup.write_bytes(b"\x00" * FACTORY_FLASH_BYTES)
+        try:
+            plan_from_backup(backup, build, TWATCH_SERIAL)
+        except SystemExit as refused:
+            assert "not a backup this repository has verified" in str(refused), refused
+        else:
+            raise AssertionError("16 MiB of zeroes was accepted as the factory backup")
+        assert not list(build.glob("*_0x0-*.bin")), \
+            "a refused backup still wrote a span file"
+
+        # A VERIFIED IMAGE IS STILL THE WRONG IMAGE ON ANOTHER UNIT. The table
+        # is patched rather than mocked, so this exercises the same lookup the
+        # real digest goes through -- the private factory image is not in this
+        # repository and must not be.
+        planted = b"\xe9" + b"twatch-selftest" * ((FACTORY_FLASH_BYTES - 1) // 15)
+        planted = (planted + b"\x00" * FACTORY_FLASH_BYTES)[:FACTORY_FLASH_BYTES]
+        backup.write_bytes(planted)
+        digest = hashlib.sha256(planted).hexdigest()
+        VERIFIED_BACKUPS[digest] = TWATCH_SERIAL
+        try:
+            try:
+                plan_from_backup(backup, build, "f4:a4:a3:ec:ee:7d")
+            except SystemExit as refused:
+                assert "verified backup of" in str(refused), refused
+            else:
+                raise AssertionError("a backup of another unit was accepted")
+            # The digest refusal is checked for a leftover span and this one was
+            # not, so moving the binding below `span.write_bytes` would leave
+            # another unit's 4 MiB span in the operator's working directory with
+            # the suite green. Found in review.
+            assert not list(build.glob("*_0x0-*.bin")), \
+                "a backup refused on its serial still wrote a span file"
+
+            settings, files = plan_from_backup(backup, build, TWATCH_SERIAL)
+            assert settings == {"flash_mode": "keep", "flash_freq": "keep",
+                                "flash_size": "keep"}, settings
+            assert len(files) == 1 and files[0][0] == 0, files
+            assert files[0][1].stat().st_size == RESTORE_SPAN, files[0][1].stat().st_size
+            assert files[0][1].read_bytes() == planted[:RESTORE_SPAN], \
+                "the span is the head of the backup, unmodified"
+            # Case is not identity: the loader reports the MAC in lower case
+            # and a serial typed by hand is whatever the hand typed. The table
+            # row is upper case, so LOWER is the direction that exercises the
+            # fold -- `.upper()` here was the identity function on an
+            # already-upper-case constant, and repeated the accepting case
+            # above it with the same argument. Found in review.
+            plan_from_backup(backup, build, TWATCH_SERIAL.lower())
+        finally:
+            del VERIFIED_BACKUPS[digest]
 
         unit = bytes.fromhex(TWATCH_SERIAL.replace(":", ""))
         assert identity_mismatch(unit, TWATCH_SERIAL) is None
@@ -214,16 +321,43 @@ def selftest() -> int:
         other = bytes.fromhex("f4a4a3ecee7d")
         refused = identity_mismatch(other, TWATCH_SERIAL)
         assert refused and "nothing written" in refused, refused
-    print("flash_no_reset selftest: plan, overlap, span, backup and identity cases pass.")
+    print("flash_no_reset selftest: plan, overlap, span, backup provenance "
+          "and identity cases pass.")
     return 0
 
 
-def plan_from_backup(backup: Path, scratch: Path) -> tuple[dict[str, str], list[tuple[int, Path]]]:
+def plan_from_backup(backup: Path, scratch: Path,
+                     serial: str) -> tuple[dict[str, str], list[tuple[int, Path]]]:
+    """The single contiguous write a verified backup of `serial` plans, or refuse.
+
+    Both refusals happen here, which is before the port is opened and before
+    esptool is imported at all -- so a rejected image never reaches a
+    write-capable anything. The MAC check in `main` stays where it is and
+    answers a different question: this one asks whether the FILE is the right
+    image, that one asks whether the CHIP is the right unit, and neither
+    substitutes for the other.
+    """
     size = backup.stat().st_size
     if size != FACTORY_FLASH_BYTES:
         raise SystemExit(f"{backup} is {size} bytes, not a full 16 MiB flash image")
     blob = backup.read_bytes()
-    print(f"# backup sha256 {hashlib.sha256(blob).hexdigest()}", flush=True)
+    digest = hashlib.sha256(blob).hexdigest()
+    print(f"# backup sha256 {digest}", flush=True)
+    read_from = VERIFIED_BACKUPS.get(digest)
+    if read_from is None:
+        raise SystemExit(
+            f"{backup} hashes to {digest}, which is not a backup this repository "
+            f"has verified; nothing written. The size was right and that is the "
+            f"point -- 16 MiB of anything is 16 MiB. If this really is a good "
+            f"full-flash read, verify it the way "
+            f"docs/research/TWATCH_S3_PLUS_BRINGUP_2026-08-27.md records and add "
+            f"its digest to VERIFIED_BACKUPS beside the unit it came off.")
+    want = serial.strip().lower()
+    if read_from.strip().lower() != want:
+        raise SystemExit(
+            f"{backup} is the verified backup of {read_from}, and --serial names "
+            f"{want}; nothing written. A genuine backup of another unit writes "
+            f"another unit's bootloader, partition table and NVS over this one.")
     span = scratch / f"{backup.stem}_0x0-0x{RESTORE_SPAN:x}.bin"
     span.write_bytes(blob[:RESTORE_SPAN])
     # The factory image header carries its own mode/freq/size; esptool keeps them.
@@ -264,7 +398,7 @@ def main() -> int:
     parser.add_argument("build_dir", nargs="?", type=Path,
                         help="an idf.py build directory holding flasher_args.json")
     parser.add_argument("--restore", type=Path, default=None,
-                        help="write the first 0x410000 bytes of this 16 MiB backup instead")
+                        help="write the first 0x410000 bytes of this backup instead; it must be a 16 MiB image whose SHA-256 is in VERIFIED_BACKUPS for --serial, and that block covers nvs and otadata")
     parser.add_argument("--serial", default=TWATCH_SERIAL,
                         help=f"USB serial of the unit (default {TWATCH_SERIAL})")
     parser.add_argument("--port", default=None,
@@ -290,7 +424,7 @@ def main() -> int:
 
     scratch = Path(args.log).parent if args.log else Path.cwd()
     if args.restore is not None:
-        settings, files = plan_from_backup(args.restore, scratch)
+        settings, files = plan_from_backup(args.restore, scratch, args.serial)
     else:
         settings, files = plan_from_build(args.build_dir)
 

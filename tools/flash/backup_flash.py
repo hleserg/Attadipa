@@ -41,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402
+from flash_no_reset import FACTORY_FLASH_BYTES  # noqa: E402
 
 FLASH_SIZE = 0x2000000    # 32 MB — GD25Q256, docs/research/HARDWARE_MATRIX.md
 CHUNK = 0x200000          # 2 MB, the size the 2026-08-23 session used
@@ -158,7 +159,16 @@ def main() -> int:
 
     sha = digest.hexdigest()
     print(f"\n{written} bytes  sha256 {sha}")
-    if sha == KNOWN_FACTORY_SHA256:
+    # THE RECORDED DIGEST IS ONE IMAGE'S, NOT ONE BOARD'S. It was taken over
+    # the whole 0x2000000 part, so a shorter read cannot equal it -- and the
+    # 16 MiB read is not a rare one, it is the size `--restore` accepts. Printed
+    # unconditionally, "does NOT match the recorded factory image" was a false
+    # alarm on every such backup, one line above the sentence that then offers
+    # the same backup as a restore source. Found in review.
+    if args.size != FLASH_SIZE:
+        print(f"# no recorded image to compare a 0x{args.size:x} read against "
+              f"— the digest on file is the whole 0x{FLASH_SIZE:x} part's")
+    elif sha == KNOWN_FACTORY_SHA256:
         print("# matches the recorded factory image — the part is as it was found")
     else:
         print("# does NOT match the recorded factory image "
@@ -183,6 +193,29 @@ def main() -> int:
     scratch.rmdir()
     candidate.replace(args.output)
     print("# VERIFIED — this image restores the board")
+    # ...ONCE `flash_no_reset.py` KNOWS IT. That refusal is fail-closed by
+    # digest, so a brand-new backup -- however well verified here -- is not a
+    # restore source until its SHA-256 is added to `VERIFIED_BACKUPS` with the
+    # evidence. Saying so beside the promise, because the two halves of OD-19's
+    # bench loop otherwise disagree in this repository's own words.
+    #
+    # AND ONLY FOR AN IMAGE THAT PATH WILL LOOK AT. `--restore` refuses on SIZE
+    # first, before the table is read at all --
+    # `tools/flash/flash_no_reset.py:341` -- "    if size != FACTORY_FLASH_BYTES:"
+    # -- and this tool's own default is the OTHER board's 32 MB part. Printed
+    # unconditionally, the sentence sends the operator to edit the table that
+    # admits a backup, at the one moment the loop is meant to close, to add a
+    # row that authorises nothing and could not have been read. The one-line
+    # repair it invites is widening the size gate, which is the guard this
+    # change exists to keep. Found in review.
+    if args.size == FACTORY_FLASH_BYTES:
+        print("# To restore FROM it, add its sha256 to VERIFIED_BACKUPS in "
+              "tools/flash/flash_no_reset.py, citing the verification above.")
+    else:
+        print(f"# NOT a restore source: --restore takes {FACTORY_FLASH_BYTES} "
+              f"bytes and this is 0x{args.size:x}. There is no restore path "
+              "in this repository for a part that size; adding a row to "
+              "VERIFIED_BACKUPS would not make one.")
     return 0
 
 
