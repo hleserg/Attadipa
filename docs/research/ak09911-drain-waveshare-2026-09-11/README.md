@@ -75,15 +75,16 @@ already recorded in [the stop diagnostic](../qmi-stop-waveshare-2026-09-09/READM
 and it is not resolved here. What changed is that the state it leaves behind no
 longer locks the next run out.
 
-**NOT EXECUTED — HARDWARE REQUIRED: nothing here re-ran on the current head.**
-Every capture in this archive belongs to the image named for it in the table
-above. `b4a8f45b` is not the head of #515: `1df9fcfb` moved the CTRL8 handshake
-write ahead of the drain's own CTRL9 command, and the drain now re-reads the
-frozen count after `REQ_FIFO` rather than sizing the payload from the entry
-snapshot (`17337383` touched only the host test). Both changes are covered by
-the host transport model and by no bench run. The 40-second paired capture has
-not been re-run on the head yet; the readings below are not restated as its
-result.
+**Every capture in this archive belongs to the image named for it in the table
+above, and `b4a8f45b` is not the head of #515.** `1df9fcfb` moved the CTRL8
+handshake write ahead of the drain's own CTRL9 command and `ea57bbf5` changed
+where the payload size comes from (`17337383` touched only the host test). The
+head has since run on the same board — the [head
+session](../qmi-head-waveshare-2026-09-11/README.md) reproduces the paired
+acquisition and the stationary readings below. What it does **not** reproduce is
+the drain: both of its runs entered with an empty FIFO, so `drain_stale()` is
+still `NOT EXECUTED — HARDWARE REQUIRED`. The residue this archive is about no
+longer waits at entry on this board.
 
 ## MEASURED — four cold loads of an untouched board, raw counts
 

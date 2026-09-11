@@ -120,15 +120,22 @@ does not resolve `stop=4`: that state is still produced at the end of every
 paired run and is still UNKNOWN, with the one candidate this session earned
 recorded in [the stop diagnostic](qmi-stop-waveshare-2026-09-09/README.md).
 
-**NOT EXECUTED — HARDWARE REQUIRED: the head is not the image that ran.** The
-accepted capture was produced by `b4a8f45b`. Two changes to the entry sequence
-have landed on this branch since, neither of them on hardware: `1df9fcfb` moved
-the CTRL8 handshake write ahead of the drain's own CTRL9 command, and the count
-the drain sizes its payload from is now re-read after `REQ_FIFO` instead of
-taken from the entry snapshot (`17337383` touched only the host test). Both are
-exercised by the transport model in
-`tests/test_qmi8658_fifo.cpp` and by nothing physical. The numbers above stay
-MEASURED for the image that produced them and are not a result for this head.
+The accepted capture above was produced by `b4a8f45b`, and the entry sequence
+changed twice after it — `1df9fcfb` moved the CTRL8 handshake write ahead of the
+drain's own CTRL9 command, `ea57bbf5` made the payload size come from the count
+re-read after `REQ_FIFO` (`17337383` touched only the host test). So the head
+ran: the [head session](qmi-head-waveshare-2026-09-11/README.md) is two cold
+loads of `ea57bbf5` on the same board, reproducing 3814 and 3809 QMI samples
+with 398 AK09911 samples each, `result=0` and `overflow=0 invalid=0 dor=0` on
+both, and putting the stationary magnetometer agreement at six cold loads.
+
+**NOT EXECUTED — HARDWARE REQUIRED: the drain path, still.** Both head runs
+entered with the FIFO count at zero, so `drain_stale()` was never called. The
+residue that blocked entry in September no longer waits there — run A ends with
+`remaining_words=3` and run B, minutes later, finds a zero count — and what
+clears it in between is UNKNOWN. Executing the drain needs a board that presents
+a nonempty FIFO at entry, and this one no longer does; the transport model in
+`tests/test_qmi8658_fifo.cpp` is all the coverage the two changes have.
 
 That archive also carries the first stationary AK09911 readings and the
 **retraction** of the hard-iron estimate taken from them — four cold loads agree

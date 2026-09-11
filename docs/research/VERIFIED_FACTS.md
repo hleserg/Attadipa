@@ -3132,3 +3132,17 @@ behind them, the first stationary magnetometer readings and the **retraction**
 of the hard-iron estimate taken from them are in
 [the drain and AK09911 session](ak09911-drain-waveshare-2026-09-11/README.md).
 No compass, tilt, calibration or step-count PASS is claimed.
+
+**MEASURED — 2026-09-11, the head on the same board:** two cold loads of
+`ea57bbf5` reproduce the paired acquisition — 3814 and 3809 QMI samples, 398
+AK09911 samples each over 40.048 s, `result=0` and `overflow=0 invalid=0 dor=0`
+on both — and put the stationary magnetometer agreement at six cold loads,
+within 1.27 counts per axis with `|B|` between 277.9 and 279.5. Both runs
+entered with the FIFO count at **zero**, so the drain never ran: the residue
+that refused entry in September no longer waits there, a stop that reports three
+words is followed minutes later by an entry that finds none, and what clears it
+in between is **UNKNOWN**. `Qmi8658Fifo::drain_stale()` in its current form is
+therefore **NOT EXECUTED — HARDWARE REQUIRED**. The two streams, the manifest
+and the restored production boot are in
+[the head session](qmi-head-waveshare-2026-09-11/README.md). This revives no
+calibration number and claims no compass, tilt or step-count PASS.
