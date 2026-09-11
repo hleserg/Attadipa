@@ -102,3 +102,10 @@ not enter the queue automatically.
 Repository artefacts are English. Owner-facing chat is Russian; public issue
 and PR text is English first and Russian second. `README.md` and `README.ru.md`
 are one document and change together.
+
+The project's name is written **`Atta-dipa`** wherever a person reads it as a
+name — site, README, logos, app names, titles, alt text — and **`Attadipa`**
+wherever a machine reads it: repository, URLs, namespaces, CMake targets,
+macros, header paths, CI text and `attadipa-agent-task` markers. One file
+usually carries both. `docs/brand/naming.md` is the rule; `check_head_sync.py`
+enforces the half of it that the website can break silently.

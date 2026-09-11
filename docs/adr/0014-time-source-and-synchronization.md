@@ -49,14 +49,16 @@ cannot honestly resume where it left off.
   opcode above exists only in the HIL build. The product's first real input is
   the watch itself: a long press on the clock opens an entry screen for the
   date, the time, the offset and the node passkey
-  (`apps/include/attadipa/apps/provisioning.h:77` — "class ProvisioningEntry {"); a Cancel key
-  leaves it at any point, and nothing reaches the board before OK on the
-  offset (`apps/include/attadipa/apps/provisioning.h:52` — "Cancel,"), so a
-  long press made by accident costs one key and not a retyped clock. A board
+  (`apps/include/attadipa/apps/provisioning.h:182` — "class ProvisioningEntry {"); a Leave key
+  goes out at any point, and nothing reaches the board before Next on the
+  review step that spells the whole instant out
+  (`apps/include/attadipa/apps/provisioning.h:69` —
+  "TimeReview,     // The draft and the UTC instant it means. Next saves."), so
+  a long press made by accident costs one key and not a retyped clock. A board
   that failed that write may have moved the chip (the RTC is written last, and
-  nothing puts it back), so a Cancel after it keeps the failure on screen rather
-  than saying nothing changed. The board's
-  `firmware/main/waveshare_board.cpp:469` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
+  nothing puts it back), so the receipt after it keeps the failure on screen
+  rather than saying nothing changed. The board's
+  `firmware/main/waveshare_board.cpp:498` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
   runs the same `provision_time()` sequence as the opcode, with the same
   order and the same one-day lifetime. Whoever holds the watch may set it —
   [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26 decided that.
@@ -65,7 +67,7 @@ cannot honestly resume where it left off.
   deadline. If it does not, local time becomes stale rather than silently
   asserting that an old seasonal offset is current.
 - Default NVS is initialised once per boot and its verdict kept
-  (`firmware/main/waveshare_board.cpp:293` — "state.metadata_storage = nvs_flash_init();").
+  (`firmware/main/waveshare_board.cpp:322` — "state.metadata_storage = nvs_flash_init();").
   A verdict other than success is logged once and every
   synchronization of that boot fails before the RTC is touched, with the same
   `Failed` (the host's `OperationFailed`) as a store that cannot be read: the

@@ -1,0 +1,14 @@
+{
+  "NORMAL_BOOT.txt": {
+    "bytes": 7068,
+    "sha256": "ae1822bcf9630ac6935fcde73204b18f9fb138c2874d3ed6f7d1dada2a6b2d15"
+  },
+  "console-head-A.txt": {
+    "bytes": 418532,
+    "sha256": "db075a553c8711dd4654deae14dfa333bfdf9057f626c8cc86d7a4491c3d3d53"
+  },
+  "console-head-B.txt": {
+    "bytes": 418668,
+    "sha256": "f52f1ed1e580a3332edeeea1fa0c2f9f3ca34ba3cbc57ee67474e4aadc0f49c9"
+  }
+}

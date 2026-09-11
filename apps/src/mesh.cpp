@@ -233,6 +233,25 @@ MeshText format_mesh(const MeshStatus& status, l10n::Locale locale)
                 l10n::tr(StringId::MeshLabelMtu, locale));
         }
     }
+    put(text.watch_power, sizeof(text.watch_power),
+        l10n::tr(StringId::StatusWatchUnknown, locale));
+    const auto& battery = status.node_battery;
+    if (battery.separate_supply) {
+        const bool known = status.has_node_id && battery.millivolts != 0 &&
+            (battery.validity == core::Validity::Valid ||
+             battery.validity == core::Validity::Stale);
+        if (known && text.link == MeshLink::Linked &&
+            battery.validity == core::Validity::Valid) {
+            std::snprintf(text.node_power, sizeof(text.node_power),
+                          l10n::tr(StringId::StatusNodeVoltage, locale),
+                          static_cast<unsigned>(battery.millivolts / 1000U),
+                          static_cast<unsigned>(battery.millivolts % 1000U));
+        } else {
+            put(text.node_power, sizeof(text.node_power),
+                l10n::tr(known ? StringId::StatusNodeStale
+                               : StringId::StatusNodeUnknown, locale));
+        }
+    }
     return text;
 }
 

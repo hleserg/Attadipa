@@ -2547,9 +2547,9 @@ table as source-pinned board data **if and only if** the experiment proves it
 necessary; `REJECT` every vendor BSP as a link-time dependency.
 
 **Reason:** the shipping tree already exposes the right seam —
-`waveshare_board.cpp:128-132` — "esp_lcd_panel_handle_t panel" — hands on an
+`waveshare_board.cpp:137-141` — "esp_lcd_panel_handle_t panel" — hands on an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, and
-`physical_input.cpp:523` — "start_physical_input(esp_lcd_touch_handle_t touch"
+`physical_input.cpp:558` — "start_physical_input(esp_lcd_touch_handle_t touch"
 — takes exactly those.
 A second backend that reuses it needs no `#ifdef` anywhere above the board
 layer, which is what lets `core/` and `apps/` keep asking what a device can do
@@ -2855,7 +2855,7 @@ a source, because it is not one.
 **Reason.** This is the rare case where the reuse question answers itself: the
 bytes arrive inside `RESP_CODE_CONTACT`, the session already validates all 148
 of them —
-`link/src/meshcore_companion.cpp:687` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+`link/src/meshcore_companion.cpp:786` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 and reads two fields out of it. Adding a dependency to obtain the other two
 would import a client's failure model to avoid writing an offset. The scaling is
 integer: the wire is `e6` and
@@ -2878,3 +2878,72 @@ and two ages, one of which is `UNKNOWN` and says so.
 [REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md)
 §12 holds them. The one that matters most is the advert that stops carrying a
 coordinate while its timestamps keep advancing: it must move neither age.
+
+### Stopping a GNSS receiver without lying about whether it stopped
+
+**Problem:** [#479](https://github.com/hleserg/Attadipa/issues/479) asks which
+mechanism a wearable GNSS power policy should rest on. The receiver runs
+continuously once `BLDO1` is up, and there is no contract between the rail, the
+UART, the engine, the fix and what the module still remembers. The full reading
+is [GNSS_POWER_POLICY_MIA_M10Q](GNSS_POWER_POLICY_MIA_M10Q.md); this record is
+the reuse half only.
+
+**Projects investigated:** `zephyrproject-rtos/zephyr` PR #114569, merged
+2026-09-08 — `drivers/gnss/u_blox/gnss_u_blox_m10.c::{ubx_m10_start,ubx_m10_stop}`
+at commit `7fa5627b`, and the API split at commit `c945a5e5`. Read against
+u-blox's own documents rather than against the driver alone: **UBX-22015849 R08**
+(MIA-M10Q data sheet), **UBX-21028173 R05** (integration manual) and
+**UBX-21035062 R03** (M10 SPG 5.10 interface description).
+
+**Useful implementation:** the **separation**, and nothing else. `c945a5e5`
+splits `gnss_stop()` / `gnss_start(HOT|WARM|COLD)` — operations on the receiver
+engine — from device suspend and power removal. That is the same distinction
+this project needs between `engine_requested`, `rail_on` and `engine_observed`.
+
+**License:** Apache-2.0 — compatible, and not the reason nothing was taken.
+
+**Strengths:** the split is right and is the part worth keeping. The M10 command
+encoding matches the interface description **as quoted in #479** — the source
+was not cloned, so that is a reading of the issue's citations against the vendor
+document, not of the driver.
+
+**Weaknesses:** two, and the second is decisive.
+
+1. #479 reports that both `ubx_m10_start()` and `ubx_m10_stop()` ignore the
+   return value of `u_blox_iface_msg_payload_send()`, wait a fixed 100 ms, and
+   can return success for a command that never went out. **That claim is the
+   issue's, read from the driver; it was not re-read here.**
+2. The mechanism itself cannot be observed. `UBX-CFG-RST` is *"not
+   acknowledged"* by design and has no status message, so a caller can only
+   infer the stop from NMEA ceasing — indistinguishable from a dead module, a
+   wrong baud rate, or a rail that never came up. The receiver also stays
+   powered: there is no backup-current row for it.
+
+**Decision:** `REJECT` the mechanism · `INSPIRE ARCHITECTURE` for the split.
+
+**Reason:** #479 proposed `ADAPT`, and the research came out differently for one
+fact that was not visible when the issue was written. `UBX-RXM-PMREQ` software
+standby beats `UBX-CFG-RST` controlled stop on **both** axes at once: it draws
+46 µA against a receiver still running, and `UBX-MON-RXR` is **expected** to
+report the transition where `CFG-RST` has no status message at all. Expected,
+not established: whether the RAM-layer `MON-RXR` enable survives to emission on
+either edge is untested, and the policy document lists it as an open unknown.
+The verdict does not rest on it — the asymmetry is between a mechanism that can
+report and one that provably cannot. Adapting an implementation
+of the weaker mechanism would have carried its unobservability into this
+codebase, which is exactly what [ADR-0011](../adr/0011-gnss-integrity.md)
+forbids.
+
+**Source revision:** zephyr PR #114569, commits `c945a5e5` and `7fa5627b`, both
+merged 2026-09-08. Not cloned; read through the issue's citations and the
+vendor documents.
+
+**Attadipa integration:** none yet, and deliberately. #479 is research-only and
+the executable issue it names is not opened here — the policy document says what
+its scope would be and what measurement should precede it.
+
+**Tests required:** when that issue opens — that `command_transmitted` comes
+from the UART write's byte count and never from the request, and that
+`engine_observed` comes from `MON-RXR` or from NMEA resuming and never from
+either. A test that asserts the model publishes `Standby` after a write nobody
+confirmed would encode the exact defect this record rejects.

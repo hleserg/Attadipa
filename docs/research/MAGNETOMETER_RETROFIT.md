@@ -1,11 +1,15 @@
 # Adding a magnetometer to a board that shipped without one
 
-> **Status:** research, 2026-08-22; bench evidence added 2026-09-08. The
-> parts arrived 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)). Received-module
-> photos, unpowered tracing and a Waveshare supply measurement now live in
-> [MAGNETOMETER_BENCH_2026-09-08](MAGNETOMETER_BENCH_2026-09-08.md).
-> Sensor identity and powered module behaviour remain UNKNOWN. Compass,
-> calibration, tilt and motor influence tests remain
+> **Status:** research baseline, 2026-08-22; unpowered module tracing and a
+> Waveshare supply measurement, 2026-09-08
+> ([MAGNETOMETER_BENCH_2026-09-08](MAGNETOMETER_BENCH_2026-09-08.md)); AK09911
+> source and raw-acquisition update, 2026-09-09 (§2.1). The parts arrived
+> 2026-09-05 ([BENCH_DEVICES](BENCH_DEVICES.md)). Source facts are `VERIFIED`;
+> the later Waveshare ID/XYZ capture is `MEASURED` with its limits below. The
+> 2026-09-08 tracing was taken before the module was powered, so where it says
+> the silicon identity is `UNKNOWN` it has since been answered by the
+> 2026-09-09 capture, and where it reports resistances it has not. The proposed
+> mounting, calibration, tilt, accuracy and interference tests remain
 > **`NOT EXECUTED — HARDWARE REQUIRED`**.
 >
 > **Owner decision this document rests on**
@@ -144,6 +148,7 @@ built on top of it.
 | M3 | **QST `QMI8658C` Rev 0.6**, md5 `3d2bd7b24172e5d3448f2c9ecf2ef752` — the IMU already on the board, consulted for §5.6. Marked `ADVANCE INFORMATION — CONFIDENTIAL AND PROPRIETARY` on every page; a pre-release document |
 | M5 | **QST `QMI8658A` Datasheet Rev A**, `13-52-25`, md5 `5a0fef65a358430d6499944a75d22e19`. Admissible here as evidence about **M3's own document lineage** and nothing else: its revision-history rows 0.4, 0.5 and 0.6 are verbatim identical to M3's. Used only for what the vendor did to the documentation — **never** for an electrical characteristic *of the magnetometer retrofit this document scopes*, which is what "here" means. That ruling was written while the PDF had been opened for lineage alone; on 2026-09-01 it was read in full under [#341](https://github.com/hleserg/Attadipa/issues/341) and [`VERIFIED_FACTS.md:941-946`](VERIFIED_FACTS.md) "Gyroscope noise density" takes six of its figures — for the **A** column of a table whose whole point is that this board is the **C**, so nothing crosses into the retrofit |
 | M4 | Owner's photographs of both AliExpress listings, 2026-08-22 — silkscreen, pin labels and die marking only. A photograph of a module is evidence about *labels*, not about *nets* |
+| M6 | **AKM `AK09911` full datasheet**, `MS1526-E-01`, 2014/7, [manufacturer-authored PDF on ecsimple mirror](https://www.ecsimple.com/files/b7/ak09911c.pdf), SHA-256 `a243a60538d15db6a8c213344711c7102fa2d2649322e5c9f2e81ab141764a49`. Document identity, register tables and page-30 sensitivity equation checked on 2026-09-09. This supplies the register map absent from M1; it does not establish authenticity of the received silicon. |
 | A46 | **NXP/Freescale AN4246 Rev 3/4.0**, *Calibrating an eCompass in the Presence of Hard and Soft-Iron Interference*, T. Ozyagcilar. The ten-parameter model |
 | A47 | **NXP/Freescale AN4247 Rev 3/4.0**, *Layout Recommendations for PCBs Using a Magnetometer Sensor*. The keep-out and current-trace arithmetic |
 | A48 | **NXP/Freescale AN4248 Rev 3**, *Implementing a Tilt-Compensated eCompass* |
@@ -206,15 +211,45 @@ in any ordinary sense; the module is the only realistic route.
 together**: 2.5 MHz holds only at ≤ 100 pF and falls to 1.7 MHz at 400 pF
 (M1 §5.3.4). A shared watch bus is nowhere near 100 pF.
 
-**What M1 does not contain: the register address map.** M1 is not truncated — it
-runs through §7 recommended connection, §8 package and §9 field-to-output-code —
-it simply never prints register addresses. `WIA1`/`WIA2`, the `ST1`/`ST2` status
-bits and the `HXL…HZH` data registers are **`UNKNOWN` from a primary source**.
-Only the names `CNTL2`, `MODE[4:0]` and `SRST` appear, and never with an address.
-The full datasheet is available from AKM on request; failing that the Linux IIO
-driver `drivers/iio/magnetometer/ak8975.c` carries an `AK09911` entry and is a
-defensible secondary source. **Do not copy register numbers out of an Arduino
-library without checking them against one of those two.**
+**Register map — VERIFIED, 2026-09-09.** M1 is a complete short datasheet
+without register addresses. M6 supplies the primary-source register map;
+it replaces the earlier `UNKNOWN` here and in §10.
+
+| Raw-acquisition fact | M6 provenance |
+|---|---|
+| `WIA1` at `0x00` = `0x48`; `WIA2` at `0x01` = `0x05` | §8.3.1, p27 |
+| `ST1` at `0x10`: DRDY bit 0, DOR bit 1, HSM bit 7 (zero for the 100 kHz Standard-mode bus) | §8.3.3, p27 |
+| XYZ at `0x11..0x16`, signed two's complement, little endian, each axis −8190..8190; dummy `0x17` precedes `ST2` at `0x18` | §§8.1, 8.3.4–8.3.5, pp25, 28 |
+| `ST2` HOFL bit 3 means invalid overflow data even without numerical saturation; all other bits are zero. Reading through ST2 releases data protection | §§6.4.3.3, 8.2, 8.3.6, pp16, 26, 29 |
+| `CNTL2` at `0x31`: `00` power-down, `01` single, `02/04/06/08` continuous 10/20/50/100 Hz, `10` self-test, `1F` Fuse ROM. Transition through power-down; wait at least 100 µs before another mode | §§6.3, 6.4.3, 6.4.5, 8.3.8 |
+| ASA at `0x60..0x62` is valid only in Fuse ROM access mode | §8.1, p25 |
+
+M6 §8.3.11, p30 explicitly gives `Hadj = H × (ASA/128 + 1)`.
+A different AKM family member's formula or assumed nominal `ASA=128` is not
+evidence about this part. The relation between nominal sensitivity/range and
+factory-adjusted field units is not established for the received compatible
+module; the current checkpoint publishes raw counts only. Equal repeated
+ASA bytes do not prove Fuse ROM access or valid adjustment.
+
+**MEASURED — received module on Waveshare, 2026-09-09.** With the soldered
+IO15/SDA and IO14/SCL connection, common ground, 3.3 V supply and CAD/RST
+held high by the restored module jumper, the device answered at `0x0D` with
+ID `48 05`. A 20-second raw capture accepted 199 samples; no acquisition I/O
+failure, overflow, invalid frame or DOR was observed. The diagnostic ASA
+bytes were `17 17 13` (hex), but the acknowledged `CNTL2=1F` write read back
+`00`: **UNKNOWN** cause, silicon authenticity and factory adjustment validity.
+ASA consistency is diagnostic, never a requirement for raw acquisition.
+Power-down readback, device close and return to installed firmware were
+observed. These facts are bounded to this module and run; they do not establish
+heading, mounting calibration, tilt compensation, accuracy or interference.
+
+[Bench evidence and source/binary provenance in #450](https://github.com/hleserg/Attadipa/issues/450#issuecomment-5595967813)
+identify the physical run as implementation `527f1382`, RAM image SHA-256
+`190fbe3d9e512ee848b4ee9452fb5f1478ec6f6f64949e968568eeb8ed559d09`.
+The later [corrected-image capture](ak09911-waveshare-2026-09-09/README.md) records a separate physical test. No flash/erase command
+was issued in either run; the previous image's cached build-description string is not the
+source identity. Placement and vibration A/B remain
+**NOT EXECUTED — HARDWARE REQUIRED**.
 
 ### 2.2 QMC5883L — the blue GY-271
 
@@ -1825,7 +1860,7 @@ not "fixed" by mistake.
 | AMOLED supply current | **UNKNOWN** — no figure exists in this repository |
 | Day/night emissive ratio 13.9× | **ESTIMATED** — a pixel-value derivation; **not a supply-current ratio** |
 | All datasheet electrical figures for both ordered parts | **VERIFIED against the datasheet**, `NOT MEASURED` on hardware |
-| AK09911C register address map | **UNKNOWN from a primary source** |
+| AK09911C register address map | **VERIFIED** — M6 §§8.1–8.3; received-module ID/raw evidence and limits in §2.1 |
 | AK09911C noise floor and orthogonality | **not specified by M1** |
 | Disturbing-field threshold for either ordered part | **UNKNOWN** |
 | AK09911C ≈ 220 µA at 10 Hz | **ESTIMATED** — duty-cycle model, validated against AKM's own 100 Hz figure |
@@ -1955,7 +1990,7 @@ is never presented as watch orientation.
 
 ---
 
-*Facts here are datasheet- and application-note-derived and marked with their
-source. **Nothing has been verified on hardware, and nothing in this document is
-a `PASS`.** See [VERIFIED_FACTS](VERIFIED_FACTS.md) for the standard this has
-not yet met.*
+*Source-derived facts are marked with their provenance. The physical ID/raw
+checkpoint is separately bounded in §2.1; it does not turn the proposed compass,
+placement or interference tests into a hardware `PASS`. See
+[VERIFIED_FACTS](VERIFIED_FACTS.md) for the evidence standard.*

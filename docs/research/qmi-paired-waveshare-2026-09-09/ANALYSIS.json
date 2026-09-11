@@ -1,0 +1,96 @@
+{
+  "classification": "MEASURED physical transcript; pose, accuracy and calibration UNKNOWN",
+  "console_sha256": "06fc0af22c6f9676e570d9e0d3869664573f8643ff9a850c1a579c2bb263cc93",
+  "structural_checks": "PASS: stream syntax/counts/order/status only",
+  "qmi_cleanup_check": "FAIL \u2014 actual stop/close result below",
+  "ak_samples": 398,
+  "ak_host_timestamp_span_us": 39903327,
+  "ak_host_interval_us": {
+    "min": 61375,
+    "max": 115968,
+    "mean": 100512.15869017632,
+    "population_sd": 6493.545517505492
+  },
+  "ak_raw_axes": {
+    "x": {
+      "min": 43,
+      "max": 49,
+      "mean": 46.040201005025125,
+      "population_sd": 1.1597920277087088
+    },
+    "y": {
+      "min": -16,
+      "max": -10,
+      "mean": -12.912060301507537,
+      "population_sd": 1.2277385659469515
+    },
+    "z": {
+      "min": -53,
+      "max": -45,
+      "mean": -49.185929648241206,
+      "population_sd": 1.1864405679094436
+    }
+  },
+  "qmi_samples": 3810,
+  "qmi_batches": 3121,
+  "qmi_batch_size_histogram": {
+    "1": 2432,
+    "2": 689
+  },
+  "qmi_raw_axes": {
+    "x": {
+      "min": -139,
+      "max": -119,
+      "mean": -130.61312335958004,
+      "population_sd": 2.694689237582809
+    },
+    "y": {
+      "min": 65,
+      "max": 85,
+      "mean": 73.3766404199475,
+      "population_sd": 3.2027105071309463
+    },
+    "z": {
+      "min": 4070,
+      "max": 4103,
+      "mean": 4084.620997375328,
+      "population_sd": 5.4626558539776
+    }
+  },
+  "qmi_host_request_to_release_us": {
+    "min": 4820,
+    "max": 6513,
+    "mean": 5127.353412367831,
+    "population_sd": 549.1663587495468
+  },
+  "qmi_host_request_to_freeze_confirm_us": {
+    "min": 1645,
+    "max": 2797,
+    "mean": 1832.8782441525152,
+    "population_sd": 361.5926187833429
+  },
+  "qmi_host_freeze_confirm_to_release_us": {
+    "min": 3175,
+    "max": 3717,
+    "mean": 3294.4751682153155,
+    "population_sd": 224.4656928545555
+  },
+  "qmi_host_first_request_to_last_release_us": 39994820,
+  "qmi_host_timestamp_caveat": "Host transaction boundaries, not conversion timestamps or exact device frozen durations; dropped conversion count UNKNOWN.",
+  "source_summary_lines": [
+    "I (958) i2c-probe: AK09911 ID=48 05 ASA=17 17 13 fuse_mode=00 start=0",
+    "I (1008) i2c-probe: QMI before CTRL1=20 CTRL2=00 CTRL3=00 CTRL5=00 CTRL7=00 CTRL8=00 WTM=00 FIFO=00 steps=0",
+    "I (1008) i2c-probe: QMI start=0 temporary_accel=1 frame_bytes=6; raw axes only",
+    "I (41048) i2c-probe: QMI after CTRL1=20 CTRL2=00 CTRL3=00 CTRL5=00 CTRL7=00 CTRL8=00 WTM=00 FIFO=00 steps=0",
+    "I (41048) i2c-probe: QMI summary samples=3810 batches=3121 result=0 stop=4 discarded_fifo_words=3 close=ESP_OK",
+    "I (41048) i2c-probe: AK09911 summary duration_us=40042233 samples=398 not_ready=3603 overflow=0 invalid=0 dor=0 result=0 power_down_attempted=1 power_down_result=0 close=ESP_OK"
+  ],
+  "normal_boot_spi": true,
+  "normal_boot_expected_elf": "UNKNOWN \u2014 this archive records no expected_ordinary_elf_prefix; LOAD_RESULT.json asserts expected_production_elf_seen separately, and this verifier does not reproduce that assertion",
+  "normal_boot_relevant_lines": [
+    "rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)",
+    "I (772) app_init: ELF file SHA256:  d5e09572c...",
+    "I (1208) waveshare: production image: no USB watch-control endpoint",
+    "I (1208) waveshare: UI ready: AMOLED brightness 5%, touch present, RTC present"
+  ]
+}

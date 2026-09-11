@@ -340,9 +340,9 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 which is right.** The sites below do not agree, and they are **not the whole
 list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "QMI8658A Datasheet, `13-52-25`",
 [`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md) "chapter 11 documents a complete hardware pedometer",
-[`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
+[`MAGNETOMETER_RETROFIT.md:149`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
 [`HARDWARE_MATRIX.md:392`](HARDWARE_MATRIX.md) "13-52-27 ∙ QMI8658C Datasheet ∙ Rev A" and
-[`VERIFIED_FACTS.md:2030`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
+[`VERIFIED_FACTS.md:2153`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
 as well. Enumerating and reconciling them is #341's job, not this report's:
 
 | Site | What it said on 2026-08-28 |
@@ -351,7 +351,7 @@ as well. Enumerating and reconciling them is #341's job, not this report's:
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
 | [`VERIFIED_FACTS.md:921-923`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:925-927`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |
-| [`VERIFIED_FACTS.md:2026`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
+| [`VERIFIED_FACTS.md:2149`](VERIFIED_FACTS.md) "values for that byte" | `REVISION_ID = 0x7C` comes from `13-52-25` |
 | [`pedometer-bench-2026-08-28/probe/pedo.c:8-13`](pedometer-bench-2026-08-28/probe/pedo.c) "actually read" | the probe now cites `13-52-27`, the paper this report read, and defers the number to #341 |
 | the five archived captures — `shake.log:43`, `walk.log:43`, `pedo-run{,2,3}.log:32` | each prints `0x7C = QMI8658A 13-52-25 Rev A` as settled fact. **Immutable**: they are the run. The probe's label is corrected for the next capture |
 
@@ -361,12 +361,12 @@ own register-description page. A paper numbered `13-52-25` has been read in
 this tree too: [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "Feature list p. 1; chapter 11" records its
 chapter 11 *"Pedometer"* at pp. 64–66 with `STEP_CNT_LOW/MIDL/HIGH` at
 `0x5A`–`0x5C`, `CTRL8.Pedo_EN` and both CTRL9 commands, and
-[`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" gives its md5. **What
+[`MAGNETOMETER_RETROFIT.md:149`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" gives its md5. **What
 is `UNKNOWN` is which number names the Rev A part**, not what either paper
 holds — the two records put the same chapter 11 in both, so no register below
 turns on the number. This report therefore cites only the paper it read, and
 the tree-wide reconciliation — including which document
-the `0x7C` attribution at [`VERIFIED_FACTS.md:2022`](VERIFIED_FACTS.md)
+the `0x7C` attribution at [`VERIFIED_FACTS.md:2145`](VERIFIED_FACTS.md)
 *"the datasheet with a pedometer in it"* actually came from — is
 [#341](https://github.com/hleserg/Attadipa/issues/341), not this pull request.
 
@@ -378,7 +378,7 @@ read, in `VERIFIED_FACTS`, `HARDWARE_MATRIX` and `WAVESHARE_RUNNING_OUR_CODE`
 alike. Then `13-52-25` was fetched from the vendor's own published copy and
 read directly, which **settles what this report left `UNKNOWN` and moots the
 question it was asking**. Its md5 matches the one
-[`MAGNETOMETER_RETROFIT.md:145`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" already
+[`MAGNETOMETER_RETROFIT.md:149`](MAGNETOMETER_RETROFIT.md) "Admissible here as evidence" already
 recorded, and it gives **`REVISION_ID = 0x7C`** — the same byte as `13-52-27`,
 in the same register-description section, with the same `0x68` in the same
 register-map summary. `WHO_AM_I` and the product id are identical too. So the

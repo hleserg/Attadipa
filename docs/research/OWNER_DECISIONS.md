@@ -1810,7 +1810,7 @@ place twice over. In this tree `validity` is fix quality and deliberately
 nothing else —
 `core/include/attadipa/core/position.h:179` — "How good a position is *as a position*" —
 and nothing above `NoFix` is reachable out of the companion channel at all:
-`link/src/meshcore_companion.cpp:664` — "path in this repository can reach `PositionValidity::Valid` from it."
+`link/src/meshcore_companion.cpp:763` — "path in this repository can reach `PositionValidity::Valid` from it."
 So a confirmation carried there either leaves `own_ok` false and computes no
 distance, or lifts `validity` and makes the watch assert a fix for a coordinate
 whose source states none — which is this decision's own named failure, arriving
@@ -1916,3 +1916,34 @@ both slots.
 
 **What it does not decide:** which of the three upstream paths carries a
 *remote* node's coordinate. That stays open.
+
+---
+
+## OD-29 — The name is `Atta-dipa` for readers and `Attadipa` for machines
+
+**Decided:** 2026-09-11, by the owner, in conversation.
+
+**What was decided:** wherever a person reads the project's name as a name —
+the website, `README.md` and `README.ru.md`, logos and wordmarks, app and PWA
+names, `<title>`, `og:title`, alt text, `aria-label` — it is written
+**`Atta-dipa`**. Wherever a machine reads it, it stays **`Attadipa`** with no
+hyphen: the repository name, URLs and the Pages path, C++ namespaces, CMake
+projects and targets, macros and include guards, header paths, storage and
+artifact prefixes, CI job text, and the `attadipa-agent-task` markers.
+
+Both are the project's name; neither replaces the other, and one file routinely
+carries both. This was given after an agent had normalised the user-facing
+strings back to `Attadipa`, so the decision is as much about the rule being
+written down as about the spelling.
+
+**What it obliges:** `docs/brand/naming.md` carries the rule, `AGENTS.md` points
+at it, and `tools/site/check_head_sync.py` — already a required check — catches
+the half that breaks silently, because `docs/assets/site.js` assigns the head
+strings on every JavaScript-enabled load and so overwrites correct static HTML.
+
+**What it invalidates:** the earlier reading of `docs/brand/naming.md` under
+which `Attadipa` was the only form and the hyphen was a typo. Nothing about
+capitalization changes, and `AttadipaOS` is still not a name.
+
+**What it does not decide:** the Russian prose form stays **Аттадипа**, and the
+Latin wordmark in UI and logo use takes the hyphen.

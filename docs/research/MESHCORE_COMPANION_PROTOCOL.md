@@ -44,10 +44,16 @@ the cited lines:
 | `OFFLINE_QUEUE_SIZE` defaults to 16 | `examples/companion_radio/MyMesh.h:62-63` |
 | the telemetry permission gate and its requester-supplied inverse mask | `examples/companion_radio/MyMesh.cpp:628-672` |
 | `PUSH_CODE_TELEMETRY_RESPONSE` frame layout | `examples/companion_radio/MyMesh.cpp:728-735` |
+| `CMD_GET_BATT_AND_STORAGE` (20) and the 11 bytes of its reply — §5.1 | `examples/companion_radio/MyMesh.cpp:1472-1483` |
+| the three `txt_type` values and which command accepts which — §5.2 | `src/helpers/TxtDataHelpers.h:6-8`; `examples/companion_radio/MyMesh.cpp:1095,1140` |
 
-Ten spot-checks, ten agreements — including one place where the prose needed
-correcting (§4.3, the reserved byte). Everything **not** in that table rests on
-the agents' quoted evidence and has not been independently audited. It is
+The first ten rows are spot-checks against the agent run: ten checks, ten
+agreements, including one place where the prose needed correcting (§4.3, the
+reserved byte). **The last two are not spot-checks.** Nothing in that run
+covered opcode 20 or `TxtDataHelpers.h`, so there was no answer to agree with;
+they were read directly for #490 on 2026-09-09 and became §5.1 and §5.2, both
+named in the note at §5.1's heading. Everything **not** in this table rests
+on the agents' quoted evidence and has not been independently audited. It is
 sourced, which is the project's bar for a fact; it is not double-read, which is
 the bar this document was originally meant to clear.
 
@@ -427,7 +433,7 @@ whether the wearer moved.
   `ADV_LATLON_MASK = 0x10`.
 - **`PAYLOAD_TYPE_TXT_MSG` (0x02) / `GRP_TXT` (0x05) / `GRP_DATA` (0x06)** — **no
   position fields.** The text sub-types are `PLAIN` / `CLI_DATA` / `SIGNED_PLAIN`
-  only; group datagrams carry an opaque blob with no location member defined in
+  only (command acceptance is enumerated in §5.2); group datagrams carry an opaque blob with no location member defined in
   this repository. *A coordinate inside an incoming message is not a MeshCore
   protocol feature at this revision* — if we want one, it is our payload inside
   their datagram, and that is a design decision, not a reading of theirs.
@@ -543,6 +549,160 @@ needs a receive path independent of its request path: `0x80` `ADVERT`,
 5 `FILE_IO_ERROR`, 6 `ILLEGAL_ARG`. `OK` is one byte, `ERR` is two,
 `DISABLED` is one.
 
+### 5.1 `CMD_GET_BATT_AND_STORAGE` (20) — the power and storage reading
+
+> **Added 2026-09-09, [#490](https://github.com/hleserg/Attadipa/issues/490).**
+> This section and §5.2 are **not** from the three-agent run §0 describes: that
+> run never opened opcode 20 or `TxtDataHelpers.h`, so §0's sentence about
+> resting on the agents' quoted evidence does not describe them. Both are a
+> direct reading of the same pinned clone at `d929643`, done for #490, and both
+> are listed in §0's author-verified table — as its only single-read rows. The
+> ten above them are the author's second reading of an agent's first.
+
+Request is the bare opcode. Reply is `RESP_CODE_BATT_AND_STORAGE` (12),
+**11** bytes:
+
+```
+[12][battery_millivolts:2][storage_used_kb:4][storage_total_kb:4]
+```
+
+`examples/companion_radio/MyMesh.cpp:1472-1483` builds it: `uint8_t reply[11]`,
+then `board.getBattMilliVolts()`, `_store->getStorageUsedKb()` and
+`getStorageTotalKb()` `memcpy`'d in that order.
+
+What that `memcpy` establishes is the field order, the three widths, and the
+host's **native** byte order. Native is little-endian on every supported target,
+which is a fact about the targets and not about the frame — §4.1 words the
+identical construct exactly that way, and the row directly under it in the same
+table carries a **big-endian** position over this same protocol. So a client may
+parse these three fields little-endian, and may not conclude that MeshCore is.
+
+The **unit** of the two storage figures is established by nothing at all. It
+rests on the accessor names alone; neither `getStorageUsedKb()` nor
+`getStorageTotalKb()` was read, so kilobytes is `UNKNOWN` on exactly the standard
+item 2 below applies to `getBattMilliVolts()`. Nothing in Attadipa consumes the
+pair, so this costs nothing today; it is recorded rather than closed.
+
+Three things a client must not read into it:
+
+1. **It is millivolts, and only millivolts.** There is no percentage, no
+   chemistry, no full/empty calibration and no charging flag anywhere in the
+   frame. A percentage drawn from this number is a curve the *client* invented;
+   it is not the node's opinion of its own charge, and it must not be presented
+   as one.
+2. **There is no absence signal.** The frame is fixed at 11 bytes and always
+   carries the field. A board with no battery, or no divider fitted, returns
+   whatever its own `getBattMilliVolts()` returns, and no value it can return
+   is distinguishable on the wire from a real reading: `0` reads as a flat
+   cell, anything else reads as a charge. The T114 and Heltec V4 producers have now been read, as recorded below.
+   Their actual absent-cell return remains `UNKNOWN`: the frame has no field
+   in which absence could be said. "This node has no
+   battery" is therefore a fact the *client* must hold, never one it can infer
+   from this reply.
+3. **The storage pair says nothing about message capacity.** Whatever unit the
+   two figures are in — and this section has just said that is `UNKNOWN` —
+   they measure a *store*, while the offline message queue's own limit is a
+   frame count (§3.1). The point survives without the unit, which is why it is
+   made without one: a store size is not a message count in any unit.
+
+**Producer verification, 2026-09-09 (#490).** At the pinned revision,
+[T114Board.h](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/variants/heltec_t114/T114Board.h#L31-L43)
+enables acquisition, waits 10 ms and scales one 12-bit ADC reading by
+`(3000/4096) * 4.9`; its target instantiates that board.
+[HeltecV4Board.cpp](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/variants/heltec_v4/HeltecV4Board.cpp#L43-L63)
+uses eight 10-bit readings and `adc_mult * (3.3/1024) * 1000`; its multiplier
+is configurable. This establishes intended millivolt scaling, not physical
+accuracy, divider values, cell presence or the code in an unidentified bench
+image. Other board implementations remain UNKNOWN. The storage accessors
+above were not examined and their units remain UNKNOWN.
+
+**Attadipa client policy (#490).** The existing Companion worker/FIFO owns
+one battery request, due after accepted handshake and every 60 seconds. A
+queued backlog sync can precede it, so sustained incoming messages do not
+suppress every poll. Foreground sends prevent a new poll. A send queued behind
+an issued poll waits at most its 5-second reply budget before its own deadline
+starts. The reply budget starts when the transport pump takes the command.
+At least the documented 11-byte prefix is required; storage and any trailing
+bytes are ignored. A merely queued poll does not withhold the send deadline.
+An untagged error during an active drain cannot conclusively fail the poll;
+its typed reply or 5-second timeout resolves the wait.
+
+The public `MeshStatus.node_battery` belongs to the snapshot's `node_id` and
+carries reported millivolts, validity, last successful receipt and separate
+supply topology. Zero is unavailable, not 0% or proof of an absent cell. Failed
+refreshes retain the last good value/time as stale; even without a refresh,
+180 seconds makes the receipt stale. Disconnect clears it. Forget/rebind or
+identity replacement within a connection clears it and inhibits further polls
+until a new session, because an old reply has no identity field.
+
+After an unanswered timed-out poll, an untagged ERR cannot safely be assigned
+to a later send. For the rest of that connection, typed responses/confirmations
+and the existing send deadline determine delivery; an ambiguous ERR cannot
+fail it directly. Consequently, a later rejected send with no typed response
+can remain queued until its existing 15-second deadline, instead of failing
+immediately on ERR. An internal sequence or an arbitrary expiry cannot
+identify an old wire response. Idle periodic retries continue. The age here is
+receipt age, not sample age at the node. These intervals are chosen software
+limits. Actual voltage accuracy, polling power cost and native BLE acceptance:
+**NOT EXECUTED — HARDWARE REQUIRED**. Host checks exercise the actual Companion
+queue/dispatcher and public MeshService snapshot; shared UI is still the
+separate presentation work tracked by #490.
+
+A typed short or overdue battery response ends the current wait without
+creating new generic-ERR ambiguity or publishing a successful value. Any
+ambiguity from an earlier unanswered timeout remains. The host regression
+checks both kinds of typed failure with and without a prior timeout, then
+submits a real private send and dispatches its ERR through the production client.
+
+**Response-ordering verification, 2026-09-09.** The pinned
+[command handler](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/MyMesh.cpp#L1472)
+constructs opcode 20's response synchronously, with no request-generation field.
+[MultiSerialInterface](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/MultiSerialInterface.h#L160)
+forwards it without retaining a failed response. The
+[ESP32 FIFO](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/esp32/SerialBLEInterface.cpp#L114)
+removes its head after `notify()`, without response retry; the
+[nRF52 FIFO](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/nrf52/SerialBLEInterface.cpp#L276)
+retains it on a zero-byte write while connected. FIFO submission attempts do
+not establish delivery of all earlier replies. Nor does FIFO distinguish
+`poll A -> local timeout -> command X -> poll B -> delayed response A`:
+this sequence requires no reordering, and response 12 cannot identify A or B.
+A later type-12 frame therefore cannot clear historical ERR ambiguity merely
+by its type. Its public timestamp denotes arrival, not source-sample age or
+proof that the latest poll produced it. These are source and protocol limits;
+no physical transport-order or timing result is claimed.
+
+### 5.2 Text message types — three defined, and no command accepts all three
+
+`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`
+**0**, `TXT_TYPE_CLI_DATA` **1**,
+`TXT_TYPE_SIGNED_PLAIN` **2**. What each command accepts is narrower than the
+enum:
+
+| Command | Accepted `txt_type` | Anything else |
+|---|---|---|
+| `CMD_SEND_TXT_MSG` (2) | **0 or 1 only** — `MyMesh.cpp:1095` | `ERR_CODE_UNSUPPORTED_CMD` (`:1129`), *the same error as an unknown recipient is not* — that one is `ERR_CODE_NOT_FOUND` |
+| `CMD_SEND_CHANNEL_TXT_MSG` (3) | **0 only** — `MyMesh.cpp:1140` | `ERR_CODE_UNSUPPORTED_CMD` |
+
+So **`TXT_TYPE_SIGNED_PLAIN` is receive-only**: `queueMessage()` emits it at
+`MyMesh.cpp:542` for an inbound signed message, and no companion command will
+send one.
+
+`TXT_TYPE_CLI_DATA` is a remote-CLI channel rather than a message for a person,
+and it is not interchangeable with plain text: the handler **discards the app's
+timestamp** and substitutes the node's own RTC (`MyMesh.cpp:1103`), commented
+upstream as replay-protection avoidance.
+
+The three text types above share the **absence of structured position fields
+recorded in §4.4**. This is an enumerated absence: all three definitions in
+`TxtDataHelpers.h:6-8` were read, so it is not an `UNKNOWN`. A coordinate sent
+as text spends the same payload budget as words; it does not add a
+protocol-level position type.
+
+This is also a **second instance of the `ERR_CODE_UNSUPPORTED_CMD` ambiguity**
+this section's landmine note above raises: here it answers a perfectly
+well-known opcode carrying a `txt_type` the firmware declines. A client that reports "your node's firmware is too old" on
+error 1 would be wrong in exactly the case where the fault is its own.
+
 ---
 
 ## 6. What this means for Attadipa
@@ -604,3 +764,4 @@ Consequences only. Designs go in ADRs and tasks, not here.
 | Whether the first-party JS and Python clients agree with this reading | not cross-checked; they are the obvious second source and were not consulted |
 | How the numbering differs at other tags | 53's absence proves the numbering has already moved. Any statement about another revision is `UNKNOWN` |
 | Whether a `RESP_CODE_DEVICE_INFO` from a *newer* node is safe to parse at 81 bytes | the reply has grown before; a client must key off length, and no compatibility rule is documented upstream |
+| What unit `getStorageUsedKb()` and `getStorageTotalKb()` actually return | **opened 2026-09-09**, [#490](https://github.com/hleserg/Attadipa/issues/490): the accessor names say kilobytes and neither body was read. §5.1. Nothing in Attadipa consumes the pair, so this is recorded rather than chased |

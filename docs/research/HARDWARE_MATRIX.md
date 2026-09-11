@@ -100,7 +100,7 @@ marked ANSWERED, and the revision half of it was carved out into D20.)
 | Accelerometer | BMA423 — **no gyroscope** | main I2C, INT1 → GPIO 14. **INT2 is bonded out but not routed** (R12, R15 not fitted) | 0x19 | +3V3 | VERIFIED |
 | Haptic | DRV2605 | main I2C | 0x5A | **BLDO2 (enable)** | VERIFIED |
 | Radio | Schematic fits **HPD16B3** (SX1262-class pinout); vendor header builds **SX1280 / CC1101 / LR1121 / SI4432** variants by order. Only the SX1262 path is MeshCore-supported at the pinned revision, and CC1101/SI4432 cannot do LoRa at all — [ADR-0003](../adr/0003-radio-not-lora.md) | SPI: SCK 3, MISO 4, MOSI 1, CS 5, RST 8, BUSY 7, DIO1 9, **DIO3 6 — ⚠️ never driven as an output, see below** | — | ALDO4 via R61 0 Ω (net `GPS_VDD`) | VERIFIED |
-| GNSS | **u-blox MIA-M10Q** on the bench unit, read off the part 2026-09-05 — `MOD=MIA-M10Q`, `FWVER=SPG 5.10`, `PROTVER=34.10`, [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md). The product ships **MIA-M10Q or Quectel LS550G** and this row does not retire that; on a 13-pin 0.3 mm FPC daughterboard | UART: TX 42, RX 41 — **from the CPU's side, confirmed by sweeping both orientations**: GPIO 41 is the module's TX, GPIO 42 its RX, at **38400 baud**; **PPS not connected** — the net exists on the daughterboard but `PPS` appears nowhere in the main-board schematic | — | BLDO1 (+ DC4 @850 mV for LS550G); enable net `GPS_LDO` on FPC pin 3 | VERIFIED |
+| GNSS | **u-blox MIA-M10Q** on the bench unit, read off the part 2026-09-05 — `MOD=MIA-M10Q`, `FWVER=SPG 5.10`, `PROTVER=34.10`, [TWATCH_GNSS_READOFF_2026-09-05](TWATCH_GNSS_READOFF_2026-09-05.md). The product ships **MIA-M10Q or Quectel LS550G** and this row does not retire that; on a 13-pin 0.3 mm FPC daughterboard | UART: TX 42, RX 41 — **from the CPU's side, confirmed by sweeping both orientations**: GPIO 41 is the module's TX, GPIO 42 its RX, at **38400 baud**; **PPS not connected** — the net exists on the daughterboard but `PPS` appears nowhere in the main-board schematic | — | BLDO1 (+ DC4 @850 mV for LS550G); crosses to the module as `GPS_LDO` on FPC pin 3 | VERIFIED |
 | Microphone | SPM1423HM4H-B, PDM | CLK 44, DATA 47. **`SELECT` is resistor-strapped (R80, R81 not fitted)** — channel fixed in hardware | — | +3V3 | VERIFIED |
 | Amplifier | MAX98357A, 3.2 W class-D | I2S: BCLK 48, WCLK 15, DIN 46. **`SD_MODE` is resistor-strapped (R14 = 1 MΩ; R74, R76 not fitted) — no GPIO reaches it** | — | `DLDO1` pin (DLDO1/DC1SW) via R18 0 Ω → `SPK_VDD` | VERIFIED |
 | IR transmitter | IR12-21C | GPIO 2 → R64 0 Ω → base of Q15 (MMBT3904, NPN low-side); LED anode at +3V3. **GPIO 2 high = LED conducts; inactive level is LOW** | — | +3V3 | VERIFIED |
@@ -249,7 +249,7 @@ board. What matters is what else rides that connector.
 |---|---|---|
 | 1 | `GPIO41 / MTDI` | GNSS UART |
 | 2 | `IO0` | **BOOT button** |
-| 3 | `GPS_LDO` | GNSS supply / enable |
+| 3 | `GPS_LDO` | GNSS supply |
 | 5 | `IO2` | main-board net, unconnected on the daughterboard |
 | 6 | `RST / EN` | **RESET button** |
 | 7 | `IO10` | **main I2C `SDA`** |

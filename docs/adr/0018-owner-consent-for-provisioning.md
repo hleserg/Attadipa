@@ -36,12 +36,12 @@ recorded here so that no option is credited with paying them.
    #356's first change removed the second: the sequence is
    `firmware/main/provision_time.h:121` — "ProvisionTimeResult provision_time(Ops &ops,"
    in every image. Its second gave the sequence an ungated caller,
-   `firmware/main/waveshare_board.cpp:466` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
-   next to the HIL-only one that `firmware/main/waveshare_board.cpp:622` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
+   `firmware/main/waveshare_board.cpp:495` — "class BoardProvisioner final : public attadipa::core::Provisioner {",
+   next to the HIL-only one that `firmware/main/waveshare_board.cpp:651` — "#if CONFIG_ATTADIPA_WATCH_CONTROL"
    still gates,
-   `firmware/main/waveshare_board.cpp:623` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
+   `firmware/main/waveshare_board.cpp:652` — "class BoardTimeSink final : public attadipa::debug::TimeSink {".
    The restore side was always unconditional:
-   `firmware/main/waveshare_board.cpp:292` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
+   `firmware/main/waveshare_board.cpp:321` — "esp_err_t restore_time_metadata() {". Every option therefore cost *re-gating
    existing code and reaching it*, never *writing an RTC driver*.
 
 2. **The passkey was RAM-only when this was decided, and the storage it
@@ -98,7 +98,8 @@ recorded here so that no option is credited with paying them.
    own** — as one field on the entry screen this ADR chose, shown only on a
    pinned watch and placed before the passkey, because a forgotten node's
    *current* passkey is the next thing typed:
-   `apps/include/attadipa/apps/provisioning.h:44` — "enum class EntryField : std::uint8_t { Date, Time, Offset, Node,".
+   `apps/include/attadipa/apps/provisioning.h:71` —
+   "Node,           // The node this watch is pinned to. Forget asks to drop it.".
    It is not the revocation gesture the decision declines: no listener, no
    mode, the same finger on the same panel (the report's §9), and it arms
    nothing — the passkey entry that follows is the one arm, as for a first
@@ -132,9 +133,9 @@ interchangeable: `docs/research/HARDWARE_MATRIX.md:399` — "| Buttons | **two c
 through this project's own input queue, and it is in the product image today
 with nothing gating it: `firmware/main/physical_input.cpp:63` —
 "    buttons.pin_bit_mask = 1ULL << GPIO_NUM_0;",
-`firmware/main/physical_input.cpp:516` —
+`firmware/main/physical_input.cpp:551` —
 "  PhysicalButton physical_buttons_[1] = {{GPIO_NUM_0, false, 1}};", and
-`firmware/main/physical_input.cpp:559` —
+`firmware/main/physical_input.cpp:594` —
 "physical input ready: %s, GPIO0 and the AXP2101 power key".
 So a gesture is not something B or C would have to invent. It costs two things
 instead: BOOT is a reset strap, so it cannot be injected remotely and a
@@ -144,7 +145,7 @@ T-Watch it leaves with the GNSS module —
 
 **PWR is the one that is not established**, and it does not reach the SoC:
 
-`docs/research/VERIFIED_FACTS.md:1157` — "button presses arrive as PMU interrupts"
+`docs/research/VERIFIED_FACTS.md:1280` — "button presses arrive as PMU interrupts"
 — over I2C rather than as GPIO edges, so press duration, long-press and
 power-off behaviour are PMU register policy —
 
@@ -152,7 +153,7 @@ with the consequence already written down in the testing guide:
 `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
-`docs/research/VERIFIED_FACTS.md:1156` — "- **Source:** S3 sheet 1." — and its
+`docs/research/VERIFIED_FACTS.md:1279` — "- **Source:** S3 sheet 1." — and its
 claim names SW7, a T-Watch designator, so by itself it is a fact about the other
 board. What carries it here is the Waveshare row cited above,
 `docs/research/HARDWARE_MATRIX.md:399` — "physical BOOT and PWR edge pairs measured"
@@ -286,7 +287,7 @@ The Waveshare RTC's own rail is not resolved either —
 and the documented backup cell belongs to the other board.
 
 The persisted UTC offset does survive, because it is in NVS rather than in the
-chip: `firmware/main/waveshare_board.cpp:292` — "esp_err_t restore_time_metadata() {".
+chip: `firmware/main/waveshare_board.cpp:321` — "esp_err_t restore_time_metadata() {".
 
 If the RTC does not retain, hand entry is recurring rather than one-time, on the
 path the owner meets first, because GNSS has not landed. That makes GNSS more
@@ -365,7 +366,7 @@ Beyond B and C:
   compiles neither. That is the largest unpriced item in this decision.**
   Fact 4 above named them; this is what they cost. The clock's is
   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {", implemented
-  by `firmware/main/waveshare_board.cpp:623` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
+  by `firmware/main/waveshare_board.cpp:652` — "class BoardTimeSink final : public attadipa::debug::TimeSink {"
   — which hands the request to the sequence that validates it, tags it
   `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
@@ -380,10 +381,10 @@ Beyond B and C:
   `MeshSink` or `MeshSinkResult` in any signature at all. That is a stronger
   constraint than a missing caller and it points somewhere else: what #356 adds
   is a seam a product image can compile.
-  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:84` —
+  `core::` is not one yet: `core/include/attadipa/core/mesh_service.h:99` —
   "class MeshProvider {" — is four methods — status, peer count, peer, send —
   and not one of them arms a passkey, while
-  `core/include/attadipa/core/time_service.h:60` —
+  `core/include/attadipa/core/time_service.h:67` —
   "bool observe(const TimeObservation& observation);" — is one step inside the
   clock sequence and the step that does not persist; nothing in `core/` reaches
   the PCF85063 or NVS. So what an option here buys is that seam and the firmware

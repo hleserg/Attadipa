@@ -24,10 +24,8 @@
 // which is why the check has no panel pattern. The owner does turn the panel
 // off and on for a sleep, but `waveshare_board.cpp` also switches it at boot,
 // so the AMOLED clause is the one part of section 1 that is neither exclusive
-// nor checked. Harmless today -- both sites take brightness from the same
-// `kBrightnessPercent` and boot cannot race a sleep -- and recorded rather
-// than fixed, because moving the boot call means reordering it against
-// `lvgl_port_init()` and `start_physical_input()`. What it would cost silent
+// nor checked. Boot still switches the panel on after its first frame; the
+// brightness request itself now goes through this owner. What it would cost silent
 // is a second display-power site added during T-Watch bring-up by somebody
 // who read the CI step as enforcing the whole sentence.
 //
@@ -93,6 +91,11 @@ esp_err_t board_power_attach(i2c_master_dev_handle_t pmu,
 
 // Make the owner inert before boot rollback releases the handles it was given.
 void board_power_detach();
+
+// Preview never changes the saved wake level. Call remember only after a
+// successful persistence acknowledgement, on the same LVGL task as sleep.
+esp_err_t board_power_preview_brightness(std::uint8_t percent);
+void board_power_remember_brightness(std::uint8_t percent);
 
 // The one owner. Valid after `board_power_attach()` has returned ESP_OK; before
 // that its `PowerHardware` refuses everything, which is the honest answer for a

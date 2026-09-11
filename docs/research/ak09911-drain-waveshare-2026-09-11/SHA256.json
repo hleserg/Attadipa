@@ -1,0 +1,26 @@
+{
+  "NORMAL_BOOT.txt": {
+    "bytes": 1736,
+    "sha256": "afaed8947cb69f0d52756afa585695cd7fb2cdd1a48ef30817a2d8a8093e3268"
+  },
+  "console-ak-stationary-A.txt": {
+    "bytes": 15138,
+    "sha256": "3b8158760c28aee1f7c7afefb16864f386b672b672518a439822bcc712198996"
+  },
+  "console-ak-stationary-B.txt": {
+    "bytes": 14234,
+    "sha256": "e96f2ce8382de8510fe8c00ac473ef777b687078e3bbcc93306066d5f9d976be"
+  },
+  "console-ak-stationary-C.txt": {
+    "bytes": 14234,
+    "sha256": "82dece40d24c7f4a541a8a9e74bdf550b2958a8287c46288ffa41140e0d9a5fa"
+  },
+  "console-bypass-attempt.txt": {
+    "bytes": 6935,
+    "sha256": "0020a1ea7b280c959628b470e27e1146ca9b2bb81f29608fd3ac6e04c91b3f75"
+  },
+  "console.txt": {
+    "bytes": 418369,
+    "sha256": "8f6024cfaf4bbab73683b15d021f93bbe0aa31c2e5e35e5f652f250c09d10382"
+  }
+}

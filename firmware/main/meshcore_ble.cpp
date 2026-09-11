@@ -145,13 +145,13 @@ attadipa::core::LocationService location(position_provider);
 // lock the mesh status already uses.
 attadipa::core::LocationState location_snapshot;
 
-// Two locks, and they are never nested. `snapshot_lock` guards the status any
+// Seed topology before ticks. Two never-nested locks: snapshot_lock guards what
 // task may read; `session_lock` guards the BLE session that the NimBLE host
 // task and the worker share. Nothing under `session_lock` calls into NimBLE and
 // nothing under it takes the other lock, which is the whole of the locking
 // discipline in this file.
 portMUX_TYPE snapshot_lock = portMUX_INITIALIZER_UNLOCKED;
-attadipa::core::MeshStatus snapshot{};
+attadipa::core::MeshStatus snapshot = provider.status();
 
 portMUX_TYPE session_lock = portMUX_INITIALIZER_UNLOCKED;
 attadipa::link::SessionOwner owner;

@@ -226,6 +226,10 @@ void ClockFace::touch(lv_event_t *event) {
   }
   lv_point_t point{};
   lv_indev_get_point(indev, &point);
+  lv_area_t bounds{};
+  lv_obj_get_coords(screen_, &bounds);
+  point.x -= bounds.x1;
+  point.y -= bounds.y1;
   static constexpr int kDxQ4[] = {32, 26, 0, -26, -32, -26, 0, 26};
   static constexpr int kDyQ4[] = {0, 20, 32, 20, 0, -20, -32, -20};
   const unsigned direction =

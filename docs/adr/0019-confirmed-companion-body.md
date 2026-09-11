@@ -231,7 +231,7 @@ watch's own sleep is not a special kind of absence.
 
 Sleep on this board is an unbounded loop of
 `esp_light_sleep_start()` —
-`firmware/main/board_power.cpp:416` — "    for (;;) {" —
+`firmware/main/board_power.cpp:427` — "    for (;;) {" —
 entered on the power key with NimBLE up, and whether the link survives it is
 already written down here as unmeasured:
 `docs/adr/0016-one-power-owner.md:23` — "   because nothing tells it not to; whether NimBLE survives that on this board".
@@ -267,7 +267,7 @@ because the position is then a companion's, vouched for by a person rather than
 by a receiver, and the line must keep saying so.
 
 The second state replaces a sentence that is false on this board today —
-`firmware/main/waveshare_board.cpp:860` — "exactly what would change the answer, and the readout still says" —
+`firmware/main/waveshare_board.cpp:1004` — "exactly what would change the answer, and the readout still says" —
 because a watch with nothing bound to fill `own` is not waiting for a fix from a
 receiver it does not have bound.
 

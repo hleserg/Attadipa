@@ -1,0 +1,54 @@
+{
+  "identity_line": "AK09911 ID=48 05 ASA=17 17 13 fuse_mode=00 start=0",
+  "summary": {
+    "duration_us": 20004042,
+    "samples": 199,
+    "not_ready": 1802,
+    "overflow": 0,
+    "invalid": 0,
+    "dor": 0,
+    "result": 0,
+    "power_down_attempted": 1,
+    "power_down_result": 0,
+    "close": "ESP_OK"
+  },
+  "parsed_samples": 199,
+  "timestamps_strictly_increasing": true,
+  "interval_us": {
+    "min": 100000,
+    "max": 110000,
+    "mean": 100505.0505050505
+  },
+  "raw_axis_stats": [
+    {
+      "axis": "X",
+      "min": -122,
+      "max": -115,
+      "mean": -119.28643216080403,
+      "population_stdev": 1.2251004816428168
+    },
+    {
+      "axis": "Y",
+      "min": 143,
+      "max": 149,
+      "mean": 146.46231155778895,
+      "population_stdev": 1.176544930414263
+    },
+    {
+      "axis": "Z",
+      "min": -239,
+      "max": -232,
+      "mean": -235.00502512562815,
+      "population_stdev": 1.2009104060623355
+    }
+  ],
+  "status_pairs": [
+    [
+      1,
+      0
+    ]
+  ],
+  "acquisition_stop_logged": false,
+  "probe_bus_cleanup_error_logged": false,
+  "unexpected_reset_during_ram_hold": false
+}

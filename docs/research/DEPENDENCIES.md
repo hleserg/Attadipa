@@ -48,11 +48,26 @@ owner can move, and moving it would change what executes here with no change to
 any workflow, pull request, review or required check. **No upstream compromise
 is claimed or observed** — the exposure is the execution path.
 
-Resolved 2026-08-28. `anthropics/claude-code-action@v1` and
+Resolved 2026-08-28, except `anthropics/claude-code-action`, re-resolved
+2026-09-08 after Dependabot bumped it. `anthropics/claude-code-action@v1` and
 `github/codeql-action@v4` are **annotated** tags: `git/ref/tags/<tag>` returns a
 tag object whose SHA is not a commit SHA, and pinning to it pins to something
 GitHub will not check out. `.github/tests/action-pin-test.sh` asserts every pin
 resolves as a commit, which is the only check that tells the two apart.
+
+**This table is checked against the workflows, not merely written beside
+them.** It was not, and the gap showed the first time anything moved:
+Dependabot's #464, merged 2026-09-07, bumped all three `claude-code-action`
+invocations from `a60f3e1…` (release `v1.0.209`) to `d75b94d…` and touched
+nothing else, so this page — the record of which third-party code receives the
+Anthropic credential — named a commit no job executed, under green required CI.
+The pin test read the *shape* of a pin and never compared it with this page. A
+reader caught it inside a day; no check would have caught it at all. Every
+occurrence in the tree must execute the commit its row names, in both
+directions: a row naming an action nothing uses fails, and an action a workflow
+uses that no row names fails. That second direction is why `actions/cache` is
+here at all and why both `codeql-action` sub-paths are written out — each is a
+distinct `uses:` path, and one left unnamed is a failure rather than a note.
 
 ### The container image
 
@@ -87,10 +102,10 @@ the commit assertion.
 
 | Action | Pinned at | Tag it came from | Licence | Upgrade strategy |
 |---|---|---|---|---|
-| **`actions/checkout`** ×24 | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
-| **`anthropics/claude-code-action`** ×3 | `a60f3e1db3edbceed2b1e6c6a9d34c36b8a15eba`, 2026-08-28 | `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
-| **`actions/upload-artifact`** ×2 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
-| **`github/codeql-action/init`**, **`/analyze`** | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
+| **`actions/checkout`** | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
+| **`anthropics/claude-code-action`** | `d75b94d5ad426cb8546e6628b6f5f19b84e5cce1`, 2026-09-04 | release `v1.0.216`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
+| **`actions/upload-artifact`** | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
+| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
 | **`actions/cache`** | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
 
 `v1` moved twice while this pin was being prepared — the tag resolved to a
@@ -98,6 +113,25 @@ different commit on 2026-08-27 and again on 2026-08-28. That is ordinary
 maintainer behaviour and it is also the whole argument: a resolution recorded
 yesterday is not a fact about today, so every SHA above was re-resolved
 immediately before the commit that introduced it.
+
+It has kept moving: `v1` pointed at release `v1.0.209` when that paragraph was
+written on 2026-08-28 and points at `v1.0.217` now, eight releases later.
+**What the `claude-code-action` row records is
+the commit the three privileged jobs execute, and it is deliberately not what
+`v1` points at today.** Read from the API on 2026-09-08: `d75b94d5…` is a commit
+in `anthropics/claude-code-action`, authored `2026-09-04T19:58:53Z`, message
+`chore: bump Claude Code to 2.1.261 and Agent SDK to 0.3.261`, and it is exactly
+the object release `v1.0.216` dereferences to. `v1` itself now dereferences to
+`9c5ddab2…`, release `v1.0.217` of 2026-09-06. That divergence is the pin
+working: the tag moved and nothing here moved with it. Bumping to `v1.0.217` is
+a separate, deliberate edit that changes the three workflow lines and this row
+in one commit — the check described above is what makes doing only half of it
+impossible.
+
+Reviewed to the extent claimed and no further: the release, its commit, the tag
+dereference and the MIT licence were read from the canonical repository. That is
+provenance, **not a security audit of the bundle's contents**, and nothing here
+asserts the code at that commit was examined line by line.
 
 ### Where the resolved graph lives, and where notices go
 
@@ -370,7 +404,7 @@ simulator driving timed frames, or a board.
   [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md). A board
   backend composes official ESP-IDF components and hands the runtime an
   `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t` — the seam
-  `waveshare_board.cpp:128-132` — "esp_lcd_panel_handle_t panel" — already
+  `waveshare_board.cpp:137-141` — "esp_lcd_panel_handle_t panel" — already
   exposes. **Neither vendor BSP becomes a
   link-time dependency**, and the answer is the same for both because the reason
   is the same: each carries product policy this project has decided differently,

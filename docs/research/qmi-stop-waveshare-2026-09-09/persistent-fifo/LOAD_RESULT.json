@@ -1,0 +1,23 @@
+{
+  "started_utc": "2026-09-09T14:13:21.641263+00:00",
+  "by_id": "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_28:84:85:B2:18:A4-if00",
+  "resolved_port": "/dev/ttyACM2",
+  "pose": "UNKNOWN; owner was asked to leave watch in place",
+  "source_commit": "35512fc1bddaa31bebe6edb51571615ef2d614f4",
+  "loader_argv": [
+    "/home/hleserg/.espressif/python_env/idf5.5_py3.13_env/bin/python",
+    "/home/hleserg/Attadipa/.worktrees/magnetometer-450/tools/flash/ramhold.py",
+    "/home/hleserg/temp/magneto/AK09911C/bench-waveshare-2026-09-09/qmi-entry-20260909T141301Z-35512fc1/attadipa.bin",
+    "60",
+    "--log",
+    "/home/hleserg/temp/magneto/AK09911C/bench-waveshare-2026-09-09/qmi-entry-20260909T141301Z-35512fc1/capture-20260909T141321Z/console.txt"
+  ],
+  "expected_ordinary_elf_prefix": "2915714b7",
+  "loader_exit_code": 0,
+  "loader_finished_utc": "2026-09-09T14:14:22.908193+00:00",
+  "normal_boot_reset_completed": true,
+  "normal_boot_bytes": 6853,
+  "spi_fast_flash_boot": true,
+  "expected_production_elf_seen": true,
+  "finished_utc": "2026-09-09T14:14:31.340996+00:00"
+}

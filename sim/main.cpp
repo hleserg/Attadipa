@@ -9,7 +9,9 @@
 #include "attadipa/platform/hardware_inventory.h"
 #include "attadipa/version.h"
 
+#include "attadipa/apps/app_registry.h"
 #include "attadipa/apps/clock.h"
+#include "attadipa/apps/navigation.h"
 #include "attadipa/core/input.h"
 #include "attadipa/debug/bridge.h"
 
@@ -109,6 +111,33 @@ void report_missing_string(l10n::Locale requested, const char *identifier) {
                identifier, l10n::to_string(requested));
 }
 
+
+// The launcher's rule, on the one composition root a host can run.
+//
+// ADR-0007 §3: an application that no configuration of this device can run is
+// not offered, because offering it is a promise the hardware cannot keep. Until
+// something asked this question in production it was a rule with a test and no
+// consequence — `launcher_entry()` had no caller outside `tests/`.
+//
+// It refuses rather than warns. A screenshot of a screen the device could never
+// show is worse than no screenshot: it is evidence for a claim that is not true.
+bool hidden_here(const apps::AppManifest &manifest,
+                 const core::CapabilityRegistry &caps, const char *board_name) {
+  if (apps::launcher_entry(manifest, caps) != apps::LauncherEntry::Hidden) {
+    return false;
+  }
+  core::Capability blocking{};
+  core::Availability availability{};
+  if (apps::blocking_capability(manifest, caps, blocking, availability)) {
+    std::fprintf(stderr, "%s cannot run on %s: %s is %s\n", manifest.id,
+                 board_name, core::to_string(blocking),
+                 core::to_string(availability));
+  } else {
+    std::fprintf(stderr, "%s cannot run on %s\n", manifest.id, board_name);
+  }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -172,6 +201,9 @@ int main(int argc, char **argv) {
   l10n::set_locale_changed_handler(attadipa::sim::rebuild_boot_screen);
   l10n::set_locale(options.locale);
 
+  if (!attadipa::sim::stage_mesh_scenario(options.mesh_state)) {
+    return 2;
+  }
   attadipa::sim::set_theme(options.theme);
   if (options.diagnostic_screen) {
     // The test pattern replaces the capability screen rather than sitting
@@ -180,18 +212,21 @@ int main(int argc, char **argv) {
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_diagnostic_screen);
     attadipa::sim::build_diagnostic_screen(options.board);
   } else if (options.nav_screen) {
+    if (hidden_here(apps::navigation_manifest(), caps, options.board.name)) {
+      return 2;
+    }
     if (!attadipa::sim::stage_nav_scenario(options.nav_state)) {
       return 2;
     }
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_nav_screen);
     attadipa::sim::build_nav_screen(options.board, options.theme);
   } else if (options.mesh_screen) {
-    if (!attadipa::sim::stage_mesh_scenario(options.mesh_state)) {
-      return 2;
-    }
     l10n::set_locale_changed_handler(attadipa::sim::rebuild_mesh_screen);
     attadipa::sim::build_mesh_screen_sim(options.board, options.theme);
   } else if (options.clock_screen || options.provision_screen) {
+    if (hidden_here(apps::clock_manifest(), caps, options.board.name)) {
+      return 2;
+    }
     apps::ClockState state;
     state.time = {
         options.clock_time_set
@@ -211,7 +246,11 @@ int main(int argc, char **argv) {
     if (options.provision_screen) {
       // Straight to the entry screen, for a screenshot that does not need a
       // finger held on the clock first.
-      attadipa::sim::enter_provisioning();
+      // Plain `--provision` opens what the board opens.
+      attadipa::sim::enter_provisioning(
+          options.provision_node   ? attadipa::apps::EntryTask::NodePasskey
+          : options.provision_time ? attadipa::apps::EntryTask::LocalTime
+                                   : attadipa::apps::EntryTask::All);
     }
   } else {
     attadipa::sim::build_boot_screen(inventory, caps);
