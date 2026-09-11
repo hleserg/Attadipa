@@ -28,7 +28,7 @@
 // from the board profile would agree with a wrong `build()` forever.
 //
 // **The fit half.** `lines_` is a flex column aligned `LV_FLEX_ALIGN_CENTER`
-// (`ui/lvgl/provision_face.cpp:185` -- "  lv_obj_set_flex_align(lines_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,")
+// (`ui/lvgl/provision_face.cpp:217` -- "  lv_obj_set_flex_align(lines_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,")
 // and the comment above it says the column clips rather than scrolls. Centred,
 // it clips at BOTH ends, and the title is the line that goes first -- so the
 // failure mode is a screen that has quietly lost the word naming what the
@@ -170,14 +170,14 @@ struct Panel {
 //
 // NOT BY POSITION, AND NOT ON A CLAIM ABOUT THE REPOSITORY. This used to say
 // `lv_button_create` has one caller, so the nth button in the tree is the nth
-// key. It has two -- `ui/lvgl/provision_face.cpp:230` -- "    lv_obj_add_event_cb(button, key_event, LV_EVENT_CLICKED, this);"
+// key. It has two -- `ui/lvgl/provision_face.cpp:260` -- "    lv_obj_add_event_cb(button, key_event, LV_EVENT_CLICKED, this);"
 // -- and `ui/lvgl/settings_face.cpp:47` -- "  lv_obj_t *button = lv_button_create(screen_);"
 // -- and a claim like that is false the first time either face is put on a
 // screen this one also uses, in a way that shifts every tap by a slot and
 // still passes.
 //
 // So the keys are read back by the identity the face stamped on each of them
-// (`ui/lvgl/provision_face.cpp:233` -- "    lv_obj_set_user_data(button, reinterpret_cast<void *>("),
+// (`ui/lvgl/provision_face.cpp:263` -- "    lv_obj_set_user_data(button, reinterpret_cast<void *>("),
 // and the screen has to hold exactly one button per `EntryKey` and nothing
 // else. A seventh button, a missing one, or two claiming a slot empties the
 // keypad, and an empty keypad fails the walk at its first check instead of
@@ -298,17 +298,24 @@ lv_color_t backdrop_of(lv_obj_t *object) {
   return lv_color_black();
 }
 
-// The fill this key is drawn in while a finger is on it. The opacity is read
-// out of the pressed style by putting the widget in that state -- the style
-// system answers, not a constant copied out of the face -- and the blend is
+// The colour this key is drawn in while a finger is on it. Read by putting the
+// widget in that state and asking the style system, so a pressed COLOUR and a
+// pressed OPACITY are both answered -- the face has used each in turn, and a
+// helper that knew which would go stale on the next change. The blend is
 // `lv_color_mix`, which is the function the renderer itself would use.
-ui::Rgb pressed_fill(lv_obj_t *button) {
+lv_color_t pressed_colour(lv_obj_t *button) {
   lv_obj_add_state(button, LV_STATE_PRESSED);
   const lv_opa_t opa = lv_obj_get_style_bg_opa(button, LV_PART_MAIN);
   const lv_color_t fill = lv_obj_get_style_bg_color(button, LV_PART_MAIN);
   lv_obj_remove_state(button, LV_STATE_PRESSED);
-  return rgb_of(lv_color_mix(fill, backdrop_of(button), opa));
+  return lv_color_mix(fill, backdrop_of(button), opa);
 }
+
+// WHAT THE PANEL CAN ACTUALLY SHOW, which is not what the style holds.
+// `sim/lv_conf_simulator.h:69` — "#define LV_COLOR_DEPTH 16" — so a difference
+// under one bucket of `r >> 3`, `g >> 2`, `b >> 3` is drawn as no difference at
+// all. A pressed fill two parts from the resting one is a press nobody sees.
+std::uint16_t as_pixel(lv_color_t colour) { return lv_color_to_u16(colour); }
 
 // Every key that is drawn says its word in an ink that reads on its own fill --
 // in BOTH the states that fill has. Read back off the widget, so it is the
@@ -316,11 +323,19 @@ ui::Rgb pressed_fill(lv_obj_t *button) {
 // have chosen.
 //
 // The pressed state is not a detail that can be left out of a claim about
-// whether a key's word is readable: it is an opacity, so pressing a key moves
-// its fill toward the page and the ink that was chosen against the resting
-// fill goes with it. Under the LV_OPA_70 this screen used to press at, the
-// day-emissive accent key fell from 5.08:1 to 3.23:1 and this test said the
-// screen was readable.
+// whether a key's word is readable: the press moves the fill, and the ink that
+// was chosen against the resting fill does not move with it. Under the
+// LV_OPA_70 this screen used to press at, the day-emissive accent key fell
+// from 5.08:1 to 3.23:1 and this test said the screen was readable.
+//
+// AND READABLE IN BOTH STATES IS NOT THE SAME AS HAVING TWO STATES. The fix
+// for that first defect was an opacity so high the pressed key quantised to
+// the resting key's RGB565 pixel on the four keys filled `raised` -- a screen
+// that was perfectly readable and did not answer a finger. This test was green
+// through it, and would have been green with the pressed style deleted
+// outright, because it measured two fills and never compared them. That is the
+// counter-check `ui/AGENTS.md:72` — "- **A pixel test needs a counter-check.**
+// Comparing two frames proves nothing" — asks for, so it is here.
 void every_key_is_readable() {
   const std::vector<lv_obj_t *> buttons = keypad();
   for (lv_obj_t *button : buttons) {
@@ -329,12 +344,25 @@ void every_key_is_readable() {
     }
     lv_obj_t *word = lv_obj_get_child(button, 0);
     const ui::Rgb ink = rgb_of(lv_obj_get_style_text_color(word, LV_PART_MAIN));
+    const lv_color_t resting = lv_obj_get_style_bg_color(button, LV_PART_MAIN);
+    const lv_color_t pressed = pressed_colour(button);
+    if (as_pixel(resting) == as_pixel(pressed)) {
+      char said[240];
+      const ui::Rgb at_rest = rgb_of(resting);
+      std::snprintf(said, sizeof said,
+                    "\"%s\" is #%02X%02X%02X pressed and #%02X%02X%02X at "
+                    "rest, which is one RGB565 pixel -- pressing this key "
+                    "changes nothing a panel can draw",
+                    lv_label_get_text(word), pressed.red, pressed.green,
+                    pressed.blue, at_rest.r, at_rest.g, at_rest.b);
+      fail(said);
+    }
     const struct {
       const char *state;
       ui::Rgb fill;
     } states[] = {
-        {"at rest", rgb_of(lv_obj_get_style_bg_color(button, LV_PART_MAIN))},
-        {"pressed", pressed_fill(button)},
+        {"at rest", rgb_of(resting)},
+        {"pressed", rgb_of(pressed)},
     };
     for (const auto &one : states) {
       const std::uint16_t measured = ui::contrast_ratio_centi(ink, one.fill);

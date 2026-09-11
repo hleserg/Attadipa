@@ -82,23 +82,37 @@ constexpr apps::EntryKey kKeys[] = {
 constexpr unsigned kColumns = 3;
 constexpr unsigned kRows = 2;
 
-// A PRESSED KEY IS STILL A WORD, AND THE PRESS USED TO TAKE THE WORD AWAY.
-// The pressed style is an opacity, so the fill under the label becomes this
-// much of the key's colour over the page behind it -- and every step toward
-// the page is a step away from the ink `legible_on` chose against the resting
-// fill. It costs the most where the page is darkest and the ink is therefore
-// the dark one: day-emissive orange on ink olive measures 5.08:1 at rest and
-// 3.23:1 under the LV_OPA_70 this was, against the 4.50:1 `kContrastBodyText`
-// a word needs. Night's warning key is the same pair and the same two numbers.
+// A PRESSED KEY IS STILL A WORD, AND IT IS ALSO STILL PRESSED. Both halves
+// have been broken here, one after the other.
 //
-// 235 is the lowest opacity at which no key, in either theme, on either panel,
-// falls below that while pressed -- `LV_OPA_90` is 229 and reaches 4.40:1, so
-// the named constant is not enough and the number is written out. The press is
-// still visible; it is 8% of the page rather than 30%.
+// The pressed style used to be an OPACITY, which blends the key's colour
+// toward the page behind it -- and every step toward the page is a step away
+// from the ink `legible_on` chose against the resting fill. Day-emissive
+// orange on ink olive measures 5.08:1 at rest and 3.23:1 under the LV_OPA_70
+// it was, against the 4.50:1 `kContrastBodyText` a word needs.
 //
-// It is not a promise: `tests/test_sim_provision_fit.cpp` blends this opacity
-// the way LVGL does and measures the pressed fill on every key of every field.
-constexpr lv_opa_t kPressedOpa = 235;
+// RAISING THAT OPACITY FIXED THE WORD AND ERASED THE PRESS. The four keys the
+// model is not calling `acting` are filled `raised`, which is 22/26/38 from
+// the day page and 13/6/5 from night's; a few per cent of that is one or two
+// parts in 255, and `sim/lv_conf_simulator.h:69` — "#define LV_COLOR_DEPTH 16"
+// — buckets by `r >> 3`, `g >> 2`, `b >> 3`, so the pressed key was THE SAME
+// PIXEL as the resting one. Found in review, against a test that measured
+// both states and never asked whether they differ.
+//
+// SO THE PRESS MOVES TOWARD THE INK, NOT TOWARD THE PAGE. The ink is the
+// farthest defined colour from the fill -- that is what `legible_on` picked it
+// for -- so the same small mix that is invisible toward a near page is several
+// RGB565 steps toward it, in both themes and on both panels, and it invents no
+// colour the table does not already hold. It still costs contrast, because the
+// fill is moving toward the word on it, so the number is bounded at both ends
+// and is written out rather than named: at 16 every fill crosses at least one
+// RGB565 bucket in two of three channels, and the tightest word -- day-emissive
+// orange on ink olive -- holds 4.59:1. At 20 that word is 4.48:1.
+//
+// Neither half is a promise: `tests/test_sim_provision_fit.cpp` reads the
+// pressed fill out of the pressed style on every key of every field, measures
+// the word on it, AND fails if that fill is the resting one's pixel.
+constexpr lv_opa_t kPressedMix = 16;
 static_assert(sizeof(kKeys) / sizeof(kKeys[0]) == ProvisionFace::kKeyCount,
               "every EntryKey is drawn");
 
@@ -239,9 +253,6 @@ void ProvisionFace::build(lv_obj_t *screen, const ProvisionFaceConfig &config,
                    static_cast<int>(i / kColumns) * (key_height + gap));
     lv_obj_set_style_radius(button, radius, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(
-        button, kPressedOpa,
-        static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
     // No border: a rounded border is the one thing on this screen the
     // software renderer cannot draw into a snapshot twice -- the second
     // 617 kB capture of thirteen of them found no room in LVGL's pool, on
@@ -399,8 +410,13 @@ void ProvisionFace::update() {
     const lv_color_t word = destructive ? word_on_danger
                           : through     ? word_on_accent
                                         : word_on_raised;
-    lv_obj_set_style_bg_color(keys_[i], lv_color_hex(fill.packed()),
-                              LV_PART_MAIN);
+    const lv_color_t resting = lv_color_hex(fill.packed());
+    lv_obj_set_style_bg_color(keys_[i], resting, LV_PART_MAIN);
+    // The pressed fill is decided here for the same reason the resting one is:
+    // it is `resting` and `word`, and both of those change with the field.
+    lv_obj_set_style_bg_color(
+        keys_[i], lv_color_mix(word, resting, kPressedMix),
+        static_cast<lv_style_selector_t>(LV_PART_MAIN) | LV_STATE_PRESSED);
     lv_obj_t *text_of_key = lv_obj_get_child(keys_[i], 0);
     lv_obj_set_style_text_color(text_of_key, word, LV_PART_MAIN);
     lv_label_set_text(text_of_key, label);

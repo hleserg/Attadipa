@@ -103,7 +103,7 @@ void MeshFace::build(lv_obj_t *screen, const MeshFaceConfig &config,
   // from the entry screen left the provisioning keypad parented underneath,
   // invisible under the new paint and still CLICKABLE, eating the tap that
   // turns the page. Every other face cleans what it is given for the same
-  // reason (`ui/lvgl/provision_face.cpp:73` — "  lv_obj_clean(screen);").
+  // reason (`ui/lvgl/provision_face.cpp:144` — "  lv_obj_clean(screen);").
   lv_obj_clean(screen_);
 
   // The screen object outlives every face and carries the last one's styles
