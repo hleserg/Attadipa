@@ -3121,3 +3121,14 @@ Concurrent FIFO/step operation on this watch is **NOT EXECUTED — HARDWARE REQU
 FIFO stop verification fails; a later read-only probe still reports three
 pending words after ordinary MCU reboot. See the [stop evidence and limits](qmi-stop-waveshare-2026-09-09/README.md).
 This is not a clean-stop, calibration or heading acceptance result.
+
+**MEASURED — 2026-09-11:** those three pending words are what refused every
+later FIFO entry, and the paired loop abandoned a working AK09911 on that
+refusal (`QMI start=8`, `samples=0`, `AK09911 samples=0`). With an opt-in
+bounded drain on entry the same board returned 3814 QMI samples in 3114 batches
+and 398 AK09911 samples over 40.047958 s, `overflow=0 invalid=0 dor=0`. `stop=4`
+is still produced and still UNKNOWN. The captures, the three image identities
+behind them, the first stationary magnetometer readings and the **retraction**
+of the hard-iron estimate taken from them are in
+[the drain and AK09911 session](ak09911-drain-waveshare-2026-09-11/README.md).
+No compass, tilt, calibration or step-count PASS is claimed.

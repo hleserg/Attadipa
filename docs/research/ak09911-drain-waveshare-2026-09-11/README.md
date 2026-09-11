@@ -1,11 +1,38 @@
 # The FIFO a previous run left, and the first stationary AK09911 numbers — 2026-09-11
 
-Source: `b4a8f45b2e12691e69609a5d39d82c128b1ae291` (#515). Binary: 190464 bytes,
-SHA-256 `09654987a4fbc40535bf5776d57fd73df4930a2ff8fa2e3c21b1380cc6fe6d17`.
 Waveshare ESP32-S3-Touch-AMOLED-2.06, MAC `28:84:85:b2:18:a4`, USB-powered with
 no battery, lying untouched on the bench for every run below. Every image was a
 `PURE_RAM_APP` loaded through `tools/flash/ramhold.py`; no flash write command
 was issued at any point, and the production image came back with a hard reset.
+
+## Provenance — three images, not one
+
+An earlier version of this line named one source commit and one binary for all
+six captures. That was wrong, and the console files say so themselves: the
+loader prints every segment it downloads, and the three images differ there.
+The corrected record is per capture.
+
+| capture | image | segments, bytes | binary | source |
+|---|---|---|---|---|
+| `console.txt` | `build-drain`, second build | 63896 / 464 / 125968 / 32 | 190464, SHA-256 `09654987a4fbc40535bf5776d57fd73df4930a2ff8fa2e3c21b1380cc6fe6d17` | `b4a8f45b2e12691e69609a5d39d82c128b1ae291` (#515) |
+| `console-bypass-attempt.txt` | `build-drain`, first build | 63880 / 464 / 125908 / 32 | **not retained** — the directory was rebuilt over it 31 minutes later | **UNKNOWN** — an uncommitted working tree between `488ac295` and `b4a8f45b` |
+| `console-ak-stationary-A.txt`, `-B`, `-C` | `build-akonly` | 62744 / 464 / 122512 / 32 | 185856, SHA-256 `4a32336778843cd3be6e57f3bc4a65db58222219099e8fba4902269bac8cd314` | the working tree later committed as `b4a8f45b`, `CONFIG_ATTADIPA_AK09911_PROBE` alone |
+| `NORMAL_BOOT.txt` | the unit's own flash image | — | — | not built here |
+
+`sdkconfig` SHA-256: `build-drain`
+`78f28143efa1f788cba52e68cdb02eff0520f3a5c2f28ad7dc7a4e62cb8928a7`, `build-akonly`
+`e90aecf70b420ac6f99a22039bc2010889abb4b387d707c59cd9f3226dd8cf8e`. The binaries
+and configs live in the private build directories and are identified here by
+hash rather than committed, the way the two sibling archives do it.
+
+**The refused run cannot be reproduced from a commit, and this record says so
+rather than naming the nearest one.** Its image is gone and its tree was never
+committed: the fix and the AK09911 change landed together in `b4a8f45b`, and
+that image had neither. `console-bypass-attempt.txt:69` — "AK09911 summary duration_us=39799 samples=0"
+is a 39.8 **millisecond** window, which the committed head cannot produce —
+`firmware/main/i2c_probe.cpp:146` — "  constexpr std::int64_t duration_us = 40000000;"
+— so the refused run predates it. What the capture is evidence of is the FIFO,
+and that evidence does not depend on which tree built it.
 
 ## MEASURED — the entry defect and its fix
 
@@ -24,9 +51,15 @@ three words in the QMI8658 FIFO that `stop()` could not reset, `FIFO=00`
 - **Cause of the failed drain**: the request was issued with FIFO_CTRL in
   bypass. `read()` only ever requests a batch from a FIFO mode; the drain did
   not, so the request moved nothing and the payload read returned 0x8000 words.
-  This is the measurement, not an inference from the datasheet: the identical
-  code with one added `FIFO_CTRL` write succeeded on the same board minutes
-  later, with the same three words present.
+  This is the measurement, not an inference from the datasheet: the drain
+  entering a FIFO mode first succeeded on the same board 11 minutes later, with
+  the same three words present and the same count to clear. The two images are
+  not otherwise identical and this is not a one-write A/B — they differ by 60
+  bytes of instruction segment, and the second also carries the change that
+  lets the AK09911 outlive a refusal, which is why only one of them has a
+  40-second magnetometer window. What is held constant across the pair is the
+  board, the residue and the request; what changed about the request is the
+  mode it was issued from.
 - **Accepted** (`console.txt`, drain entering a FIFO mode first):
   `QMI start=0`, `QMI drained stale_words=3 (entry succeeded)`, the same three
   `00 80` words recorded, and the count clear. Then **398 AK09911 samples and

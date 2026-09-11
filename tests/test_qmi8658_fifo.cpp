@@ -21,6 +21,21 @@ struct Bus {
   std::int64_t now = 1000000;
   bool apply_failed_write = false, never_done = false, fail_payload = false;
   bool fail_release = false;
+  // The part that acknowledges nothing: `REQ_FIFO` leaves read mode clear and
+  // the count where it was, and 0x17 hands back 0x8000 words. That is what the
+  // bench Waveshare did on 2026-09-11 when the request came from bypass, and a
+  // driver that trusts the payload anyway reports those words as somebody's
+  // residue.
+  bool request_ignored = false;
+  // A part that reflects CmdDone in STATUSINT only once CTRL8 bit 7 has
+  // selected that handshake (`docs/research/VERIFIED_FACTS.md:2170`). OFF by
+  // default, and deliberately: both bench sessions on the Waveshare completed
+  // their commands with `CTRL8=00`, so requiring the write is stronger than the
+  // evidence and would be a fact this repository has not established. What it
+  // is for is the ordering question -- a driver that issues a CTRL9 command
+  // before that write is correct on the part in hand and undefined on the one
+  // the datasheet describes, and only a model that can be both asks it.
+  bool cmddone_needs_handshake = false;
   bool retain_on_reset = false, mismatch_watermark_restore = false;
   bool sticky_fifo = false; // a count that a payload read does not consume
   bool pending_watermark_mismatch = false;
@@ -44,6 +59,11 @@ struct Bus {
       return true;
     }
     if (reg == 0x17) {
+      if (request_ignored && !(regs[0x14] & 0x80)) {
+        for (std::size_t i = 0; i < n; ++i)
+          out[i] = (i % 2) ? 0x80 : 0x00; // 0x8000, word after word
+        return true;
+      }
       CHECK((regs[0x14] & 0x80) != 0);
       CHECK((regs[2] & 0x60) == 0x40); // explicit byte order / burst setup
       CHECK(cursor + n <= fifo.size());
@@ -80,11 +100,13 @@ struct Bus {
     if (reg == 0x0a) {
       CHECK(value == 0 || value == 4 || value == 5); // never step/chip reset
       if (value == 0) regs[0x2d] &= 0x7f;
-      else if (!never_done) {
+      else if (!never_done &&
+               (!cmddone_needs_handshake || (regs[9] & 0x80))) {
         regs[0x2d] |= 0x80;
         // A request only takes effect from a FIFO mode. In bypass the bench
         // Waveshare kept its count and handed back 0x8000 words, 2026-09-11.
-        if (value == 5 && (regs[0x14] & 3) != 0) regs[0x14] |= 0x80;
+        if (value == 5 && (regs[0x14] & 3) != 0 && !request_ignored)
+          regs[0x14] |= 0x80;
         if (value == 4 && !retain_on_reset) { fifo.clear(); cursor = 0; extra_status = 0; }
       }
     }
@@ -190,6 +212,40 @@ int main() {
     CHECK(batch.count == 1 && batch.accel[0][0] == 7 && batch.accel[0][2] == 9);
     CHECK(sensor.stop() == QmiResult::Ok);
     CHECK(bus.regs == original);
+  }
+  {
+    // The drain's own command, on a part that needs the handshake selected
+    // first. With the CTRL8 write after the drain, `wait_done` never sees
+    // CmdDone: the drain times out, `command_pending_` stays true with
+    // `owned_` already set, and every later entry is refused above the drain
+    // admission that was supposed to recover it.
+    // The idle profile, because that is the one with `CTRL8=00` -- the state
+    // the bench Waveshare was actually in, and the only one where the order of
+    // the two writes can matter at all.
+    Bus bus(false, true);
+    bus.cmddone_needs_handshake = true;
+    bus.frame(0x1234, -5, 0x0678);
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start(true) == QmiResult::Ok);
+    CHECK(sensor.stale_words() == 3);
+    CHECK(sensor.stop() == QmiResult::Ok);
+  }
+  {
+    // A REQUEST THE PART IGNORED IS NOT A RESIDUE, AND MUST NOT BE LOGGED AS ONE.
+    //
+    // The refused run of 2026-09-11 read three words of `0x8000` with the
+    // count unmoved after: the request had done nothing and the payload was
+    // whatever the register reads when nothing is queued. The re-count in
+    // `start()` refuses entry either way; what this case is about is the other
+    // half, `stale_words()`, which is the only record of what the previous
+    // owner left and was reporting the fill value as that record.
+    Bus bus;
+    bus.request_ignored = true;
+    bus.frame(0x1234, -5, 0x0678);
+    Qmi8658Fifo sensor(bus);
+    CHECK(sensor.start(true) == QmiResult::InvalidData);
+    CHECK(sensor.stale_words() == 0);
+    CHECK(sensor.stop() == QmiResult::Ok);
   }
   {
     // A drain that does not clear the count is still a refusal. The bench

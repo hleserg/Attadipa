@@ -85,16 +85,44 @@ the first register readback mismatch with expected/actual values. These are
 collected in RAM and printed after stop/close. No extra bus operations, waits,
 or relaxed checks are added. A later readback mismatch can coexist with an
 earlier failing step; their fields must not be assumed to name the same event.
-The diagnostic image remains **NOT EXECUTED — HARDWARE REQUIRED**.
+That diagnostic image was **executed** on 2026-09-09 and again on 2026-09-11;
+the two sections at the end of this document are its results. The sentence that
+stood here said otherwise for two days after the first of them.
 
 The `qmi8658_fifo` host test calls the production sequence with a transport model:
 six/twelve-byte layout, signed values, idle/active cleanup, no-write admission,
 initialization fault injection, incomplete payload/release, overflow, capacity
 and command timeout. `ak09911` remains the reused acquisition regression.
-The existing RAM CI build explicitly enables the paired path, checks its
-generated configuration and runs both RAM ELF guards. None of these is a
-physical compass, tilt, calibration or step-count PASS.
+CI builds the RAM image twice: the paired path with the stale-FIFO drain
+enabled, both asserted in the generated configuration, and an AK09911-only
+variant that fails the job if the paired option is set in it — so the 20-second
+magnetometer-only path is compiled somewhere. None of these is a physical
+compass, tilt, calibration or step-count PASS.
 
 ## Executed stop diagnostic, 2026-09-09 14:00 UTC
 
 The [preserved second paired run](qmi-stop-waveshare-2026-09-09/README.md) identifies `count_after_reset` as the first failing step: three words remain after the command handshake, with no register readback mismatch. The temporary accelerometer is disabled later, not before that count check. The [executed read-only entry observation](qmi-stop-waveshare-2026-09-09/persistent-fifo/README.md) then reports count=3, FIFO_STATUS=50, CTRL9=00 and STATUSINT=00 after ordinary MCU reboots. Nonempty FIFO is the measured Busy entry blocker; the cause of the original reset failure remains UNKNOWN. Ordinary firmware ELF `2915714b7` and saved brightness 5% were restored and verified after every run. Stop=0 on refused entry is an unowned no-op, not cleanup acceptance.
+
+## Executed drain and first stationary magnetometer numbers, 2026-09-11
+
+The [drain session](ak09911-drain-waveshare-2026-09-11/README.md) is the run
+that made a paired capture possible at all. The three words `stop()` left in the
+FIFO refused every later entry, and the paired loop abandoned the AK09911 on
+that refusal, so a working magnetometer produced nothing: `QMI start=8`,
+`samples=0`, `AK09911 samples=0`. With the FIFO drained on entry and the
+magnetometer no longer ended by a QMI refusal, the same board returned 398
+AK09911 samples and 3814 QMI samples in 3114 batches over 40.047958 s,
+`result=0` on both, `overflow=0 invalid=0 dor=0`.
+
+The drain is opt-in (`CONFIG_ATTADIPA_QMI8658_DRAIN_STALE_FIFO`), bounded, and
+refuses before it writes anything when the residue is deeper than its buffer. It
+does not resolve `stop=4`: that state is still produced at the end of every
+paired run and is still UNKNOWN, with the one candidate this session earned
+recorded in [the stop diagnostic](qmi-stop-waveshare-2026-09-09/README.md).
+
+That archive also carries the first stationary AK09911 readings and the
+**retraction** of the hard-iron estimate taken from them — four cold loads agree
+within 1.33 counts per axis, and the same part read a magnitude four times
+smaller two days earlier, so a field near the bench changed and no calibration
+number is claimed. The owner tasks that follow from it are #528, #529, #530 and
+#531.

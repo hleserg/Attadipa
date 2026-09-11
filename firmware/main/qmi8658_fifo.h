@@ -106,6 +106,19 @@ public:
     auto result = set(0x02, (r[0] | 0x40) & 0xdf); // AI=1, little endian
     if (result != QmiResult::Ok)
       return result;
+    // BEFORE THE DRAIN, NOT AFTER IT, BECAUSE THE DRAIN ISSUES A CTRL9 COMMAND.
+    //
+    // Bit 7 of CTRL8 selects the STATUSINT handshake every `command()` here
+    // polls (`docs/research/VERIFIED_FACTS.md:2170`). With CTRL8 as the entry
+    // snapshot found it -- `00` on both bench sessions -- the drain's own
+    // `REQ_FIFO` waits for a CmdDone that the part is not obliged to reflect
+    // there. It completed both times, so this is an ordering the evidence does
+    // not condemn and does not defend either; the write costs nothing here and
+    // the timeout it avoids would leave `owned_` set with `command_pending_`
+    // true, which refuses every later entry above the drain admission.
+    result = set(0x09, r[5] | 0x80); // preserve every motion-engine bit
+    if (result != QmiResult::Ok)
+      return result;
     // After the byte order is explicit, because the payload read depends on it.
     if (words != 0) {
       result = drain_stale(words);
@@ -116,9 +129,6 @@ public:
       if (words != 0)
         return QmiResult::Busy; // the drain did not clear it; refuse as before
     }
-    result = set(0x09, r[5] | 0x80); // preserve every motion-engine bit
-    if (result != QmiResult::Ok)
-      return result;
     if (temporary_accel_) {
       result = set(0x03, 0x26); // idle only: +/-8 g, accel-only 125 Hz
       if (result != QmiResult::Ok)
@@ -338,6 +348,19 @@ private:
     result = command(0x05);
     if (result != QmiResult::Ok)
       return result;
+    // READ MODE, CHECKED THE WAY `read()` CHECKS IT AT `:172`.
+    //
+    // A request that moves nothing is not a hypothesis here: the refused run
+    // of 2026-09-11 logged three words of `0x8000` with the count unmoved
+    // after. Without this the drain would read those words anyway and report
+    // them as the residue, and the only thing that noticed was the re-count in
+    // `start()` -- which protects entry and says nothing about the log. The
+    // words are the previous owner's or they are not reported at all.
+    std::uint8_t control = 0;
+    if (!byte(0x14, control))
+      return QmiResult::IoError;
+    if (!(control & 0x80))
+      return QmiResult::InvalidData;
     if (!io_.read(0x17, stale_bytes_, words * 2))
       return QmiResult::IoError;
     stale_words_ = words;

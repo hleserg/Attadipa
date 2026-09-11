@@ -16,6 +16,12 @@ The [follow-up attempt](busy-entry/README.md) executed but returned Busy before 
 
 That [read-only observation](persistent-fifo/README.md) is now executed: count=3, FIFO_STATUS=50 (NOT_EMPTY and WTM), CTRL9=00, STATUSINT=00. The persistent nonempty FIFO is the measured entry blocker. Why the prior reset failed remains UNKNOWN; no cleanup or heading PASS is claimed.
 
+## The candidate this document owed #488, written down 2026-09-11
+
+Still UNKNOWN, and now with one named candidate instead of none. The [drain session](../ak09911-drain-waveshare-2026-09-11/README.md) measured that a CTRL9 `REQ_FIFO` (`05`) issued with `FIFO_CTRL` in bypass moves nothing on this part: the command completed, the payload read returned `0x8000` words and the count did not change. `stop()` issues its FIFO reset from exactly that state — `firmware/main/qmi8658_fifo.h:214` — "keep(set(0x14, 0), " — puts the part in bypass, and `:219` — "keep(command(0x04), " — is the command whose count check then fails, the one the comment there marks as "distinct from step reset 0x0f".
+
+**This is a candidate, not a finding, and the distinction is the whole point of writing it here.** `04` and `05` are different commands and the sections cited above say nothing about a bypass exception for either. Nothing measured a `04` from bypass against a `04` from a FIFO mode on this board, and until something does, reordering the stop path would be a guessed fix — the failure mode this whole document exists to avoid. What changed on 2026-09-11 is that the next person choosing a diagnostic for #488 has a hypothesis with a measurement behind its neighbour, rather than the four the datasheet already fails to support.
+
 ## Ordinary boot and limits
 
 The architect's actual handoff is [issue #450 comment 5602884117](https://github.com/hleserg/Attadipa/issues/450#issuecomment-5602884117). After this RAM run, the eight-second raw boot log again shows ELF `2915714b7`, the ordinary image without the USB watch-control endpoint, UI ready at saved brightness 5%, and alive through 6 seconds without panic. The port was closed and fuser reported no opener. No flash-write command was used for this diagnostic. This is boot evidence, not visual acceptance or a claim that normal firmware never writes NVS.
