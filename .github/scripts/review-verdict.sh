@@ -60,6 +60,7 @@
 # merge-candidate.sh.
 
 # attadipa_review_verdict PREV_LEDGER FINDINGS FLOOR LEDGER_OUT DEFERRED_OUT PR
+#                          [CEILING] [HEAD_SHA] [DEFERRED_ISSUE]
 #                         [CEILING] [HEAD_SHA]
 #
 # PREV_LEDGER   path to the body of the ledger comment this script wrote last
@@ -105,13 +106,23 @@
 #   head=       the head this round's verdict was reached on, when HEAD_SHA
 #               named a usable one. Absent means the ledger records none either.
 #   deferred_title=  the title for the follow-up issue, when there is one
-#   deferred_issue=  the issue the deferred findings were filed as, when the
-#                    ledger already records one. Carried forward, never invented:
-#                    the caller appends one `deferred_issue=` line to the state
-#                    block after it creates the issue, and every round after that
-#                    reads it back rather than searching issue bodies for a
-#                    marker, because GitHub's issue search is an index with lag
-#                    and two rounds minutes apart would file the follow-up twice.
+#   deferred_issue=  the issue the deferred findings were filed as. Carried
+#                    forward, never invented: the ledger is the record, and every
+#                    round after the first reads it back rather than searching
+#                    issue bodies for a marker, because GitHub's issue search is
+#                    an index with lag and two rounds minutes apart would file
+#                    the follow-up twice.
+#
+# THE CALLER RUNS THIS TWICE ON THE ROUND THAT FILES. The first run cannot know
+# the issue number, because it is the run that decides there is an issue to file
+# at all: it answers `deferred_title=` and writes DEFERRED_OUT. The caller
+# creates the issue from that body and runs this again with the number as
+# DEFERRED_ISSUE, so the ledger posted for that round already names it -- in the
+# `holds the merge` column and in the sentence under the table. Without the
+# second pass the first round of a deferral says `no — deferred` and names
+# nothing, which is the promise this whole mechanism exists to keep. Nothing
+# else changes between the two runs: the inputs are identical and the script
+# reads no clock, no network and no state of its own.
 #
 # THE FINDINGS BLOCK the reviewer writes, inside its own comment:
 #
@@ -257,6 +268,14 @@ attadipa_review_verdict() {
   # HOLD, reached by a route that looks like an answer.
   head_sha="$(_attadipa_oid "${8:-}")" || head_sha=""
 
+  # The issue the caller has just filed, on the second pass of the round that
+  # files it. It overrides nothing: a ledger that already carries one is
+  # authoritative, because that ledger is what stops the follow-up being filed
+  # twice, and a caller passing a different number would be asking this script
+  # to forget the first.
+  local deferred_issue_arg=""
+  _attadipa_is_uint "${9:-}" && deferred_issue_arg="${9}"
+
   _attadipa_is_uint "$floor" && [ "$floor" -ge 1 ] || floor=1
   # An unreadable ceiling falls back to the default rather than to "no ceiling":
   # a typo in the caller must not silently restore the sixteen-round behaviour
@@ -306,6 +325,11 @@ attadipa_review_verdict() {
     first_round["$id"]="$fr"; category["$id"]="$cat"
     status["$id"]="$st";     title["$id"]="$ti"
   done <<< "$prev_block"
+
+  # The ledger wins. The argument only fills a gap, which is the one round where
+  # there is a gap to fill: the caller has just created the issue and the ledger
+  # it is about to post is the first record of it.
+  [ -z "$deferred_issue" ] && deferred_issue="$deferred_issue_arg"
 
   # ---- what the reviewer said this round -------------------------------------
   local have_block=no findings_block
@@ -472,6 +496,13 @@ _attadipa_render_ledger() {
           holds='**yes** — floor'
         elif [ "${first_round[$id]}" -lt "$floor" ]; then
           holds='**yes** — raised before the floor'
+        elif [ -n "$deferred_issue" ]; then
+          # NAMING THE ISSUE IS THE POINT. "no — deferred" alone is the whole
+          # promise this mechanism makes -- that the finding survives somewhere
+          # else -- printed without saying where, and for the first rounds of
+          # this rule's life there was nowhere: the body was written to a path
+          # the workflow never opened again. #503.
+          holds="no — deferred, filed as #$deferred_issue"
         else
           holds='no — deferred'
         fi
@@ -803,6 +834,6 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     gate) attadipa_review_gate "${2:-}" "${3:-}" "${4:-}" ;;
     cap)  attadipa_review_cap_stale "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
     *)    attadipa_review_verdict "${1:-}" "${2:-}" "${3:-}" "${4:-}" "${5:-}" \
-            "${6:-}" "${7:-}" "${8:-}" ;;
+            "${6:-}" "${7:-}" "${8:-}" "${9:-}" ;;
   esac
 fi

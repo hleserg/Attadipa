@@ -406,6 +406,9 @@ jobs:
       - name: The review cap clears a block the head has outrun, and holds one it has not
         run: bash .github/tests/review-cap-stale-block-test.sh
 
+      - name: A deferred finding is filed as a follow-up issue, exactly once
+        run: bash .github/tests/review-deferred-filing-test.sh
+
       - name: The pull-request queue has a bounded width
         run: bash .github/tests/wip-limit-test.sh
 
