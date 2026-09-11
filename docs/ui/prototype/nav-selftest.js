@@ -131,15 +131,31 @@
           // by arithmetic for any font, any `--caption` and any radius, and the
           // only mutation it could ever see was deleting the fix outright.
           const ringBox = ring.getBoundingClientRect();
+          // WHAT THAT RECT IS, asserted rather than assumed, because the bound
+          // below is read off it and round 4 read it the other way. An SVG
+          // client rect carries the GEOMETRY box: measured here it is
+          // 2 * r * scale to five decimal places, stroke excluded. So half of
+          // it is the band's centreline and the painted inner edge is half a
+          // stroke inside that -- not a whole one.
+          assert(Math.abs(ringBox.width - 2 * ring.r.baseVal.value * scale) <= 0.01, `${context}: the ring's client rect is its geometry box (${ringBox.width.toFixed(3)} vs ${(2 * ring.r.baseVal.value * scale).toFixed(3)})`);
           const inner = Math.min(ringBox.width, ringBox.height) / 2 - stroke / 2;
           const cx = (ringBox.left + ringBox.right) / 2;
           const cy = (ringBox.top + ringBox.bottom) / 2;
           const offCentre = (box) => Math.hypot((box.left + box.right) / 2 - cx, (box.top + box.bottom) / 2 - cy);
           const label = dial.querySelector("text.cardinal");
-          if (label) {
+          // WHICHEVER MARK THE DIAL HAS, above the split. Narrowing the
+          // selector to the cardinal narrowed this with it, from 56 cells to
+          // 40, and the 16 it left are the ones where the em-dash *is* the
+          // dial: `--dial-label` unset falls back to 16 user units, which is
+          // 6.2px at 240x240 against a 12px token. The legibility of the only
+          // mark on the screen does not depend on which mark it is.
+          const drawn = label || dial.querySelector("text");
+          if (drawn) {
             const caption = parseFloat(getComputedStyle(screen).getPropertyValue("--caption"));
-            const rendered = parseFloat(getComputedStyle(label).fontSize) * scale;
-            assert(rendered >= caption - 0.5, `${context}: the cardinal is no smaller than the panel's smallest type (${rendered.toFixed(1)} vs ${caption})`);
+            const rendered = parseFloat(getComputedStyle(drawn).fontSize) * scale;
+            assert(rendered >= caption - 0.5, `${context}: the dial's mark is no smaller than the panel's smallest type (${rendered.toFixed(1)} vs ${caption})`);
+          }
+          if (label) {
             // The corners, not the top edge: the dial counter-rotates the
             // cardinal around the ring, so at head-up it rides at 45 degrees
             // and a top-edge comparison is vacuous there. Every corner inside
