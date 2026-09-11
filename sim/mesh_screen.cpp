@@ -59,6 +59,8 @@ void with_session(core::MeshStatus &status) {
   status.snr_quarter_db = 29; // 7.25 dB
   status.has_snr = true;
   status.peers_reported = 3;
+  status.peers_retained = 3; // the whole list kept: one number, not a pair
+  status.peers_complete = true;
   status.mtu = 244;
   status.node_battery.millivolts = 3700;
   status.node_battery.validity = core::Validity::Valid;
@@ -111,12 +113,57 @@ bool stage_mesh_scenario(const char *name) {
     g_status.has_pinned = true;
     g_status.refused_id = key(0x9E14C003U);
     g_status.has_refused = true;
+  } else if (std::strcmp(name, "refused-faulted") == 0) {
+    // A REFUSAL THAT IS STILL LATCHED WHEN THE TRANSPORT GIVES UP.
+    //
+    // Reachable and not a corner: `MeshCoreCompanion::reset_session()` keeps
+    // the pin and the refusal across a disconnect on purpose, so any fault
+    // after a wrong node answered arrives here. It is staged because it used
+    // to draw `refused` above -- the wearer told to select a different node
+    // by a screen whose link had faulted (#465).
+    g_status.availability = core::Availability::Failed;
+    g_status.transport = core::TransportPhase::Faulted;
+    g_status.pinned_id = key(0x4C9A2F7BU);
+    g_status.has_pinned = true;
+    g_status.refused_id = key(0x9E14C003U);
+    g_status.has_refused = true;
+  } else if (std::strcmp(name, "refused-unnamed") == 0) {
+    // THE OTHER SCREEN A LATCHED REFUSAL REACHES, AND THE ONLY ONE THAT DRAWS
+    // KEYS AND A WAY OUT AT ONCE.
+    //
+    // `Unprovisioned` is terminal once the transport has faulted, so the
+    // refusal does not outrank it and the screen is `NoNode`: no node named,
+    // both keys still latched, and "hold the clock to name one" -- which is
+    // the instruction, so it stays. Staged because the arrangement that put
+    // the keys under the note drew the second of them on the way out's row.
+    g_status.availability = core::Availability::Unprovisioned;
+    g_status.transport = core::TransportPhase::Faulted;
+    g_status.pinned_id = key(0x4C9A2F7BU);
+    g_status.has_pinned = true;
+    g_status.refused_id = key(0x9E14C003U);
+    g_status.has_refused = true;
+  } else if (std::strcmp(name, "truncated") == 0) {
+    // Both completeness flags at once, on a live link: a message longer than
+    // `last_message` and more contacts than the retained set holds. Neither is
+    // a layout problem, so neither may look like one.
+    g_status.availability = core::Availability::Ready;
+    g_status.transport = core::TransportPhase::Ready;
+    with_session(g_status);
+    std::snprintf(g_status.last_message.data(), g_status.last_message.size(),
+                  "%s",
+                  "at the ridge, heading down the north side before the light "
+                  "goes and the wind gets up, will call from the sadd");
+    g_status.message_truncated = true;
+    g_status.peers_reported = 40;
+    g_status.peers_retained = 16;
+    g_status.peers_complete = true;
   } else {
     std::fprintf(stderr,
                  "unknown --mesh-state '%s'\n"
                  "known: unprovisioned absent attached connecting ready "
-                 "suspended faulted refused battery-unknown battery-stale "
-                 "battery-low integrated\n",
+                 "suspended faulted refused refused-faulted refused-unnamed "
+                 "truncated "
+                 "battery-unknown battery-stale battery-low integrated\n",
                  name);
     return false;
   }

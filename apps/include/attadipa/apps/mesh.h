@@ -57,7 +57,9 @@ struct MeshText {
     char pinned[40]   = "";
     char answered[40] = "";
 
-    char message_heading[24] = "";
+    // 48 rather than 24 because the heading is also where the message block
+    // says its content is incomplete, and `СООБЩЕНИЕ · ОБРЕЗАНО` is 38 bytes.
+    char message_heading[48] = "";
     // The whole of what came over the link, not as much of it as an earlier
     // guess had room for. `core::MeshStatus::last_message` carries
     // `kMeshTextBytes`, and a smaller buffer here threw the tail away before
@@ -75,7 +77,9 @@ struct MeshText {
 
     char snr[12]         = "";
     char snr_label[16]   = "";
-    char peers[8]        = "";
+    // 16 rather than 8 because a watch that kept fewer peers than the node
+    // reported prints both numbers -- `16/65535` is the widest that can be.
+    char peers[16]       = "";
     char peers_label[16] = "";
     char mtu[8]          = "";
     char mtu_label[16]   = "";
@@ -98,6 +102,25 @@ struct MeshText {
     bool has_signal  = false;
     bool has_snr     = false;
     bool has_mtu     = false;
+
+    // WHAT THE PROVIDER THREW AWAY BEFORE THIS LAYER SAW IT.
+    //
+    // Neither of these is a layout problem, and that is the whole point of
+    // carrying them. `message_partial` is a tail the node sent and the watch
+    // no longer has: `MeshCoreCompanion::accept_message()` copies into
+    // `core::MeshStatus::last_message` and reports the overflow
+    // (`core/include/attadipa/core/mesh_service.h:96` — "    bool message_truncated = false;").
+    // The face's one-line ellipsis is a different statement -- "the rest of
+    // this is off the edge of a 240 px panel" -- and it is recoverable by
+    // definition, because the bytes are still in `message`. A wearer reading
+    // dots cannot tell the two apart, so the words say which it is.
+    //
+    // The peer cap is the same shape one field over and gets no flag, because
+    // it needs none: the watch retains a fixed 16 contacts, the node may have
+    // more, and the whole treatment is that `peers` reads `16/40` instead of
+    // `40`. The string is the cue. A parallel bool that no renderer reads is a
+    // second way to ask the same question and a second thing to keep true.
+    bool message_partial = false;
 
     // Shared active-screen status. No watch battery producer is bound yet.
     // Empty node_power means one integrated supply; unknown is a visible word.

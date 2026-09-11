@@ -480,8 +480,13 @@ target_link_libraries(test_location_service PRIVATE attadipa_link)
 add_test(NAME location_service COMMAND test_location_service)
 set_tests_properties(location_service PROPERTIES LABELS "position;mesh")
 
+# `attadipa_apps` as well as the transport, for the two tests that read what a
+# wearer is told rather than what the provider recorded. What the provider
+# retains across a fault and how that is ranked against the fault are one
+# defect in two libraries, and a test holding either half alone passed while
+# the shipping path was wrong (#465).
 add_executable(test_meshcore_companion test_meshcore_companion.cpp)
-target_link_libraries(test_meshcore_companion PRIVATE attadipa_link)
+target_link_libraries(test_meshcore_companion PRIVATE attadipa_link attadipa_apps)
 add_test(NAME meshcore_companion COMMAND test_meshcore_companion)
 set_tests_properties(meshcore_companion PROPERTIES LABELS "mesh;transport")
 

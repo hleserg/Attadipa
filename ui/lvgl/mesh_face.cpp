@@ -249,6 +249,12 @@ void MeshFace::lay_out(const apps::MeshText &text) {
 
   const std::int32_t margin = big ? 32 : 20;
   lv_obj_set_width(note_, w);
+  // Content height here and bounded only where something is positioned under
+  // it. Both are set on every layout because the same label serves screens
+  // that answer this differently, and a height left over from the previous
+  // `text` would clip prose that has room.
+  lv_obj_set_height(note_, LV_SIZE_CONTENT);
+  lv_label_set_long_mode(note_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_set_width(way_out_, w);
   lv_obj_set_style_text_align(way_out_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -305,9 +311,33 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_align(rule_, LV_ALIGN_TOP_LEFT, margin, (big ? 352 : 136) - inset);
 
     show(msg_heading_, text.message_heading);
+    // The heading says three things and this is the third: whether the block
+    // is live, and whether what it holds is all of what arrived. `Warning` is
+    // the strongest colour either palette has, and it outranks the live/last
+    // distinction here rather than replacing it -- the heading's own words
+    // still carry that, `LAST KNOWN · CUT` against `MESSAGE · CUT`.
+    //
+    // THE EMPHASIS IS WEIGHT, NOT HUE, BECAUSE THE DAY PALETTE HAS NO HUE TO
+    // SPEND HERE. `color.warning` measures 1.93:1 on a day surface
+    // (`docs/ui/DESIGN_SYSTEM.md:139` — "| `color.warning` | **2.19** | **1.93** | **1.73** |"),
+    // under the 4.5:1 a word needs, and `CUT` is a word that must be read. An
+    // earlier version of this line tinted it anyway and defended that as a
+    // price the row already paid. It is not: that parity holds against
+    // `AccentPrimary` for `Resting` only, and for `Linked` the colour being
+    // replaced is `TextMuted` at 4.95:1, which passes -- so tinting moved the
+    // one element carrying the cue from passing to failing.
+    // `docs/ui/DESIGN_SYSTEM.md:166` — "word — it is drawn on a dark chip rather than tinted, or it is drawn in"
+    // names the two treatments for an accent that must be read; neither is
+    // free here, and neither is needed. `TextPrimary` is 9.78:1 on a surface
+    // and 9.93:1 at night, it is stronger than both colours it replaces, and
+    // it says "read this" without asking the palette for a legibility it does
+    // not have on the day theme.
     lv_obj_set_style_text_color(
         msg_heading_,
-        resolved(text.live ? ColorRole::TextMuted : ColorRole::AccentPrimary,
+        resolved(text.message_partial
+                     ? ColorRole::TextPrimary
+                     : (text.live ? ColorRole::TextMuted
+                                  : ColorRole::AccentPrimary),
                  config_.theme, config_.pixel_cost),
         LV_PART_MAIN);
     show(msg_, text.message);
@@ -326,6 +356,22 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_height(msg_, lv_font_get_line_height(
                                 lv_obj_get_style_text_font(msg_, LV_PART_MAIN)));
     lv_label_set_long_mode(msg_, LV_LABEL_LONG_DOT);
+
+    // The heading gets the same treatment, and now that it has to.
+    //
+    // It is a bare label -- content height, `LV_LABEL_LONG_WRAP` -- and until
+    // the cut wording arrived the string on it was nine glyphs, so the trap
+    // had nothing to spring on. `СООБЩЕНИЕ · ОБРЕЗАНО` is twenty, 181 px of a
+    // 240 px panel by the font's own advance widths, and the next translation
+    // or the next word after `CUT` is what a rendered test should not have to
+    // be re-run to survive. One line and an ellipsis leaves the message row
+    // below it out of reach of anything a catalogue can say.
+    lv_obj_set_width(msg_heading_, w - margin * 2);
+    lv_obj_set_height(
+        msg_heading_,
+        lv_font_get_line_height(
+            lv_obj_get_style_text_font(msg_heading_, LV_PART_MAIN)));
+    lv_label_set_long_mode(msg_heading_, LV_LABEL_LONG_DOT);
 
     if (!big) {
       lv_obj_set_style_text_align(msg_heading_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -372,18 +418,45 @@ void MeshFace::lay_out(const apps::MeshText &text) {
                                     big ? 268 : 174};
     const char *values[3] = {text.snr, text.peers, text.mtu};
     const char *labels[3] = {text.snr_label, text.peers_label, text.mtu_label};
+    // EACH COLUMN ENDS WHERE THE NEXT ONE STARTS, AND SAYS SO.
+    //
+    // All three of these are wire-derived and none of them is a fixture: SNR
+    // is a signed quarter-dB with two decimals, MTU is negotiated, and the
+    // peer count is now two numbers wherever the retained set is capped. Left
+    // at content width they grow rightwards into the neighbour -- `16/65535`
+    // beside a three-digit MTU rendered as `16/65535244`, one number as far as
+    // anybody reading it is concerned. Bounded and ellipsised is the treatment
+    // the message and the sender rows above already get, and for the same
+    // reason: what decides the width of these is off the link, not here.
+    // The right edge is the same margin the rule and the message already use,
+    // not a hand-picked inset: 12 on 240 px put this row's box 8 px right of
+    // every rule above it. The gutter is a physical length too -- 4 dp is 8 px
+    // at 314 dpi and 6 px at 220, which `big ? 8 : 4` got wrong on the smaller
+    // panel in the direction that matters, too tight.
+    const std::int32_t last_edge = w - margin;
+    const std::int32_t gutter = config_.metrics.px(dp_of(Space::Xs));
     for (int i = 0; i < 3; ++i) {
+      const std::int32_t gap =
+          (i < 2 ? column[i + 1] : last_edge) - column[i] - gutter;
       show(value_[i], values[i]);
       show(label_[i], labels[i]);
       lv_obj_set_style_text_opa(value_[i], text.live ? LV_OPA_COVER : LV_OPA_50,
                                 LV_PART_MAIN);
+      for (lv_obj_t *cell : {value_[i], label_[i]}) {
+        lv_obj_set_width(cell, gap);
+        lv_obj_set_height(cell,
+                          lv_font_get_line_height(
+                              lv_obj_get_style_text_font(cell, LV_PART_MAIN)));
+        lv_label_set_long_mode(cell, LV_LABEL_LONG_DOT);
+      }
       lv_obj_align(value_[i], LV_ALIGN_TOP_LEFT, column[i], (big ? 452 : 192) - inset);
       lv_obj_align(label_[i], LV_ALIGN_TOP_LEFT, column[i], (big ? 478 : 214) - inset);
     }
   } else {
     lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, (big ? 262 : 132) - inset);
     show(note_, text.note);
-    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, (big ? 304 : 162) - inset);
+    const std::int32_t note_y = (big ? 304 : 162) - inset;
+    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, note_y);
 
     hide(node_key_);
     hide(node_name_);
@@ -402,11 +475,61 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     lv_obj_set_width(answered_, w);
     lv_obj_set_style_text_align(pinned_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(answered_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, (big ? 350 : 162) - inset);
-    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, (big ? 376 : 184) - inset);
-    if (!big && text.pinned[0] != '\0') {
-      hide(note_);  // the two key lines say it, and 240 px has room for one
+    // What is actually drawn, not which screen this is. `show()` has just
+    // hidden both key labels wherever the app filled neither, and a layout
+    // that reserved their rows anyway clipped a note against nothing.
+    const bool keys = text.pinned[0] != '\0';
+
+    // On 240 px the note, the first key row and the way out cannot all be
+    // drawn: 162 to the panel edge is four rows of prose and the four of them
+    // want five. Which one gives is not a layout question.
+    //
+    // Where the screen names a way out, the keys take the note's row and the
+    // note goes: `TurnedAway` is the case that made the rule -- "that node
+    // turned you away" says nothing the pinned and answered keys do not -- and
+    // an `Unprovisioned` transport that has faulted with a refusal latched is
+    // the same shape, `NoNode` with both keys and "hold the clock to change
+    // it". Stacking the keys under the note there put `answered_` at 208 and
+    // the way out at 210, one on top of the other.
+    //
+    // Where there is no way out -- a terminal fault -- the note is the only
+    // place the reset is named, and the keys are the evidence that the reset
+    // will not clear everything (`reset_session()` keeps the pin and the
+    // refusal on purpose), so there the keys move under the note instead.
+    //
+    // On 410 px every row has its own and neither question arises.
+    const bool keys_replace_note = !big && keys && text.way_out[0] != '\0';
+    if (keys_replace_note) {
+      hide(note_);
     }
+    // Where they go is fixed rows in every case, and where the note is kept it
+    // is the note that gives. Hanging the keys off `note_` with `align_to` made
+    // the bottom of the screen a property of a translated string: `note_` has
+    // content height, so a two-line note pushed `answered_` off a 240 px panel
+    // -- and on 410 px, where the keys are further down, a two-line note ran
+    // into `pinned_` instead. The keys are single-line identities and cannot
+    // ellipsise usefully; the prose can, so it is bounded to the whole lines
+    // that fit above the first key row and gets `LV_LABEL_LONG_DOT`. The pixels
+    // are the ones this screen already had: 162 + one line + `Xs` is 185.
+    const std::int32_t gap = config_.metrics.px(dp_of(Space::Xs));
+    const std::int32_t line = lv_font_get_line_height(
+        lv_obj_get_style_text_font(note_, LV_PART_MAIN));
+    std::int32_t pinned_y = 0;
+    std::int32_t answered_y = 0;
+    if (big || keys_replace_note) {
+      pinned_y = (big ? 350 : 162) - inset;
+      answered_y = (big ? 376 : 184) - inset;
+    } else {
+      pinned_y = note_y + line + gap;
+      answered_y = pinned_y + line + gap;
+    }
+    if (keys && !keys_replace_note) {
+      const std::int32_t rows = (pinned_y - gap - note_y) / line;
+      lv_obj_set_height(note_, (rows > 1 ? rows : 1) * line);
+      lv_label_set_long_mode(note_, LV_LABEL_LONG_DOT);
+    }
+    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, pinned_y);
+    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, answered_y);
 
     show(way_out_, text.way_out);
     lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, (big ? 444 : 210) - inset);
