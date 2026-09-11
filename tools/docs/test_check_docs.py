@@ -638,6 +638,69 @@ def main() -> int:
                  result.returncode == 1 and name in result.stderr)
             target.write_bytes(original)
 
+    # SOURCE COMMENTS GO THROUGH THE SAME LOOP AND THE SAME RULES -- #462.
+    # A citation in a `//` comment rots the way one in a paragraph does, and
+    # rots sooner, because source moves more than prose. The tracked half of
+    # the rule is what needs a real checkout: `git ls-files` is empty outside
+    # one, so a suite run there greens every mandatory-fingerprint case
+    # without testing anything.
+    with tempfile.TemporaryDirectory() as root:
+        subprocess.run(["git", "init", "-q", root], check=True)
+        write(root, "core/thing.h", "alpha\nbeta\ngamma\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+
+        write(root, "src/citer.cpp",
+              '// See `core/thing.h:2` -- "gamma".\nint main() { return 0; }\n')
+        case(
+            "a stale fingerprint in a `//` comment is reported",
+            "check_citation_lines",
+            any("src/citer.cpp" in problem and "which is now at :3" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "src/citer.cpp",
+              "// See `core/thing.h:2`.\nint main() { return 0; }\n")
+        case(
+            "a `//` comment citing a tracked file must carry a fingerprint",
+            "check_citation_lines",
+            any("src/citer.cpp" in problem and "with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # A CITATION IN A STRING LITERAL IS NOT A CITATION, and does not become
+        # one by looking like prose. `comment_lines` empties every other line
+        # rather than dropping it -- so a reported line number still opens in
+        # the file, and code is excluded by construction rather than by a
+        # pattern. A fixture that builds a fake citation to test this very
+        # checker is the case that needs it.
+        write(root, "src/citer.cpp",
+              'const char *fixture = "See `core/thing.h:2`.";\n')
+        case(
+            "a citation inside a string literal is not checked",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # A COMMENT REFLOWS AT 80 COLUMNS, and a fingerprint long enough to be
+        # a handle rarely fits after the path: the quote OPENS on the citation
+        # line and CLOSES on the next. Read as two lines such a citation
+        # carries an unterminated quote, which is no fingerprint at all -- and
+        # the check would then demand the quote already in front of the author.
+        write(root, "core/thing.h", "alpha\nbeta gamma delta\ngamma\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        write(root, "src/citer.cpp",
+              '// See `core/thing.h:2` -- "beta\n// gamma delta".\n')
+        case(
+            "a fingerprint wrapped onto the next comment line is read whole",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "src/citer.cpp",
+              '// See `core/thing.h:3` -- "beta\n// gamma delta".\n')
+        case(
+            "a wrapped fingerprint is still checked against its own line",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+
     missing = {function for _title, function in check_docs.CHECKS} - called
     if missing:
         failures.append("checks without a mutation case: " + ", ".join(sorted(missing)))

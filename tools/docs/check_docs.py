@@ -104,6 +104,59 @@ def markdown_files(root: str) -> list[str]:
     return sorted(found)
 
 
+# Extension -> the markers that open a comment on a line of it. `*` is the
+# continuation line of a `/* ... */` block; `#` covers Python, shell, YAML and
+# CMake alike. The marker list is what decides whether a line is prose, and
+# that is the whole of the widening: a citation inside a string literal is not
+# a comment and does not become one by looking like prose.
+COMMENT_MARKERS = {
+    ".c": ("//", "/*", "*"),
+    ".cpp": ("//", "/*", "*"),
+    ".h": ("//", "/*", "*"),
+    ".hpp": ("//", "/*", "*"),
+    ".py": ("#",),
+    ".sh": ("#",),
+    ".cmake": ("#",),
+    ".yml": ("#",),
+    ".yaml": ("#",),
+}
+
+SOURCE_SUFFIXES = tuple(COMMENT_MARKERS)
+
+
+def source_files(root: str) -> list[str]:
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            if name.endswith(SOURCE_SUFFIXES):
+                found.append(os.path.join(dirpath, name))
+    return sorted(found)
+
+
+def comment_lines(path: str, text: str) -> str:
+    """The comments of a source file, line for line, markers stripped.
+
+    Every other line becomes empty. Line numbers therefore still mean what
+    they mean in the file itself -- which is the point: the citation loop
+    reports `path:lineno`, and a synthetic text that renumbered lines would
+    name a line nobody can open. Emptying the code rather than dropping it
+    also excludes string literals by construction, so a fixture that builds a
+    fake citation to test this very checker is not itself checked.
+    """
+    markers = COMMENT_MARKERS[os.path.splitext(path)[1]]
+    out = []
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        for marker in markers:
+            if stripped.startswith(marker):
+                out.append(stripped[len(marker):].lstrip())
+                break
+        else:
+            out.append("")
+    return "\n".join(out)
+
+
 def heading_anchors(text: str) -> set[str]:
     """Every anchor the headings of one document answer to.
 
@@ -196,9 +249,9 @@ def check_links(root: str) -> list[str]:
 # a look-behind for a character that could continue a path.
 #
 # AND A DOT-DIRECTORY IS A PATH TOO. `(?:\.{1,2}/)*` only admits `./` and `../`,
-# so `.github/workflows/ci.yml:281` matched nothing: the pattern cannot start at
+# so `.github/EXAMPLE.md:281` matched nothing: the pattern cannot start at
 # the `.`, and starting at the `g` is what the look-behind exists to refuse. Two
-# citations to that file sat 211 lines out of date because the check that three
+# citations into `ci.yml` sat 211 lines out of date because the check that three
 # documents call the answer to citation drift could not see them at all. Found
 # in review; `\.?` before the first path character is the whole fix.
 CITATION = re.compile(
@@ -213,7 +266,7 @@ CITATION = re.compile(
     # `[ADR-0003](../adr/0003-radio-not-lora.md):109-111`. Not captured.
     #
     # NO WHITESPACE AROUND THE SEPARATOR, and that is the whole of the rule.
-    # Allowing it turned "STATUS.md:843 - 26 lines below" -- ordinary English,
+    # Allowing it turned "EXAMPLE.md:843 - 26 lines below" -- ordinary English,
     # a correct citation followed by a correct number -- into the range 843-26,
     # which then failed as a descending range and reddened CI for a true
     # sentence. Every real range in this repository is written closed up.
@@ -224,7 +277,7 @@ CITATION = re.compile(
     # fingerprint below then asked a build log to make a promise.
     #
     # The backtick beside the paren is the third spelling this tree uses:
-    # `` `board_profile.h`:16 `` closes the code span BEFORE the line number.
+    # `` `EXAMPLE.md`:16 `` closes the code span BEFORE the line number.
     # MAGNETOMETER_RETROFIT.md wrote ninety-eight citations that way, and to
     # this pattern every one of them was prose -- not asked for a fingerprint,
     # and not even checked for a blank line, which two of them pointed at
@@ -233,7 +286,7 @@ CITATION = re.compile(
     r"[)`]?:(\d+)(?:[-\u2013](\d+))?\b(?!:\d)"
 )
 
-# The FINGERPRINT after a citation: `HARDWARE_MATRIX.md:357 "Display FPC"`. A
+# The FINGERPRINT after a citation: `EXAMPLE.md:357 "Display FPC"`. A
 # bare line number rots every time anybody inserts a paragraph above it, and it
 # rots SILENTLY -- the line it lands on is real and non-blank, so nothing here
 # could see it. Two citations in this repository were thirteen lines out and
@@ -243,14 +296,15 @@ CITATION = re.compile(
 # repository tracks -- see `tracked_target` for the one place it is not -- and
 # a promise this check then keeps.
 # The optional `](...)` is the tail of a Markdown link: these documents write
-# `[HARDWARE_MATRIX.md:357](HARDWARE_MATRIX.md)`, and the citation match ends
+# `[EXAMPLE.md:357](EXAMPLE.md)`, and the citation match ends
 # inside it, so a fingerprint written after the link would otherwise be seen by
 # nothing -- a promise silently not kept, which is worse than no promise.
 # The path a citation links to, immediately after it. These documents write
-# `[`core/clock.h:86`](../../core/include/attadipa/core/clock.h)`: a SHORT LABEL
-# for the reader and the real path in the href. The label is not a stale path
-# and must not be reported as one -- but it is also the only place a line number
-# appears, so resolving through the href is what makes `:86` checkable at all.
+# `[`core/clock.h:86`](../../core/include/attadipa/core/clock.h)` -- "struct WallTime {"
+# -- a SHORT LABEL for the reader and the real path in the href. The label is
+# not a stale path and must not be reported as one -- but it is also the only
+# place a line number appears, so resolving through the href is what makes the
+# label's line number checkable at all.
 # Anchored, so a later link on the same line cannot be mistaken for this one.
 CITATION_HREF = re.compile(r"\A`?\]\(([^)#]+)")
 
@@ -301,10 +355,10 @@ FINGERPRINT_MAX = 80
 PLACEHOLDER = "EXAMPLE.md"
 
 # These documents also cite a sibling by its bare SHOUTING name --
-# `HARDWARE_MATRIX:144`, no extension -- and that spelling is where the defect
+# `EXAMPLE:144`, no extension -- and that spelling is where the defect
 # this check was written for actually lived. Resolved against the tree rather
 # than a hardcoded list, and only when exactly one file answers to the name.
-# The same backtick-before-the-colon spelling as above: `` `HARDWARE_MATRIX`:318 ``.
+# The same backtick-before-the-colon spelling as above: `` `EXAMPLE`:318 ``.
 BARE_CITATION = re.compile(r"\b([A-Z][A-Z0-9_]{3,})`?:(\d+)(?:[-\u2013](\d+))?\b")
 
 # A CONTINUATION: `:271` with no path, meaning "the file the citation before it
@@ -432,9 +486,16 @@ def check_citation_lines(root: str) -> list[str]:
                 "about this file. Rename it."
                 % (os.path.relpath(path, root), PLACEHOLDER)
             )
-    for path in markdown_files(root):
+    # Source comments go through the same loop and the same rules -- #462.
+    # A citation in a `//` comment rots exactly the way one in a paragraph
+    # does, and rots sooner, because source moves more than prose. Only the
+    # file set changes here; the placeholder walk above stays Markdown-only,
+    # because `EXAMPLE.md` is a document name.
+    for path in markdown_files(root) + source_files(root):
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
+        if not path.endswith(".md"):
+            text = comment_lines(path, text)
         here = os.path.dirname(path)
         rel_self = os.path.relpath(path, root)
         # Fences are NOT stripped here, unlike every other check in this file.
@@ -497,7 +558,7 @@ def check_citation_lines(root: str) -> list[str]:
                         )
                     continue
                 # Resolve beside the citing file first, then from the root. A
-                # bare basename -- `TEST_FLEET.md:21` -- is how these documents
+                # bare basename -- `EXAMPLE.md:21` -- is how these documents
                 # cite a sibling, and both spellings appear.
                 for base in (here, root):
                     resolved = os.path.normpath(os.path.join(base, cited.lstrip("/")))
@@ -610,7 +671,7 @@ def _report(problems, rel_self, lineno, cited, match, body, line="",
     # raises, so the job died on a traceback instead of naming the document --
     # and `:0` indexed `body[-1]`, quietly approving a citation to the last
     # line of the file. Prose reaches here: the separator allows spaces, so
-    # "STATUS.md:843 - 26 lines below" parses as the range 843-26. Found in
+    # "EXAMPLE.md:843 - 26 lines below" parses as the range 843-26. Found in
     # review; both are now reported rather than crashed on or waved through.
     if first < 1 or (last is not None and int(last) < first):
         problems.append(
@@ -653,6 +714,25 @@ def _report(problems, rel_self, lineno, cited, match, body, line="",
         tail = FINGERPRINT_LEAD.sub("", line[match.end() :]).strip()
         if re.fullmatch(FINGERPRINT_DECOR, tail):
             stamp = FINGERPRINT.match(next_line.strip())
+        elif tail.count('"') == 1:
+            # The other half of the same wrap, and the one source comments hit
+            # constantly: the quote OPENS on the citation line and CLOSES on
+            # the next. A `//` comment reflows at 80 columns like prose does,
+            # and a fingerprint long enough to be a handle rarely fits after
+            # the path. Read as two lines, such a citation carries an
+            # unterminated quote, which is no fingerprint at all -- and the
+            # mandatory branch below would then demand the author add the
+            # quote that is already there, in front of them.
+            #
+            # One open quote and nothing after the close, because that is what
+            # "the fingerprint continues" looks like. Two quotes on the line
+            # mean a complete fingerprint that simply did not match, and a
+            # later quotation in the same sentence is prose, not this
+            # citation's promise -- the same distinction the branch above
+            # draws for a wrap onto an empty tail.
+            stamp = FINGERPRINT.match(
+                line[match.end() :].rstrip() + " " + next_line.strip()
+            )
     if not stamp:
         if tracked:
             # MANDATORY into a file this repository edits. Twice on one branch
