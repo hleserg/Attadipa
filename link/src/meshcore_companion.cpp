@@ -887,7 +887,29 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         break;
     case kPushSendConfirmed:
-        if (size >= 5 && awaiting_confirm_ &&
+        // THE SHAPE IS A PRECONDITION, NOT A TERM OF THE CORRELATION. Written
+        // as `size >= 5 &&` inside the condition below -- which is where this
+        // bound stood -- a `0x82` truncated to one to four bytes fell past the
+        // test to the `break` and left `receive()` answering `true`: a frame a
+        // third party on the air can cut short was classified as well formed
+        // but about some other operation, and disappeared from the one counter
+        // that would have named it. Every fixed-shape frame in this switch
+        // refuses on LENGTH before it reads, and this one now does too (#478).
+        // Only on length: the siblings fold "nobody asked for this" into the
+        // same refusal, and this arm deliberately does not -- see below.
+        //
+        // A FLOOR, NOT AN EQUALITY. The T114 put nine bytes on the wire for
+        // this push -- `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298`
+        // "PUSH_CODE_SEND_CONFIRMED  82 38 66 6c b8 1b 03 00 00" -- four of
+        // them after the ack this build reads. What follows the ack is not
+        // ours to judge, so the guard asks for the ack and nothing more.
+        if (size < 5) { ++malformed_frames_; return false; }
+        // Refusing the shape is not ending the operation, and neither is
+        // failing to match. The budget, a disconnect and a matching ack stay
+        // the only things that release the slot: a well-formed ack for another
+        // message is a correlation outcome, and a malformed frame is not even
+        // that.
+        if (awaiting_confirm_ &&
             std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) == 0) {
             status_.delivery = core::MeshDelivery::Confirmed;
             awaiting_confirm_ = false;
