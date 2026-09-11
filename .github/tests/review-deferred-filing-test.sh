@@ -156,12 +156,12 @@ STUB
     bash "$work/step.sh" > "$work/out.txt" 2>&1
 }
 
-# ---- round 4: the finding is first seen at the floor and is deferred ---------
+# ---- round 2: the finding is first seen at the floor and is deferred ---------
 : > "$work/created.log"
 run_round '<!-- attadipa-review-ledger -->
 <!-- attadipa-review-ledger-state
-round=3
-floor=4
+round=1
+floor=2
 -->'
 first=$(cat "$work/posted.md" 2>/dev/null || printf '')
 
@@ -178,7 +178,7 @@ has "the ledger's column names the issue rather than only deferring" \
 has "the ledger records the issue in its state block" \
     "$first" "deferred_issue=170"
 
-# ---- round 5: the same finding, still open, driven by round 4's own ledger ---
+# ---- round 3: the same finding, still open, driven by round 2's own ledger ---
 : > "$work/created.log"
 run_round "$first"
 second=$(cat "$work/posted.md" 2>/dev/null || printf '')
