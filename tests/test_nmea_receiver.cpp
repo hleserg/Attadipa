@@ -628,6 +628,242 @@ void a_gga_with_no_hemisphere_keeps_the_rest_of_the_sentence()
     CHECK(*sample.observation.satellites_used == 8);
 }
 
+// The coordinate fields of one bench epoch, so that a case below names only the
+// thing it is about and everything around it is what the modules really send.
+std::string rmc_body(const std::string& lat, const std::string& ns, const std::string& lon,
+                     const std::string& ew)
+{
+    return "GNRMC,135222.00,A," + lat + "," + ns + "," + lon + "," + ew + ",0.085,,040926,,,D,V";
+}
+
+std::string gga_body(const std::string& lat, const std::string& ns, const std::string& lon,
+                     const std::string& ew)
+{
+    return "GNGGA,135222.00," + lat + "," + ns + "," + lon + "," + ew +
+           ",2,12,1.58,12.4,M,25.0,M,,";
+}
+
+// A coordinate field and its hemisphere letter, and what NMEA says is wrong with
+// the pair. Every one of these framed, passed its checksum and carried a valid
+// fix flag before #472, and every one of them landed somewhere inside the globe
+// range where nothing downstream could tell it from a place.
+struct BadCoordinate {
+    const char* why;
+    const char* lat;
+    const char* ns;
+    const char* lon;
+    const char* ew;
+};
+
+const BadCoordinate kBadCoordinates[] = {
+    // Sixty minutes is a degree the sentence declined to carry. Normalising it
+    // put the watch 1° north of the equator.
+    {"60 minutes of latitude", "0060.00000", "N", "00100.00004", "E"},
+    {"60 minutes of longitude", "0030.00004", "N", "00060.00000", "E"},
+    // minmea's `d` scanner maps N and E alike to +1 and S and W alike to -1, so
+    // the letter for the wrong axis arrives downstream as a hemisphere that
+    // fits. Nothing after the scanner can recover which letter it was.
+    {"E in the latitude's field", "0030.00004", "E", "00100.00004", "E"},
+    {"N in the longitude's field", "0030.00004", "N", "00100.00004", "N"},
+    {"W in the latitude's field", "0030.00004", "W", "00100.00004", "E"},
+    {"S in the longitude's field", "0030.00004", "N", "00100.00004", "S"},
+    // The field is an unsigned magnitude and the letter is the sign. Signing the
+    // magnitude too is two sign sources for one axis, and minmea multiplies
+    // them: `-0030.00004,S` is 30' *north*, which is the hemisphere the sentence
+    // spelled out being overruled by a character in front of the digits.
+    {"signed latitude magnitude", "-0030.00004", "N", "00100.00004", "E"},
+    {"signed latitude magnitude, S", "-0030.00004", "S", "00100.00004", "E"},
+    {"signed longitude magnitude", "0030.00004", "N", "-00100.00004", "W"},
+    // 90 degrees is a pole and 90 degrees 60 minutes is nothing. The globe-range
+    // check downstream would have let this one through as 91 -> refused, but
+    // only by accident of the limit; at 0060 it had nothing to say.
+    {"60 minutes at the pole", "9060.00000", "N", "00100.00004", "E"},
+};
+
+void a_coordinate_nmea_could_not_have_written_is_not_a_position()
+{
+    // #472. A checksum proves byte integrity. It does not make the fields inside
+    // the sentence mean what they claim, and the globe-range check downstream
+    // cannot catch a malformed field that has already been turned into an
+    // in-range number -- which is exactly what each of these became.
+    for (const BadCoordinate& bad : kBadCoordinates) {
+        gnss::NmeaReceiver receiver;
+        core::PositionSample sample;
+
+        g_now.ms += 1000;
+        deliver_body(receiver, rmc_body(bad.lat, bad.ns, bad.lon, bad.ew));
+        deliver_body(receiver, gga_body(bad.lat, bad.ns, bad.lon, bad.ew));
+        deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+        // The next epoch's RMC, which closes the one above.
+        g_now.ms += 1000;
+        deliver_body(receiver, rmc_body("0030.00004", "N", "00100.00004", "E"));
+
+        // Believed as sentences, every one of them. Without this the case would
+        // pass for the wrong reason: a sentence dropped at the checksum leaves an
+        // empty epoch whatever the coordinate check does.
+        check(receiver.discarded() == 0, bad.why, __LINE__);
+        check(receiver.sample(sample), bad.why, __LINE__);
+
+        // Not a coordinate, from either sentence -- and so `close_epoch()` calls
+        // the epoch NoFix rather than putting a place on the screen. GSA said
+        // mode 3 and GGA said quality 2; neither of them is evidence of where.
+        check(!sample.observation.position.has_value(), bad.why, __LINE__);
+        check(sample.observation.fix_type == core::FixType::NoFix, bad.why, __LINE__);
+    }
+}
+
+void the_coordinates_a_receiver_really_sends_still_arrive()
+{
+    // The other half of #472, and the half a careless fix breaks. Refusing
+    // anything that looks odd would take the equator, the prime meridian, the
+    // southern and western hemispheres and both endpoints with it.
+    struct Good {
+        const char* why;
+        const char* lat;
+        const char* ns;
+        const char* lon;
+        const char* ew;
+        std::int32_t latitude_e7;
+        std::int32_t longitude_e7;
+    };
+    const Good cases[] = {
+        // Zero is a place. A band 1.85 cm wide, and refusing it would be a lie
+        // of the same kind in the other direction.
+        {"equator and prime meridian", "0000.00000", "N", "00000.00000", "E", 0, 0},
+        {"south and west", "3000.00000", "S", "01000.00000", "W", -300000000, -100000000},
+        {"north pole", "9000.00000", "N", "00000.00000", "E", 900000000, 0},
+        {"south pole", "9000.00000", "S", "00000.00000", "E", -900000000, 0},
+        {"dateline", "0000.00000", "N", "18000.00000", "E", 0, 1800000000},
+        {"dateline, west", "0000.00000", "N", "18000.00000", "W", 0, -1800000000},
+        // One unit of the fifth decimal below a degree: the largest minute value
+        // a receiver may legally state, and the one an off-by-one at 60 eats.
+        {"59.99999 minutes", "0059.99999", "N", "00059.99999", "E", 9999998, 9999998},
+    };
+
+    for (const Good& good : cases) {
+        gnss::NmeaReceiver receiver;
+        core::PositionSample sample;
+
+        g_now.ms += 1000;
+        deliver_body(receiver, rmc_body(good.lat, good.ns, good.lon, good.ew));
+        deliver_body(receiver, gga_body(good.lat, good.ns, good.lon, good.ew));
+        deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+        g_now.ms += 1000;
+        deliver_body(receiver, rmc_body("0030.00004", "N", "00100.00004", "E"));
+
+        check(receiver.discarded() == 0, good.why, __LINE__);
+        check(receiver.sample(sample), good.why, __LINE__);
+        check(sample.observation.position.has_value(), good.why, __LINE__);
+        if (!sample.observation.position.has_value()) continue;
+        check(sample.observation.position->latitude_e7 == good.latitude_e7, good.why, __LINE__);
+        check(sample.observation.position->longitude_e7 == good.longitude_e7, good.why, __LINE__);
+        check(core::in_range(*sample.observation.position), good.why, __LINE__);
+        check(sample.observation.fix_type == core::FixType::ThreeD, good.why, __LINE__);
+    }
+}
+
+void a_malformed_gga_does_not_replace_the_coordinate_rmc_gave()
+{
+    // The fallback policy, stated rather than left to be discovered. GGA is
+    // preferred when it has a coordinate; when its coordinate is the refused one
+    // the RMC's stands, because a refusal says *this sentence* has no position
+    // to offer and not that the one already in hand was wrong.
+    //
+    // The same rule the `scale`-overflow case already relies on, and the reason
+    // it is worth a second test is that these two arrive by different routes:
+    // there the field was unreadable, here it is readable and wrong.
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0030.00004", "N", "00100.00004", "E"));
+    deliver_body(receiver, gga_body("0060.00000", "N", "00100.00004", "E"));
+    deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0030.00004", "N", "00100.00004", "E"));
+
+    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.sample(sample));
+
+    // RMC's, not GGA's normalised 1°.
+    CHECK(sample.observation.position.has_value());
+    CHECK(sample.observation.position->latitude_e7 == 5000006);
+    CHECK(sample.observation.position->longitude_e7 == 10000006);
+
+    // And the rest of that GGA is still believed: a satellite count and an
+    // altitude are not made wrong by a minutes field, and discarding the whole
+    // sentence would throw away numbers the receiver did state.
+    CHECK(sample.observation.satellites_used.has_value());
+    CHECK(*sample.observation.satellites_used == 12);
+    CHECK(sample.observation.altitude_msl_mm.has_value());
+    CHECK(*sample.observation.altitude_msl_mm == 12400);
+
+    // GGA quality 2 and GSA mode 3 over a coordinate RMC vouched for.
+    CHECK(sample.observation.fix_type == core::FixType::ThreeD);
+
+    // And the same rule read the other way, which is the half a one-sided fix
+    // would leave untested: RMC's field is the refused one, GGA's is sound, and
+    // the epoch carries GGA's coordinate rather than nothing. `A` in the RMC
+    // still means the receiver had a fix; what it could not state was where.
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0030.00004", "E", "00100.00004", "E"));
+    deliver_body(receiver, gga_body("0030.00009", "N", "00100.00009", "E"));
+    deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0030.00004", "N", "00100.00004", "E"));
+
+    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.position.has_value());
+    CHECK(sample.observation.position->latitude_e7 == 5000015);
+    CHECK(sample.observation.position->longitude_e7 == 10000015);
+    CHECK(sample.observation.fix_type == core::FixType::ThreeD);
+}
+
+void a_hemisphere_letter_that_is_no_direction_loses_the_sentence()
+{
+    // Not this file's guard, and recorded here so the next reader does not go
+    // looking for one. `X` is refused a layer earlier: `minmea_parse_rmc` scans
+    // the direction with `d`, which fails on any character outside `NSEW`, so
+    // the sentence never parses and `take_sentence()` counts it discarded --
+    // whole, not field by field. The axis check exists for the letters that *do*
+    // scan and belong to the other axis.
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0030.00004", "X", "00100.00004", "E"));
+    CHECK(receiver.discarded() == 1);
+    CHECK(!receiver.sample(sample));
+}
+
+void a_malformed_coordinate_reaches_the_readout_as_no_fix()
+{
+    // End to end, through the shipping provider and service, because that is
+    // where #472 was measured: `ThreeD / Valid` with `latitude_e7 = 10000000`
+    // and a discard count of zero. The unit assertions above pin the parser; this
+    // pins what a person is shown.
+    gnss::NmeaReceiver receiver;
+    core::LocationService location(receiver);
+
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0060.00000", "N", "00100.00004", "E"));
+    deliver_body(receiver, gga_body("0060.00000", "N", "00100.00004", "E"));
+    deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+    g_now.ms += 1000;
+    deliver_body(receiver, rmc_body("0030.00004", "N", "00100.00004", "E"));
+
+    location.poll();
+    const core::LocationState state = location.state(g_now);
+    CHECK(state.fix_type == core::FixType::NoFix);
+    CHECK(state.validity == core::PositionValidity::NoFix);
+
+    // And nothing that a malformed field produced was stored as a position: the
+    // service holds no coordinate to age, so a later epoch cannot inherit one.
+    CHECK(state.position.value.latitude_e7 == 0);
+    CHECK(state.position.value.longitude_e7 == 0);
+}
+
 void the_chain_ends_in_a_location_state()
 {
     // The seam this whole slice exists for: bytes off a wire, through the
@@ -941,6 +1177,11 @@ int main()
     a_binary_stream_moves_both_numbers_and_neither_names_it();
     an_rmc_with_no_hemisphere_states_no_position();
     a_gga_with_no_hemisphere_keeps_the_rest_of_the_sentence();
+    a_coordinate_nmea_could_not_have_written_is_not_a_position();
+    the_coordinates_a_receiver_really_sends_still_arrive();
+    a_malformed_gga_does_not_replace_the_coordinate_rmc_gave();
+    a_hemisphere_letter_that_is_no_direction_loses_the_sentence();
+    a_malformed_coordinate_reaches_the_readout_as_no_fix();
     the_chain_ends_in_a_location_state();
     the_readout_stops_saying_waiting_for_gps();
     a_downgrade_at_an_unchanged_coordinate_reaches_the_readout();
