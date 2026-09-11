@@ -24,8 +24,28 @@ constexpr bool present(const minmea_float& f)
     return f.scale > 0;
 }
 
-// `ddmm.mmmmm` to degrees × 10^7, in integers, with the hemisphere sign minmea
-// has already applied to `value`.
+// `ddmm.mmmmm` plus its own hemisphere letter to degrees × 10^7, in integers.
+//
+// The magnitude and the letter are one fact and are checked as one, because
+// neither is a coordinate without the other. NMEA gives the field an **unsigned**
+// `ddmm.mmmmm` and puts the direction in a separate field, so three things have
+// to hold before this is a place: the letter belongs to *this* axis, the
+// magnitude is not itself signed, and the minutes are minutes.
+//
+//   - `0060.00000,N` is not 1° N. Sixty minutes is a degree the sentence
+//     declined to carry, and normalising it here would invent a coordinate out
+//     of a field the receiver got wrong — silently, and inside the globe range,
+//     where nothing downstream can see it any more.
+//   - `-0030.00004,S` is not 30′ S. minmea's `f` scanner takes a leading sign
+//     (`gnss/vendor/minmea/minmea.c:168` — "                        } else if (*field == '-' && !sign && value == -1) {")
+//     and `minmea_parse_rmc` then multiplies by the direction, so two negatives
+//     land the watch 30′ **north** of where the sentence said. A leading `+` is
+//     let through: it yields exactly the value the unsigned field would, so
+//     there is nothing to be wrong about.
+//   - Zero is a real place and stays one. Refusing every coordinate that came
+//     out as zero would refuse a fix on the equator or the prime meridian — a
+//     band 1.85 cm wide, but a lie of the same kind in the other direction, and
+//     one nothing in the stream would explain.
 //
 // Not `minmea_rescale`, and not `minmea_tocoord`. The first multiplies when it
 // scales up — `f->value * (new_scale/f->scale)` — which a sentence claiming
@@ -34,54 +54,64 @@ constexpr bool present(const minmea_float& f)
 // `-ffast-math` both `isnan()` and `x != x` answer false for an actual NaN).
 //
 // Everything below is int64 with room to spare: the largest honest numerator is
-// a minute count times 10^7, six orders below the type's range.
-bool degrees_e7(const minmea_float& f, std::int32_t limit, std::int32_t& out)
+// a minute count times 10^7, six orders below the type's range, and the minutes
+// are bounded *before* they are multiplied.
+bool degrees_e7(const minmea_float& f, char letter, char positive, char negative,
+                std::int32_t limit, std::int32_t& out)
 {
     if (!present(f)) return false;
+    if (letter != positive && letter != negative) return false;
+    if (f.value < 0) return false;
 
     const std::int64_t value = f.value;
     const std::int64_t scale = f.scale;
-    const std::int64_t whole = value / scale;   // ddmm, sign carried
-    const std::int64_t degrees = whole / 100;
-    const std::int64_t minutes = value - degrees * 100 * scale;  // mm.mmmm × scale
+    const std::int64_t degrees = value / scale / 100;             // dd
+    const std::int64_t minutes = value - degrees * 100 * scale;   // mm.mmmm × scale
+    if (minutes >= 60 * scale) return false;
 
     // 60 minutes to the degree, and the division is exact enough: 10^7 degrees
     // per degree over 60 minutes is 1.85 cm per unit, finer than any receiver
     // here resolves.
-    const std::int64_t result = degrees * 10000000 + (minutes * 10000000) / (60 * scale);
-    if (result < -limit || result > limit) return false;
+    const std::int64_t magnitude = degrees * 10000000 + (minutes * 10000000) / (60 * scale);
+    if (magnitude > limit) return false;
 
-    out = static_cast<std::int32_t>(result);
+    out = static_cast<std::int32_t>(letter == negative ? -magnitude : magnitude);
     return true;
 }
 
-// MINMEA ANSWERS 0 FOR AN ABSENT HEMISPHERE AND THEN MULTIPLIES THE COORDINATE
-// BY IT.
+// THE HEMISPHERE IS READ AS A LETTER, BECAUSE BY THE TIME MINMEA IS DONE WITH IT
+// IT IS NO LONGER ONE.
 // `gnss/vendor/minmea/minmea.c:138` — "            case 'd': { // Single character direction field (int)."
-// treats an empty `N`/`S` or `E`/`W` field as zero rather than as a parse
-// error, and `minmea_parse_rmc()` then does `frame->latitude.value *=
-// latitude_direction`. So `$GNRMC,135222.00,A,0030.00004,,00100.00004,E,...`
+// maps `N` and `E` alike to `+1` and `S` and `W` alike to `-1`, so a latitude
+// stamped `E` and a longitude stamped `N` are indistinguishable downstream from
+// the letters that belong there: the sign that arrives says which half, never
+// which axis. The same scanner answers 0 for an *absent* field rather than
+// failing, and `minmea_parse_rmc()` then does `frame->latitude.value *=
+// latitude_direction`, so `$GNRMC,135222.00,A,0030.00004,,00100.00004,E,...`
 // parses clean, carries the `A` status, and states a latitude of exactly zero:
 // the `(0, 0)` this slice exists not to show, wearing a valid fix flag.
 //
-// Read a second time here rather than inferred from the value, because zero is
-// a real place. Refusing every coordinate that came out as zero would refuse a
-// fix on the equator or the prime meridian -- a band 1.85 cm wide, but a lie of
-// the same kind in the other direction, and one nothing in the stream would
-// explain.
+// `c` keeps the character (`'\0'` when the field is empty), so the four fields
+// are re-read here raw and validated as NMEA wrote them, ahead of any sign
+// minmea applied. What `minmea_parse_rmc`/`_gga` made of the same bytes is not
+// consulted for the position at all — there is nothing left in it to check.
 //
-// `_` skips a field, so the format walks to the two direction fields and
-// nowhere else: after the talker, RMC's are the 4th and 6th, GGA's the 3rd and
-// 5th. Both formats consume the same three arguments.
-bool hemispheres_present(const char* sentence, bool rmc)
+// `_` skips a field, so each format walks to the four coordinate fields and
+// nowhere else: after the talker, RMC's are the 3rd to 6th and GGA's the 2nd to
+// 5th. Both formats consume the same five arguments.
+bool coordinates(const char* sentence, bool rmc, Position& out)
 {
     minmea_type type{};
-    int ns = 0;
-    int ew = 0;
-    if (!minmea_scan(sentence, rmc ? "t___d_d" : "t__d_d", &type, &ns, &ew)) {
+    minmea_float latitude{};
+    minmea_float longitude{};
+    char ns = '\0';
+    char ew = '\0';
+    if (!minmea_scan(sentence, rmc ? "t__fcfc" : "t_fcfc", &type, &latitude, &ns, &longitude,
+                     &ew)) {
         return false;
     }
-    return ns != 0 && ew != 0;
+    return degrees_e7(latitude, ns, 'N', 'S', core::kLatitudeMaxE7, out.latitude_e7) &&
+           degrees_e7(longitude, ew, 'E', 'W', core::kLongitudeMaxE7, out.longitude_e7);
 }
 
 // Knots to millimetres per second: one knot is 1852 m/h.
@@ -213,9 +243,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 
         if (frame.valid) {
             Position position{};
-            if (hemispheres_present(line_, true) &&
-                degrees_e7(frame.latitude, core::kLatitudeMaxE7, position.latitude_e7) &&
-                degrees_e7(frame.longitude, core::kLongitudeMaxE7, position.longitude_e7)) {
+            if (coordinates(line_, true, position)) {
                 open_.position = position;
             }
         }
@@ -272,11 +300,13 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 
         if (gga_quality_ != 0) {
             Position position{};
-            if (hemispheres_present(line_, false) &&
-                degrees_e7(frame.latitude, core::kLatitudeMaxE7, position.latitude_e7) &&
-                degrees_e7(frame.longitude, core::kLongitudeMaxE7, position.longitude_e7)) {
+            if (coordinates(line_, false, position)) {
                 // GGA over RMC when both are present: this is the sentence that
-                // states the fix quality beside the coordinate.
+                // states the fix quality beside the coordinate. When GGA's
+                // coordinate is the one refused, the RMC's stands rather than
+                // the epoch going blank: a refusal here says this sentence has
+                // no position to offer, not that the one already in hand was
+                // wrong. The epoch is still `NoFix` if neither sentence had one.
                 open_.position = position;
             }
             std::int32_t altitude = 0;

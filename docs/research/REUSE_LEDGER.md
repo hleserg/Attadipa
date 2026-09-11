@@ -553,6 +553,16 @@ arrive as a version bump rather than a merge.
 - **minmea's own overflow guard can be defeated, producing a negative scale.**
   *kosma/minmea issue #104, open, filed 2026-07-19.* → Validity is
   `field.scale > 0`. **Never** `scale != 0`.
+- **A direction field arrives as a sign, and a sign has forgotten the axis.**
+  minmea's `d` scanner maps `N` and `E` alike to `+1` and `S` and `W` alike to
+  `-1` (`gnss/vendor/minmea/minmea.c:138` — "            case 'd': { // Single character direction field (int)."),
+  so a latitude stamped `E` is `+1` and nothing after the scanner can tell it
+  from an `N`. Its `f` scanner separately accepts a leading sign on a field NMEA
+  defines as an unsigned magnitude, and `minmea_parse_rmc` then multiplies the
+  two. → The wrapper re-reads the four coordinate fields with `c` and `f` and
+  validates them as written: the letter against **its own axis**, the magnitude
+  nonnegative, the minutes under 60. Never from minmea's signed result — the
+  evidence has been spent by then. *Found in Attadipa, issue #472.*
 - **`isnan()` is not a safe validity test.** Compiled twice here against the same
   source: with `-ffast-math`, `isnan()` returns 0 on an actual NaN, and so does
   `x != x`. → `-ffast-math` is a correctness hazard in this subsystem, not a
