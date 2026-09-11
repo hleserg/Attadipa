@@ -674,9 +674,12 @@ const BadCoordinate kBadCoordinates[] = {
     {"signed latitude magnitude", "-0030.00004", "N", "00100.00004", "E"},
     {"signed latitude magnitude, S", "-0030.00004", "S", "00100.00004", "E"},
     {"signed longitude magnitude", "0030.00004", "N", "-00100.00004", "W"},
-    // 90 degrees is a pole and 90 degrees 60 minutes is nothing. The globe-range
-    // check downstream would have let this one through as 91 -> refused, but
-    // only by accident of the limit; at 0060 it had nothing to say.
+    // 90 degrees is a pole and 90 degrees 60 minutes is nothing. THE ONLY ROW
+    // HERE THAT THE OLD CODE ALSO REFUSED, and it refused it by accident: the
+    // normalised 91 fell outside `kLatitudeMaxE7` and the limit caught it.
+    // Nothing about the minutes was checked, which is why one degree south of
+    // this -- `0060.00000` -- sailed through. Kept as the case that pins the two
+    // checks apart.
     {"60 minutes at the pole", "9060.00000", "N", "00100.00004", "E"},
 };
 
