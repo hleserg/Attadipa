@@ -249,6 +249,12 @@ void MeshFace::lay_out(const apps::MeshText &text) {
 
   const std::int32_t margin = big ? 32 : 20;
   lv_obj_set_width(note_, w);
+  // Content height here and bounded only where something is positioned under
+  // it. Both are set on every layout because the same label serves screens
+  // that answer this differently, and a height left over from the previous
+  // `text` would clip prose that has room.
+  lv_obj_set_height(note_, LV_SIZE_CONTENT);
+  lv_label_set_long_mode(note_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_set_width(way_out_, w);
   lv_obj_set_style_text_align(way_out_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -449,7 +455,8 @@ void MeshFace::lay_out(const apps::MeshText &text) {
   } else {
     lv_obj_align(state_, LV_ALIGN_TOP_LEFT, 0, (big ? 262 : 132) - inset);
     show(note_, text.note);
-    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, (big ? 304 : 162) - inset);
+    const std::int32_t note_y = (big ? 304 : 162) - inset;
+    lv_obj_align(note_, LV_ALIGN_TOP_LEFT, 0, note_y);
 
     hide(node_key_);
     hide(node_name_);
@@ -481,15 +488,34 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     if (keys_replace_note) {
       hide(note_);
     }
+    // Where they go is fixed rows in every case, and where the note is kept it
+    // is the note that gives. Hanging the keys off `note_` with `align_to` made
+    // the bottom of the screen a property of a translated string: `note_` has
+    // content height, so a two-line note pushed `answered_` off a 240 px panel
+    // -- and on 410 px, where the keys are further down, a two-line note ran
+    // into `pinned_` instead. The keys are single-line identities and cannot
+    // ellipsise usefully; the prose can, so it is bounded to the whole lines
+    // that fit above the first key row and gets `LV_LABEL_LONG_DOT`. The pixels
+    // are the ones this screen already had: 162 + one line + `Xs` is 185.
+    const std::int32_t gap = config_.metrics.px(dp_of(Space::Xs));
+    const std::int32_t line = lv_font_get_line_height(
+        lv_obj_get_style_text_font(note_, LV_PART_MAIN));
+    std::int32_t pinned_y = 0;
+    std::int32_t answered_y = 0;
     if (big || keys_replace_note) {
-      lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, (big ? 350 : 162) - inset);
-      lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, (big ? 376 : 184) - inset);
+      pinned_y = (big ? 350 : 162) - inset;
+      answered_y = (big ? 376 : 184) - inset;
     } else {
-      lv_obj_align_to(pinned_, note_, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                      config_.metrics.px(dp_of(Space::Xs)));
-      lv_obj_align_to(answered_, pinned_, LV_ALIGN_OUT_BOTTOM_MID, 0,
-                      config_.metrics.px(dp_of(Space::Xs)));
+      pinned_y = note_y + line + gap;
+      answered_y = pinned_y + line + gap;
     }
+    if (!keys_replace_note) {
+      const std::int32_t rows = (pinned_y - gap - note_y) / line;
+      lv_obj_set_height(note_, (rows > 1 ? rows : 1) * line);
+      lv_label_set_long_mode(note_, LV_LABEL_LONG_DOT);
+    }
+    lv_obj_align(pinned_, LV_ALIGN_TOP_LEFT, 0, pinned_y);
+    lv_obj_align(answered_, LV_ALIGN_TOP_LEFT, 0, answered_y);
 
     show(way_out_, text.way_out);
     lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, (big ? 444 : 210) - inset);

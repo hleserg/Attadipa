@@ -527,6 +527,109 @@ void a_long_heading_stays_on_its_line(const platform::BoardProfile &board,
   face.clear();
 }
 
+// The note row of the screen that draws a note, and the first key row under it.
+// `ui/lvgl/mesh_face.cpp:458` -- "    const std::int32_t note_y = (big ? 304 : 162) - inset;" --
+// is the first; the second is one small-font line and one `Space::Xs` below it
+// on 240 px (17 + 6, so 185) and a fixed row on 410 px. Neither is derived from
+// the face here on purpose: a helper that asked the face where it put the keys
+// would agree with it however wrong both were.
+std::uint32_t note_row(bool big) { return big ? 304 : 162; }
+std::uint32_t first_key_row(bool big) { return big ? 350 : 185; }
+
+// THE TERMINAL-FAULT SCREEN CARRIES BOTH KEYS, AND THE NOTE ABOVE THEM CANNOT
+// MOVE THEM.
+//
+// Two claims, one fixture, because they are two halves of one screen that no
+// other test in this file draws. `Broken` is where a latched refusal outlives
+// the reset the note recommends, so it is the screen that most needs the pointer
+// to the entry screen's node field -- and it is the only screen where the note
+// and both keys are drawn at once, which is what made the note's height
+// load-bearing. A `Broken` status without the refusal latched is the control:
+// same screen, same note, no keys, so anything that differs below the note row
+// is the keys and nothing else.
+void a_terminal_fault_keeps_both_keys_on_the_panel(
+    const platform::BoardProfile &board, l10n::Locale locale) {
+  const bool big = board.display.width_px >= 320;
+  const std::uint32_t w = board.display.width_px;
+  const std::uint32_t h = board.display.height_px;
+  lv_display_t *display = open_panel(board);
+  ui::MeshFace face;
+
+  core::MeshStatus faulted = linked();
+  faulted.availability = core::Availability::Failed;
+  faulted.transport = core::TransportPhase::Faulted;
+  face.build(lv_screen_active(), config_for(board),
+             apps::format_mesh(faulted, locale));
+  lv_refr_now(display);
+  const std::vector<std::uint8_t> without_keys = *g_frame;
+
+  faulted.pinned_id.public_key[0] = 0x4C;
+  faulted.pinned_id.public_key[1] = 0x9A;
+  faulted.pinned_id.public_key[2] = 0x2F;
+  faulted.pinned_id.public_key[3] = 0x7B;
+  faulted.has_pinned = true;
+  faulted.refused_id.public_key[0] = 0x9E;
+  faulted.refused_id.public_key[1] = 0x14;
+  faulted.refused_id.public_key[2] = 0xC0;
+  faulted.refused_id.public_key[3] = 0x03;
+  faulted.has_refused = true;
+  apps::MeshText text = apps::format_mesh(faulted, locale);
+  CHECK(text.link == apps::MeshLink::Broken);
+  face.update(text);
+  lv_refr_now(display);
+
+  const std::size_t note_at =
+      static_cast<std::size_t>(note_row(big)) * w * 2;
+  int keys = 0;
+  for (std::size_t at = note_at; at < without_keys.size(); ++at) {
+    if (without_keys[at] != (*g_frame)[at]) {
+      ++keys;
+    }
+  }
+  check(keys > 0, "a latched refusal draws its keys on the terminal screen",
+        __LINE__);
+  // And inside the panel: the keys are the last thing on this screen, so the
+  // bottom row is the one that reports a row too many.
+  check(painted(1, w - 2, h - 2, h - 1, w) == 0,
+        "the keys do not run off the bottom of the panel", __LINE__);
+
+  // Now the note, at the only length no catalogue entry can exceed. The keys
+  // are single-line identities and the note is prose, so it is the prose that
+  // has to give: nothing at or below the first key row may move.
+  std::memset(text.note, 'W', sizeof(text.note) - 1);
+  text.note[sizeof(text.note) - 1] = '\0';
+  const std::vector<std::uint8_t> short_note = *g_frame;
+  face.update(text);
+  lv_refr_now(display);
+
+  const std::size_t keys_at =
+      static_cast<std::size_t>(first_key_row(big)) * w * 2;
+  int moved = 0;
+  for (std::size_t at = keys_at; at < short_note.size(); ++at) {
+    if (short_note[at] != (*g_frame)[at]) {
+      ++moved;
+    }
+  }
+  check(moved == 0, "a full-length note moves nothing from the key rows down",
+        __LINE__);
+  if (moved != 0) {
+    std::fprintf(stderr, "  %ux%u: %d bytes changed below y=%u\n", w, h, moved,
+                 first_key_row(big));
+  }
+
+  // The counter-check the message and heading rows both have: two identical
+  // frames would pass that comparison and prove nothing was bounded.
+  int drew = 0;
+  for (std::size_t at = 0; at < keys_at; ++at) {
+    if (short_note[at] != (*g_frame)[at]) {
+      ++drew;
+    }
+  }
+  check(drew > 0, "the longer note is drawn on its own row", __LINE__);
+
+  face.clear();
+}
+
 // The same readout twice does not reach the panel.
 //
 // `refresh_mesh()` calls `update()` at 2 Hz with a struct that changes only
@@ -582,6 +685,8 @@ int main() {
     a_long_message_stays_on_its_line(*board, l10n::Locale::Ru);
     a_long_heading_stays_on_its_line(*board, l10n::Locale::En);
     a_long_heading_stays_on_its_line(*board, l10n::Locale::Ru);
+    a_terminal_fault_keeps_both_keys_on_the_panel(*board, l10n::Locale::En);
+    a_terminal_fault_keeps_both_keys_on_the_panel(*board, l10n::Locale::Ru);
     a_named_node_cannot_grow_its_row(*board, l10n::Locale::En);
     a_named_node_cannot_grow_its_row(*board, l10n::Locale::Ru);
     a_build_owns_the_screen_it_is_given(*board);

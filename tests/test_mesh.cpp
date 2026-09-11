@@ -175,6 +175,13 @@ void a_terminal_verdict_outranks_a_refusal() {
     // no way out of this screen because there is none from here.
     CHECK(std::strcmp(text.note, "needs a reset, not a retry") == 0);
     CHECK(text.way_out[0] == '\0');
+    // And the two keys, which are the point of this screen carrying them: the
+    // reset the note asks for clears the fault and leaves the refusal, so the
+    // pointer to the entry screen's node field has to survive here. Narrowing
+    // `apps/src/mesh.cpp:201` back to the screen that usually reports a refusal
+    // empties both of these and changes nothing else asserted above.
+    CHECK(std::strstr(text.pinned, "4c9a2f7b") != nullptr);
+    CHECK(std::strstr(text.answered, "9e14c003") != nullptr);
   }
 
   // And every phase that is not terminal keeps the refusal in front of it,
