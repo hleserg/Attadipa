@@ -67,7 +67,7 @@ std::int32_t tracking_tight(const Metrics &m) { return m.px(dp_of(Space::Xs)) / 
 // `Danger` is `std::nullopt` in every column of the token table -- there is no
 // red in either owner palette and inventing one is a visual-identity decision
 // that is not this face's to take (`ui/src/color.cpp:67` —
-// "    {ColorRole::Danger, ColorKind::Foreground, std::nullopt, std::nullopt, std::nullopt},").
+// "{ColorRole::Danger, ColorKind::Foreground, std::nullopt,").
 // So a severed link is Warning, which is the strongest thing the palette says.
 ColorRole role_for(apps::MeshLink link) {
   switch (link) {

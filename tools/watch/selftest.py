@@ -1128,7 +1128,8 @@ def a_gesture_longer_than_the_device_will_hold_is_refused() -> None:
     # host declining to enforce a bound it was not given: a check that fired
     # on it would refuse every gesture against a device that had not answered
     # the question. It is NOT the device promising an unbounded hold -- the
-    # bridge reads 0 as expire-immediately (bridge.cpp:597) -- so the
+    # bridge reads 0 as expire-immediately -- `debug/src/bridge.cpp:877` --
+    # "now_ms - pointer_down_at_ > limits_.max_hold_ms) {" -- so the
     # assertion below is about this tool and says so.
     events, _ = _gesture_schedule([(10, 10), (60, 80)], 2.0, max_hold_ms=2000)
     check(len(events) == 2, "a gesture exactly at the bound still runs")

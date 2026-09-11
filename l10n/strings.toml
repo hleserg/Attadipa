@@ -835,7 +835,7 @@ ru = "ответил другой узел"
 
 # The way out of a state the wearer can actually leave. Both routes are the
 # same long press on the clock, which is what reaches the entry screen's node
-# field -- `firmware/main/waveshare_board.cpp:1048` — "  show_page(Page::Entry);".
+# field -- `firmware/main/waveshare_board.cpp:1117` — "  show_page(Page::Entry);".
 # Both are one line at 14 px on a 240 px panel, which is what caps them at
 # about thirty characters. The first Russian pair ran to thirty-five, wrapped,
 # and put its second line below the bottom of the T-Watch display.
@@ -873,7 +873,7 @@ ru = "ПОСЛЕДНЕЕ"
 # and a second meaning for the same dots is not a cue -- it is a guess. The
 # separator is U+00B7, which is in the font subset for the boot screen's
 # "GLOW · GUIDE · CONNECT" (`tools/font/charset.py:23` —
-# "    (0x00B7, 0x00B7, \"middle dot: the separator in GLOW - GUIDE - CONNECT\"),").
+# "middle dot: the separator in GLOW - GUIDE - CONNECT").
 [mesh_message_heading_cut]
 en = "MESSAGE · CUT"
 ru = "СООБЩЕНИЕ · ОБРЕЗАНО"

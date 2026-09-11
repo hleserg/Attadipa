@@ -540,10 +540,11 @@ searches for and which no current topic covers.
   job, with its own mutation tests ahead of it. It is the answer to the two
   head-drift defects in §2 (*"The head lives in two files"*) recurring.
 - `python3 tools/docs/check_docs.py .` — link and structure checks, already in
-  CI, and worth knowing the limit of: it filters on `.md`
-  (`tools/docs/check_docs.py:95-102` — "name.endswith") and never opens
-  `index.html`, `site.js`,
-  the manifest or the sitemap. It passed green while the `og:description` defect
+  CI, and worth knowing the limit of: its link and structure half filters on
+  `.md` (`tools/docs/check_docs.py:107` — "def markdown_files(root: str) -> list[str]:"),
+  and while its citation half now also opens source, CMake, `.toml` and the
+  ESP-IDF config names, **no half of it opens `index.html`**, `site.js`, the
+  manifest or the sitemap. It passed green while the `og:description` defect
   above was in the tree. It guards the prose in this document, not the head it
   describes.
 - The JSON-LD is plain JSON inside one `<script>` element: it parses, or it does

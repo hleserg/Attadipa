@@ -86,7 +86,7 @@ constexpr int kBaud  = CONFIG_ATTADIPA_GNSS_LOCAL_BAUD;
 //
 // MEASURED, over the sixteen #427 bench captures: the most bytes any three
 // consecutive seconds of them contain is **4127**, counted in
-// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:410` — "### 3.1 How much a receiver says in a second — MEASURED, and a buffer depends on it".
+// `docs/research/GNSS_MODULES_READOFF_2026-09-04.md:410` — "### 3.1 How much a receiver says in a second".
 // So 4096 would have been 31 bytes short of the worst case actually observed,
 // and 8192 clears it by 98%.
 //
@@ -187,8 +187,8 @@ bool          quiet_logged   = false;
 // ONE LINE PER CHANGE OF ANSWER, NOT ONE PER EPOCH.
 //
 // `core::format_location_line` is the repository's engineering line -- shared
-// with `firmware/main/meshcore_ble.cpp:1920` -- "ESP_LOGI(kTag, \"Position   :
-// %s\", line);", which has printed the *node's* position through it since
+// with `firmware/main/meshcore_ble.cpp:1920` -- "Position   : %s" --
+// the ESP_LOGI that has printed the *node's* position through it since
 // before this file existed. It prints the coordinate, both ages, the validity,
 // the receiver state and the origin, and writes `UNKNOWN` in full wherever a number would imply a
 // measurement -- which is why it is the right thing to log and why nothing here
@@ -253,8 +253,8 @@ void log_if_answer_changed()
     // 10^-7 of a degree, which is about a centimetre.
     //
     // One line in this firmware already does put a coordinate at INFO --
-    // `firmware/main/meshcore_ble.cpp:1920` -- "ESP_LOGI(kTag, \"Position   :
-    // %s\", line);" -- and the distinction is whose coordinate it is. That one
+    // `firmware/main/meshcore_ble.cpp:1920` -- "Position   : %s" -- and the
+    // distinction is whose coordinate it is. That one
     // prints the position a paired MeshCore node broadcast, on the boards that
     // build BLE in; this one would print the wearer's own, from a receiver on
     // the wrist. The second is the one worth a level. Whether the first should
@@ -274,8 +274,8 @@ void log_if_answer_changed()
     //
     // WHAT THAT ASKING COSTS, SO NOBODY LOOKS FOR IT AT A BENCH: no product
     // code raises it. The only `esp_log_level_set()` in this firmware is
-    // `firmware/main/gnss_bridge.cpp:307` -- "esp_log_level_set(\"*\",
-    // ESP_LOG_NONE);" -- and it silences, in the other direction, in another
+    // `firmware/main/gnss_bridge.cpp:307` -- "esp_log_level_set(" -- and it
+    // silences, in the other direction, in another
     // image. So today the line is reached by adding one
     // `esp_log_level_set(kTag, ESP_LOG_DEBUG)` and reflashing. The guard below
     // is a real runtime gate -- `CONFIG_LOG_DYNAMIC_LEVEL_CONTROL` is on -- so

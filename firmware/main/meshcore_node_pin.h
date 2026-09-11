@@ -61,7 +61,7 @@ enum class PinOutcome : std::uint8_t {
 // which refuses the same node again on the next handshake whatever its address
 // did in between -- which matters because whether this address is the kind that
 // stays put or the kind that rotates is UNKNOWN
-// (`docs/research/OWNER_DECISIONS.md:1177` -- "kind that rotates is therefore
+// (`docs/research/OWNER_DECISIONS.md:1178` -- "kind that rotates is therefore
 // `UNKNOWN`").
 // If it rotates, the cooldown lapses early and the key comparison still
 // refuses; if it does not, the cooldown expires on its own. Neither answer
@@ -89,7 +89,7 @@ inline bool refusal_active(std::uint64_t until_ms, std::uint64_t now_ms)
 // What the transport remembers about refused nodes, and the two decisions over
 // it. Pure, so both are host-testable: the firmware holds the three fields as
 // atomics and marshals them in and out
-// (`firmware/main/meshcore_ble.cpp:275` -- "bool addr_is_refused(const ble_addr_t& addr)").
+// (`firmware/main/meshcore_ble.cpp:298` -- "bool addr_is_refused(const ble_addr_t& addr)").
 //
 // One address, plus a floor, and it has to be both.
 //
@@ -105,7 +105,7 @@ inline bool refusal_active(std::uint64_t until_ms, std::uint64_t now_ms)
 // survive the loop.
 //
 // Whether these addresses stay put or rotate is UNKNOWN
-// (`docs/research/OWNER_DECISIONS.md:1177` -- "kind that rotates is therefore
+// (`docs/research/OWNER_DECISIONS.md:1178` -- "kind that rotates is therefore
 // `UNKNOWN`"), and the pair is what is robust to either answer: if they rotate
 // the slot is best-effort and the floor is what still bounds the churn; if they
 // do not, the slot is what keeps one stranger from delaying the pinned node.

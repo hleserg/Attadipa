@@ -29,7 +29,7 @@
 // `esp_light_sleep_start()`, is still a declaration the sleeper never saw, the
 // same width as before with the snapshot carrying it instead of the table.
 // Closing that needs the sleep itself to be refusable by the transport, which
-// `core/include/attadipa/core/power_owner.h:330` — "// does not yet have and which nothing in the current firmware needs, because"
+// `core/include/attadipa/core/power_owner.h:331` — "// does not yet have and which nothing in the current firmware needs, because"
 // — records as absent, and which
 // `docs/adr/0016-one-power-owner.md:97` — "consumer declares; **the first plan that does must close this window before it"
 // — requires of the first plan gating a rail on `NodeLink`, before that plan ships.
@@ -50,10 +50,10 @@ namespace attadipa::core {
 // `core/include/attadipa/core/transport_state.h:27` — "Attached,    // it exists and is powered"
 // — and the firmware is why: one `case` arm brings the stack up and starts
 // scanning in the same breath,
-// `firmware/main/meshcore_ble.cpp:1270` — "provider.begin(now());"
-// followed immediately by `:1271` — "if (configured.load()) start_scan();",
+// `firmware/main/meshcore_ble.cpp:1275` — "provider.begin(now());"
+// followed immediately by `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load()) start_scan();",
 // and that scan is neither passive nor bounded —
-// `firmware/main/meshcore_ble.cpp:577` — "params.passive = 0;" and `:581`
+// `firmware/main/meshcore_ble.cpp:582` — "params.passive = 0;" and `:586`
 // — "const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER, &params,".
 // So the ordinary state of a configured watch with no node in range is
 // `Attached` with the radio actively scanning forever. A declaration that
@@ -79,12 +79,13 @@ namespace attadipa::core {
 // does hold the fact and the fact says the radio can still be on. The phase is
 // "it failed, and needs a reset rather than a retry", and the fault taken when
 // the stack refuses the passkey cancels nothing —
-// `firmware/main/meshcore_ble.cpp:1683` — "                    provider.fault(now());"
+// `firmware/main/meshcore_ble.cpp:1688` — "                    provider.fault(now());"
 // — nor does the lifecycle's fault step,
-// `firmware/main/meshcore_ble.cpp:1273` — "        case SessionStep::Fault:".
+// `firmware/main/meshcore_ble.cpp:1278` — "        case SessionStep::Fault:".
 // Every `ble_gap_disc_cancel()` in that file sits on a path that is not a fault
 // — a matched advertisement, forget-node, deconfigure — so the unbounded scan
-// started at `:1271` can outlive the phase that dropped the lease. Released
+// started at `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load())
+// start_scan();" — can outlive the phase that dropped the lease. Released
 // anyway, and deliberately: `Faulted` needs a reset rather than a retry, so a
 // declaration that held through it would refuse every sleep until that reset
 // arrived, on a watch whose power key is the thing asking. The defect is the
@@ -107,7 +108,7 @@ constexpr bool node_link_wants_power(TransportPhase phase)
 //
 // Called by the sleeper immediately before `sleep()`, and nowhere else — which
 // today means once per power-key release, the one place that asks for a sleep
-// (`firmware/main/physical_input.cpp:474` — "sleep_requested_ = true;").
+// (`firmware/main/physical_input.cpp:507` — "sleep_requested_ = true;").
 // So the table is sampled per sleep request rather than held as a running
 // declaration, and between requests it can report the link held long after the
 // link went `Absent`. Nothing observes that: `sleep()`'s own `held()` read is

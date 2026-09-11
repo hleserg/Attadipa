@@ -353,8 +353,8 @@ jobs:
         run: bash .github/tests/review-invalidate-workflow-test.sh
 
       # The same query found two more, and they are not small: 19 assertions
-      # and 104. `pr-branch-update-decision.sh:19` even says "CI runs that" of
-      # a suite CI has never run.
+      # and 104. `.github/scripts/pr-branch-update-decision.sh:19` --
+      # "runs THIS file; CI runs that." -- says so of a suite CI has never run.
       - name: A CI escalation is cleared by a repair, and only on a pull request
         run: bash .github/tests/ci-repair-reset-test.sh
 
@@ -545,7 +545,7 @@ jobs:
       # This drives the command line with a recorder behind it. Its sibling
       # `tools/watch/selftest.py` -- which drives `Watch` against a scripted
       # device, 41 groups and no socket -- is deliberately NOT a step here: it
-      # is registered at `tests/CMakeLists.txt:529` -- "add_test(NAME watch_tool"
+      # is registered at `tests/CMakeLists.txt:554` -- "add_test(NAME watch_tool"
       # -- so six jobs already run it, and a step for it would be the tenth
       # duplicate of the nine this pull request removed. Faster feedback in a
       # job with no C++ build would be a reason to keep one; it is not a reason
@@ -735,8 +735,10 @@ jobs:
         run: |
           . "$IDF_PATH/export.sh"
           cd firmware
-          # -B and -DSDKCONFIG together, for the reason FIRMWARE_BRINGUP.md:86
-          # records: idf.py keeps sdkconfig in the project directory, so
+          # -B and -DSDKCONFIG together, for the reason
+          # `docs/hardware/FIRMWARE_BRINGUP.md:86` -- "`-DSDKCONFIG=` is
+          # load-bearing." -- records: idf.py keeps sdkconfig in the project
+          # directory, so
           # without them this silently rebuilds the production image and calls
           # it a HIL build.
           idf.py -B build-hil -DSDKCONFIG=build-hil/sdkconfig -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hil" build

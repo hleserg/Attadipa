@@ -681,6 +681,274 @@ def main() -> int:
                  result.returncode == 1 and name in result.stderr)
             target.write_bytes(original)
 
+    # SOURCE COMMENTS GO THROUGH THE SAME LOOP AND THE SAME RULES -- #462.
+    # A citation in a `//` comment rots the way one in a paragraph does, and
+    # rots sooner, because source moves more than prose. The tracked half of
+    # the rule is what needs a real checkout: `git ls-files` is empty outside
+    # one, so a suite run there greens every mandatory-fingerprint case
+    # without testing anything.
+    with tempfile.TemporaryDirectory() as root:
+        subprocess.run(["git", "init", "-q", root], check=True)
+        write(root, "core/thing.h", "alpha\nbeta\ngamma\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+
+        write(root, "src/citer.cpp",
+              '// See `core/thing.h:2` -- "gamma".\nint main() { return 0; }\n')
+        case(
+            "a stale fingerprint in a `//` comment is reported",
+            "check_citation_lines",
+            any("src/citer.cpp" in problem and "which is now at :3" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "src/citer.cpp",
+              "// See `core/thing.h:2`.\nint main() { return 0; }\n")
+        case(
+            "a `//` comment citing a tracked file must carry a fingerprint",
+            "check_citation_lines",
+            any("src/citer.cpp" in problem and "with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # A CITATION IN A STRING LITERAL IS NOT A CITATION, and does not become
+        # one by looking like prose. `comment_lines` empties every other line
+        # rather than dropping it -- so a reported line number still opens in
+        # the file, and code is excluded by construction rather than by a
+        # pattern. A fixture that builds a fake citation to test this very
+        # checker is the case that needs it.
+        write(root, "src/citer.cpp",
+              'const char *fixture = "See `core/thing.h:2`.";\n')
+        case(
+            "a citation inside a string literal is not checked",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # A COMMENT REFLOWS AT 80 COLUMNS, and a fingerprint long enough to be
+        # a handle rarely fits after the path: the quote OPENS on the citation
+        # line and CLOSES on the next. Read as two lines such a citation
+        # carries an unterminated quote, which is no fingerprint at all -- and
+        # the check would then demand the quote already in front of the author.
+        write(root, "core/thing.h", "alpha\nbeta gamma delta\ngamma\n")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        write(root, "src/citer.cpp",
+              '// See `core/thing.h:2` -- "beta\n// gamma delta".\n')
+        case(
+            "a fingerprint wrapped onto the next comment line is read whole",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        write(root, "src/citer.cpp",
+              '// See `core/thing.h:3` -- "beta\n// gamma delta".\n')
+        case(
+            "a wrapped fingerprint is still checked against its own line",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # A LINE COMMENT OPENS ANYWHERE ON ITS LINE. `startswith` was the whole
+        # test, so a trailing comment was emptied along with the code in front
+        # of it and the mandatory-fingerprint rule never reached one. None
+        # existed in the tree when that was found, which is exactly when it is
+        # cheap to fix and the moment nothing is asserting it either way.
+        write(root, "src/citer.cpp",
+              'int x = 0;  // See `core/thing.h:3` -- "beta gamma delta".\n')
+        case(
+            "a trailing `//` comment is read",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # ...and a BLOCK continuation does not. `*` is a marker only at the
+        # start of a line; mid-line it is a dereference or a multiplication,
+        # and reading the rest of such a line as prose is how code becomes
+        # comment text.
+        write(root, "src/citer.cpp",
+              'int y = a * b; /* and `core/thing.h:3` */\n')
+        case(
+            "a `/* ... */` body on one line is read from the opener",
+            "check_citation_lines",
+            any("with no fingerprint" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "src/citer.cpp",
+              'int y = a * `core/thing.h:3`;\n')
+        case(
+            "a `*` that does not open the line is not a comment marker",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # The `#` half had no case at all: every source-comment case above is
+        # `//` in a `.cpp`, so Python, shell, YAML and CMake were widened by a
+        # table entry that nothing exercised.
+        for name in ("tools/citer.py", "tools/citer.sh", ".github/workflows/citer.yml"):
+            write(root, name, 'run  # See `core/thing.h:3` -- "beta gamma delta".\n')
+            case(
+                "a `#` comment is read in %s" % name.rsplit(".", 1)[1],
+                "check_citation_lines",
+                any(name in problem and "which is now at :2" in problem
+                    for problem in check_docs.check_citation_lines(root)),
+            )
+            write(root, name, "")
+        # SOME FILES ARE SELECTED BY NAME, because the kind is in the name.
+        # Seventeen CMake files here are called `CMakeLists.txt`, so the
+        # `.cmake` suffix entry added for CMake selected none of THEM, and one
+        # of the fifteen the supporting grep missed was carrying a stale
+        # citation. That suffix is not dead alongside the name, and a review
+        # round was spent establishing it: `cmake/AttadipaLvgl.cmake` and
+        # `tests/expect_build_failure.cmake` are tracked and are walked through
+        # it, so the two tests answer different files and both are needed.
+        write(root, "gnss/CMakeLists.txt",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        case(
+            "CMakeLists.txt is walked, by its name rather than its suffix",
+            "check_citation_lines",
+            any("gnss/CMakeLists.txt" in problem and "which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "gnss/CMakeLists.txt", "")
+        write(root, "cmake/Thing.cmake",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        case(
+            "a .cmake file is walked too -- two here are tracked",
+            "check_citation_lines",
+            any("cmake/Thing.cmake" in problem and "which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "cmake/Thing.cmake", "")
+        # `.toml` AND THE ESP-IDF CONFIG NAMES. `l10n/strings.toml` held a
+        # citation sixty-nine lines out of date into the very file this change
+        # repointed twelve other citations into -- every one of those twelve in
+        # a document the checker could already see. A build profile carries the
+        # provenance of a `MEASURED` label, which is the last citation that
+        # should rot unwatched. Found in review.
+        write(root, "l10n/strings.toml",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        write(root, "firmware/sdkconfig.hil",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        write(root, "firmware/main/Kconfig.projbuild",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a .toml comment is walked",
+            "check_citation_lines",
+            any("l10n/strings.toml" in problem for problem in problems),
+        )
+        case(
+            "sdkconfig.<profile> and Kconfig.projbuild are walked by name",
+            "check_citation_lines",
+            all(any(name in problem for problem in problems)
+                for name in ("firmware/sdkconfig.hil",
+                             "firmware/main/Kconfig.projbuild")),
+        )
+        # AND A KCONFIG WRITES ITS PROSE IN A `help` BLOCK: indentation, not a
+        # marker. Being in the corpus is not the same as being read -- the `#`
+        # scan blanked every help line, so the one citation this repository has
+        # in a `Kconfig` went unchecked, and what the scan DID read of the file
+        # was the tail of any help line carrying a `#`, which is an issue
+        # number mid-sentence. Found in review.
+        write(root, "firmware/main/Kconfig.projbuild",
+              "config A\n    bool \"a\"\n    help\n"
+              "        See core/thing.h:3 -- \"beta gamma delta\".\n"
+              "        Issue #417 is prose here, not a comment.\n"
+              "\nconfig B\n    bool \"b\"\n")
+        case(
+            "a citation in a Kconfig help block is checked",
+            "check_citation_lines",
+            any("Kconfig.projbuild" in problem and "which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # And the block ends where Kconfig says it does, at the first line
+        # indented no further than the `help` keyword -- otherwise the rest of
+        # the file is prose and every path in it is a citation.
+        write(root, "firmware/main/Kconfig.projbuild",
+              "config A\n    bool \"a\"\n    help\n"
+              "        An explanation.\n\nconfig B\n"
+              "    bool \"See core/thing.h:1 -- 'gamma'\"\n")
+        case(
+            "a Kconfig help block ends at the next unindented line",
+            "check_citation_lines",
+            not any("Kconfig.projbuild" in problem
+                    for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "l10n/strings.toml", "")
+        write(root, "firmware/sdkconfig.hil", "")
+        write(root, "firmware/main/Kconfig.projbuild", "")
+        # A PYTHON DOCSTRING IS A COMMENT THAT HAPPENS TO BE A STRING, and this
+        # repository writes its `tools/` prose in one. Keeping only `#` lines
+        # left a real citation in `tools/flash/selftest.py` five lines out of
+        # date and reported the tree green.
+        write(root, "tools/citer.py",
+              'def f():\n    """See `core/thing.h:3` -- "beta gamma delta".\n    """\n')
+        case(
+            "a citation in a Python docstring is checked",
+            "check_citation_lines",
+            any("which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        # ...and only where a LOGICAL line opens. `tokenize.NL` is the
+        # newline that does NOT end one -- the newline inside brackets -- so
+        # the first string of every bracketed continuation line was read as a
+        # docstring. This suite is written in that shape: the fixture below is
+        # the same call `write(root, ..., "...")` used throughout, and the ones
+        # above it were silent only because the paths they build do not exist
+        # in this tree. Deleting `NL` is the wrong fix -- a module docstring
+        # after a shebang is preceded by COMMENT then NL -- so depth is what
+        # the scanner tracks. Found in review.
+        write(root, "tools/citer.py",
+              'write(root, "src/citer.cpp",\n'
+              '      "See `core/thing.h:1` -- \\"gamma\\".")\n')
+        case(
+            "a string opening a continuation line is not a docstring",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # ...but only where a docstring actually opens. A triple quote inside
+        # an expression would otherwise swallow every line after it as prose.
+        write(root, "tools/citer.py",
+              'sep = \'\'\'x\'\'\'\nfixture = "See `core/thing.h:3`."\n')
+        case(
+            "a triple quote that does not open the line opens no docstring",
+            "check_citation_lines",
+            not check_docs.check_citation_lines(root),
+        )
+        # AND THE DELIMITER THAT CLOSES SUCH A STRING IS WRITTEN AT COLUMN 0,
+        # where the rule above reads it as OPENING a docstring and the polarity
+        # of the file inverts from there to EOF: code is scanned as prose and
+        # the real docstrings below are emptied as code. Five files in `tools/`
+        # have this shape and none of them fired, because none holds a citation
+        # under it -- so the support this change adds was inverted in five
+        # files and reported green. That is the whole reason it is a case and
+        # not a diff. Found in review.
+        write(root, "tools/citer.py",
+              'PROGRAM = """\nfixture = "See `core/thing.h:1`."\n"""\n'
+              'def f():\n    """See `core/thing.h:3` -- "beta gamma delta".\n'
+              '    """\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a string closed at column 0 does not invert the file below it",
+            "check_citation_lines",
+            any("which is now at :2" in problem for problem in problems)
+            and not any("core/thing.h:1" in problem for problem in problems),
+        )
+        write(root, "tools/citer.py", "")
+        # AND THE SHAPE BOTH HAND-WRITTEN SCANNERS MISSED: a triple quote
+        # written inside an ORDINARY one-line string. The second scanner read
+        # it as a literal that never closes, so it emptied the docstrings
+        # below and handed the code between them to the citation scan as
+        # prose -- and the line it did that on was the one defining its own
+        # delimiters, in `check_docs.py` itself. `tokenize` is what ended the
+        # guessing: to the grammar that is one STRING token and nothing about
+        # it opens anything. Found in review, twice; the fix for the first
+        # instance is what produced the second.
+        write(root, "tools/citer.py",
+              'QUOTES = (\'"\' * 3,)\ndef f():\n'
+              '    """See `core/thing.h:3` -- "beta gamma delta".\n    """\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a triple quote inside a one-line string opens nothing",
+            "check_citation_lines",
+            any("which is now at :2" in problem for problem in problems),
+        )
+        write(root, "tools/citer.py", "")
+
     missing = {function for _title, function in check_docs.CHECKS} - called
     if missing:
         failures.append("checks without a mutation case: " + ", ".join(sorted(missing)))

@@ -299,10 +299,10 @@ void ProvisionFace::update() {
   // **Only night separates the two colours, and this is the honest extent of
   // the marking.** Warning is orange in day and undefined in night, where a
   // foreground role falls through to day (`ui/src/color.cpp:66` —
-  // "    {ColorRole::Warning, ColorKind::Foreground, kAttadipaOrange, std::nullopt, kAttadipaOrange},"),
+  // "{ColorRole::Warning, ColorKind::Foreground, kAttadipaOrange,"),
   // while AccentPrimary is amber in night and that same orange in both day
   // columns (`ui/src/color.cpp:63` —
-  // "    {ColorRole::AccentPrimary, ColorKind::Foreground, kAttadipaOrange, kGlowAmber, kAttadipaOrange},").
+  // "{ColorRole::AccentPrimary, ColorKind::Foreground, kAttadipaOrange,").
   // So in day `danger == accent` exactly, and the fill there says "this key
   // acts", not "this key destroys" — the word on it is the whole of the
   // warning. Closing that gap means giving `Danger` a value, which is the

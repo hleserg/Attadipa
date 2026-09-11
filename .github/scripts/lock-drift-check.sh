@@ -9,10 +9,10 @@
 # becoming decoration: CI copies the committed lock aside, builds, and compares.
 #
 # It is a script rather than twenty lines in a `run:` block for the reason
-# `.github/scripts/check-suite-coverage.sh:15` gives about the guard that came
-# before it -- "an inline `run:` block cannot be run against a tree with a
-# planted suite in it, so the guard was the one check in the file that nothing
-# checked". A drift check whose own drift nobody can plant is the same shape.
+# `.github/scripts/check-suite-coverage.sh:15` -- "a test of its own -- an
+# inline `run:`" -- gives about the guard before it: such a block cannot be
+# run against a tree with a planted suite in it, so that guard was the one
+# check in the file that nothing checked. Same shape here.
 #
 # Usage: lock-drift-check.sh COMMITTED RESOLVED
 #

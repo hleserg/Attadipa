@@ -7,7 +7,7 @@
 # depending on the thing that produced it.
 #
 # It is *not* in `platform/`, which is where issue #429 asked for it. That
-# request is stale against the code: `core/CMakeLists.txt:30` — "PRIVATE
+# request is stale against the code: `core/CMakeLists.txt:31` — "PRIVATE
 # attadipa_platform" — means core already depends on platform, so a class
 # deriving `core::PositionProvider` cannot live below it without a cycle. The
 # issue's actual requirement — board pins and module choice stay out of core,

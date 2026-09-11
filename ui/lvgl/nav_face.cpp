@@ -79,7 +79,7 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
   // THE TEST ABOVE IS ABOUT ONE COLUMN, WHICH IS WHY THIS IS NOT A THEME TEST.
   // An emissive panel pays for lit pixels, so OD-16 gives its day column the
   // dark ground -- `ui/src/color.cpp:58` --
-  // "    {ColorRole::BackgroundPrimary, ColorKind::Background, kWarmIvory, kInkOlive, kInkOlive}," --
+  // "{ColorRole::BackgroundPrimary, ColorKind::Background, kWarmIvory," --
   // and keeps `AccentGlow` at honey there deliberately. Branching on the theme
   // name alone dropped the glow on the one day screen that had a dark field to
   // glow on. It is the ground that decides, so ask for the ground.

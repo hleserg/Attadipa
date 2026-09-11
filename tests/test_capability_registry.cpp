@@ -148,7 +148,8 @@ void test_board_profiles()
 // register, reading "SX1262 (868 MHz)" from an order listing; the enum must not
 // move on that, because a listing is a seller's claim and this value is what
 // the firmware bets a radio on (ADR-0003). Until this test existed, setting
-// `board_profiles.cpp:95` to `RadioChip::Sx1262` left the suite green at 24/24
+// `platform/src/board_profiles.cpp:109` -- "radio_info_for(RadioChip::Unknown)"
+// -- to `RadioChip::Sx1262` left the suite green at 24/24
 // and the device advertised MeshMessaging as Ready on a watch nobody has held.
 // The comment saying not to was the only thing in the way, and a comment is not
 // a check. Found in review.
