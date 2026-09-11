@@ -823,13 +823,37 @@ ROOT_ALLOWED = {
     "LICENSE",
     "README.md",
     "README.ru.md",
+    # GitHub looks for the security policy at exactly this path; moving it
+    # under docs/ would silently stop the "Report a vulnerability" link
+    # from finding it.
+    "SECURITY.md",
     "STATUS.md",
     "TASKS.md",
 }
 
+# The other half of the same question. `ROOT_ALLOWED` says what MAY sit at the
+# root; this says what must, because each of these is resolved by something
+# outside this repository that fails quietly when the path is gone:
+#
+# - `SECURITY.md`  GitHub's "Report a vulnerability" link resolves this path and
+#                  no other, so moving it under `docs/` breaks the link with no
+#                  error anywhere.
+# - `LICENSE`      GitHub reads the licence from the root to label the project;
+#                  without it the repository reads as "no licence", which is a
+#                  legal claim rather than a display detail.
+# - `README.md`    the landing page GitHub renders.
+# - `README.ru.md` its pair. AGENTS.md makes the two one document that changes
+#                  together, so one surviving alone is a defect either way.
+ROOT_REQUIRED = {
+    "LICENSE",
+    "README.md",
+    "README.ru.md",
+    "SECURITY.md",
+}
+
 
 def check_root_files(root: str) -> list[str]:
-    """Tracked files at the repository root that are not on the allow-list.
+    """Root files this repository does not expect, and ones it cannot do without.
 
     This exists because `git add -A` run from the root has twice swept in
     something that was only ever meant to be read: an archive waiting to be
@@ -837,6 +861,11 @@ def check_root_files(root: str) -> list[str]:
     part. Both are somebody else's copyrighted material and the second one
     reached `main`. .gitignore now covers the two shapes seen so far; this
     check covers the shape not yet seen.
+
+    The second half runs the other way. Registering `SECURITY.md` on the
+    allow-list makes its presence permitted and nothing more, and every
+    `ROOT_REQUIRED` entry is resolved by something outside this repository that
+    says nothing at all when the file is not there.
     """
     listing = subprocess.run(
         ["git", "ls-files", "-z"],
@@ -858,6 +887,14 @@ def check_root_files(root: str) -> list[str]:
                 f"allow-list in tools/docs/check_docs.py. If it belongs here, "
                 f"add it there in the same commit; if it is a stray, git rm it."
             )
+    tracked_names = {t for t in listing.stdout.split("\0") if t and "/" not in t}
+    for required in ROOT_REQUIRED - tracked_names:
+        problems.append(
+            f"{required}: required at the repository root and not tracked. "
+            f"Something outside this repository resolves that exact path and "
+            f"reports nothing when it is missing; see ROOT_REQUIRED in "
+            f"tools/docs/check_docs.py for what stops working."
+        )
     return sorted(problems)
 
 
