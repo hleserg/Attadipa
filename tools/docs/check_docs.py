@@ -119,17 +119,45 @@ COMMENT_MARKERS = {
     ".cmake": ("#",),
     ".yml": ("#",),
     ".yaml": ("#",),
+    # `.toml` is `l10n/strings.toml` and the l10n fixtures. It was left out and
+    # the file carried a citation SIXTY-NINE lines out of date, into
+    # `firmware/main/waveshare_board.cpp` -- the same file this change repointed
+    # twelve other citations into, every one of them in a document the checker
+    # could already see. The thirteenth was in the one suffix it could not, and
+    # the knock-on pass ran off the checker's own output, so the blind spot is
+    # exactly what hid it. Found in review.
+    ".toml": ("#",),
 }
 
 SOURCE_SUFFIXES = tuple(COMMENT_MARKERS)
 
-# CMake is selected by NAME, not by suffix. The `.cmake` entry above admits a
-# suffix no file in this repository has: all seventeen CMake files are called
-# `CMakeLists.txt`, so the entry added for them selected none of them, and the
-# grep offered as evidence that the gap was empty covered two of the seventeen.
-# `gnss/CMakeLists.txt:9` — "It is *not* in `platform/`, which is where issue
-# #429 asked for it. That" — was the fifteenth, and it was stale. In review.
-CMAKE_FILENAME = "CMakeLists.txt"
+# SOME FILES ARE SELECTED BY NAME, because their kind is in the name and not in
+# a suffix. Seventeen CMake files here are called `CMakeLists.txt`; ESP-IDF
+# names a component's options `Kconfig.projbuild` and a build profile
+# `sdkconfig.<profile>`. Each is `#`-commented and each is cited: the profiles
+# carry the provenance of a `MEASURED` label, which is the last kind of citation
+# that should rot unwatched.
+#
+# It is a table rather than three tests because the first version of it was one
+# constant for one name, and a second special case is the point at which that
+# stops being simpler. The `.cmake` suffix above is NOT dead alongside it --
+# `cmake/AttadipaLvgl.cmake` and `tests/expect_build_failure.cmake` are tracked
+# and are walked through that entry. An earlier draft of this comment said no
+# file here has that suffix; two do, and deleting the entry on the strength of
+# that sentence would drop them and leave `markers_for` raising `KeyError`.
+# Found in review.
+HASH_NAMED = ("CMakeLists.txt", "Kconfig.projbuild", "sdkconfig")
+
+
+def hash_named(name: str) -> bool:
+    """Whether a file is `#`-commented by virtue of its name.
+
+    `sdkconfig` is a prefix -- `sdkconfig.defaults`, `sdkconfig.twatch` -- and
+    the suffix table is asked first, so a generated `sdkconfig.h` is still read
+    as the C header it is.
+    """
+    return any(name == known or name.startswith(known + ".")
+               for known in HASH_NAMED)
 
 # A comment OPENS anywhere on its line -- `int x = 0;  // FOO.md:12 "..."` and
 # `a = b; /* ... */` both say so. The one marker that does not is `*`, which is
@@ -150,9 +178,13 @@ STRING_PREFIX = "rRbBuUfF"
 
 
 def markers_for(path: str) -> tuple[str, ...]:
-    if os.path.basename(path) == CMAKE_FILENAME:
-        return COMMENT_MARKERS[".cmake"]
-    return COMMENT_MARKERS[os.path.splitext(path)[1]]
+    """The comment markers of a file `source_files` handed over.
+
+    The default is for the name-selected files, which are `#`-commented and
+    have no suffix that says so. Reaching it by any other route is impossible:
+    `source_files` yields a known suffix or a known name, nothing else.
+    """
+    return COMMENT_MARKERS.get(os.path.splitext(path)[1], ("#",))
 
 
 def source_files(root: str) -> list[str]:
@@ -160,7 +192,7 @@ def source_files(root: str) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
-            if name.endswith(SOURCE_SUFFIXES) or name == CMAKE_FILENAME:
+            if name.endswith(SOURCE_SUFFIXES) or hash_named(name):
                 found.append(os.path.join(dirpath, name))
     return sorted(found)
 
@@ -169,6 +201,44 @@ def opening_triple(stripped: str) -> str | None:
     """The triple quote this line opens a docstring with, if it opens one."""
     head = stripped[1:] if stripped[:1] in STRING_PREFIX else stripped
     return next((q for q in TRIPLE_QUOTES if head.startswith(q)), None)
+
+
+def strip_literals(stripped: str,
+                   triples: tuple[str, ...]) -> tuple[str, str | None]:
+    """The line with its complete triple-quoted spans blanked, and the open one.
+
+    A TRIPLE QUOTE THAT DOES NOT OPEN ITS LINE OPENS A STRING, NOT A DOCSTRING,
+    and the delimiter closing it is written at column 0 -- where
+    `opening_triple` reads it as opening one and the polarity of everything
+    below it inverts: code is scanned as prose and the real docstrings are
+    emptied as code. `tools/flash/spiffs_selftest.py:247` --
+    "UNDER_A_SIZE_LIMIT = " -- opens such a string, and the bare triple quote
+    five lines below it closed it. Four more files in `tools/` share the shape,
+    so the support this file adds for docstrings was inverted in five of them.
+    Nothing fired -- none of the five holds a citation below that line -- which
+    is why it was latent rather than red, and is the reason it is worth a case.
+    Found in review.
+
+    A span that opens and closes on one line is neither: `sep = '\'\'\'x'\'\''`
+    is code with a trailing comment still to find, so it is blanked and the
+    scan continues past it rather than stopping there.
+    """
+    kept = []
+    at = 0
+    while at < len(stripped):
+        start, quote = len(stripped), None
+        for candidate in triples:
+            found = stripped.find(candidate, at)
+            if 0 <= found < start:
+                start, quote = found, candidate
+        kept.append(stripped[at:start])
+        if quote is None:
+            break
+        end = stripped.find(quote, start + len(quote))
+        if end < 0:
+            return "".join(kept), quote
+        at = end + len(quote)
+    return "".join(kept), None
 
 
 def comment_lines(path: str, text: str) -> str:
@@ -190,7 +260,8 @@ def comment_lines(path: str, text: str) -> str:
     markers = markers_for(path)
     triples = TRIPLE_QUOTES if path.endswith(".py") else ()
     out = []
-    fence = None
+    fence = None    # inside a docstring: its body is prose
+    literal = None  # inside a string opened mid-line: its body is code
     for line in text.split("\n"):
         if fence is not None:
             end = line.find(fence)
@@ -198,6 +269,13 @@ def comment_lines(path: str, text: str) -> str:
             if end >= 0:
                 fence = None
             continue
+        if literal is not None:
+            end = line.find(literal)
+            if end < 0:
+                out.append("")
+                continue
+            line = line[end + len(literal):]
+            literal = None
         stripped = line.lstrip()
         opened = opening_triple(stripped) if triples else None
         if opened is not None:
@@ -206,6 +284,8 @@ def comment_lines(path: str, text: str) -> str:
             if opened not in body:
                 fence = opened
             continue
+        if triples:
+            stripped, literal = strip_literals(stripped, TRIPLE_QUOTES)
         # The EARLIEST marker on the line wins, so a `//` inside a `/* ... */`
         # body does not re-open anything and a trailing comment is found where
         # it actually is.

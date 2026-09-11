@@ -744,19 +744,60 @@ def main() -> int:
                     for problem in check_docs.check_citation_lines(root)),
             )
             write(root, name, "")
-        # CMAKE IS SELECTED BY NAME. `.cmake` admits a suffix no file in this
-        # repository has -- all seventeen are `CMakeLists.txt` -- so the entry
-        # added for CMake selected none of them, and one of the fifteen the
-        # supporting grep missed was carrying a stale citation.
+        # SOME FILES ARE SELECTED BY NAME, because the kind is in the name.
+        # Seventeen CMake files here are called `CMakeLists.txt`, so the
+        # `.cmake` suffix entry added for CMake selected none of THEM, and one
+        # of the fifteen the supporting grep missed was carrying a stale
+        # citation. That suffix is not dead alongside the name, and a review
+        # round was spent establishing it: `cmake/AttadipaLvgl.cmake` and
+        # `tests/expect_build_failure.cmake` are tracked and are walked through
+        # it, so the two tests answer different files and both are needed.
         write(root, "gnss/CMakeLists.txt",
               '# See `core/thing.h:3` -- "beta gamma delta".\n')
         case(
-            "CMakeLists.txt is walked, though nothing here ends in .cmake",
+            "CMakeLists.txt is walked, by its name rather than its suffix",
             "check_citation_lines",
             any("gnss/CMakeLists.txt" in problem and "which is now at :2" in problem
                 for problem in check_docs.check_citation_lines(root)),
         )
         write(root, "gnss/CMakeLists.txt", "")
+        write(root, "cmake/Thing.cmake",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        case(
+            "a .cmake file is walked too -- two here are tracked",
+            "check_citation_lines",
+            any("cmake/Thing.cmake" in problem and "which is now at :2" in problem
+                for problem in check_docs.check_citation_lines(root)),
+        )
+        write(root, "cmake/Thing.cmake", "")
+        # `.toml` AND THE ESP-IDF CONFIG NAMES. `l10n/strings.toml` held a
+        # citation sixty-nine lines out of date into the very file this change
+        # repointed twelve other citations into -- every one of those twelve in
+        # a document the checker could already see. A build profile carries the
+        # provenance of a `MEASURED` label, which is the last citation that
+        # should rot unwatched. Found in review.
+        write(root, "l10n/strings.toml",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        write(root, "firmware/sdkconfig.hil",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        write(root, "firmware/main/Kconfig.projbuild",
+              '# See `core/thing.h:3` -- "beta gamma delta".\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a .toml comment is walked",
+            "check_citation_lines",
+            any("l10n/strings.toml" in problem for problem in problems),
+        )
+        case(
+            "sdkconfig.<profile> and Kconfig.projbuild are walked by name",
+            "check_citation_lines",
+            all(any(name in problem for problem in problems)
+                for name in ("firmware/sdkconfig.hil",
+                             "firmware/main/Kconfig.projbuild")),
+        )
+        write(root, "l10n/strings.toml", "")
+        write(root, "firmware/sdkconfig.hil", "")
+        write(root, "firmware/main/Kconfig.projbuild", "")
         # A PYTHON DOCSTRING IS A COMMENT THAT HAPPENS TO BE A STRING, and this
         # repository writes its `tools/` prose in one. Keeping only `#` lines
         # left a real citation in `tools/flash/selftest.py` five lines out of
@@ -777,6 +818,25 @@ def main() -> int:
             "a triple quote that does not open the line opens no docstring",
             "check_citation_lines",
             not check_docs.check_citation_lines(root),
+        )
+        # AND THE DELIMITER THAT CLOSES SUCH A STRING IS WRITTEN AT COLUMN 0,
+        # where the rule above reads it as OPENING a docstring and the polarity
+        # of the file inverts from there to EOF: code is scanned as prose and
+        # the real docstrings below are emptied as code. Five files in `tools/`
+        # have this shape and none of them fired, because none holds a citation
+        # under it -- so the support this change adds was inverted in five
+        # files and reported green. That is the whole reason it is a case and
+        # not a diff. Found in review.
+        write(root, "tools/citer.py",
+              'PROGRAM = """\nfixture = "See `core/thing.h:1`."\n"""\n'
+              'def f():\n    """See `core/thing.h:3` -- "beta gamma delta".\n'
+              '    """\n')
+        problems = check_docs.check_citation_lines(root)
+        case(
+            "a string closed at column 0 does not invert the file below it",
+            "check_citation_lines",
+            any("which is now at :2" in problem for problem in problems)
+            and not any("core/thing.h:1" in problem for problem in problems),
         )
         write(root, "tools/citer.py", "")
 

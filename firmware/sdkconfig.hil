@@ -6,7 +6,7 @@
 # -B and -DSDKCONFIG together are not decoration. idf.py keeps sdkconfig in the
 # project directory, so without them a second build silently reuses the first
 # one's configuration and ignores SDKCONFIG_DEFAULTS without a word --
-# docs/hardware/FIRMWARE_BRINGUP.md:86 ("-DSDKCONFIG= is load-bearing")
+# `docs/hardware/FIRMWARE_BRINGUP.md:86` — "`-DSDKCONFIG=` is load-bearing"
 # records that failure.
 #
 # What this image is: a watch with an unauthenticated USB control plane. It is
