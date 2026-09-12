@@ -25,6 +25,18 @@
 # with lag, so two rounds minutes apart would file the same follow-up twice.
 # So the assertions below drive the second round from the ledger the first
 # round wrote, rather than from a fixture written by hand.
+#
+# AND THE LEDGER IS WRITTEN AFTER THE ISSUE (#548). Between `gh issue create`
+# returning and the ledger comment being posted, the issue exists and nothing
+# records it; the step in between runs under `set -euo pipefail`, so one failed
+# API call ends it there, and GitHub's supported re-run of the failed job reads
+# the same receiptless ledger and files the follow-up a second time. That window
+# cannot be tested by driving one successful round from another -- both of the
+# rounds above published -- so the scenario further down makes the ledger write
+# FAIL after a successful create, re-runs the same round from the same unchanged
+# previous ledger, and counts the creates across both attempts. The recovery it
+# exercises, `review-deferred-existing.sh`, is the shipping script, called by the
+# extracted step, reading the marker out of the body the round itself rendered.
 
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1
@@ -79,6 +91,46 @@ ok "the verdict step's shell can be extracted and run"
 # and, more to the point, makes the ledger this round writes readable by the
 # next assertion instead of being left where the real runner would leave it.
 printf '%s\n' "$STEP" | sed "s#/tmp/#$work/tmp/#g" > "$work/step.sh"
+# The mutants below overwrite `step.sh`, so the unmutated one is kept here and
+# restored after each. A mutant that leaked into the next scenario would be a
+# test passing for the wrong reason, silently.
+cp "$work/step.sh" "$work/pristine.sh"
+
+# THE ISSUES COLLECTION THE RECOVERY READ WALKS, and every kind of thing that is
+# in a real one:
+#
+#   #12  an issue opened with no body at all -- `null`, which `contains` refuses
+#        outright, so a filter that forgets `// ""` fails the whole read here
+#        rather than in production;
+#   #99  a PULL REQUEST carrying the marker. `repos/:owner/:repo/issues` returns
+#        pull requests as well as issues, and a pull request body is one more
+#        place the marker text can be written;
+#   #168 the same marker in an issue anybody could have opened. The body is
+#        public input: an unbound match would put a stranger's number in the
+#        ledger and file nothing;
+#   #169 the follow-up for pull request SEVENTY. `:7` is a prefix of `:70` and
+#        the trailing ` -->` is what stops it matching -- which is a property of
+#        the marker worth a fixture rather than a reading.
+#
+# $1 is the body of #170, the follow-up for THIS pull request, or empty for a
+# repository where it has not been filed yet. The caller passes the body the
+# round actually rendered, never one written here: that the search key and the
+# posted body are the same string is the thing being tested.
+issues_fixture() {
+  jq -n --arg filed "$1" '
+    [ { number: 12,  user: { login: "github-actions[bot]" }, body: null },
+      { number: 99,  user: { login: "github-actions[bot]" },
+        pull_request: { url: "https://api.github.com/repos/owner/repo/pulls/99" },
+        body: "<!-- attadipa-review-deferred:7 -->\nthe pull request the deferral came from" },
+      { number: 168, user: { login: "a-stranger" },
+        body: "<!-- attadipa-review-deferred:7 -->\nanybody may open an issue containing this" },
+      { number: 169, user: { login: "github-actions[bot]" },
+        body: "<!-- attadipa-review-deferred:70 -->\nthe follow-up for pull request seventy" } ]
+    + (if $filed == "" then [] else
+        [ { number: 170, user: { login: "github-actions[bot]" }, body: $filed } ] end)
+  ' > "$work/issues.json"
+}
+issues_fixture ""
 
 # The stub. `gh issue create` is the call under test: it echoes the URL the real
 # command echoes, and records that it was called.
@@ -116,6 +168,10 @@ run_round() {
   findings > "$work/findings.md"
   rm -f "$work/tmp/previous-ledger.md" "$work/tmp/findings.md" \
         "$work/tmp/new-ledger.md" "$work/tmp/deferred.md" "$work/tmp/verdict.txt"
+  # A round that dies before it publishes must not be readable as the previous
+  # round's ledger. Leaving the file behind is how "it failed" would pass for
+  # "it posted this".
+  rm -f "$work/posted.md"
   cp "$work/prev.md" "$work/seed-prev.md"
   cp "$work/findings.md" "$work/seed-findings.md"
   # The step reads the two bodies from the API. The stub answers no comment at
@@ -135,13 +191,31 @@ case "\$1 \$2" in
     cat "$work/seed-prev.md" ;;
   "api repos/owner/repo/issues/comments/222")
     cat "$work/seed-findings.md" ;;
+  "api repos/owner/repo/issues?state=all&per_page=100")
+    # THE RECOVERY READ, answered by running the step's own \`--jq\` program over
+    # the fixture collection rather than by echoing a number. The filter is the
+    # part that has to drop a pull request, survive a \`null\` body, refuse a
+    # marker anybody could have written and not mistake pull request 70 for 7;
+    # a stub that answered '170' would assert none of it.
+    [ ! -e "$work/collection-fails" ] || {
+      printf 'stub: 502 from the issues collection\n' >&2; exit 1; }
+    filter=""; prev=""
+    for arg in "\$@"; do [ "\$prev" = --jq ] && filter="\$arg"; prev="\$arg"; done
+    [ -n "\$filter" ] || {
+      printf 'stub: the recovery read carried no --jq program\n' >&2; exit 4; }
+    jq -r "\$filter" "$work/issues.json" ;;
   "api -X")
-    # The ledger PATCH. Keep the body so the next round can be driven by it.
+    # The ledger PATCH, and the half of #548 that can fail after the issue is
+    # already filed. Keep the body so the next round can be driven by it.
+    [ ! -e "$work/publish-fails" ] || {
+      printf 'stub: 502 on the ledger comment\n' >&2; exit 1; }
     for arg in "\$@"; do case "\$arg" in body=@*) cp "\${arg#body=@}" "$work/posted.md" ;; esac; done ;;
   "issue create")
     printf '%s\n' "\$*" >> "$work/created.log"
     printf 'https://github.com/owner/repo/issues/170\n' ;;
   "pr comment")
+    [ ! -e "$work/publish-fails" ] || {
+      printf 'stub: 502 on the ledger comment\n' >&2; exit 1; }
     for arg in "\$@"; do case "\$arg" in --body-file) : ;; esac; done
     cp "$work/tmp/new-ledger.md" "$work/posted.md" ;;
   "pr edit") : ;;
@@ -208,8 +282,123 @@ say "a finding raised before the floor blocks and files nothing" \
 lacks "and its ledger promises no issue" \
     "$(cat "$work/posted.md")" "filed as #"
 
+# ---- #548: the create lands, the ledger write does not, and the job re-runs --
+#
+# The two rounds above are two SUCCESSFUL rounds, and the property they prove is
+# that a published ledger stops the second filing. This is the case where no
+# ledger was ever published: the create returned, the comment write failed, the
+# step died on `set -e`, and the issue exists with nothing recording it. The
+# previous ledger handed to the re-run is therefore byte for byte the one the
+# failed attempt read -- that is what "the write failed" MEANS -- and the count
+# of creates is kept across both attempts, because one each is the defect.
+ROUND_AT_FLOOR='<!-- attadipa-review-ledger -->
+<!-- attadipa-review-ledger-state
+round=1
+floor=2
+-->'
+
+: > "$work/created.log"
+issues_fixture ""
+touch "$work/publish-fails"
+run_round "$ROUND_AT_FLOOR"
+crashed=$?
+rm -f "$work/publish-fails"
+
+if [ "$crashed" -ne 0 ]; then
+  ok "the attempt whose ledger write fails fails the step"
+else
+  bad "the attempt whose ledger write fails fails the step -- it exited 0"
+fi
+say "the issue was created before that failure" \
+    "$(wc -l < "$work/created.log" | tr -d ' ')" "1"
+if [ -e "$work/posted.md" ]; then
+  bad "and no ledger was published -- one was"
+else
+  ok "and no ledger was published"
+fi
+
+# The issue is on GitHub now, carrying the body this round rendered, and the
+# fixture says so with that body rather than with a marker written by hand.
+filed_body=$(cat "$work/tmp/deferred.md")
+issues_fixture "$filed_body"
+run_round "$ROUND_AT_FLOOR"
+rerun=$?
+recovered=$(cat "$work/posted.md" 2>/dev/null || printf '')
+
+if [ "$rerun" -eq 0 ]; then
+  ok "the re-run of the failed job succeeds"
+else
+  bad "the re-run of the failed job succeeds -- it exited $rerun: $(cat "$work/out.txt")"
+fi
+say "and files nothing further: one create across both attempts" \
+    "$(wc -l < "$work/created.log" | tr -d ' ')" "1"
+has "the number it publishes is the one the first attempt created" \
+    "$recovered" "deferred_issue=170"
+has "and the column says so on the round that recovered it" \
+    "$recovered" "no — deferred, filed as #170"
+has "the recovery says in the log that it reused rather than filed" \
+    "$(cat "$work/out.txt")" "already filed as #170; reusing it"
+
+# ---- a repository that already collected a duplicate converges on the older --
+#
+# #548 has been able to happen, so two follow-ups for one pull request may
+# already be open. Answering with whichever the walk met first would make the
+# ledger name a different one on each round, which is a worse ledger than the
+# one that named none: the oldest is the one the attempt that crashed created.
+: > "$work/created.log"
+jq --arg filed "$filed_body" \
+   '. + [{ number: 171, user: { login: "github-actions[bot]" }, body: $filed }]' \
+   "$work/issues.json" > "$work/issues.dup.json"
+mv "$work/issues.dup.json" "$work/issues.json"
+run_round "$ROUND_AT_FLOOR"
+say "two follow-ups already open file no third" \
+    "$(wc -l < "$work/created.log" | tr -d ' ')" "0"
+has "and the ledger names the older of them" \
+    "$(cat "$work/posted.md")" "deferred_issue=170"
+
+# ---- a collection that cannot be read is not an answer of "no issue" ---------
+#
+# Falling through to the create on a failed read would put the duplicate back on
+# exactly the path where it is durable. The step has written nothing at this
+# point, so dying is free: the re-run starts from the same state.
+: > "$work/created.log"
+issues_fixture ""
+touch "$work/collection-fails"
+run_round "$ROUND_AT_FLOOR"
+unreadable=$?
+rm -f "$work/collection-fails"
+
+if [ "$unreadable" -ne 0 ]; then
+  ok "an unreadable issues collection fails the step"
+else
+  bad "an unreadable issues collection fails the step -- it exited 0"
+fi
+say "and nothing is filed while the answer is unknown" \
+    "$(wc -l < "$work/created.log" | tr -d ' ')" "0"
+
+# ---- the mutant: the caller trusts the empty receipt, as it did before #548 --
+: > "$work/created.log"
+issues_fixture "$filed_body"
+# shellcheck disable=SC2016  # `$(bash "$TRUSTED/...` is the literal text being
+# matched in the extracted step, not a command substitution to run here.
+sed 's|deferred_issue=$(bash "$TRUSTED/review-deferred-existing.sh".*|deferred_issue=""|' \
+  "$work/pristine.sh" > "$work/mutant-recovery.sh"
+if cmp -s "$work/pristine.sh" "$work/mutant-recovery.sh"; then
+  bad "the recovery call can be removed from the step -- the line was not found"
+else
+  ok "the recovery call can be removed from the step"
+fi
+cp "$work/mutant-recovery.sh" "$work/step.sh"
+run_round "$ROUND_AT_FLOOR"
+say "without it, the re-run files the second issue -- the defect of #548" \
+    "$(wc -l < "$work/created.log" | tr -d ' ')" "1"
+cp "$work/pristine.sh" "$work/step.sh"
+
 # ---- the mutant: the caller ignores /tmp/deferred.md, as it did before #503 --
 : > "$work/created.log"
+# Back to a repository where nothing is filed yet, so that what this mutant
+# reaches is the create it has had removed and not the recovery above it.
+issues_fixture ""
 # The line is replaced rather than deleted, so the mutant is the caller as it
 # stood before #503 -- reaching the same branch and doing nothing with the body
 # -- and not a caller that dies on an unbound variable one line later.
@@ -226,6 +415,37 @@ say "with the filing removed, the deferred finding gets no issue" \
     "$(wc -l < "$work/created.log" | tr -d ' ')" "0"
 lacks "and the ledger promises what it cannot keep -- the defect of #503" \
     "$(cat "$work/posted.md")" "filed as #"
+
+# ---- the guard the seam above cannot reach -----------------------------------
+#
+# `_attadipa_render_deferred` writes the marker as the body's first line, so the
+# step can never hand the recovery a body without one -- which is why this is a
+# direct call and not another round. The seam proves the caller; it cannot
+# produce this input at all. An empty or malformed key would reach `contains`,
+# match the first issue in the repository and put a number in the ledger that
+# has nothing to do with the finding, so the refusal is worth an assertion of
+# its own. The stub is still on PATH, so a script that dropped the guards and
+# read the collection with an empty key answers #12 here instead of refusing.
+refuses() {
+  # $1 what the body is, for the assertion's name. $2 its first line, or the
+  # empty string for a file with nothing in it at all.
+  local out
+  printf '%s' "$2" > "$work/bad-body.md"
+  [ -z "$2" ] || printf '\n' >> "$work/bad-body.md"
+  if out=$(PATH="$work/bin:$PATH" bash .github/scripts/review-deferred-existing.sh \
+             owner/repo "$work/bad-body.md" 'github-actions[bot]' 2>/dev/null); then
+    bad "$1 is refused -- it answered '$out'"
+  else
+    ok "$1 is refused"
+  fi
+}
+refuses "a body whose first line is not a marker" 'this body carries no marker'
+# `4242` strips to itself and is all digits: it is refused by the check that the
+# marker was stripped at all, and by nothing else.
+refuses "a first line that is a bare number" '4242'
+refuses "a marker naming no pull request" '<!-- attadipa-review-deferred: -->'
+refuses "a marker naming something that is not one" '<!-- attadipa-review-deferred:all -->'
+refuses "an empty body file" ''
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

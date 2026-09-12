@@ -108,10 +108,15 @@
 #   deferred_title=  the title for the follow-up issue, when there is one
 #   deferred_issue=  the issue the deferred findings were filed as. Carried
 #                    forward, never invented: the ledger is the record, and every
-#                    round after the first reads it back rather than searching
-#                    issue bodies for a marker, because GitHub's issue search is
-#                    an index with lag and two rounds minutes apart would file
-#                    the follow-up twice.
+#                    round after the first reads it back rather than looking the
+#                    issue up, because GitHub's issue search is an index with lag
+#                    and two rounds minutes apart would file the follow-up twice.
+#                    The one thing a ledger cannot record is a create whose
+#                    receipt never got written -- it is the caller's step that
+#                    dies between the two -- so the caller recovers that case
+#                    from the marker `_attadipa_render_deferred` puts in the
+#                    issue body, read off the issues collection and still never
+#                    off the search index. `review-deferred-existing.sh`, #548.
 #
 # THE CALLER RUNS THIS TWICE ON THE ROUND THAT FILES. The first run cannot know
 # the issue number, because it is the run that decides there is an issue to file
@@ -302,11 +307,13 @@ attadipa_review_verdict() {
       floor=*) continue ;;
       deferred_issue=*)
         # Which issue the deferred findings were filed as, carried in the ledger
-        # rather than looked up. The alternative is a search over issue bodies,
-        # and GitHub's issue search is an index with lag — two review rounds
-        # minutes apart would file the same follow-up twice. The caller appends
-        # this line once, after it creates the issue; this script only carries
-        # it forward.
+        # rather than looked up. Looking it up every round would mean the search
+        # index, which lags — two review rounds minutes apart would file the
+        # same follow-up twice. The caller appends this line once, after it
+        # creates the issue; this script only carries it forward. When the
+        # caller's step died before it could append it, the caller — not this
+        # script — recovers the number from the body marker before it creates
+        # anything. #548.
         rest="${line#deferred_issue=}"
         _attadipa_is_uint "$rest" && deferred_issue="$rest"
         continue ;;

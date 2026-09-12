@@ -193,10 +193,27 @@ The body was written to a path the workflow never opened again, so a deferred
 finding stopped blocking and survived nowhere. The round that defers now creates
 the issue and then renders its ledger a second time with the number, so the
 `holds the merge` column reads `no — deferred, filed as #N` on that same round
-rather than a round later. It is filed once because the ledger is what records
-it: `deferred_issue=` in the state block is read back every round after.
-Searching issues by title instead would file it twice, because that index lags
-and two rounds can be minutes apart.
+rather than a round later. It is filed once because the ledger records it:
+`deferred_issue=` in the state block is read back every round after. Searching
+issues by title instead would file it twice, because that index lags and two
+rounds can be minutes apart.
+
+**A receipt written after the thing it receipts has a window, and #548 is it.**
+The issue is durable the moment `gh issue create` returns; the ledger comment
+that records the number is a separate API call afterwards, in a step that runs
+under `set -euo pipefail`. One 502, rate limit or cancelled runner in between
+leaves an issue nothing points at, and GitHub's supported re-run of the failed
+job reads the same receiptless ledger and files a second copy of the same task.
+So the ledger is the fast path and no longer the only one: on the round that
+would create, and only then, `review-deferred-existing.sh` asks whether the body
+about to be posted is already on an issue — keyed on the
+`<!-- attadipa-review-deferred:<PR> -->` marker the body itself carries and on
+the account that files it, since an issue body is public input. It reads
+`repos/:owner/:repo/issues`, the collection, and still never the search index. A
+read that fails is not an answer of "nothing is filed": it stops the step, which
+at that point has written nothing. What it recovers is the receipt and nothing
+else — one follow-up per pull request, created by the round that first defers,
+which is what a ledger that survived would have said.
 
 **The ceiling is round 3, and a fourth round does not run.** The floor caps which
 categories may hold late; it does not cap how many rounds there can be, and #338
