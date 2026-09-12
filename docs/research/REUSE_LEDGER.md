@@ -1715,14 +1715,26 @@ read-only offline parser over a file that is already on disk, it writes nothing
 back, and being wrong about the format shows up immediately as garbage instead
 of as a corrupted image.
 
-**What it deliberately does not hard-code:** the offsets of size and name inside
-the object index header, which move between SPIFFS versions and with
-`SPIFFS_OBJ_META_LEN`. It finds the name as the first NUL-terminated printable
-run beginning with `/` and reads the size from the `u32` immediately before it,
-then **checks that against the number of data-page bytes actually recovered** —
-a file whose declared size exceeds its recovered bytes is reported and not
-written, rather than written short. Review on #80 walked that assumption against
-the real `spiffs_page_object_ix_header` layout and found it matches.
+**What it reads structurally, and what it once searched for:** the size, type
+and name inside the object index header are read at the offsets
+`spiffs_page_object_ix_header` puts them at — `p_hdr`, three bytes of `_align`,
+`u32_t size` at 8, `spiffs_obj_type` at 12, `u8_t name[SPIFFS_OBJ_NAME_LEN]` at
+13. It **checks that size against the number of data-page bytes actually
+recovered** — a file whose declared size exceeds its recovered bytes is reported
+and not written, rather than written short.
+
+Until [#549](https://github.com/hleserg/Attadipa/issues/549) this entry claimed
+those offsets "move between SPIFFS versions and with `SPIFFS_OBJ_META_LEN`", and
+the script searched for the name instead: the first NUL-terminated printable run
+beginning with `/`, with the size taken from the `u32` in front of whatever it
+found. **The rationale was wrong on its own terms** — `meta` is declared *after*
+`name` in the pinned struct, so it never moved either offset, and
+`SPIFFS_OBJ_NAME_LEN` bounds the name without shifting it. What the search cost
+is a file of `0x412f` bytes: that size is `2f 41 00 00` little-endian, the search
+found `/A` inside the size field, read four bytes of page header as the size, and
+reported an intact file as `INCOMPLETE  /A: declares 4294965248 bytes` without
+writing it. Review on #80 walked the old assumption against the real layout and
+concluded it matched, which it does for every size that does not spell a name.
 
 **Source revision:** `spiffsgen.py` read from `espressif/esp-idf` `master`,
 2026-08-22; `mkspiffs` and `spiffs-dumper` read from their repository pages the

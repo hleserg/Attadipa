@@ -15,11 +15,19 @@ at `span_ix == 0` with `u32 size` before the NUL-terminated name, data pages
 carrying `page - 5` bytes each, and the per-block magic. Do not mistake a round
 trip through this for a round trip through SPIFFS.
 
-The half that matters is the refusals, and there are two families of them.
+The half that matters is the refusals, and there are three families of them.
 
 **A name off the device is not a path.** SPIFFS has no directories, `/a/b` and
 `/a_b` are two unrelated names, and the first version of this tool mapped both
 onto one file and reported both as extracted.
+
+**A size that spells a name is still a size.** The object index header's fields
+are read where `spiffs_page_object_ix_header` puts them. The version before #549
+searched for the name, so a file of `0x412f` bytes — `2f 41 00 00`, which is
+`/A\0\0` — had its size field read as its name and was reported incomplete. The
+cases for that carry their own mutation: `searched_name()` below is the parser
+they replaced, and the regression is run against it, because a case that is only
+*believed* to distinguish two implementations distinguishes nothing.
 
 **A page that exists is not a page that counts.** SPIFFS never overwrites in
 place, so an edited or deleted file leaves its old pages in flash with their
@@ -41,6 +49,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -117,20 +126,22 @@ class Page(NamedTuple):
 
 
 def index_page(obj_id: int, name: str, size: int, page: int,
-               flags: int = LIVE_INDEX, lookup: int | None = None) -> Page:
+               flags: int = LIVE_INDEX, lookup: int | None = None,
+               obj_type: int = 0x01) -> Page:
     """An object index header — `spiffs_page_object_ix_header` with span 0.
 
     Three bytes of alignment after the 5-byte page header (5 & 3 == 1, so the
-    u32 is padded up to 4), u32 size, u8 type, then the NUL-terminated name. The
-    extractor does not hard-code those offsets — it finds the name and reads the
-    u32 in front of it — but the fixture has to put them somewhere, and the real
-    layout is the only defensible somewhere.
+    u32 is padded up to 4), u32 size, u8 type, then the NUL-terminated name.
+    Every offset below is written out as a literal rather than imported from the
+    extractor, and that is the point: a fixture that took its layout from the
+    code under test would agree with that code about a wrong layout, which is
+    the one thing it must not be able to do.
     """
     body = bytearray(b"\xff" * (page - 5))
-    body[3:7] = struct.pack("<I", size)
-    body[7] = 0x01  # SPIFFS_OBJ_TYPE_FILE
+    body[3:7] = struct.pack("<I", size)      # u32 size, at page offset 8
+    body[7] = obj_type                       # SPIFFS_TYPE_FILE, at page offset 12
     encoded = name.encode("ascii") + b"\x00"
-    body[8:8 + len(encoded)] = encoded
+    body[8:8 + len(encoded)] = encoded       # name[], at page offset 13
     identifier = obj_id | 0x8000
     return Page(identifier if lookup is None else lookup,
                 identifier, 0, flags, bytes(body))
@@ -273,6 +284,24 @@ def content(path: Path) -> bytes | None:
         return None
 
 
+# The parser #549 replaced, kept here and nowhere else. It searched the bytes
+# after the page header for the first NUL-terminated printable run beginning
+# with `/`, and read the `u32` five bytes in front of whatever it found. A case
+# that claims to be a regression for that has to be run against it to be one;
+# otherwise the claim rests on reading the diff, and a diff cannot be executed.
+SEARCHED_NAME = re.compile(rb"/[\x20-\x7e]{1,63}\x00")
+
+
+def searched_name(blob: bytes) -> tuple[str, int] | None:
+    """`_read_name()` as it was before #549, byte for byte."""
+    found = SEARCHED_NAME.search(blob[5:80])
+    if not found:
+        return None
+    at = 5 + found.start()
+    return (found.group(0).rstrip(b"\x00").decode("ascii"),
+            struct.unpack_from("<I", blob, at - 5)[0])
+
+
 def tree(out: Path) -> set[str]:
     """Every file the run left behind, relative to outdir, symlinks included."""
     if not out.exists():
@@ -325,6 +354,130 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("a multi-page file is reassembled in order",
               code == 0 and content(out / "image" / "big.bin") == big,
               f"— exit {code}\n{output}")
+
+    # A name does not have to begin with `/`. SPIFFS has no directories and no
+    # root, and nothing in the struct says the first byte of the name field is a
+    # separator — the parser this replaced required one only because it was
+    # searching for the name rather than reading it, and had to start somewhere.
+    with workspace({"plain.bin": b"no leading separator"}) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("a name with no leading separator is read, not refused",
+              code == 0 and content(out / "plain.bin") == b"no leading separator",
+              f"— exit {code}\n{output}")
+
+    print("\nthe third finding: a size that spells a name is still a size")
+    # #549. `0x412f` bytes is `2f 41 00 00` little-endian, which is `/A\0\0`, so
+    # the search this parser replaced stopped inside the *size* field, took `/A`
+    # for the name, and read the page header's own span and flag bytes as the
+    # size. The image was intact and the file was whole, and the tool printed
+    # `INCOMPLETE  /A: declares 4294965248 bytes` and wrote nothing.
+    #
+    # The two neighbours are here because a fix that only knew about `0x412f`
+    # would pass without them: `2e 41 00 00` and `30 41 00 00` encode no match
+    # at all, so they came out correctly under the old parser too and have to
+    # keep coming out correctly under this one.
+    sized = {"/under.bin": b"u" * 0x412E,
+             "/real.bin": b"R" * 0x412F,
+             "/over.bin": b"o" * 0x4130}
+    with workspace(sized, blocks=16) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        elsewhere = output.replace(str(base), "")  # the temp path is not evidence
+        check("a file whose size spells a name comes out", code == 0,
+              f"— exit {code}\n{output}")
+        check("  under the name the image actually holds",
+              tree(out) == {"under.bin", "real.bin", "over.bin"}, f"— {sorted(tree(out))}")
+        check("  byte for byte", content(out / "real.bin") == b"R" * 0x412F)
+        check("  and so do the adjacent sizes, which never encoded a match",
+              content(out / "under.bin") == b"u" * 0x412E
+              and content(out / "over.bin") == b"o" * 0x4130)
+        check("  with no size byte reported as a file", "/A" not in elsewhere,
+              f"— {output}")
+        check("  and nothing called incomplete", "INCOMPLETE" not in output, f"— {output}")
+
+    # And the mutation: the same bytes through the parser this replaced. Without
+    # this the image above is only *believed* to be a regression — every case in
+    # it would pass just as well against a file whose size was 0x4130.
+    # build() lays the first object's index header down as slot 0 of block 0,
+    # which at 256-byte pages and one lookup page is the second page of all.
+    header = build({"/real.bin": b"R" * 0x412F})[256:512]
+    read_name = rule("_read_name")
+    check("the structural parse reads the name and the size the image holds",
+          read_name(header) == ("/real.bin", 0x412F), f"— {read_name(header)}")
+    check("  where the search it replaced read the size field as the name",
+          searched_name(header) == ("/A", 0xFFFFF800), f"— {searched_name(header)}")
+
+    print("\nthe object index header's offsets, against the struct")
+    # `spiffs_page_object_ix_header` at `pellepl/spiffs@ad902ca`: `p_hdr`, then
+    # `_align[4 - ((sizeof(spiffs_page_header)&3)==0 ? 4 : (sizeof(spiffs_page_header)&3))]`,
+    # then `u32_t size`, `spiffs_obj_type type`, `u8_t name[SPIFFS_OBJ_NAME_LEN]`
+    # and only then the optional `meta`. A 5-byte page header makes `_align`
+    # three bytes, so: 8, 12, 13. Spelled out rather than recomputed, because a
+    # constant checked against its own derivation is checked by nothing.
+    for label, attribute, expected in (("the u32 size sits at offset 8", "OBJ_IX_SIZE_AT", 8),
+                                       ("the type byte at 12", "OBJ_IX_TYPE_AT", 12),
+                                       ("and the name at 13", "OBJ_IX_NAME_AT", 13)):
+        found = getattr(spiffs_extract, attribute, None)
+        check(label, found == expected, f"— {attribute} is {found}")
+
+    print("\na header that is not one is refused, not read anyway")
+    # SPIFFS writes SPIFFS_TYPE_FILE and nothing else — SPIFFS_open() is the
+    # only caller of spiffs_object_create() — so another value in that byte
+    # means these are not the fields this parser thinks they are. Guessing at
+    # the name anyway is how #549 got its answer.
+    with workspace({"/kept.bin": b"fine"},
+                   extra=[index_page(2, "/wrong-type.bin", 5, 256, obj_type=0x02),
+                          data_page(2, 0, b"bytes", 256)]) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("a type byte that is not SPIFFS_TYPE_FILE stops the run", code == 2,
+              f"— exit {code}\n{output}")
+        check("  and says the layout is not the one it knows",
+              "not the one it knows" in output, f"— {output}")
+        check("  rather than taking the name beside it at face value",
+              "/wrong-type.bin" not in output, f"— {output}")
+        check("  and writes nothing", tree(out) == set(), f"— {sorted(tree(out))}")
+
+    # spiffs_object_create() terminates the name inside the field — it copies
+    # `sizeof(name) - 1` bytes and writes the last one itself — so a field with
+    # no terminator in it was written by something else.
+    unterminated = bytearray(b"\xff" * 251)
+    unterminated[3:7] = struct.pack("<I", 5)
+    unterminated[7] = 0x01
+    unterminated[8:8 + 40] = b"/" + b"a" * 39
+    with workspace({"/kept.bin": b"fine"},
+                   extra=[Page(2 | 0x8000, 2 | 0x8000, 0, LIVE_INDEX,
+                               bytes(unterminated))]) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("a name field with no terminator in it stops the run", code == 2,
+              f"— exit {code}\n{output}")
+        check("  and nothing is written", tree(out) == set(), f"— {sorted(tree(out))}")
+
+    print("\nthe name field's length is told, not guessed")
+    # SPIFFS_OBJ_NAME_LEN bounds the name and moves nothing: `meta` is on the
+    # far side of it. So an image built with another value still reads, up to a
+    # name that runs past the field this was told to expect — and that is a
+    # refusal, because a name cut to fit is a different file.
+    long_name = "/" + "n" * 40 + ".bin"  # 45 characters, 46 with the terminator
+    with workspace({long_name: b"a long-named file"}) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("a name past the default SPIFFS_OBJ_NAME_LEN is refused", code == 2,
+              f"— exit {code}\n{output}")
+        check("  and the message names the option that would read it",
+              "--name-len" in output, f"— {output}")
+        check("  and nothing is written", tree(out) == set(), f"— {sorted(tree(out))}")
+        code, output = run(image, out, "--name-len", "48")
+        check("  and --name-len reads it whole rather than cut to fit",
+              code == 0 and content(out / ("n" * 40 + ".bin")) == b"a long-named file",
+              f"— exit {code}\n{output}")
+
+    with workspace({"/x.bin": b"x"}) as (image, base):
+        code, output = run(image, base / "out", "--name-len", "256")
+        check("a --name-len that cannot fit in a page is refused before a page is read",
+              code == 2 and "image not read" in output, f"— exit {code}\n{output}")
 
     print("\nnames that must be refused")
     cases: list[tuple[str, dict[str, bytes], str]] = [
