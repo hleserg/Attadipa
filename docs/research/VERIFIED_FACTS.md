@@ -2796,6 +2796,17 @@ ones that heading states.
   show that current did not vanish, and it bounds the charge share **from
   above**; it does not separate charge from the loads that outlive the long
   press, and **the residual is not the charge current.**
+- **That upper bound holds only if the meter does not read low, and for S17
+  nothing establishes that it does not.** The offset is listed above as a term
+  of the same sum, and it has a sign: a meter reading low by δ makes the true
+  sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
+  run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
+  S16's may not be carried across (below), and the meter's rated accuracy is
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2712` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  At a residual plausibly the order of S16's own 2.484 mA, δ is not a rounding
+  term. **So the bound is conditional: it holds provided the offset is
+  non-negative, and recording the zero at both ends of the control closes
+  that** — which is why the control below asks for it on each half.
 - **Every term in that sum is on the VBUS side, `I_charge_vbus` included, and
   that is not the same quantity as the current entering the cell.** The charger
   sits behind the input, so the battery-side charge current and the VBUS-side
@@ -2803,11 +2814,13 @@ ones that heading states.
   end this unit fits has never been asked of the T-Watch part:
   `docs/research/BATTERY_UPGRADE.md:131` — "- **Which AXP2101 variant is fitted**, and this is not a footnote — see §6."
   On the linear part the two coincide. On the switching part they do not, and
-  the difference runs in the direction that makes a VBUS bound too loose rather
-  than too tight — `docs/research/BATTERY_UPGRADE.md:640` — "  at 5 V supports roughly 560 mA of charge current — so **`REG 0x62` is the real" —
+  the difference runs in the direction that makes a VBUS residual **too small**
+  to bound the cell's current — `docs/research/BATTERY_UPGRADE.md:640` — "  at 5 V supports roughly 560 mA of charge current — so **`REG 0x62` is the real" —
   describes a front end whose battery-side current can **exceed** the input
-  current it came from. So a VBUS residual of R mA bounds the VBUS-side charge
-  share at R and bounds the cell's charge current at nothing in particular, and
+  current it came from, so reading R mA at the input and calling it a ceiling on
+  what enters the cell is the *unsafe* direction to be wrong in. A VBUS residual
+  of R mA therefore bounds the VBUS-side charge share at R and bounds the cell's
+  charge current at nothing in particular, and
   **a battery-side measurement is not an interchangeable route to the same
   number** until the variant is settled. Both stay `UNKNOWN` for this unit.
 - **That a powered-off system draws something is published; how much, on this
@@ -2835,8 +2848,8 @@ ones that heading states.
   exact rail and power state — or a battery-side measurement, once the variant
   question above is closed. But whatever it returns is the charge current **on
   the day it is run**, and a charge current is a function of the cell's state
-  of charge: this entry says so itself, two bullets above, where the tapering
-  phase is the one thing forty-five flat minutes rule out
+  of charge: this entry says so itself, in the composition bullet above, where
+  the tapering phase is the one thing forty-five flat minutes rule out
   (`docs/research/VERIFIED_FACTS.md:2783` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
