@@ -2803,10 +2803,14 @@ ones that heading states.
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
   `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2712` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
-  At a residual plausibly the order of S16's own 2.484 mA, δ is not a rounding
-  term. **So the bound is conditional: it holds provided the offset is
-  non-negative, and recording the zero at both ends of the control closes
-  that** — which is why the control below asks for it on each half.
+  How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
+  it: S16's 2.484 mA is a meter zero taken with an open output on a different
+  board, not a residual, and two lines below this entry forbids carrying it
+  across. Unbounded is the honest word, and it is the one that matters —
+  an unbounded δ cannot be called a rounding term. **So the bound is
+  conditional: it holds provided the offset is non-negative, and recording the
+  zero at both ends of the control closes that** — which is why the control
+  below asks for it on each half.
 - **Every term in that sum is on the VBUS side, `I_charge_vbus` included, and
   that is not the same quantity as the current entering the cell.** The charger
   sits behind the input, so the battery-side charge current and the VBUS-side
@@ -2846,7 +2850,12 @@ ones that heading states.
   cable and source, cell physically disconnected, then the same measurement
   with the cell fitted, each half recording the meter's zero offset and the
   exact rail and power state — or a battery-side measurement, once the variant
-  question above is closed. But whatever it returns is the charge current **on
+  question above is closed. **And it has to record the receiver's state on both
+  halves too**, or it supersedes S17 on one of its two unknowns and reproduces
+  the other: this image raises BLDO1 itself, so a capture that notes only the
+  cell arrives with a powered GNSS module inside the number exactly as S17 did.
+  What state it was in, and what sky it had, are part of the design and not a
+  footnote to it. But whatever it returns is the charge current **on
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
