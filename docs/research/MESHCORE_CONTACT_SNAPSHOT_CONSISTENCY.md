@@ -10,7 +10,7 @@ pushes describe a change to the very table being read.
 This report answers what a client may conclude when the stream ends. The short
 answer is that `RESP_CODE_END_OF_CONTACTS` proves the node finished walking its
 array and proves nothing else, and that Attadipa currently converts that syntactic
-fact into a semantic claim — `link/src/meshcore_companion.cpp:794` —
+fact into a semantic claim — `link/src/meshcore_companion.cpp:881` —
 "status_.peers_complete = true;" — that the evidence does not support.
 
 It is a research document. No production code changed for it, and the contract in
@@ -290,7 +290,7 @@ acted on.
 
 | Kind | Cause | Whose limit | Detectable how |
 |---|---|---|---|
-| **Retention truncation** | the watch keeps 16 — `link/include/attadipa/link/meshcore_companion.h:176` — "static constexpr std::size_t kRetainedPeers = 16;" — and drops every contact whose advert type is not `ADV_TYPE_CHAT` — `link/src/meshcore_companion.cpp:433` — "if (size < 148 || data[33] != kAdvertTypeChat) {" | **ours** | `peers_retained < peers_reported`, already rendered — `apps/src/mesh.cpp:282` — "if (status.peers_complete && retained < reported) {" |
+| **Retention truncation** | the watch keeps 16 — `link/include/attadipa/link/meshcore_companion.h:176` — "static constexpr std::size_t kRetainedPeers = 16;" — and drops every contact whose advert type is not `ADV_TYPE_CHAT` — `link/src/meshcore_companion.cpp:484` — "if (size < 148 || data[33] != kAdvertTypeChat) {" | **ours** | `peers_retained < peers_reported`, already rendered — `apps/src/mesh.cpp:282` — "if (status.peers_complete && retained < reported) {" |
 | **Snapshot inconsistency** | the table moved under the cursor (§2.2) | **the node's** | an invalidating push inside the stream — and *not always*, per §3.2 |
 | **Staleness** | the snapshot was true and the world moved on | nobody's | only a re-read |
 
@@ -301,26 +301,36 @@ boolean is asked to: `core/include/attadipa/core/mesh_service.h:102` —
 
 ---
 
-## 6. What Attadipa does today, at `main@8e597d8`
+## 6. What Attadipa does today, at `main@1531cee`
 
 1. `RESP_CODE_CONTACTS_START` records the node's count, clears the retained
-   peers and clears both completion flags — `link/src/meshcore_companion.cpp:784` —
+   peers and clears both completion flags — `link/src/meshcore_companion.cpp:869` —
    "status_.peers_complete = false;".
 2. Each `RESP_CODE_CONTACT` is length-checked and accepted into the 16-entry
    window, de-duplicated by public key so a repeated row updates rather than
-   doubles — `link/src/meshcore_companion.cpp:449` — "if (peer_count_ < peers_.size()) {".
-3. `RESP_CODE_END_OF_CONTACTS` sets both flags **unconditionally** —
-   `link/src/meshcore_companion.cpp:793` — "contacts_complete_ = true;" — and
+   doubles — `link/src/meshcore_companion.cpp:500` — "if (peer_count_ < peers_.size()) {".
+3. `RESP_CODE_END_OF_CONTACTS` sets both flags —
+   `link/src/meshcore_companion.cpp:563` — "contacts_complete_ = true;" — and
    that is the defect: the syntactic end of the stream is converted into the
    semantic claim that the list is the node's list.
-4. The client knows four push codes, `0x82`, `0x83`, `0x85`, `0x86` —
+4. **Since #567 the boundary frame is no longer the only way that happens.** A
+   contact stream that falls quiet for three seconds is ended by a sweep in
+   `tick()` — `link/src/meshcore_companion.cpp:357` — "            status_.peers_complete = true;" — because a
+   bounded transport queue drops the *tail* of a burst and `END_OF_CONTACTS` is
+   systematically the frame it loses. So *finished* now means "the node stopped
+   sending", which is weaker than "the node said it was done" and strictly
+   weaker again than "this is the node's list". **That widens the gap this
+   report is about rather than narrowing it**, and the contract below is written
+   against the post-#567 tree: every place that says `END` arrived should be
+   read as *the stream ended, by either route*.
+5. The client knows four push codes, `0x82`, `0x83`, `0x85`, `0x86` —
    `link/src/meshcore_companion.cpp:46` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
-5. Every other valid push — including all four invalidating ones — reaches the
+6. Every other valid push — including all four invalidating ones — reaches the
    `default:` arm, where it is counted and refused —
-   `link/src/meshcore_companion.cpp:1048` — "// A response code this build does not know is a frame we did not".
+   `link/src/meshcore_companion.cpp:1113` — "// A response code this build does not know is a frame we did not".
    The link is deliberately left up, which is right and is why this is a
    correctness gap rather than an outage.
-6. `contacts_complete_` also gates `Availability::Ready` and the battery poll.
+7. `contacts_complete_` also gates `Availability::Ready` and the battery poll.
 
 **Two things to keep.** The `default:` arm's refusal to tear down the link is
 forward compatibility working as designed. And `enqueue_private()`'s refusal to
@@ -330,9 +340,11 @@ wait for the contact sync is a `MEASURED` fix — §6c of
 Neither may be traded away for consistency.
 
 **One thing to correct beyond the flag.** A valid push is not a malformed frame.
-Counting `0x80`/`0x81`/`0x8A`/`0x8F`/`0x90` as malformed puts protocol-correct
-traffic into the counter the firmware logs as a parser fault, which is the
-opposite of the evidence anybody debugging this will need.
+Counting `0x80`/`0x81`/`0x8A`/`0x8D`/`0x8F`/`0x90` as malformed puts
+protocol-correct traffic into the counter the firmware logs as a parser fault,
+which is the opposite of the evidence anybody debugging this will need. **All
+four invalidating codes are in that list** — `0x8D` included, which an earlier
+draft of this paragraph dropped while §3 and the contract both carry it.
 
 ---
 
@@ -349,7 +361,7 @@ a decision in [ADR-0022](../adr/0022-contact-snapshot-consistency.md).
 | `snapshot_consistent` | finished, **and** no invalidating push was seen between START and END | nobody yet; it is what a recipient resolver (#552) will need |
 | `snapshot_dirty` | finished, and an invalidating push was seen inside it | a retry, and an honest readout |
 | `retry_pending` | dirty, and a bounded re-read is in flight | — |
-| `snapshot_degraded` | the retry budget is spent and the newest snapshot is still dirty | the readout, once |
+| `snapshot_degraded` | the retry budget is spent and the newest snapshot is still dirty | **nobody yet, deliberately** — see below |
 
 **`peers_complete` keeps its meaning and loses its name's ambiguity.** Its one
 consumer needs `stream_finished` — the pair of numbers is only comparable once
@@ -362,6 +374,17 @@ report: *do not repurpose the existing flag*.
 it on consistency would make contact churn look like an unreachable mesh and
 would re-create, one layer up, the exact defect §6c measured.
 
+**And `snapshot_degraded` is not given to the face here.** An earlier draft of
+the table above named "the readout" as its consumer, which contradicts this
+report's own claim — and ADR-0022's — that the mesh face needs no decision to
+make this implementable: telling the wearer a peer list is unproven is a UI
+state with a Russian string, a place on two panel geometries and a design token
+behind it, and `ui/AGENTS.md` is where that is argued. So the observation is
+**recorded and exported, and read by nobody on the face yet**. Its first real
+consumer is #552's recipient resolution, which needs to refuse rather than to
+display. A readout is a separate, later issue, and this report does not pre-empt
+its design.
+
 ### 7.2 Which pushes set `dirty`
 
 Invalidating, from §3: **`0x80`, `0x81`, `0x8D`, `0x8F`**. Not invalidating:
@@ -372,6 +395,20 @@ invalidating would let an incoming message cancel a sync.
 A push is only invalidating **between START and END**. The same code outside that
 window means the world moved on, which is staleness, and staleness is not
 repaired by a re-read of a snapshot that was true.
+
+**Expect dirty to be the normal outcome, not the exception.** The test that
+demotes `0x83` — it moves `last_advert_timestamp` and `lastmod` and nothing else
+— is one a routine `0x80` also fails: `docs/research/VERIFIED_FACTS.md:343` — "An advert without a coordinate advances a contact's timestamps"
+— and `0x80` is 33 bytes of bare public key, so the client has nothing in the
+frame to tell an advert that changed the table from one that did not. Repeaters
+and room servers advert on a timer. On a busy channel the likely steady state is
+therefore: every stream dirty, both retries spent, `snapshot_degraded` published
+every session. **That is a design input, not an objection** — the contract is
+built to degrade rather than withhold precisely for it — but it inverts which
+row of §7.5 is the common one, and it means the retry budget buys latency and
+radio time in exchange for a consistency that may never be reached on such a
+node. **How often a `0x80` actually arrives inside a stream is `UNKNOWN` (M32)**,
+and it is the number that decides whether the retry is worth issuing at all.
 
 Every one of those codes must first stop being counted as malformed. A push the
 build understands and deliberately ignores is not a parse failure.
@@ -390,6 +427,17 @@ build understands and deliberately ignores is not a parse failure.
   number for it.
 - **No abort, ever.** `CMD_APP_START` would clear `_iter_started` and restart the
   handshake, and what that costs in practice is unmeasured (**M27**).
+- **The re-read must not re-arm the message drain.** Ending a contact walk is
+  not only bookkeeping: `end_contacts()` also spends the session's one
+  `CMD_SYNC_NEXT_MESSAGE` — `link/src/meshcore_companion.cpp:562` — "    if (!request_next_message(now)) return false;"
+  — and a failed enqueue there charges a malformed frame against a valid frame
+  and returns before `update_availability()`. It is idempotent through
+  `contacts_complete_`, but the re-read's own `CONTACTS_START` clears that flag,
+  so a second walk re-enters the arm: another sync into a four-deep ring, and
+  `draining_since_` reset, which extends the stall guard. **The implementation
+  owes a latch that survives the re-read** — the drain is a session-level thing
+  and the retry is a contacts-level thing, and this is where the two were
+  accidentally tied together.
 
 ### 7.4 What is published while a retry is pending
 
@@ -402,14 +450,49 @@ as `snapshot_degraded` rather than withheld: a peer list that is probably right
 serves the wearer better than an empty one, provided it does not claim to be
 proven.
 
+**Keeping it is not the same as doing nothing, and this is the part that was
+missing.** A re-read is a second `CMD_GET_CONTACTS`, so it opens with a second
+`RESP_CODE_CONTACTS_START`, and that handler is not inert — it wipes the live
+set: `link/src/meshcore_companion.cpp:867` — "        peer_count_ = 0;" — and with
+it `peers_retained`, `peers_complete` and `contacts_complete_` on the three lines
+below. For the whole duration of a retry the contract claims changes nothing,
+four things change:
+
+| what moves | why | who notices |
+|---|---|---|
+| `Availability::Ready` is lost | it is gated on `contacts_complete_` | the mesh face reads not-ready; §6c's defect, one layer up |
+| the battery poll gate closes | same flag | no battery reading for the length of the re-read |
+| the `retained/reported` pair restarts at zero | `peers_retained = 0` | the face counts up through `3/40`, which `peers_complete` exists to stop |
+| **an incoming message loses its sender's name** | `find_peer_prefix()` walks only `peer_count_` — `link/src/meshcore_companion.cpp:513` — "    for (std::size_t i = 0; i < peer_count_; ++i) {" — and an unresolved prefix blanks the field | the wearer is shown a message from nobody |
+
+The last one is the serious one: it is exactly §6c of
+[MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) re-created by a
+mechanism this report proposes to add.
+
+**So decision 7 has a cost and it must be paid explicitly.** Publishing the last
+proven snapshot across a re-read requires the implementation to hold a shadow
+copy of the retained set and to latch the three flags until the re-read either
+completes or is abandoned — not to rely on the accumulator being left alone,
+because it is not. The cost is bounded and small: sixteen slots of
+`core::MeshPeer`, the same array the client already carries —
+`link/include/attadipa/link/meshcore_companion.h:176` — "    static constexpr std::size_t kRetainedPeers = 16;".
+**An implementation that skips the shadow copy does not implement decision 7**,
+and §7.5's `previous kept` row is the line that would silently be untrue.
+
 ### 7.5 The failure matrix
 
 | Situation | `peers_complete` / stream | snapshot | Published | Retry |
 |---|---|---|---|---|
 | clean stream | finished | consistent | yes | no |
+| stream ended by the #567 quiet sweep, no push seen | finished | consistent | yes | no — a lost boundary is not dirt |
 | `0x83` inside the stream | finished | consistent | yes | no |
 | `0x8A` or `0x90` inside the stream | finished | consistent | yes | no |
 | `0x80`/`0x81`/`0x8D`/`0x8F` inside the stream | finished | dirty | previous kept | yes, bounded |
+| **`0x8D` specifically** (path discovery) | finished | dirty | previous kept | yes — the code §3 classifies and §6 used to leave out |
+| **while a re-read is in flight** | re-opened by its `CONTACTS_START` | **previous, from the shadow copy** | previous kept | in progress |
+| **a message arrives during a re-read** | as above | as above | its sender resolves **against the shadow copy**, not against the emptied live set | — |
+| **the re-read's `END` arrives** | finished again | as its pushes decide | new one, or previous if dirty | — |
+| **the drain during a re-read** | — | — | — | **no second `CMD_SYNC_NEXT_MESSAGE`**; the latch holds across the retry |
 | retry returns clean | finished | consistent | new one | — |
 | budget spent, still dirty | finished | degraded | newest | no |
 | disconnect mid-stream | not finished | none | previous kept until session reset | the reconnect's own sync |
@@ -475,10 +558,19 @@ asserts that unrelated events survived.
 | 13 | a `0x8F` arriving *after* `END`, as #3403 would deliver it | not a retry trigger for the read that already ended; staleness only |
 | 14 | a `RESP_CODE_ERR` arriving while a retry is outstanding | attributed by the existing order rule; **a send in flight must not be failed by it** |
 | 15 | `0x80` while no iteration is running | consistent; no retry; not malformed |
+| 16 | `START → A → 0x8D(A) → END` | dirty; retry — the fourth invalidating code, which §3 classifies and no row above exercised |
+| 17 | dirty → retry `START` → `RESP_CODE_CONTACT_MSG_RECV` from A → retry `END` | **`last_sender` still names A**, from the shadow copy; `Availability::Ready` never drops; the `retained/reported` pair never counts up from zero |
+| 18 | dirty → retry `START` → retry `END`, with the TX ring full | **no second `CMD_SYNC_NEXT_MESSAGE`**; `malformed_frames` unchanged; `draining_since_` not reset |
+| 19 | a stream ended by the #567 quiet sweep, with no invalidating push | consistent, no retry — the sweep's `end_contacts()` is the only end that arrived, and a lost boundary frame is not evidence the table moved |
 
 Case 14 is the regression risk the whole design has to be checked against: the
 retry adds a command to a queue whose error attribution is order-based, and
 #315's fail-closed direction must not be softened by it.
+
+**Cases 17 and 18 are the ones that fail on a naive implementation**, because
+both pass trivially if the retry is never exercised and both fail the moment it
+is: 17 asserts the shadow copy exists, 18 asserts the drain latch does. Neither
+is a fixture test — both drive the production client through `receive()`.
 
 ---
 

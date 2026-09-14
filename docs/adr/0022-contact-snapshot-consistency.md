@@ -19,7 +19,7 @@ the same transport. The node's contact iterator is a raw index into the live
 compacted underneath the cursor while the walk runs — research report §2.
 
 Attadipa converts the end of that stream into a claim about its content:
-`link/src/meshcore_companion.cpp:794` — "status_.peers_complete = true;" is set
+`link/src/meshcore_companion.cpp:881` — "status_.peers_complete = true;" is set
 unconditionally on `RESP_CODE_END_OF_CONTACTS`. The stream ending is a syntactic
 fact. That the list matches the node's table is a semantic one, and the wire does
 not carry it.
@@ -46,6 +46,16 @@ Three findings shaped the decision rather than merely motivating it:
 **1. `peers_complete` keeps its present meaning: the stream finished.** It is not
 repurposed. Its consumer needs exactly that, and a flag whose name fits both
 readings is the worst possible place to change one silently.
+
+**1a. Since #567, "finished" also means "went quiet".** A stream that stops for
+three seconds is ended by a sweep in `tick()`, because a bounded transport queue
+drops the tail of a burst and `RESP_CODE_END_OF_CONTACTS` is systematically the
+frame it loses — `link/src/meshcore_companion.cpp:357` — "            status_.peers_complete = true;".
+That is a third rung below the one this ADR is about, not a competing answer to
+it: *the node stopped sending* is weaker than *the node said it was done*, which
+is weaker than *this is the node's list*. A walk closed by the sweep with no
+invalidating push inside it is **consistent** — a lost boundary frame is not
+evidence the table moved.
 
 **2. Snapshot consistency is a separate observation**, carried alongside it:
 consistent, dirty, retry pending, or degraded. A snapshot is *consistent* when the
@@ -80,6 +90,19 @@ innocent send.
 and when the budget is spent the newest one is published as degraded rather than
 withheld. A peer list that is probably right serves the wearer; one that claims to
 be proven and is not does not.
+
+**7a. Publishing it costs a shadow copy and a latch, and that is part of this
+decision, not an implementation detail.** A re-read opens with a second
+`RESP_CODE_CONTACTS_START`, whose handler empties the retained set and clears
+both completion flags — `link/src/meshcore_companion.cpp:867` — "        peer_count_ = 0;".
+Left alone, a retry therefore drops `Availability::Ready`, closes the battery
+poll gate, restarts the `retained/reported` pair at zero, and — the one that
+matters — leaves an incoming message with no sender name, because
+`find_peer_prefix()` walks only the live count. Decision 7 is implemented by
+holding sixteen slots of the retained set across the re-read and latching the
+flags until it completes or is abandoned; an implementation without that has not
+implemented decision 7. The same latch covers the message drain, which
+`end_contacts()` arms and which a second walk would otherwise arm again.
 
 **8. Retention truncation, inconsistency and staleness stay three observations.**
 A snapshot can be atomic and deliberately truncated at the watch's 16 slots,
@@ -118,7 +141,12 @@ that has it and on one that does not.
   second and would otherwise have inherited the first under a name that reads like
   it.
 - The mesh face and `Availability` are unchanged by construction, which is what
-  makes this implementable without a UI decision.
+  makes this implementable without a UI decision — and `snapshot_degraded` is
+  therefore **exported and read by nobody on the face**. Telling the wearer a
+  peer list is unproven is a UI state with a localised string and two panel
+  geometries behind it; it is argued under `ui/AGENTS.md`, in its own issue,
+  after this. The first real consumer of the observation is #552's recipient
+  resolution, which refuses rather than displays.
 - The client gains a bounded retry, and therefore a new way to spend commands and
   radio time. The cost in latency and power is unmeasured and stays `UNKNOWN`
   until someone measures it.

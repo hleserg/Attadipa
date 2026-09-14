@@ -221,7 +221,7 @@ Four cells deserve their reasoning in words rather than a footnote.
 supply cut.** What this project has established is the *attribution* — `BLDO1`
 at 3300 mV is the GNSS supply. What it has not established is *control*:
 `docs/research/VERIFIED_FACTS.md:816` — "  exercised. So **nothing here shows that toggling BLDO1 controls the module** —" —
-and `:739` — "  proposes to switch this rail at runtime owes that experiment first." —
+and `docs/research/VERIFIED_FACTS.md:818` — "  proposes to switch this rail at runtime owes that experiment first." —
 because the bit was found already set and never cleared. There is **one**
 unexercised link here and not two: `GPS_LDO` on FPC pin 3 is that same supply
 on its way to the daughterboard, not a second control in series with it, so
