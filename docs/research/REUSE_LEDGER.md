@@ -1715,8 +1715,14 @@ implementation and would be right for anyone who already has the toolchain.
 **Weaknesses:** all three need something this task did not have — a generator
 that cannot read, a C++ build, or a board on the end of a cable.
 
-**Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, 115 lines, host
-Python with no dependencies.
+**Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, host Python with
+no dependencies. It was **115 lines** when this decision was taken and is
+**1015** on 2026-09-14. Recording both matters, because the sentence below rests
+on the smaller one: what grew is refusals and the evidence for them — the
+liveness rule, the geometry check, the path rules, the object index header's
+own offsets — and not more format being parsed. A line count in a ledger goes
+stale the next time the file is touched; this one is dated so a reader knows
+which it is.
 
 **Reason:** the only pure-Python option in the ecosystem cannot read images, and
 the two that can each require a build environment to recover six files from one
@@ -1725,14 +1731,26 @@ read-only offline parser over a file that is already on disk, it writes nothing
 back, and being wrong about the format shows up immediately as garbage instead
 of as a corrupted image.
 
-**What it deliberately does not hard-code:** the offsets of size and name inside
-the object index header, which move between SPIFFS versions and with
-`SPIFFS_OBJ_META_LEN`. It finds the name as the first NUL-terminated printable
-run beginning with `/` and reads the size from the `u32` immediately before it,
-then **checks that against the number of data-page bytes actually recovered** —
-a file whose declared size exceeds its recovered bytes is reported and not
-written, rather than written short. Review on #80 walked that assumption against
-the real `spiffs_page_object_ix_header` layout and found it matches.
+**What it reads structurally, and what it once searched for:** the size, type
+and name inside the object index header are read at the offsets
+`spiffs_page_object_ix_header` puts them at — `p_hdr`, three bytes of `_align`,
+`u32_t size` at 8, `spiffs_obj_type` at 12, `u8_t name[SPIFFS_OBJ_NAME_LEN]` at
+13. It **checks that size against the number of data-page bytes actually
+recovered** — a file whose declared size exceeds its recovered bytes is reported
+and not written, rather than written short.
+
+Until [#549](https://github.com/hleserg/Attadipa/issues/549) this entry claimed
+those offsets "move between SPIFFS versions and with `SPIFFS_OBJ_META_LEN`", and
+the script searched for the name instead: the first NUL-terminated printable run
+beginning with `/`, with the size taken from the `u32` in front of whatever it
+found. **The rationale was wrong on its own terms** — `meta` is declared *after*
+`name` in the pinned struct, so it never moved either offset, and
+`SPIFFS_OBJ_NAME_LEN` bounds the name without shifting it. What the search cost
+is a file of `0x412f` bytes: that size is `2f 41 00 00` little-endian, the search
+found `/A` inside the size field, read four bytes of page header as the size, and
+reported an intact file as `INCOMPLETE  /A: declares 4294965248 bytes` without
+writing it. Review on #80 walked the old assumption against the real layout and
+concluded it matched, which it does for every size that does not spell a name.
 
 **Source revision:** `spiffsgen.py` read from `espressif/esp-idf` `master`,
 2026-08-22; `mkspiffs` and `spiffs-dumper` read from their repository pages the
@@ -1746,12 +1764,17 @@ script for reading a vendor image on a workstation. Nothing in `core/`,
 if it ever needs an on-device filesystem that is a separate decision with its
 own record.
 
-**Tests required:** none automated, and that is a real gap rather than a
-judgement. It has been run against exactly one image — the Waveshare factory
-dump — which cannot be committed (Waveshare's own copyright, plus
-all-rights-reserved third-party audio found inside it), so there is no fixture
-to test against. A synthetic image built by `spiffsgen.py` would be one, and
-that is worth doing if this script is ever needed twice.
+**Tests required: done, and the gap this line used to record is closed.**
+`tests/CMakeLists.txt:241` — "    add_test(NAME flash_spiffs_extract_refuses_mistakes" —
+runs `tools/flash/spiffs_selftest.py` on every `ctest`, and that file's `build()`
+is the fixture this entry said did not exist: it writes the object lookup table,
+the page headers and the object index headers from the on-disk layout the
+extractor documents, so nothing copyrighted is committed to have something to
+parse. The one real image — the Waveshare factory dump — still cannot be
+committed (Waveshare's own copyright, plus all-rights-reserved third-party audio
+inside it), which is why the fixture exists rather than a captured partition.
+The sentence this replaces also guessed wrong about when: *"worth doing if this
+script is ever needed twice"* has happened.
 
 ### This board's audio path — the I2S wiring, the ES8311 bring-up, and what the two microphones are for
 

@@ -24,13 +24,26 @@ revision that wrote any image this repository will ever be handed:
 - The index page with `span_ix == 0` is the object index header, and carries the
   file's size and name.
 
-The offsets of that size and name differ between SPIFFS versions and between
-`SPIFFS_OBJ_META_LEN` settings, so this does not hard-code them. It finds the
-name as the first NUL-terminated printable run beginning with `/`, and reads the
-size from the `u32` immediately preceding it — then checks the result against
-the number of data-page bytes the object actually has. A file whose declared
-size exceeds its recovered bytes is reported and not written, rather than
-written short.
+That header is `spiffs_page_object_ix_header`, and its members are read where
+the struct puts them: three bytes of alignment after the page header, then
+`u32 size` at offset 8, the `u8` object type at 12, and the name at 13,
+NUL-terminated inside a field `SPIFFS_OBJ_NAME_LEN` long. Nothing this tool
+supports moves those three — `SPIFFS_OBJ_META_LEN` adds its bytes *after* the
+name, and `SPIFFS_OBJ_NAME_LEN` bounds the name without shifting it, which is
+why `--name-len` changes what is accepted and not where anything is looked for.
+What *would* move all three is widening `spiffs_obj_id` or `spiffs_span_ix`
+past `u16_t`, since the page header those sit in is what everything below is
+measured from; ESP-IDF pins both, this tool reads ESP-IDF images, and the
+offsets are derived from `PAGE_HEADER` rather than written out so that the
+dependency is in the code and not only in this paragraph.
+
+An earlier version searched for the name instead, and #549 is what that
+cost: a file of `0x412f` bytes stores its size as `2f 41 00 00`, the search
+found `/A` inside it, and an intact file was reported incomplete.
+
+The size read there is checked against the number of data-page bytes the object
+actually has. A file whose declared size exceeds its recovered bytes is reported
+and not written, rather than written short.
 
 **A page that exists is not a page that counts.** SPIFFS is log-structured:
 nothing is overwritten in place, so a file that was edited or deleted leaves its
@@ -59,9 +72,11 @@ guessed:
   is not a recency;
 - a gap in the spans, which the old `b"".join(...)` would have closed by
   sliding the later spans forward;
-- a live index header whose name this parser cannot find, which means the
-  layout is not the one documented above and a silent skip would be a partial
-  answer dressed as a complete one.
+- a live index header that does not read as the struct above — a type byte that
+  is not `SPIFFS_TYPE_FILE`, a name field with no terminator in it, or one
+  holding bytes a name cannot hold — which means the layout is not the one
+  documented above and a silent skip would be a partial answer dressed as a
+  complete one.
 
 The geometry is checked before any of that, against the per-block magic
 (`SPIFFS_MAGIC`) that ESP-IDF writes by default. Wrong `--page`/`--block`, a
@@ -104,12 +119,9 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import struct
 import sys
 from typing import Callable, NamedTuple
-
-NAME_IN_PAGE = re.compile(rb"/[\x20-\x7e]{1,63}\x00")
 
 # --------------------------------------------------------------------------
 # The on-flash constants, from `pellepl/spiffs` at `ad902ca` — the revision
@@ -119,6 +131,67 @@ NAME_IN_PAGE = re.compile(rb"/[\x20-\x7e]{1,63}\x00")
 # --------------------------------------------------------------------------
 OBJ_ID_SIZE = 2       # sizeof(spiffs_obj_id)
 PAGE_HEADER = 5       # u16 obj_id, u16 span_ix, u8 flags
+
+# `spiffs_page_object_ix_header`, member by member, with `sizeof(p_hdr) == 5`:
+#
+#     spiffs_page_header p_hdr;
+#     u8_t _align[4 - ((sizeof(spiffs_page_header)&3)==0 ? 4 : (sizeof(spiffs_page_header)&3))];
+#     u32_t size;
+#     spiffs_obj_type type;
+#     u8_t name[SPIFFS_OBJ_NAME_LEN];
+#     #if SPIFFS_OBJ_META_LEN
+#     u8_t meta[SPIFFS_OBJ_META_LEN];
+#     #endif
+#
+# `5 & 3` is 1, so `_align` is three bytes and the `u32` lands on a multiple of
+# four. `SPIFFS_ALIGNED_OBJECT_INDEX_TABLES` is 0 in ESP-IDF's
+# `spiffs_config.h`, so the struct attribute that would pad it further is not
+# in play. **`meta` comes after `name`**, which is the whole reason these three
+# offsets are constants and not a search: nothing this tool supports moves them.
+# They are derived from `PAGE_HEADER` above rather than written out as 8, 12 and
+# 13, because a wider `spiffs_obj_id` would move all three together.
+OBJ_IX_ALIGN = 4 - (PAGE_HEADER & 3) if PAGE_HEADER & 3 else 0
+OBJ_IX_SIZE_AT = PAGE_HEADER + OBJ_IX_ALIGN   # 8: u32_t size
+OBJ_IX_TYPE_AT = OBJ_IX_SIZE_AT + 4           # 12: spiffs_obj_type, a u8_t
+OBJ_IX_NAME_AT = OBJ_IX_TYPE_AT + 1           # 13: u8_t name[SPIFFS_OBJ_NAME_LEN]
+
+# SPIFFS_TYPE_FILE, from `spiffs.h`. The other three — DIR, HARD_LINK,
+# SOFT_LINK — are defined there and never written: `spiffs_object_create()` is
+# what sets the byte, with `oix_hdr.type = type`, and both of its call sites in
+# `spiffs_hydrogen.c` — `SPIFFS_creat()` and `SPIFFS_open()` under
+# `SPIFFS_O_CREAT` — pass `SPIFFS_TYPE_FILE`. So any other value in that byte
+# means this is not the layout being read, and saying so is worth more than a
+# guess at what a directory would have meant.
+OBJ_TYPE_FILE = 1
+
+# Erased flash, and a zero-filled page. Neither is a `spiffs_obj_type` value,
+# and the byte is the one field SPIFFS itself does not depend on: it reads
+# `type` in exactly one place, filling `spiffs_stat`, and never at mount, open,
+# read, or in the lookup walk. So a writer that leaves it unset produces an
+# image the device mounts and reads perfectly, and refusing that image outright
+# would be this tool inventing a requirement the filesystem does not have. The
+# trace above is `spiffs_object_create()`, which covers firmware-written
+# images; `spiffsgen.py` is ESP-IDF's other writer and the likelier producer of
+# a factory asset partition, and what it puts here is `UNKNOWN`. **Unset is
+# accepted. DIR, HARD_LINK and SOFT_LINK are still refused** — those are a
+# layout this parser does not read, rather than an absent label.
+OBJ_TYPE_UNSET = (0xFF, 0x00)
+
+# CONFIG_SPIFFS_OBJ_NAME_LEN, ESP-IDF's default. It bounds the name and nothing
+# else — the offsets above do not depend on it — so an image built with another
+# value still reads, up to the point where a name runs past the field this was
+# told to expect. That is `--name-len`, and it is a refusal rather than a
+# truncation, because a name cut short is a different file.
+#
+# **This is narrower than the parser it replaced, deliberately.** The old search
+# read a name wherever the terminator fell, up to 63 characters, so an image
+# built with `CONFIG_SPIFFS_OBJ_NAME_LEN` between 33 and 64 read on the default
+# there and is refused on the default here. The refusal is whole-image and it is
+# the right trade — reading past the field this was told to expect is how the
+# old parser walked into `meta` — but it is a real narrowing, the tool cannot
+# know the value (`range 1 256`), and the refusal message therefore carries the
+# number to pass rather than only the option's name.
+OBJ_NAME_LEN = 32
 
 OBJ_ID_DELETED = 0x0000   # SPIFFS_OBJ_ID_DELETED
 OBJ_ID_FREE = 0xFFFF      # SPIFFS_OBJ_ID_FREE
@@ -354,21 +427,82 @@ def is_live(lookup_id: int, obj_id: int, span: int, flags: int) -> bool:
     return True
 
 
-def _read_name(blob: bytes) -> tuple[str, int] | None:
+def _read_name(blob: bytes, name_len: int = OBJ_NAME_LEN) -> tuple[str, int] | None:
     """Name and declared size out of an object index header page, or None.
 
-    The `u32` size is five bytes before the name rather than four: the `u8`
-    object type sits between them.
+    Read at the offsets `spiffs_page_object_ix_header` puts them at. The first
+    version of this searched for the name instead — the first NUL-terminated
+    printable run beginning with `/`, anywhere after the page header — and read
+    the `u32` five bytes in front of whatever it found. That is the same answer
+    for almost every file and the wrong one for a file whose *size* spells a
+    name: `0x412f` bytes is `2f 41 00 00` little-endian, which is `/A\\0\\0`, so
+    the search stopped inside the size field, took `/A` for the name, and read
+    four bytes of page header as the size. The image was intact, the file was
+    whole, and the tool reported it incomplete and wrote nothing. #549.
+
+    There was never a reason for the search. The offsets do not move: `_align`
+    is a function of `sizeof(spiffs_page_header)`, and `meta` — the member the
+    old rationale blamed — is on the far side of `name`.
+
+    None means the bytes at those offsets are not an object index header this
+    parser can read, which the caller turns into a refusal. It is never a
+    recovery: there is nothing here to fall back to.
     """
-    found = NAME_IN_PAGE.search(blob[PAGE_HEADER:80])
-    if not found:
+    if len(blob) < OBJ_IX_NAME_AT + name_len:
         return None
-    at = PAGE_HEADER + found.start()
-    return (found.group(0).rstrip(b"\x00").decode("ascii"),
-            struct.unpack_from("<I", blob, at - 5)[0])
+    type_byte = blob[OBJ_IX_TYPE_AT]
+    if type_byte != OBJ_TYPE_FILE and type_byte not in OBJ_TYPE_UNSET:
+        return None
+    field = blob[OBJ_IX_NAME_AT:OBJ_IX_NAME_AT + name_len]
+    end = field.find(b"\x00")
+    # `spiffs_object_create()` NUL-terminates within the field — it copies
+    # `sizeof(name) - 1` bytes and writes the last one itself — so a field with
+    # no terminator in it is not one this code wrote.
+    if end <= 0:
+        return None  # unterminated, or an empty name, which is not a path
+    name = field[:end]
+    if not all(0x20 <= byte <= 0x7E for byte in name):
+        return None
+    return (name.decode("ascii"),
+            struct.unpack_from("<I", blob, OBJ_IX_SIZE_AT)[0])
 
 
-def extract(image: bytes, page: int, block: int) -> Read:
+def _name_refusal(blob: bytes, name_len: int) -> str:
+    """Say which of the four causes a `_read_name()` of `None` actually hit.
+
+    It re-walks the same checks, which is free because it runs only on the
+    failure path, and it exists because one sentence listing every cause tells
+    an operator nothing about their image. The unterminated case is the one
+    that can be acted on, so it carries the number to pass.
+    """
+    if len(blob) < OBJ_IX_NAME_AT + name_len:
+        return (f"the page is too short to hold a {name_len}-byte name field at "
+                f"offset {OBJ_IX_NAME_AT}")
+    type_byte = blob[OBJ_IX_TYPE_AT]
+    if type_byte != OBJ_TYPE_FILE and type_byte not in OBJ_TYPE_UNSET:
+        return (f"its type byte at offset {OBJ_IX_TYPE_AT} is {type_byte:#04x}, "
+                f"which is neither SPIFFS_TYPE_FILE nor unset")
+    field = blob[OBJ_IX_NAME_AT:OBJ_IX_NAME_AT + name_len]
+    end = field.find(b"\x00")
+    if end == 0:
+        return f"the name field at offset {OBJ_IX_NAME_AT} is empty"
+    if end < 0:
+        # The terminator is inside the real field whatever that field's length,
+        # so if there is a NUL further into the page it gives the value this
+        # image was built with. `CONFIG_SPIFFS_OBJ_NAME_LEN` is `range 1 256`.
+        further = blob[OBJ_IX_NAME_AT:].find(b"\x00")
+        hint = (f"; the next NUL in the page is at name offset {further}, so "
+                f"--name-len {further + 1} is the value that would read it"
+                if 0 < further < 256 else "")
+        return (f"the name field at offset {OBJ_IX_NAME_AT} has no terminator "
+                f"within the {name_len} bytes --name-len allows{hint}")
+    bad = next(byte for byte in field[:end] if not 0x20 <= byte <= 0x7E)
+    return (f"the name at offset {OBJ_IX_NAME_AT} contains {bad:#04x}, which is "
+            f"not printable ASCII")
+
+
+def extract(image: bytes, page: int, block: int,
+            name_len: int = OBJ_NAME_LEN) -> Read:
     """Read every live page of the image and reassemble the files they carry.
 
     Driven by the object lookup tables rather than by a walk over the pages,
@@ -376,10 +510,23 @@ def extract(image: bytes, page: int, block: int) -> Read:
     released is not part of the filesystem however intact its header looks.
     """
     geo = geometry(len(image), page, block)
+    # The geometry is confirmed against the image's own magic before either
+    # `--name-len` guard runs, and the order is the point. Both guards compare
+    # against `page`, so a low `--page` guess trips the page-fit one — and
+    # answering a wrong `--page` with a complaint about an option the user never
+    # passed sends them to the wrong knob. `confirm_geometry()` names the right
+    # one; let it speak first.
     census = [
         f"{geo.page} B pages, {geo.block} B blocks, {geo.blocks} blocks — "
         f"{confirm_geometry(image, geo)}"
     ]
+    if name_len < 2:
+        raise UnsupportedImage(
+            f"--name-len {name_len} leaves no room for a name and its terminator")
+    if OBJ_IX_NAME_AT + name_len > page:
+        raise UnsupportedImage(
+            f"--name-len {name_len} does not fit in a {page}-byte page: the object "
+            f"index header's name field starts at offset {OBJ_IX_NAME_AT}")
 
     headers: dict[int, dict] = {}
     payload: dict[int, dict[int, bytes]] = {}
@@ -422,12 +569,13 @@ def extract(image: bytes, page: int, block: int) -> Read:
             if obj_id & OBJ_ID_IX_FLAG:
                 if span != 0:
                     continue  # an object index page; the data pages carry the bytes
-                read = _read_name(image[at:at + geo.page])
+                read = _read_name(image[at:at + geo.page], name_len)
                 if read is None:
                     refusals.append(
                         f"object {bare:#06x}: a live object index header at page "
-                        f"{at // geo.page} carries no name this parser can find, so "
-                        f"the layout is not the one it knows")
+                        f"{at // geo.page} carries no name this parser can read — "
+                        f"{_name_refusal(image[at:at + geo.page], name_len)}. "
+                        f"The layout is not the one it knows")
                     ambiguous.add(bare)
                     continue
                 # Two live headers that say the *same* thing are an interrupted
@@ -768,6 +916,12 @@ def main() -> int:
     parser.add_argument("outdir")
     parser.add_argument("--page", type=int, default=256)
     parser.add_argument("--block", type=int, default=4096)
+    parser.add_argument("--name-len", type=int, default=OBJ_NAME_LEN,
+                        help=f"SPIFFS_OBJ_NAME_LEN the image was built with, "
+                             f"terminator included (default {OBJ_NAME_LEN}, which is "
+                             f"CONFIG_SPIFFS_OBJ_NAME_LEN's). It bounds the name and "
+                             f"moves nothing: a longer name than this is refused, "
+                             f"never cut to fit")
     parser.add_argument("--force", action="store_true",
                         help="replace a regular file already at a destination; a "
                              "symlink or a directory is still refused")
@@ -782,7 +936,7 @@ def main() -> int:
     with open(args.image, "rb") as handle:
         image = handle.read()
     try:
-        read = extract(image, args.page, args.block)
+        read = extract(image, args.page, args.block, args.name_len)
     except UnsupportedImage as why:
         # Before any page was interpreted, so there is nothing to report but the
         # reason, and no output directory has been created to report it into.
