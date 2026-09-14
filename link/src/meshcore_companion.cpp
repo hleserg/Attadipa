@@ -200,6 +200,13 @@ void MeshCoreCompanion::reset_session()
     has_node_position_ = false;
     node_position_ = core::Position{};
     node_position_at_ = {};
+    // And the contact's, for a reason the node's own does not have: the key it
+    // is filed under was resolved through this session's contact table, so it
+    // stops meaning anything the moment that table is rebuilt.
+    has_remote_position_ = false;
+    remote_position_id_ = core::MeshPeerId{};
+    remote_position_ = core::Position{};
+    remote_position_at_ = {};
     node_receiver_ = core::ReceiverPresence::Unknown;
     custom_vars_requested_ = false;
     awaiting_custom_vars_ = false;
@@ -377,7 +384,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:819` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1006` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -609,8 +616,128 @@ void MeshCoreCompanion::drain_after(bool accepted, core::MonotonicTime now)
     }
 }
 
+namespace {
+
+// ONE COORDINATE OUT OF A LINE OF HUMAN TEXT, and only in the one shape that
+// was observed arriving. ADR-0021 decision 1 makes this the primary wire for a
+// remote target's position, and §14.2 of the research report is the grammar:
+// `docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:771` — "Идём к вам @12.3456,65.4321"
+//
+// Every row of that table is a refusal as much as an acceptance, because the
+// text around the coordinate is written by a person and the numbers in it are
+// not. `@` must start the text or follow whitespace, so an e-mail address and
+// an `@name` are not coordinates. A single optional space after the sigil
+// covers the two spacings seen in the wild. At most three integer digits and
+// one to seven decimals, with the decimal point required.
+//
+// THE DIGIT BOUND IS THE GRAMMAR'S, NOT THE OVERFLOW GUARD, and saying so is
+// worth four lines because §14.2 states it the other way round for an
+// implementation that is not this one. There, `@100000000.0,0.5` overflows the
+// `int32` slot before any ±90 test can run and the bound is the only thing in
+// front of it; here the whole scan accumulates in `std::int64_t` and the range
+// test happens *on that*, before the narrowing, so no value a digit run can
+// produce reaches an overflow. Which means no test can tell the bound from the
+// range check -- every four-digit integer part is out of range anyway -- and
+// it is kept because three digits is the shape that was observed, not because
+// removing it would be unsafe. What would be unsafe is narrowing first, and
+// that is the line the test suite does pin.
+//
+// THE LAST MATCH WINS AND HAS NO UNDERSTUDY. A quoted older message can carry
+// a coordinate of its own, and the sender is told to put the live one at the
+// end -- so the search runs to the end of the text and keeps the final shape
+// that parses. If that one then fails a bound it is dropped outright rather
+// than falling back to an earlier match: a fallback would reach for a stale
+// coordinate exactly when the fresh one is malformed, which is the one moment
+// a stale one is least safe to believe.
+bool scan_number(const char* text, std::size_t size, std::size_t& at,
+                 std::int64_t& out_e7)
+{
+    std::size_t i = at;
+    std::int64_t sign = 1;
+    if (i < size && text[i] == '-') {
+        sign = -1;
+        ++i;
+    }
+    std::int64_t whole = 0;
+    std::size_t digits = 0;
+    while (i < size && text[i] >= '0' && text[i] <= '9') {
+        if (digits == 3) return false;  // a fourth integer digit is not this shape
+        whole = whole * 10 + (text[i] - '0');
+        ++digits;
+        ++i;
+    }
+    if (digits == 0 || i >= size || text[i] != '.') return false;
+    ++i;
+    std::int64_t fraction = 0;
+    std::size_t places = 0;
+    while (i < size && text[i] >= '0' && text[i] <= '9') {
+        if (places == 7) return false;  // an eighth decimal is not this shape
+        fraction = fraction * 10 + (text[i] - '0');
+        ++places;
+        ++i;
+    }
+    if (places == 0) return false;
+    if (i < size && text[i] == '.') return false;  // 1.2.3 is not a number
+    for (std::size_t pad = places; pad < 7; ++pad) fraction *= 10;
+    // At most 999.9999999 degrees, so this cannot approach the width of the
+    // accumulator and the range test below is the only thing that narrows it.
+    out_e7 = sign * (whole * 10000000 + fraction);
+    at = i;
+    return true;
+}
+
+bool parse_trailing_coordinate(const char* text, core::Position& out)
+{
+    const std::size_t size = std::strlen(text);
+    bool found = false;
+    for (std::size_t i = 0; i < size; ++i) {
+        if (text[i] != '@') continue;
+        const bool anchored = i == 0 || text[i - 1] == ' ' || text[i - 1] == '\n' ||
+                              text[i - 1] == '\t' || text[i - 1] == '\r';
+        if (!anchored) continue;
+        std::size_t at = i + 1;
+        if (at < size && text[at] == ' ') ++at;
+        std::int64_t latitude = 0;
+        std::int64_t longitude = 0;
+        if (!scan_number(text, size, at, latitude)) continue;
+        if (at >= size || text[at] != ',') continue;
+        ++at;
+        if (!scan_number(text, size, at, longitude)) continue;
+        // Bounds before the narrowing, which is the ordering ADR-0020 made
+        // explicit for the binary wire and ADR-0021 decision 7 carries onto
+        // this one. Dropped and never clamped: a clamped coordinate is a place
+        // nobody reported.
+        // A match that fails one of these does not fall through to the
+        // previous match, it replaces it with nothing: `found` is cleared and
+        // the scan carries on, so only a *later* well-formed match can put a
+        // coordinate back. The last shape in the text is the answer whether or
+        // not the answer is "none".
+        const bool in_bounds =
+            latitude >= -core::kLatitudeMaxE7 && latitude <= core::kLatitudeMaxE7 &&
+            longitude >= -core::kLongitudeMaxE7 && longitude <= core::kLongitudeMaxE7 &&
+            !(latitude == 0 && longitude == 0);
+        // Exactly (0, 0) is in that list, refused here and accepted in
+        // `accept_self_position()` -- deliberately, and for different senders.
+        // There the field is a node's own stored preference and an unset one is
+        // indistinguishable from the Gulf of Guinea, so guessing is refused.
+        // Here it is a number in a sentence, ADR-0020 decision 7 names it
+        // outright, and nothing arrives unasked: a target at the null island is
+        // a parse that went wrong, not a place a contact walked to.
+        if (in_bounds) {
+            out = core::Position{static_cast<std::int32_t>(latitude),
+                                 static_cast<std::int32_t>(longitude)};
+        }
+        found = in_bounds;
+        i = at - 1;  // keep scanning: a later match supersedes this one
+    }
+    return found;
+}
+
+}  // namespace
+
 bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
-                                       std::size_t size, bool v3)
+                                       std::size_t size, bool v3,
+                                       core::MonotonicTime now)
 {
     const std::size_t prefix = v3 ? 4 : 1;
     const std::size_t text_type = v3 ? 11 : 8;
@@ -638,6 +765,66 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
     }
     status_.message_truncated =
         copy_text(status_.last_message, &data[text], size - text);
+    adopt_remote_position(sender, now);
+    return true;
+}
+
+// TWO REFUSALS BEFORE THE GRAMMAR IS EVEN TRIED, and each is a decision rather
+// than a guard.
+//
+// An unresolved sender prefix means no target, not an unnamed one -- ADR-0021
+// decision 2, which routes identity through the contact table on purpose:
+// `docs/adr/0021-remote-target-from-a-message.md:93` — "without a named sender is dropped."
+// The text is still published to the screen; what it cannot do is name a place
+// on behalf of nobody.
+//
+// And a message *this* receiver truncated yields no coordinate whatever the
+// remaining text parses to. That is the one truncation this repository can
+// catch, and the reason it must: 128 bytes of buffer against 157 that can
+// arrive cuts the tail, the sender is told to put the coordinate on the tail,
+// and `@55.9821,37.2104` arriving as `@55.9821,37` passes every bound while
+// landing about thirteen kilometres away:
+// `docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:815` — "the target lands about **13 km**"
+// A shortened number keeps no trace of having been longer, so nothing further
+// down the tree could refuse it.
+void MeshCoreCompanion::adopt_remote_position(const core::MeshPeer* sender,
+                                              core::MonotonicTime now)
+{
+    if (sender == nullptr || status_.message_truncated) return;
+    core::Position position{};
+    if (!parse_trailing_coordinate(status_.last_message.data(), position)) return;
+    // NOT RE-STAMPED WHEN NOTHING MOVED. ADR-0021 decision 5 carries ADR-0020
+    // decision 6 onto this wire, and the reason survives the change of wire
+    // intact: arrival is not an age, and a contact who sends the same
+    // coordinate twice has reported one observation, not two. Re-stamping would
+    // make a coordinate look fresher every time its owner said anything, which
+    // is precisely the freshness this repository has no evidence for.
+    if (has_remote_position_ && remote_position_id_ == sender->id &&
+        remote_position_.latitude_e7 == position.latitude_e7 &&
+        remote_position_.longitude_e7 == position.longitude_e7) {
+        return;
+    }
+    // The key is copied, not pointed at: `sender` is into `peers_`, which the
+    // next contact walk overwrites in place.
+    remote_position_id_ = sender->id;
+    remote_position_ = position;
+    remote_position_at_ = now;
+    has_remote_position_ = true;
+}
+
+bool MeshCoreCompanion::remote_position(core::MeshPeerId& who,
+                                        core::Position& out,
+                                        core::MonotonicTime& arrived) const
+{
+    // Refused for a node this session has disowned, exactly as
+    // `node_position()` is and for a sharper reason: this coordinate is
+    // attributed through `peers_`, and `peers_` belongs to whichever node
+    // filled it. A stranger's contact table resolving a prefix to a full key
+    // would publish a place under a name this watch never agreed to talk to.
+    if (wrong_node_ || !has_remote_position_) return false;
+    who = remote_position_id_;
+    out = remote_position_;
+    arrived = remote_position_at_;
     return true;
 }
 
@@ -1017,10 +1204,10 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         status_.delivery = core::MeshDelivery::Failed;
         break;
     case kResponseContactMessage:
-        drain_after(accept_message(data, size, false), now);
+        drain_after(accept_message(data, size, false, now), now);
         break;
     case kResponseContactMessageV3:
-        drain_after(accept_message(data, size, true), now);
+        drain_after(accept_message(data, size, true, now), now);
         break;
     case kResponseChannelMessageV3:
         drain_after(accept_channel_message_v3(data, size), now);
@@ -1161,6 +1348,7 @@ bool MeshCoreCompanion::unpin()
     // coordinate the owner had just dropped. Clearing it at the source is what
     // makes the order of those two calls stop mattering.
     has_node_position_ = false;
+    has_remote_position_ = false;
     status_.pinned_id = core::MeshPeerId{};
     status_.has_pinned = false;
     status_.refused_id = core::MeshPeerId{};
