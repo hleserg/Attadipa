@@ -19,6 +19,7 @@ add_library(attadipa_sim_screens
     boot_screen.cpp
     clock_screen.cpp
     diagnostic_screen.cpp
+    host_time.cpp
     labels.cpp
     mesh_screen.cpp
     nav_screen.cpp

@@ -1,5 +1,4 @@
 #include <cstdio>
-#include <ctime>
 #include <vector>
 
 #include "lvgl.h"
@@ -19,6 +18,7 @@
 #include "clock_screen.h"
 #include "debug_server.h"
 #include "diagnostic_screen.h"
+#include "host_time.h"
 #include "mesh_screen.h"
 #include "nav_screen.h"
 #include "options.h"
@@ -229,9 +229,13 @@ int main(int argc, char **argv) {
     }
     apps::ClockState state;
     state.time = {
-        options.clock_time_set
-            ? options.clock_time
-            : core::WallTime{static_cast<std::int64_t>(std::time(nullptr))},
+        // Pinned stays pinned, and stays the number that was typed: a
+        // `--clock-time` screenshot is compared against a picture taken on
+        // another machine, and one that moved with the reviewer's timezone
+        // would be compared against nothing. Everything else is the host's
+        // local wall time, through the one adapter the refresh timer also uses.
+        options.clock_time_set ? options.clock_time
+                               : attadipa::sim::host_local_wall_time(),
         0,
         0,
         options.clock_validity,
