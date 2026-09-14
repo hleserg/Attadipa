@@ -236,7 +236,7 @@ So every Claude step in this repository names its tools explicitly:
 
 Verified against `anthropics/claude-code-action` at `3f854a8`, release
 **v1.0.198**. **That reading predates the commit these workflows execute** —
-`docs/research/DEPENDENCIES.md:106` — "`56cf60fde42f7b19c3abfd5c9c48b69a1288461f`, 2026-09-11" —
+`docs/research/DEPENDENCIES.md:112` — "`56cf60fde42f7b19c3abfd5c9c48b69a1288461f`, 2026-09-11" —
 which is release v1.0.222 — and it has not been repeated against it. The check
 that binds that row to the workflow tree reads one ledger and does not reach
 this page, so the two facts below are as old as the reading that found them:
