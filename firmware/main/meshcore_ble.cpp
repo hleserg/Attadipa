@@ -56,8 +56,13 @@ constexpr char kTag[] = "attadipa_mesh_ble";
 //
 // Since #317 this queue carries *only* data. The session lifecycle is not a
 // message here at all — see session_owner.h — so a burst that fills this can
-// cost frames, which the Companion protocol tolerates, and can no longer cost a
-// disconnect, which it does not.
+// cost frames and can no longer cost a disconnect, which the protocol does not
+// tolerate. It does not tolerate every lost frame either, and this comment used
+// to say it did: a bounded queue drops the *tail* of a burst, so the frame it
+// loses is systematically RESP_CODE_END_OF_CONTACTS — MEASURED three sessions
+// out of three on 2026-09-14, #566. A lost contact record the next walk re-sends;
+// a lost boundary used to strand the session, which is why the client now ends
+// a walk on silence. Forty-eight is what keeps the burst off that path at all.
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
@@ -1646,11 +1651,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:189` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:194` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1703` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1708` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:931` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:936` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather

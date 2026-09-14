@@ -198,13 +198,28 @@ private:
 
     // HOW LONG A CONTACT STREAM HAS TO BE QUIET before the session concludes
     // the walk is over without the frame that says so. Chosen, not derived, and
-    // bounded on both sides by what the bench measured on 2026-09-14: the node
-    // sends one contact per loop() pass, 234 frames in about 1.5 s, so the
-    // largest gap inside a healthy stream is far under a second -- and the
-    // transport's own queue takes under a second more to hand the backlog over.
-    // Three seconds clears both with room, and the cost of being wrong is one
-    // CMD_SYNC_NEXT_MESSAGE arriving mid-walk, which aborts a sync this client
-    // has already lost anyway.
+    // knowingly under the largest pause the bench has seen. A 59-minute capture
+    // on 2026-09-14 measured every one of the 4616 gaps inside a walk on the
+    // 233-contact node:
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:643` — "everything under 70 ms, then"
+    // Three seconds clears that by a factor of forty; the one pause that beat
+    // it beat it outright, at 3850 ms. Nothing lies between the two, so a
+    // longer window would buy no case and delay the real one.
+    //
+    // BEING WRONG IS NOT FREE AND IS NOT FATAL. That same capture caught this
+    // sweep misfiring, once in nineteen walks, and the node did not abort:
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:660` — "did not abort the node's iteration"
+    // It answered RESP_CODE_NO_MORE_MESSAGES and kept sending contacts to the
+    // end of the same walk. What the misfire cost was one redundant command, a
+    // `peers_complete` set at 30 of 233 that the arriving records corrected,
+    // and CMD_GET_CUSTOM_VARS and the battery poll released into the catch-up
+    // burst -- beside which the only three dropped frames of the hour landed.
+    // One occurrence, so that last one is correlation and not cause, and one
+    // occurrence bounds nothing: it did not abort, not it cannot.
+    //
+    // WHICH IS WHY THE WINDOW STAYS SHORT. A boundary genuinely lost strands
+    // every inbound message for the rest of the session; a misfire costs a
+    // command the node answers. The costs are not symmetric, so err short.
     static constexpr core::Millis kContactsQuiet{3000};
 
     // The narrower question, and the one an untagged response has to be matched
