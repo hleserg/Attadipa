@@ -49,7 +49,7 @@ any workflow, pull request, review or required check. **No upstream compromise
 is claimed or observed** — the exposure is the execution path.
 
 Resolved 2026-08-28, except `anthropics/claude-code-action`, re-resolved
-2026-09-08 after Dependabot bumped it. `anthropics/claude-code-action@v1` and
+2026-09-08 and again 2026-09-14 after Dependabot bumped it. `anthropics/claude-code-action@v1` and
 `github/codeql-action@v4` are **annotated** tags: `git/ref/tags/<tag>` returns a
 tag object whose SHA is not a commit SHA, and pinning to it pins to something
 GitHub will not check out. `.github/tests/action-pin-test.sh` asserts every pin
@@ -103,7 +103,7 @@ the commit assertion.
 | Action | Pinned at | Tag it came from | Licence | Upgrade strategy |
 |---|---|---|---|---|
 | **`actions/checkout`** | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
-| **`anthropics/claude-code-action`** | `d75b94d5ad426cb8546e6628b6f5f19b84e5cce1`, 2026-09-04 | release `v1.0.216`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
+| **`anthropics/claude-code-action`** | `56cf60fde42f7b19c3abfd5c9c48b69a1288461f`, 2026-09-11 | release `v1.0.222`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
 | **`actions/upload-artifact`** | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
 | **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
 | **`actions/cache`** | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
@@ -115,18 +115,28 @@ yesterday is not a fact about today, so every SHA above was re-resolved
 immediately before the commit that introduced it.
 
 It has kept moving: `v1` pointed at release `v1.0.209` when that paragraph was
-written on 2026-08-28 and points at `v1.0.217` now, eight releases later.
+written on 2026-08-28 and has passed through `v1.0.216` and `v1.0.222` since.
 **What the `claude-code-action` row records is
 the commit the three privileged jobs execute, and it is deliberately not what
-`v1` points at today.** Read from the API on 2026-09-08: `d75b94d5…` is a commit
-in `anthropics/claude-code-action`, authored `2026-09-04T19:58:53Z`, message
-`chore: bump Claude Code to 2.1.261 and Agent SDK to 0.3.261`, and it is exactly
-the object release `v1.0.216` dereferences to. `v1` itself now dereferences to
-`9c5ddab2…`, release `v1.0.217` of 2026-09-06. That divergence is the pin
-working: the tag moved and nothing here moved with it. Bumping to `v1.0.217` is
-a separate, deliberate edit that changes the three workflow lines and this row
-in one commit — the check described above is what makes doing only half of it
-impossible.
+`v1` points at today.** Read from the API on 2026-09-14: `56cf60fd…` is a commit
+in `anthropics/claude-code-action`, authored `2026-09-11T19:18:51Z`, message
+`chore: bump Claude Code to 2.1.269 and Agent SDK to 0.3.269`, and it is exactly
+the object release `v1.0.222` dereferences to. `v1` itself dereferences to
+something else again. That divergence is the pin working: the tag moves and
+nothing here moves with it. Each bump is a deliberate edit that changes the
+three workflow lines and this row in one commit — the check described above is
+what makes doing only half of it impossible, and Dependabot's #558 arrived
+doing exactly that half, red on `action-pin-test.sh` until this row moved.
+
+**What the upstream diff between the two pinned commits contains**, read on
+2026-09-14 because this row's own rule says to read it: six commits, six files,
+`+24 −24`, and every substantive line is a version string — `CLAUDE_CODE_VERSION`
+`2.1.261` → `2.1.269` in `base-action/action.yml` and in `src/entrypoints/run.ts`,
+`@anthropic-ai/claude-agent-sdk` `^0.3.261` → `^0.3.269` in both `package.json`
+files, and the two `bun.lock` files that follow them. No change to the action's
+inputs, permissions, entrypoint or network behaviour. **That is a diff review,
+not an audit of the published bundle**, which is built from these sources and
+was not itself examined.
 
 Reviewed to the extent claimed and no further: the release, its commit, the tag
 dereference and the MIT licence were read from the canonical repository. That is
