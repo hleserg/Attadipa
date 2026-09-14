@@ -33,6 +33,21 @@ PARSE_CASES = {
     "format_mismatch.toml":  "same placeholders",
     "empty_value.toml":      "is empty",
     "bad_identifier.toml":   "not a usable identifier",
+    # The four the equality check cannot see. Every locale and every form agrees
+    # in each of these files, so "the placeholders match" is true of all of them
+    # and true of none of the things that matter at the snprintf call.
+    "plural_format_type.toml":    "read as a pointer",
+    "plural_format_width.toml":   "length modifier 'll'",
+    "plural_format_missing.toml": "has 0 count conversion",
+    "plural_format_twice.toml":   "has 2 count conversion",
+}
+
+# Accepted on purpose. Over-strictness is the failure mode of a check written
+# from one crash: it is still a rejection, so every negative case above keeps
+# passing while correct strings start being refused. This file is the only thing
+# that fails when that happens.
+ACCEPT_CASES = {
+    "plural_format_valid.toml": "a count with width, flags and a literal %%",
 }
 
 # Rejected by the glyph check rather than by the parser: the file is valid TOML
@@ -64,6 +79,19 @@ def run():
                 print(f"  ok  {name:<28} rejected: {message.splitlines()[0][:78]}")
         else:
             failures.append(f"{name}: ACCEPTED, and it must not be. The check is not working.")
+
+    for name, what in ACCEPT_CASES.items():
+        path = FIXTURES / name
+        if not path.exists():
+            failures.append(f"{name}: fixture is missing")
+            continue
+        try:
+            entries = load(path)
+        except CatalogueError as exc:
+            failures.append(f"{name}: REJECTED, and it must not be -- {what} is valid.\n"
+                            f"    got: {exc}")
+        else:
+            print(f"  ok  {name:<28} accepted: {len(entries)} entries, {what}")
 
     for name, expected_fragments in GLYPH_CASES.items():
         path = FIXTURES / name
@@ -98,7 +126,8 @@ def run():
         return 1
 
     print(f"\nl10n selftest: {len(PARSE_CASES) + len(GLYPH_CASES)} deliberate mistakes, "
-          f"all rejected, each for its own reason")
+          f"all rejected, each for its own reason; {len(ACCEPT_CASES)} correct catalogue(s) "
+          f"accepted")
     return 0
 
 

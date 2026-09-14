@@ -9,7 +9,7 @@ fail a build; and a fourth that proves the three can fail.
 | [`catalogue.py`](catalogue.py) | reads and validates the catalogue. The only parser — the generator and the glyph check share it so they cannot drift |
 | [`gen_strings.py`](gen_strings.py) | writes `l10n/include/attadipa/l10n/string_id.h` and `l10n/src/catalogues.cpp`. `--check` fails if the committed copies are stale |
 | [`check_glyphs.py`](check_glyphs.py) | fails if a catalogue string needs a character outside [`tools/font/charset.py`](../font/charset.py) |
-| [`selftest.py`](selftest.py) | runs the checks over eight deliberate mistakes and requires each to be rejected **for its own reason** |
+| [`selftest.py`](selftest.py) | runs the checks over twelve deliberate mistakes and requires each to be rejected **for its own reason**, and over one correct catalogue that must still be accepted |
 
 ```bash
 python3 tools/l10n/gen_strings.py          # after editing strings.toml
@@ -50,7 +50,7 @@ half on the day there is a font to guard.
 The simulator has a runtime sibling of this check, which asks the font that is
 actually linked in. Today the two disagree on purpose — see below.
 
-## Two things the generator refuses that look fine
+## Three things the generator refuses that look fine
 
 **`ru.other`.** Russian's CLDR cardinal rule selects `one`, `few` or `many` for
 every whole number; `other` is unreachable for an integer. An entry there is a
@@ -62,6 +62,20 @@ believed.
 Russian is undefined behaviour at the `snprintf` call, and no compiler warning
 can reach it, because by then the format string is a runtime value read out of a
 table.
+
+**A plural placeholder that is not the count.** Locales agreeing is necessary
+and not sufficient: `%s` in all five forms of an entry agrees with itself, and
+`format_plural` still hands `snprintf` an integer where it will read a pointer.
+So a plural form is checked against the one argument that call actually passes
+— exactly one conversion, reading an `unsigned int` (`%u`, or `%o`/`%x`/`%X`),
+with an optional width, precision and `-`/`0` flag, and no length modifier.
+`%%` is a literal and does not count; a `%` this parser does not recognise at
+all, like `%q` or `%*u`, is refused rather than ignored, because `snprintf`
+does not ignore it either.
+
+Singular strings keep their own placeholders and their own typed call sites —
+`"%u.%u km"` and `"heard %s ago"` both ship — so this contract is the plural
+API's alone, and the check says so in the message when it fails.
 
 ## What does not work yet, and why it is not hidden
 

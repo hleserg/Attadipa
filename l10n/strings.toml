@@ -17,6 +17,12 @@
 #     string that will never be shown.
 #   * placeholders must match across locales. A translator who turns `%u` into
 #     `%s` writes undefined behaviour, and no compiler will notice.
+#   * a plural form must contain exactly one placeholder, and it must be the
+#     count: `%u`, or `%o`/`%x`/`%X`, with an optional width and `-`/`0` flag
+#     and no length modifier. A literal percent is `%%`. `format_plural` passes
+#     one number and nothing else, so `%s` in *every* form is as broken as `%s`
+#     in one — it just agrees with itself. Singular strings are not held to
+#     this: their callers pass their own arguments.
 #   * every character must be in the font subset — tools/font/charset.py. A
 #     glyph the embedded font cannot draw is a blank on the screen and nothing
 #     else in the build will see it.

@@ -30,9 +30,13 @@ const char* tr_plural(PluralId id, std::uint32_t count, Locale locale);
 // been written, snprintf-style, so a caller can detect truncation rather than
 // discover it on the screen.
 //
-// The catalogue string reaches this as a runtime format, which is only safe
-// because the generator refuses a catalogue whose locales disagree about their
-// placeholders (tools/l10n/catalogue.py).
+// The catalogue string reaches this as a runtime format, so the compiler cannot
+// check the call and the check is done on the catalogue instead
+// (tools/l10n/catalogue.py). What it proves is this signature and nothing
+// wider: every form of a plural entry carries exactly one conversion, that
+// conversion reads the unsigned int this passes, and it has no length modifier.
+// Singular strings are not held to it — they are formatted by their own callers
+// with their own arguments — so `tr` is where a two-placeholder string lives.
 int format_plural(char* out, std::size_t size, PluralId id, std::uint32_t count);
 int format_plural(char* out, std::size_t size, PluralId id, std::uint32_t count, Locale locale);
 

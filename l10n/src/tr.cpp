@@ -109,15 +109,29 @@ const char* tr_plural(PluralId id, std::uint32_t count)
 int format_plural(char* out, std::size_t size, PluralId id, std::uint32_t count, Locale locale)
 {
     const char* format = tr_plural(id, count, locale);
+    // The conversion the catalogue check proves is there is `%u` and its
+    // relatives, which read an `unsigned int`. `std::uint32_t` is that type on
+    // both targets and is not required to be by anything, so the argument is
+    // made into one here rather than assumed to be one -- the cast is a
+    // no-operation wherever the assumption held, and the assert is what happens
+    // on the day it does not.
+    static_assert(sizeof(unsigned int) >= sizeof(std::uint32_t),
+                  "format_plural passes the count where the catalogue's %u reads an unsigned "
+                  "int; on a target with a narrower int the cast below would truncate it and "
+                  "the contract tools/l10n/catalogue.py enforces would no longer be this one");
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 // The format is a catalogue entry rather than a literal, so the compiler cannot
-// check it. What can be checked is checked earlier and by machine: the
-// generator refuses a catalogue whose locales disagree about their placeholders
-// (tools/l10n/catalogue.py), which is the mismatch this warning is about.
+// check it. What it would have checked is checked earlier and by machine, in
+// tools/l10n/catalogue.py: every form of every plural entry holds exactly one
+// conversion, it reads an unsigned int, and it carries no length modifier. That
+// is the whole of this call's contract -- one format, one argument, one type --
+// and a catalogue that does not satisfy it fails the build before it is
+// generated. Agreement between locales is checked too, and is not the point:
+// five forms can agree on `%s` and every one of them is this crash.
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #endif
-    return std::snprintf(out, size, format, count);
+    return std::snprintf(out, size, format, static_cast<unsigned int>(count));
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
