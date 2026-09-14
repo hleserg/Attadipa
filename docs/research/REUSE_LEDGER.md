@@ -103,6 +103,7 @@ do not close the finding they were written for.
 | [MeshCore #3266](https://github.com/meshcore-dev/MeshCore/pull/3266) | `d87dd32f` | **closed, unmerged** | the #3267 hunks plus 28 unrelated files | superseded by #3267, whose parser hunks are byte-identical |
 | [MeshCore #3271](https://github.com/meshcore-dev/MeshCore/pull/3271) | `f80d805e` | **closed, unmerged** | — | the *same commit* as #3270, not merely equivalent |
 | `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22; `12998cba` on 2026-08-24 | — | checked for equivalent guards arriving by another route: **none.** `readFrom` on `dev` is byte-identical to the pin |
+| [MeshCore #3403](https://github.com/meshcore-dev/MeshCore/pull/3403) | `fefc1500` | open, unmerged, base `dev`, opened 2026-09-13; read 2026-09-14 | a `MyMesh::writePushFrame()` in `examples/companion_radio/MyMesh.cpp` and an 8 × `MAX_FRAME_SIZE` FIFO in `MyMesh.h`: async pushes are held while a `CMD_GET_CONTACTS` response is streaming and flushed one per `loop()` pass afterwards. +1,416 bytes RAM on both environments the author built | **ADAPT the failure model, MONITOR the patch, take no code.** It makes the stream contiguous and **not** the snapshot consistent — the table still mutates under the iterator, a full FIFO drops the push a client detects that with, and a deferred push is byte-identical to a fresh one. Command responses are deliberately not deferred, so a client that sends a command mid-read still sees an interleave. Compile-only by the author's own statement. [MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md) §8 is the compatibility matrix and [ADR-0022](../adr/0022-contact-snapshot-consistency.md) decision 9 the decision |
 | [Meshtastic firmware#11573](https://github.com/meshtastic/firmware/pull/11573) | `6094d148`, merged as `ac330e6a` | **MERGED 2026-08-23** into `develop`; **not in any release** — `master` does not contain it, and `v2.7.26.54e0d8d` predates it | an `assert()` on a wire-supplied payload length becomes an executable rejection that releases the packet and unwinds the TX state, plus a unit test asserting the rejection | **ADAPT the invariant, IGNORE the code.** GPL-3.0, and a radio stack we do not have. Read-only evidence. What is taken is a sentence and a test *shape*, both restated in our own words on T-013 and T-050 — [MESHCORE_PARSER_BOUNDS §8](MESHCORE_PARSER_BOUNDS.md) |
 
 **Reusable as test material, not as code.** The guards in `05da523e`
@@ -2980,3 +2981,79 @@ from the UART write's byte count and never from the request, and that
 `engine_observed` comes from `MON-RXR` or from NMEA resuming and never from
 either. A test that asserts the model publishes `Standby` after a write nobody
 confirmed would encode the exact defect this record rejects.
+
+### Keeping a contact snapshot honest across an interleaved response
+
+**Problem:** [#563](https://github.com/hleserg/Attadipa/issues/563). A MeshCore
+node answers `CMD_GET_CONTACTS` with a stream, one frame per `loop()` pass, and
+the packet callbacks in the same `loop()` write unsolicited pushes into it. Some
+of those pushes describe a change to the table being read. Attadipa treats
+`RESP_CODE_END_OF_CONTACTS` as proof that the list it holds is the node's list.
+The full reading is
+[MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md);
+this record is the reuse half only.
+
+**Projects investigated:** `meshcore-dev/MeshCore`
+[PR #3403](https://github.com/meshcore-dev/MeshCore/pull/3403), head
+`fefc150005d19b03ac5f302ea93a6e684ecd3308`, opened 2026-09-13, read 2026-09-14 —
+`examples/companion_radio/MyMesh.cpp` and `examples/companion_radio/MyMesh.h`.
+Read against the pinned revision `d92964352441e53b93e8667b802e04f6e072b39e`
+(`companion-v1.17.1`), whose `MyMesh.cpp`, `MyMesh.h`,
+`src/helpers/BaseChatMesh.cpp` and `src/helpers/BaseChatMesh.h` are the wire
+evidence for what the installed fleet actually does.
+
+**Useful implementation:** the **failure model**, and the compatibility cases it
+creates. `MyMesh::writePushFrame()` routes async pushes through a bounded FIFO
+while `_iter_started` is true and flushes them one per pass afterwards, so a
+strict client sees a contiguous response.
+
+**License:** MIT — `license.txt`, the same grant as every other MeshCore row
+above. Compatible, and not the reason nothing was taken.
+
+**Strengths:** it names the root cause exactly, it converts every relevant push
+site in one place rather than nine, it leaves command responses alone on purpose,
+and it is bounded — a full FIFO drops rather than grows.
+
+**Weaknesses:** four, and the first is decisive.
+
+1. **It does not make a snapshot consistent.** The table still mutates under the
+   iterator; the patch reorders the telling, not the doing. A client that reads a
+   contiguous response from a patched node still holds a torn snapshot.
+2. **A full FIFO silently drops the push**, which is the very frame a client
+   detects a torn read with. The client's evidence gets *weaker* when the fix
+   lands.
+3. **A deferred push is byte-identical to a fresh one.** Nothing marks it as
+   held, so a client cannot tell which read a post-`END` `0x8F` belongs to.
+4. **Open, unmerged, unreleased, against `dev`**, and compile-tested only by its
+   own author's statement. The fleet is pinned on `v1.17.1-d929643` by owner
+   decision, so no installed node would get it even if it merged tomorrow.
+
+**Decision:** `ADAPT` the failure model and the compatibility tests · `MONITOR`
+the patch · **take no code.**
+
+**Reason:** the correct client behaviour is the same with the patch and without
+it — observe the invalidating pushes, never claim a consistency the wire did not
+carry, and re-read within a bound. That behaviour has to work on a node that has
+#3403 and on one that does not, so depending on it would buy nothing and would
+tie this product to an unreleased change in somebody else's tree. What is worth
+inheriting is the enumeration of push sites, which shortened the classification
+in §3 of the report from a search to a check, and the two cases the patch creates
+— a deferred push and a dropped one — which are rows 13 and 8 of the replay
+matrix. Its own prose is not inherited: it states that `PUSH_CODE_CONTACTS_FULL`
+means the table changed, and at both revisions read that push is raised exactly
+where nothing was stored and nothing overwritten.
+
+**Source revision:** MeshCore PR #3403 at `fefc150005d19b03ac5f302ea93a6e684ecd3308`;
+compared against the pin `d92964352441e53b93e8667b802e04f6e072b39e`. Not cloned
+— the two files, their bases and the PR diff were read at those exact revisions.
+
+**Attadipa integration:** none in this issue, which is research-only. The
+contract is [ADR-0022](../adr/0022-contact-snapshot-consistency.md) and the
+implementation is a separate executable issue.
+
+**Tests required:** when that issue opens — the fifteen-row replay matrix in §9
+of the report, driven through the existing frame-by-frame harness in
+`tests/test_meshcore_companion.cpp`. Two of its rows exist to stop this record's
+own reasoning being encoded wrongly: a `0x90` inside a stream must leave the
+snapshot **consistent**, and a `0x8F` arriving after `END` — the shape #3403
+produces — must not trigger a re-read of a stream that already ended.

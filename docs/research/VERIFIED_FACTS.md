@@ -418,6 +418,85 @@ reader ends up citing the one that was not updated.
   [ADR-0020](../adr/0020-remote-target-position-source.md) is written to the
   weaker claim. In-practice behaviour of other clients is **M31**.
 
+### A `CMD_GET_CONTACTS` response is a walk over the live array, not a snapshot
+
+- **Claim:** `ContactsIterator` holds an `int next_idx` into `BaseChatMesh`'s own
+  `contacts[]` and compares it against `getTotalContactSlots()`, which returns
+  `num_contacts`. There is no copy, no lock and no generation counter, and
+  `MyMesh::checkSerialInterface()` advances it **one frame per `loop()` pass**,
+  and only on a pass where no command frame arrived. `BaseChatMesh::loop()` and
+  the packet callbacks run first in the same `loop()`, so an advert, a message or
+  a path return can rewrite, append to or compact that array between two
+  `RESP_CODE_CONTACT` frames. `removeContact()` is the compacting case —
+  `num_contacts--` and every later row copied down one — so a removal below the
+  cursor makes the walk **skip a contact entirely**, and its only caller,
+  `CMD_REMOVE_CONTACT`, answers `writeOKFrame()` and raises **no push at all**.
+- **Source:** upstream `src/helpers/BaseChatMesh.cpp` — `ContactsIterator::hasNext`,
+  `removeContact`, `allocateContactSlot`, `onAdvertRecv` — and
+  `examples/companion_radio/MyMesh.cpp` — `checkSerialInterface`, the
+  `CMD_GET_CONTACTS` and `CMD_REMOVE_CONTACT` branches.
+- **Checked:** 2026-09-14, at the pin `d929643` and at PR #3403's head
+  `fefc1500`; identical in both, and unchanged by that patch, which defers the
+  pushes and does not touch the walk.
+- **Consequence:** `RESP_CODE_END_OF_CONTACTS` proves the node finished walking
+  and proves nothing about what it walked over. Attadipa never sends a
+  table-writing command, so the compaction case needs a *second* client on the
+  node — the shape **M31** already records. [ADR-0022](../adr/0022-contact-snapshot-consistency.md)
+  and [MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md).
+- **A push interleaving that response is `MEASURED` here**, on the T114 on
+  2026-08-28: [MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) §6c
+  logs `PUSH_CODE_LOGIN_SUCCESS` 2.5 s before `RESP_CODE_END_OF_CONTACTS`. A
+  *mutating* push inside a stream has never been observed here.
+  `NOT EXECUTED — HARDWARE REQUIRED`.
+
+### `PUSH_CODE_CONTACTS_FULL` does not mean the contact table changed
+
+- **Claim:** `onContactsFull()` has exactly one call site, the branch of
+  `BaseChatMesh::onAdvertRecv` taken when `allocateContactSlot()` returned
+  `NULL` — which is precisely the case where nothing was allocated and nothing
+  overwritten. The push means *"I could not store a contact"*; the table is
+  unchanged and an advert was dropped. The **other** full-table outcome does
+  change it: `allocateContactSlot()` replaces the oldest non-favourite contact in
+  place and raises `PUSH_CODE_CONTACT_DELETED` (`0x8F`), which is the code that
+  really does say the table moved. Which of the two a node does is a preference —
+  `shouldOverwriteWhenFull()` reads `_prefs.autoadd_config & AUTO_ADD_OVERWRITE_OLDEST`.
+- **Source:** upstream `src/helpers/BaseChatMesh.cpp`, `onAdvertRecv` and
+  `allocateContactSlot`; `examples/companion_radio/MyMesh.cpp`,
+  `shouldOverwriteWhenFull`, `onContactsFull` and `onContactOverwrite`.
+- **Checked:** 2026-09-14, at the pin and at `fefc1500`.
+- **Contradicts its own upstream.** MeshCore PR #3403's patch comment states that
+  `CONTACT_DELETED` / `CONTACTS_FULL` describe "a table change that invalidates
+  what is being read". That is true of `0x8F` and false of `0x90` at both
+  revisions read. A client that invalidates a contact read on `0x90` discards a
+  correct snapshot, and on a node whose table is genuinely full it would do so
+  every time.
+- **The preference on the bench nodes is `UNKNOWN`** — **M33**.
+
+### `RESP_CODE_END_OF_CONTACTS` carries a freshness watermark, not a consistency proof
+
+- **Claim:** the four bytes are `_most_recent_lastmod`, accumulated as the
+  maximum `lastmod` of the contacts the walk **actually emitted** — after the
+  `since` filter, so neither the table's maximum nor a generation counter. A row
+  rewritten after it was emitted contributes its old value. The filter is strict,
+  `contact.lastmod > _iter_filter_since`, against an RTC whose unit is **seconds**,
+  so a mutation in the same second as the watermark, to a row already emitted, is
+  filtered out of the *next* incremental read too, and stays filtered until that
+  contact changes again. A removed contact is simply absent from a filtered read,
+  which is indistinguishable from unchanged.
+- **A full read is not an unfiltered one.** Attadipa sends `CMD_GET_CONTACTS` as
+  a one-byte frame, so the node sets `_iter_filter_since = 0` and the filter
+  becomes `lastmod > 0`: a contact whose `lastmod` is zero is never enumerated,
+  while `RESP_CODE_CONTACTS_START` still counts it — upstream's own comment on
+  that count reads "total, NOT filtered count".
+- **Source:** upstream `examples/companion_radio/MyMesh.cpp`, the
+  `CMD_GET_CONTACTS` branch and `checkSerialInterface`;
+  `src/helpers/BaseChatMesh.cpp`, `populateContactFromAdvert`.
+- **Checked:** 2026-09-14, at the pin and at `fefc1500`.
+- **Consequence:** nothing in this repository uses the watermark today and
+  [ADR-0022](../adr/0022-contact-snapshot-consistency.md) does not propose
+  starting. Whether a node in the field can hold a `lastmod == 0` contact depends
+  on its RTC when that contact was created and is **M34**.
+
 ### A wrong MeshCore node's bond evicts the pinned node's
 
 - **Claim:** with a passkey armed, a MeshCore node that this watch is *not*
@@ -947,7 +1026,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2200`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2279`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -2175,7 +2254,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:930`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:1009`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
@@ -2802,7 +2881,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2712` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2791` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -2836,7 +2915,7 @@ ones that heading states.
   wrong prior for a powered-off reading.** They fix no order of magnitude for a
   *VBUS-side* residual, because the table nowhere records which side of the PMU
   it was taken on, and this tree already says what such rows are worth —
-  `docs/research/VERIFIED_FACTS.md:812` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
+  `docs/research/VERIFIED_FACTS.md:891` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
   Its neighbouring rows read as battery-side figures —
   `docs/research/HARDWARE_MATRIX.md:337` — "| Deep sleep | PWR + BOOT, backup off | 460 µA |" —
   and 460 µA of deep sleep is not what an inline USB meter returns with a
@@ -2859,7 +2938,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:2783` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:2862` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -2875,7 +2954,7 @@ ones that heading states.
   (`firmware/main/board_power.cpp:550` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
   2026-09-05 and recorded above
-  (`docs/research/VERIFIED_FACTS.md:720` — "Claim, on the bench unit, MEASURED 2026-09-05"),
+  (`docs/research/VERIFIED_FACTS.md:799` — "Claim, on the bench unit, MEASURED 2026-09-05"),
   and this image raises that rail on purpose
   (`firmware/main/twatch_board.cpp:981` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
   So for the whole 45 minutes a receiver was powered, and **nothing here
@@ -2885,7 +2964,7 @@ ones that heading states.
   (below). So the GNSS share is unmeasured in size *and* unbounded in
   direction; this entry claims only that it is inside the 778.9 mW. The rail is named, not gated: this
   entry does not claim that clearing BLDO1 would turn the module off:
-  `docs/research/VERIFIED_FACTS.md:734` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
+  `docs/research/VERIFIED_FACTS.md:813` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
   says why nothing here could show that.
 - **The LoRa radio rail was down for the run.** Bit 3 of that same byte is
   `aldo4 enable`, read off the register's own bit map — AXP2101 datasheet
@@ -2900,7 +2979,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2737` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2816` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -2960,7 +3039,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:687` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:704` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -2986,7 +3065,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2660` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2739` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3181,7 +3260,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:2786` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:2865` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has
