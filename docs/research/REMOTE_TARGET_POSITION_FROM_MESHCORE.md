@@ -778,26 +778,29 @@ named in §14.4 and are deliberately not reproduced here.
 |---|---|---|
 | sigil | `@` | require a line start or whitespace before it, so `@name` and an e-mail address never match |
 | separator | a single `,` | — |
+| integer digits | one or two in every observed row | accept **at most three** before the point on either number, and refuse the shape otherwise. Nothing else bounds them: the slot is `int32` tenth-microdegrees, so `@100000000.0,0.5` matches every other row here and overflows by seven orders of magnitude *before* any ±90 check can run. Signed overflow is undefined and the range test is exactly what a compiler drops after it |
 | decimals | **four** in every observed row | accept one to seven and keep what is given; four is about 11 m of latitude |
 | sign | **not observed** — every captured row is northern and eastern | accept a leading `-` on either number. A parser built only to what was seen drops every southern coordinate or mirrors it into the wrong hemisphere, and both are silent |
-| bounds | not exercised — every captured row is a real place | refuse latitude outside ±90°, longitude outside ±180°, and exactly `(0, 0)`, per ADR-0020 decision 7, and **drop rather than clamp**: clamping invents a place |
+| bounds | not exercised — every captured row is a real place | refuse latitude outside ±90°, longitude outside ±180°, and exactly `(0, 0)`, per ADR-0020 decision 7, and **drop rather than clamp**: clamping invents a place. Check the bounds **before scaling to tenth-microdegrees**, which is the ordering ADR-0020 was explicit about for the binary wire — `docs/adr/0020-remote-target-position-source.md:131` — "checked **before** scaling because nothing upstream" — and which the digit bound above makes reachable |
 | placement | last thing in the message | do not require it: take the **last** match, so a quoted older message cannot win |
 | spacing | two shapes in the wild — a typed message gives `@55.98…`, a preset gives `@ 55.98…` | accept one optional space after the sigil. Two shapes is itself worth removing at the source |
 
 ### 14.3 The truncation hazard, which cannot be caught downstream
 
-The observed firmware truncates the **human text** to fit its message limit and
-keeps the coordinate whole — visible in the capture as a preset message cut
-mid-character, since the text is UTF-8 and the cut lands inside a two-byte
-letter.
+**What the capture shows** is a message whose human text is cut mid-character —
+the text is UTF-8 and the cut lands inside a two-byte letter — while the
+coordinate at the end of it is whole. That is an observation about one received
+message, not a statement about what any firmware does: §14.1 and §10.2 apply
+here too, and the sender's half of this hazard is `UNKNOWN` for the same reason
+everything else about that node is.
 
-**That priority is the right way round and this repository cannot enforce it on
-the sender.** The reverse fails silently: a coordinate cut short is still a
+**If a sender does prioritise that way it is the right way round, and this
+repository cannot enforce it either way.** The reverse fails silently: a coordinate cut short is still a
 syntactically perfect number, `@55.98` sits about **230 m** from `@55.9821`, and
-nothing in its shape says it was ever longer. A sender's firmware is the only
-place that can guarantee the budget, which is why it is recorded here as a
-property of the wire rather than as a parser requirement it is impossible to
-meet.
+nothing in its shape says it was ever longer. Only the sending side can
+guarantee that budget, and this repository has no way to see whether it does,
+which is why the sender's half is recorded as a hazard of the wire rather than
+as a parser requirement that is impossible to meet.
 
 **But our own receiver truncates too, and that half is detectable.** The text
 buffer is 128 bytes — `core/include/attadipa/core/mesh_service.h:16` — "inline constexpr std::size_t kMeshTextBytes = 128;" —

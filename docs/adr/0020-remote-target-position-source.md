@@ -12,8 +12,10 @@ Date: 2026-09-07
 > is the better citizen.
 >
 > **Most of what is below is still in force**, and an implementer needs it:
-> decisions 4, 5, 6, 7 and 9 apply to the new wire unchanged, and decisions 1
-> and 3 remain the specification for the fallback. ADR-0021 carries a row-by-row
+> decisions 2, 4, 5, 6, 7 and 9 apply to the new wire unchanged — **decision 2
+> especially**, since ADR-0021 names its target by the same full 32-byte key and
+> refuses a six-byte prefix as an identity exactly as this ADR does — and
+> decisions 1 and 3 remain the specification for the fallback. ADR-0021 carries a row-by-row
 > table of which clause survives and which does not — read it there rather than
 > inferring it here, and do not copy decision 8, whose trigger is replaced.
 

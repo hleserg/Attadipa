@@ -5,9 +5,13 @@ Date: 2026-09-14
 
 Supersedes [ADR-0020](0020-remote-target-position-source.md) **on which wire is
 paid for, and on nothing else.** Decisions 2, 4, 5, 6, 7 and 9 of that ADR are
-carried here and are load-bearing — the table below is the authority on this
-list, and this sentence is the same list spelled out rather than a shorter one; the table below says exactly which of its
-clauses stop applying. Rests on
+carried here and are load-bearing, and decisions 1 and 3 remain the
+specification for the fallback; only decision 8's trigger is replaced. **The
+table below is the single authority on that list** — this sentence repeats it
+and ADR-0020's banner repeats it again, and where any two disagree the table
+wins. That rule is written down because it was earned: an earlier draft of this
+sentence and that banner each dropped a different clause, and a reader has no
+way to tell a shorter list from a corrected one. Rests on
 [OD-30](../research/OWNER_DECISIONS.md#od-30--a-position-is-shown-to-named-recipients-rather-than-broadcast),
 and on the same research: [REMOTE_TARGET_POSITION_FROM_MESHCORE](../research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md),
 whose §14 records the evidence that is new here.
@@ -21,12 +25,17 @@ not disturbed by anything below — in particular its finding that **no path is
 fresher at the source**, because every one of them reads the same two variables
 on the target node.
 
-**A third wire was not on that table.** The owner's own MeshCore fork appends a
-position to the text of a message a person chooses to send, and has been doing
-so on the bench. Observed 2026-09-13; the format and its traps are §14 of the
-research report. Nothing about it was known when ADR-0020 was written, so this
-is not a re-litigation of that decision — it is the arrival of an option the
-decision could not have considered.
+**A third wire was not on that table.** Messages carrying a coordinate in their
+text were observed arriving on 2026-09-13, in a fixed shape; the format and its
+traps are §14 of the research report. **What composes them is `UNKNOWN` and this
+ADR does not need to know.** The evidence is a capture of a client conversation,
+which is a receiver-side render: it shows what arrived, not its producer, and
+the owner's fork publishes no source at all (M28). The owner reports that his
+node appends the position; that report is his, not a finding of this repository,
+and every clause below is written as what this product **accepts** rather than
+as what anything emits. Nothing about this wire was known when ADR-0020 was
+written, so this is not a re-litigation of that decision — it is the arrival of
+an option the decision could not have considered.
 
 **Two things make it the better wire, and only one of them is technical.**
 
@@ -83,6 +92,21 @@ unnamed one, because `link/src/meshcore_companion.cpp:548` — "    const core::
 already answers `nullptr` while the text is accepted regardless. A coordinate
 without a named sender is dropped.
 
+**This names whose coordinate arrived. It does not choose the wearer's target,
+and must not be read as doing so.** OD-30 is explicit that it leaves that open —
+`docs/research/OWNER_DECISIONS.md:2026` — "**What it does not decide:** how a target is chosen in the interface, how long a" —
+so an ADR implementing OD-30 may not settle it by implication. There is one
+`target` slot, and a rule that simply wrote each arriving coordinate into it
+would hand the arrow to whoever spoke last: a wearer walking to contact A would
+be turned towards contact B the moment B sent a message, with no interaction,
+and a contact who wanted to steer the arrow could. **That is refused here.** A
+coordinate this decision attributes is held against its sender's full key and is
+available to be chosen; what promotes one of them into the `target` slot is an
+interface decision, it belongs to the wearer, and it is out of this ADR's scope
+in the same words OD-30 used. The fallback is unchanged in the same way: ADR-0020
+decision 3 refreshes a key the wearer already asked for, and nothing here makes
+the two wires race for the slot, because neither writes it on its own.
+
 **3. The contact record stays implemented as the fallback, for a node whose
 firmware is not ours.** ADR-0020 decisions 1 and 3 — bytes 136–143 of
 `RESP_CODE_CONTACT`, refreshed by `CMD_GET_CONTACT_BY_KEY` on a `0x80` push
@@ -134,12 +158,19 @@ and the text wire adds three of its own.** ADR-0020's four, restated in full
 because an earlier draft of this clause listed three and dropped the contact
 type: exactly `(0, 0)` is refused; a latitude outside ±90° and a longitude
 outside ±180° are refused; **a contact whose type is not `ADV_TYPE_CHAT` is
-refused** — `docs/adr/0020-remote-target-position-source.md:130` — "a contact whose type is not `ADV_TYPE_CHAT`" —
+refused** — `docs/adr/0020-remote-target-position-source.md:132` — "a contact whose type is not `ADV_TYPE_CHAT`" —
 which still governs the fallback and is what keeps a repeater out of the target
 slot; and a contact the node has deleted is discarded rather than aged.
 
-To those the text wire adds three. A coordinate that does not match the grammar
-whole is not read at all. **A value that fails any bound is dropped, never
+To those the text wire adds four. A coordinate that does not match the grammar
+whole is not read at all — and the grammar bounds the **integer** digits as well
+as the decimals, at most three before the point, because the slot is `int32`
+tenth-microdegrees and `@100000000.0,0.5` otherwise matches every other rule
+here and overflows by seven orders of magnitude before any ±90 test runs.
+Signed overflow is undefined behaviour and a range check after it is exactly
+what a compiler is entitled to delete, so the bounds are checked **before**
+scaling — the ordering ADR-0020 made explicit for the binary wire and which this
+clause carries onto the text one. **A value that fails any bound is dropped, never
 clamped** — clamping would invent a place. And **a message our own receiver
 truncated yields no coordinate**, whatever the remainder parses to: the text
 buffer is 128 bytes against a frame that can deliver 157, the cut lands on the
@@ -209,7 +240,7 @@ itself.** Decision 2 attributes through `find_peer_prefix`, which searches only
 the peers this companion retains, and that table holds sixteen —
 `link/src/meshcore_companion.cpp:453` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
 against a contact table the T114 build sizes at 350. Under ADR-0020 that cap did
-not reach the position: `docs/adr/0020-remote-target-position-source.md:224` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
+not reach the position: `docs/adr/0020-remote-target-position-source.md:226` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
 and that sentence is **falsified by this ADR**, in a paragraph the clause table
 cannot reach because it is Consequences rather than a numbered decision. It is
 named here instead. A person past the sixteenth retained peer sends a
