@@ -293,6 +293,23 @@ fallback, and a contact record is still client-writable.
 | M30 | **Can a rebooted target be permanently silenced against our companion?** `bootstrapRTCfromContacts()` sets a node's RTC from the newest contact `lastmod` at boot, and `onAdvertRecv` drops any advert whose sender timestamp does not exceed the stored `last_advert_timestamp`. Read together those describe a target whose clock went backwards being ignored until it catches up — which would look, from the wrist, exactly like a node that stopped existing | **UNKNOWN**, with the source behind it | reboot the target with its RTC unset and re-advert, watching for `0x80` on the companion. `NOT EXECUTED — HARDWARE REQUIRED` |
 | M31 | **What does a second client of the same companion do to a target's contact record?** `CMD_ADD_UPDATE_CONTACT` lets any BLE client write `gps_lat`, `gps_lon` and `last_advert_timestamp` into any contact, persisted, with nothing marking the result as client-written. The owner's phone app is such a client. So the record's coordinate is authenticated as *what our companion holds for that key* and not as *what that node signed*, which is exactly the claim ADR-0020 lets the readout make | **UNKNOWN** in practice; the mechanism is `VERIFIED` from source | observing whether any mainstream client writes the field unprompted. Not blocking: the decision is already written to the weaker claim |
 
+### What a contact snapshot cannot tell a client
+
+Opened 2026-09-14 by [#563](https://github.com/hleserg/Attadipa/issues/563). The
+mechanism is closed and is read from source at two revisions —
+[MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md),
+with the contract in [ADR-0022](../adr/0022-contact-snapshot-consistency.md).
+**That a push interleaves a contact read is `MEASURED` here** — §2.4 of that
+report. What is open is everything about *rate*, about how the fleet's nodes are
+configured, and one case the source genuinely leaves undetermined.
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| M32 | **How often does a *mutating* push actually land inside a contact read, on this fleet?** A non-mutating one is measured (§2.4). The upstream author reports roughly 25 interleaves in 30 reads and publishes no host, transport, node or table size with it, so it is an author report and not a rate this project may quote. The answer decides whether the bounded re-read of ADR-0022 fires once a week or on every session, which is the difference between a correctness guard and a power cost | **UNKNOWN** | §10 of the report: 30 iterations with a deterministic advert, add and delete during `CMD_GET_CONTACTS`, capturing every frame with timestamps. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M33 | **Is `AUTO_ADD_OVERWRITE_OLDEST` set on the bench nodes?** It decides which of two completely different things a full contact table does: overwrite the oldest non-favourite contact in place and push `0x8F` — the table moved — or store nothing and push `0x90` — the table did not. A client that gets this backwards either discards correct snapshots or trusts torn ones | **UNKNOWN** | reading `autoadd_config` off each node, or filling a table on the bench and watching which push arrives. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M34 | **Can a node in the field hold a contact whose `lastmod` is zero?** If it can, that contact is counted in `RESP_CODE_CONTACTS_START` and never enumerated, because even an unfiltered `CMD_GET_CONTACTS` filters `lastmod > 0`. It would read on the wrist as a permanent `retained < reported`, with nothing wrong and nothing to fix. It needs the node's RTC to have been unset when the contact was created; `bootstrapRTCfromContacts()` sets the clock from the newest `lastmod` at boot, which cannot help if every one of them is zero | **UNKNOWN**, mechanism `VERIFIED` from source | one contact read on a node whose RTC has never been set, comparing the start count with the number of records. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M35 | **Does anything on this bench actually remove a contact while a read is running?** `CMD_REMOVE_CONTACT` compacts `contacts[]` under the iterator, so a row shifts into a consumed slot and is skipped — with **no push raised to anybody**. It is the one invalidating mutation no client-side contract can detect, and Attadipa never sends the command, so it needs a second client of the same node. The owner's phone app is such a client (**M31**) | **UNKNOWN** | observing whether any mainstream client deletes contacts unprompted, and a two-client bench run. Not blocking: ADR-0022 is written to claim only what it observed |
+
 ## Architecture
 
 | # | Question | Status | Resolved by |
