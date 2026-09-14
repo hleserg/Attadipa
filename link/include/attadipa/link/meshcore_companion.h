@@ -178,8 +178,8 @@ private:
 
     // How long an operation may stay in flight. `RESP_CODE_SENT` carries the
     // node's own estimate of the round trip in bytes 6..9, and that estimate is
-    // the budget for the phase it answers: MEASURED 0x0966 = 2406 ms against an
-    // actual 720 ms on the T114 bench (MESHCORE_T114_FIRST_CONTACT.md:326-329
+    // the budget for the phase it answers: ESTIMATED 0x0966 = 2406 ms against a
+    // MEASURED 720 ms on the T114 bench (MESHCORE_T114_FIRST_CONTACT.md:326-329
     // "estimated round trip"). It is clamped, because the node's output is a
     // peer's output (MESHCORE_PARSER_BOUNDS.md §5): a zero would fail a send
     // that is merely fast, and a 0xFFFFFFFF would hold the one in-flight slot
