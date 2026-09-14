@@ -48,8 +48,14 @@ owner can move, and moving it would change what executes here with no change to
 any workflow, pull request, review or required check. **No upstream compromise
 is claimed or observed** — the exposure is the execution path.
 
-Resolved 2026-08-28, except `anthropics/claude-code-action`, re-resolved
-2026-09-08 and again 2026-09-14 after Dependabot bumped it. `anthropics/claude-code-action@v1` and
+Resolved 2026-08-28, except the two rows Dependabot has moved since:
+`anthropics/claude-code-action`, re-resolved 2026-09-08 and again 2026-09-14,
+and `github/codeql-action`, re-resolved 2026-09-14. **A date in a row is the
+commit's own, not the day the row was resolved**, so the two moved rows name
+commits of 2026-09-11 and 2026-09-09 — later than the 2026-08-28 above, which
+would otherwise date them before they existed. The three rows that have not
+moved still name commits older than that sweep, which is what an unmoved pin
+looks like. `anthropics/claude-code-action@v1` and
 `github/codeql-action@v4` are **annotated** tags: `git/ref/tags/<tag>` returns a
 tag object whose SHA is not a commit SHA, and pinning to it pins to something
 GitHub will not check out. `.github/tests/action-pin-test.sh` asserts every pin
