@@ -164,11 +164,33 @@ OBJ_IX_NAME_AT = OBJ_IX_TYPE_AT + 1           # 13: u8_t name[SPIFFS_OBJ_NAME_LE
 # guess at what a directory would have meant.
 OBJ_TYPE_FILE = 1
 
+# Erased flash, and a zero-filled page. Neither is a `spiffs_obj_type` value,
+# and the byte is the one field SPIFFS itself does not depend on: it reads
+# `type` in exactly one place, filling `spiffs_stat`, and never at mount, open,
+# read, or in the lookup walk. So a writer that leaves it unset produces an
+# image the device mounts and reads perfectly, and refusing that image outright
+# would be this tool inventing a requirement the filesystem does not have. The
+# trace above is `spiffs_object_create()`, which covers firmware-written
+# images; `spiffsgen.py` is ESP-IDF's other writer and the likelier producer of
+# a factory asset partition, and what it puts here is `UNKNOWN`. **Unset is
+# accepted. DIR, HARD_LINK and SOFT_LINK are still refused** — those are a
+# layout this parser does not read, rather than an absent label.
+OBJ_TYPE_UNSET = (0xFF, 0x00)
+
 # CONFIG_SPIFFS_OBJ_NAME_LEN, ESP-IDF's default. It bounds the name and nothing
 # else — the offsets above do not depend on it — so an image built with another
 # value still reads, up to the point where a name runs past the field this was
 # told to expect. That is `--name-len`, and it is a refusal rather than a
 # truncation, because a name cut short is a different file.
+#
+# **This is narrower than the parser it replaced, deliberately.** The old search
+# read a name wherever the terminator fell, up to 63 characters, so an image
+# built with `CONFIG_SPIFFS_OBJ_NAME_LEN` between 33 and 64 read on the default
+# there and is refused on the default here. The refusal is whole-image and it is
+# the right trade — reading past the field this was told to expect is how the
+# old parser walked into `meta` — but it is a real narrowing, the tool cannot
+# know the value (`range 1 256`), and the refusal message therefore carries the
+# number to pass rather than only the option's name.
 OBJ_NAME_LEN = 32
 
 OBJ_ID_DELETED = 0x0000   # SPIFFS_OBJ_ID_DELETED
@@ -428,7 +450,8 @@ def _read_name(blob: bytes, name_len: int = OBJ_NAME_LEN) -> tuple[str, int] | N
     """
     if len(blob) < OBJ_IX_NAME_AT + name_len:
         return None
-    if blob[OBJ_IX_TYPE_AT] != OBJ_TYPE_FILE:
+    type_byte = blob[OBJ_IX_TYPE_AT]
+    if type_byte != OBJ_TYPE_FILE and type_byte not in OBJ_TYPE_UNSET:
         return None
     field = blob[OBJ_IX_NAME_AT:OBJ_IX_NAME_AT + name_len]
     end = field.find(b"\x00")
@@ -442,6 +465,40 @@ def _read_name(blob: bytes, name_len: int = OBJ_NAME_LEN) -> tuple[str, int] | N
         return None
     return (name.decode("ascii"),
             struct.unpack_from("<I", blob, OBJ_IX_SIZE_AT)[0])
+
+
+def _name_refusal(blob: bytes, name_len: int) -> str:
+    """Say which of the four causes a `_read_name()` of `None` actually hit.
+
+    It re-walks the same checks, which is free because it runs only on the
+    failure path, and it exists because one sentence listing every cause tells
+    an operator nothing about their image. The unterminated case is the one
+    that can be acted on, so it carries the number to pass.
+    """
+    if len(blob) < OBJ_IX_NAME_AT + name_len:
+        return (f"the page is too short to hold a {name_len}-byte name field at "
+                f"offset {OBJ_IX_NAME_AT}")
+    type_byte = blob[OBJ_IX_TYPE_AT]
+    if type_byte != OBJ_TYPE_FILE and type_byte not in OBJ_TYPE_UNSET:
+        return (f"its type byte at offset {OBJ_IX_TYPE_AT} is {type_byte:#04x}, "
+                f"which is neither SPIFFS_TYPE_FILE nor unset")
+    field = blob[OBJ_IX_NAME_AT:OBJ_IX_NAME_AT + name_len]
+    end = field.find(b"\x00")
+    if end == 0:
+        return f"the name field at offset {OBJ_IX_NAME_AT} is empty"
+    if end < 0:
+        # The terminator is inside the real field whatever that field's length,
+        # so if there is a NUL further into the page it gives the value this
+        # image was built with. `CONFIG_SPIFFS_OBJ_NAME_LEN` is `range 1 256`.
+        further = blob[OBJ_IX_NAME_AT:].find(b"\x00")
+        hint = (f"; the next NUL in the page is at name offset {further}, so "
+                f"--name-len {further + 1} is the value that would read it"
+                if 0 < further < 256 else "")
+        return (f"the name field at offset {OBJ_IX_NAME_AT} has no terminator "
+                f"within the {name_len} bytes --name-len allows{hint}")
+    bad = next(byte for byte in field[:end] if not 0x20 <= byte <= 0x7E)
+    return (f"the name at offset {OBJ_IX_NAME_AT} contains {bad:#04x}, which is "
+            f"not printable ASCII")
 
 
 def extract(image: bytes, page: int, block: int,
@@ -516,10 +573,8 @@ def extract(image: bytes, page: int, block: int,
                 if read is None:
                     refusals.append(
                         f"object {bare:#06x}: a live object index header at page "
-                        f"{at // geo.page} carries no name this parser can find — "
-                        f"its type byte is not SPIFFS_TYPE_FILE, or the name field "
-                        f"at offset {OBJ_IX_NAME_AT} is empty, unterminated within "
-                        f"{name_len} bytes (see --name-len) or not printable ASCII. "
+                        f"{at // geo.page} carries no name this parser can read — "
+                        f"{_name_refusal(image[at:at + geo.page], name_len)}. "
                         f"The layout is not the one it knows")
                     ambiguous.add(bare)
                     continue

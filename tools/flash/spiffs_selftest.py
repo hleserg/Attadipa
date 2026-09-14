@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Prove the SPIFFS extractor writes what it should and refuses what it must.
 
-The reuse ledger's entry for `spiffs_extract.py` says, under *Tests required*:
-*"none automated, and that is a real gap rather than a judgement. It has been
-run against exactly one image — the Waveshare factory dump — which cannot be
-committed."* This is that gap closed the way the same entry suggests: the images
-are built here, from the on-disk layout the extractor documents, so nothing
-copyrighted has to be committed to have something to parse.
+The reuse ledger's entry for `spiffs_extract.py` recorded, under *Tests
+required*, that there were none automated and that this was a real gap rather
+than a judgement: the script had been run against exactly one image, the
+Waveshare factory dump, which cannot be committed. **This file is that gap
+closed**, the way the same entry suggested — the images are built here, from the
+on-disk layout the extractor documents, so nothing copyrighted has to be
+committed to have something to parse. The ledger records that it is closed and
+this paragraph is the copy, not the other way round.
 
 `build()` is a **fixture, not a SPIFFS implementation.** It writes the parts the
 extractor reads — the object lookup table at the head of each block, the page
@@ -484,6 +486,24 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("a --name-len with no room for a name and its terminator is refused",
               code == 2 and "image not read" in output, f"— exit {code}\n{output}")
 
+    # Both --name-len guards compare against `page`, so a low --page guess trips
+    # the page-fit one and answers a wrong --page with an option nobody passed.
+    # The fix is an ordering: confirm_geometry() speaks first. Nothing but a
+    # comment held it — the cases above use --page 4, rejected by geometry()
+    # before either guard, and --page 512, where 13 + 32 fits and the guard
+    # never fires — so hoisting the two blocks back above `census` is an
+    # ordinary "validate arguments first" tidy-up that restores the defect with
+    # every check green. This is the case that fails when it does.
+    with workspace({"/x.bin": b"x"}) as (image, base):
+        code, output = run(image, base / "out", "--page", "32", "--block", "4096")
+        check("a --page too small for the name field reports the geometry, not the option",
+              code == 2 and "the geometry does not check out" in output,
+              f"— exit {code}\n{output}")
+        check("  and does not name --name-len at all",
+              "--name-len" not in output, f"— {output}")
+        check("  and points at the right knob",
+              "--page/--block is wrong" in output, f"— {output}")
+
     # The boundary `--name-len` defines, taken on both sides. A 31-character
     # name and its terminator fill the 32-byte default field exactly; one
     # character more has nowhere to put the NUL. Every other case in this file
@@ -886,6 +906,21 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("a page whose write never finalised is not used",
               "declares 5 bytes, only 0 recovered" in output, f"— {output}")
         check("  and nothing is written", tree(out) == set(), f"— {sorted(tree(out))}")
+
+    # SPIFFS reads the type byte in one place only, filling `spiffs_stat`, and
+    # never at mount, open, read or in the lookup walk. So an image whose writer
+    # left the byte unset mounts and reads perfectly on the device, and refusing
+    # it here would be this tool inventing a requirement the filesystem does not
+    # have. `spiffsgen.py` is the writer that makes this more than theory.
+    for label, unset in (("erased flash", 0xFF), ("a zero-filled byte", 0x00)):
+        with workspace({}, extra=[index_page(1, "/kept.bin", 4, 256,
+                                             obj_type=unset),
+                                  data_page(1, 0, b"fine", 256)]) as (image, base):
+            out = base / "out"
+            code, output = run(image, out)
+            check(f"an unset type byte -- {label} -- is read, not refused",
+                  code == 0 and content(out / "kept.bin") == b"fine",
+                  f"— exit {code}\n{output}")
 
     # A live object index header this parser cannot read a name out of means the
     # layout is not the documented one. Skipping it would answer a question

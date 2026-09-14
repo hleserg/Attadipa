@@ -1717,7 +1717,7 @@ that cannot read, a C++ build, or a board on the end of a cable.
 
 **Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, host Python with
 no dependencies. It was **115 lines** when this decision was taken and is
-**960** on 2026-09-14. Recording both matters, because the sentence below rests
+**1015** on 2026-09-14. Recording both matters, because the sentence below rests
 on the smaller one: what grew is refusals and the evidence for them — the
 liveness rule, the geometry check, the path rules, the object index header's
 own offsets — and not more format being parsed. A line count in a ledger goes
@@ -1764,12 +1764,17 @@ script for reading a vendor image on a workstation. Nothing in `core/`,
 if it ever needs an on-device filesystem that is a separate decision with its
 own record.
 
-**Tests required:** none automated, and that is a real gap rather than a
-judgement. It has been run against exactly one image — the Waveshare factory
-dump — which cannot be committed (Waveshare's own copyright, plus
-all-rights-reserved third-party audio found inside it), so there is no fixture
-to test against. A synthetic image built by `spiffsgen.py` would be one, and
-that is worth doing if this script is ever needed twice.
+**Tests required: done, and the gap this line used to record is closed.**
+`tests/CMakeLists.txt:241` — "    add_test(NAME flash_spiffs_extract_refuses_mistakes" —
+runs `tools/flash/spiffs_selftest.py` on every `ctest`, and that file's `build()`
+is the fixture this entry said did not exist: it writes the object lookup table,
+the page headers and the object index headers from the on-disk layout the
+extractor documents, so nothing copyrighted is committed to have something to
+parse. The one real image — the Waveshare factory dump — still cannot be
+committed (Waveshare's own copyright, plus all-rights-reserved third-party audio
+inside it), which is why the fixture exists rather than a captured partition.
+The sentence this replaces also guessed wrong about when: *"worth doing if this
+script is ever needed twice"* has happened.
 
 ### This board's audio path — the I2S wiring, the ES8311 bring-up, and what the two microphones are for
 
