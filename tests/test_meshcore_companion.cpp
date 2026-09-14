@@ -2236,11 +2236,86 @@ void test_typed_battery_failure_does_not_create_err_ambiguity()
     }
 }
 
+
+// THE FRAME THAT ENDS THE WALK IS THE ONE THE TRANSPORT DROPS. MEASURED on the
+// bench 2026-09-14 (#566): the node streams one contact per loop() pass -- 234
+// frames of 148 bytes in about 1.5 s -- the BLE-to-worker queue overruns, and
+// `RESP_CODE_END_OF_CONTACTS` is the last frame of the burst, so it is the one
+// the overrun reaches. Three sessions out of three lost it, and with it the
+// only CMD_SYNC_NEXT_MESSAGE the session would ever send: every message the
+// node was holding stranded in a 16-deep queue that evicts when it fills.
+//
+// So a quiet stream has to stand in for the boundary. Delete the sweep in
+// tick() and this test is the one that fails -- nothing goes out at all.
+void test_a_lost_contacts_end_still_asks_for_messages()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 2 && frame.bytes[0] == 22);
+
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 4);
+    CHECK(!client.next_tx(frame));
+
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(5)));
+
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(6)));
+
+    // AND NOTHING GOES OUT WHILE THE STREAM IS STILL LIVE, because a command
+    // sent mid-walk is how a client aborts the node's own iteration.
+    client.tick(at(6 + 2999));
+    CHECK(!client.next_tx(frame));
+
+    // RESP_CODE_END_OF_CONTACTS never arrives. The stream falling quiet is what
+    // closes the iteration instead.
+    client.tick(at(6 + 3000));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(!client.next_tx(frame));
+
+    // AND THE SNAPSHOT IS STILL NOT CLAIMED COMPLETE. ADR-0022 makes
+    // `peers_complete` a statement about content, and a quiet stream observed
+    // no end -- it only observed silence.
+    CHECK(!client.status().peers_complete);
+
+    // A late boundary frame is still the node's own statement and still says so,
+    // and it does not ask a second time.
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(6 + 4000)));
+    CHECK(client.status().peers_complete);
+    CHECK(!client.next_tx(frame));
+}
+
 int main()
 {
     test_typed_battery_failure_does_not_create_err_ambiguity();
     test_attached_node_battery_uses_the_live_queue_and_public_status();
     test_handshake_contacts_and_service_boundary();
+    test_a_lost_contacts_end_still_asks_for_messages();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();
     test_send_and_receive();

@@ -253,7 +253,7 @@ reader ends up citing the one that was not updated.
 - **Independently corroborated:** the same arithmetic puts `node_name` at offset
   58, which is where a bench capture found it in a 72-byte frame and where this
   repository's own parser reads it —
-  `link/src/meshcore_companion.cpp:725` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
+  `link/src/meshcore_companion.cpp:791` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
   The coordinate sits between two fields already read correctly.
 - **Not verified:** nothing has read bytes 36–43 off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -335,7 +335,7 @@ reader ends up citing the one that was not updated.
   reads the same ten fields in the same order, naming the last three `advLat`,
   `advLon`, `lastMod`; and this repository already requires all 148 bytes before
   it will read one —
-  `link/src/meshcore_companion.cpp:788` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+  `link/src/meshcore_companion.cpp:856` — "        if (size < 148) { ++malformed_frames_; return false; }" —
   reading the key at 1 and the name at 100 and discarding 132–147.
 - **Not verified:** no contact frame has been read off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -437,13 +437,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:2000`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:2014`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
   ([`firmware/main/meshcore_ble.cpp:189`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1677`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1691`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -479,7 +479,7 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the watch is the central and takes that branch
   from [`firmware/main/meshcore_ble.cpp:931`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1706`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1720`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on
@@ -502,7 +502,7 @@ reader ends up citing the one that was not updated.
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
   [`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
-  [`link/src/meshcore_companion.cpp:726`](../../link/src/meshcore_companion.cpp)
+  [`link/src/meshcore_companion.cpp:792`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
   is [`firmware/main/meshcore_ble.cpp:457`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names

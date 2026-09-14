@@ -196,6 +196,17 @@ private:
     static constexpr core::Millis kMinAckWait{1000};
     static constexpr core::Millis kMaxAckWait{15000};
 
+    // HOW LONG A CONTACT STREAM HAS TO BE QUIET before the session concludes
+    // the walk is over without the frame that says so. Chosen, not derived, and
+    // bounded on both sides by what the bench measured on 2026-09-14: the node
+    // sends one contact per loop() pass, 234 frames in about 1.5 s, so the
+    // largest gap inside a healthy stream is far under a second -- and the
+    // transport's own queue takes under a second more to hand the backlog over.
+    // Three seconds clears both with room, and the cost of being wrong is one
+    // CMD_SYNC_NEXT_MESSAGE arriving mid-walk, which aborts a sync this client
+    // has already lost anyway.
+    static constexpr core::Millis kContactsQuiet{3000};
+
     // The narrower question, and the one an untagged response has to be matched
     // against. `send_busy()` is about the *operation* -- it stays true through
     // `awaiting_confirm_`, which is a phase the node has already answered with
@@ -226,6 +237,7 @@ private:
     void accept_custom_vars(const std::uint8_t* data, std::size_t size);
     bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
+    bool end_contacts(core::MonotonicTime now);
     bool request_next_message(core::MonotonicTime now);
     bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);
@@ -259,6 +271,13 @@ private:
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
+    // The node is mid-walk: RESP_CODE_CONTACTS_START arrived and the frame that
+    // ends the walk has not. `last_contact_at_` is the newest frame belonging to
+    // it, and the pair is what lets a quiet stream stand in for a boundary the
+    // transport dropped. Read only while `contacts_open_` is true, so the stale
+    // timestamp a close leaves behind is never consulted.
+    bool contacts_open_ = false;
+    core::MonotonicTime last_contact_at_{};
     enum class BatteryRequest : std::uint8_t { Idle, Queued, Waiting };
     BatteryRequest battery_request_ = BatteryRequest::Idle;
     core::MonotonicTime battery_started_{};

@@ -1002,9 +1002,17 @@ int gap_event(ble_gap_event* event, void* arg)
             // whole boot. MEASURED on the bench 2026-08-28 -- two dropped
             // contact records took the link down at 8.3 s and nothing rescanned
             // for the remaining four minutes. A full queue is backpressure, not
-            // a broken subsystem. The Companion protocol tolerates a lost frame:
-            // a contact record is re-sent by the next CMD_GET_CONTACTS and the
-            // sync boundary still arrives, and a lost push is one message.
+            // a broken subsystem.
+            //
+            // WHAT A LOST FRAME COSTS WAS UNDERSTATED HERE UNTIL #566. This
+            // used to read "the sync boundary still arrives"; it does not. On
+            // 2026-09-14 the bench dropped RESP_CODE_END_OF_CONTACTS in three
+            // sessions out of three -- it is the last frame of the burst, so it
+            // is the one the overrun reaches -- and with it went the only
+            // CMD_SYNC_NEXT_MESSAGE the session would ever send. Backpressure
+            // is still the right answer here; tolerating it is the client's
+            // job, and `link/src/meshcore_companion.cpp` now does it with a
+            // quiet-stream sweep rather than by trusting this frame to land.
             {
                 SessionGuard guard;
                 owner.frame_dropped();
@@ -1093,7 +1101,13 @@ void log_frame(const char* direction, const std::uint8_t* data, std::size_t size
                  static_cast<unsigned>(data[0]), static_cast<unsigned>(size));
     }
     if (printable != 0) {
-        ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, printable, ESP_LOG_INFO);
+        // THE BODY IS DEBUG AND THE HEADER IS NOT, because the body is what
+        // costs the queue. A 148-byte contact record is eleven log lines, and
+        // the node sends 234 of them back to back: MEASURED on the bench
+        // 2026-09-14, that backlog is what overran `kEventDepth` and dropped
+        // RESP_CODE_END_OF_CONTACTS in every session captured (#566). The
+        // header line above is one line and stays where a capture can see it.
+        ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, printable, ESP_LOG_DEBUG);
     }
 }
 
@@ -1622,7 +1636,7 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:189` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1677` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1691` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
         // `firmware/main/meshcore_ble.cpp:931` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store

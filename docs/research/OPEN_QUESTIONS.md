@@ -411,7 +411,7 @@ is the record of what was true at `144459f` and what changed it:
   "  state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);"):
   `firmware/main/waveshare_board.cpp:526` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
-  `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1290` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
 - **A changed node cannot be recovered from, and this bullet understated it.**

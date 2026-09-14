@@ -187,7 +187,7 @@ bool          quiet_logged   = false;
 // ONE LINE PER CHANGE OF ANSWER, NOT ONE PER EPOCH.
 //
 // `core::format_location_line` is the repository's engineering line -- shared
-// with `firmware/main/meshcore_ble.cpp:1920` -- "Position   : %s" --
+// with `firmware/main/meshcore_ble.cpp:1934` -- "Position   : %s" --
 // the ESP_LOGI that has printed the *node's* position through it since
 // before this file existed. It prints the coordinate, both ages, the validity,
 // the receiver state and the origin, and writes `UNKNOWN` in full wherever a number would imply a
@@ -253,7 +253,7 @@ void log_if_answer_changed()
     // 10^-7 of a degree, which is about a centimetre.
     //
     // One line in this firmware already does put a coordinate at INFO --
-    // `firmware/main/meshcore_ble.cpp:1920` -- "Position   : %s" -- and the
+    // `firmware/main/meshcore_ble.cpp:1934` -- "Position   : %s" -- and the
     // distinction is whose coordinate it is. That one
     // prints the position a paired MeshCore node broadcast, on the boards that
     // build BLE in; this one would print the wearer's own, from a receiver on

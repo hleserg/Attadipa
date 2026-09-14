@@ -2732,7 +2732,7 @@ code under its own licence — no new dependency, no new licence surface:
   instance. This slot stays the HIL bridge's, its bond-shaped names
   (`Deleted`, `Refused`, `Nothing`) intact.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:1776`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:1790`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. #411 put its
@@ -2888,7 +2888,7 @@ a source, because it is not one.
 **Reason.** This is the rare case where the reuse question answers itself: the
 bytes arrive inside `RESP_CODE_CONTACT`, the session already validates all 148
 of them —
-`link/src/meshcore_companion.cpp:788` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+`link/src/meshcore_companion.cpp:856` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 and reads two fields out of it. Adding a dependency to obtain the other two
 would import a client's failure model to avoid writing an offset. The scaling is
 integer: the wire is `e6` and

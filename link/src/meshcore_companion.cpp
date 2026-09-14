@@ -186,6 +186,8 @@ void MeshCoreCompanion::reset_session()
     device_info_seen_ = false;
     self_info_seen_ = false;
     contacts_complete_ = false;
+    contacts_open_ = false;
+    last_contact_at_ = {};
     draining_ = false;
     draining_since_ = {};
     pending_push_ = false;
@@ -306,6 +308,36 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // for the session. Fifteen seconds is the same budget a send gets, and
     // giving up is cheap in the case it is wrong about: a merely slow node
     // answers the duplicate request as it would any other.
+    // AND THE CONTACTS ITERATION GETS ONE, because the frame that ends it is
+    // not guaranteed to arrive. MEASURED on the bench 2026-09-14, three
+    // sessions out of three: the node streams one contact per loop() pass --
+    // 234 frames of 148 bytes in about 1.5 s -- the transport's bounded queue
+    // overruns, and the frame it drops last is RESP_CODE_END_OF_CONTACTS every
+    // time. The transport says so itself now --
+    // `firmware/main/meshcore_ble.cpp:1007` -- "WHAT A LOST FRAME COSTS WAS
+    // UNDERSTATED HERE UNTIL #566"
+    // -- where it used to promise that the boundary still arrives. The cost was
+    // the whole inbound message path: the arm above is the only place in a
+    // session that asks
+    // CMD_SYNC_NEXT_MESSAGE, so a lost boundary stranded every message the node
+    // was holding -- in a 16-deep queue that evicts when it fills, so lost, not
+    // merely late -- and left the battery poll gated off with it.
+    //
+    // A quiet stream is the weaker evidence that the walk is over, and it is
+    // enough for the only thing this decides: whether a command may go out
+    // without aborting the node's own iteration. It is not enough for
+    // `peers_complete`, which is why that stays where the node's own statement
+    // sets it.
+    if (contacts_open_ && core::elapsed(last_contact_at_, now) >= kContactsQuiet) {
+        contacts_open_ = false;
+        if (!wrong_node_ && !end_contacts(now)) {
+            // A full ring is the one refusal worth retrying: reopening the
+            // window lets the next quiet interval ask again rather than
+            // spending the session's one question on a frame that never left.
+            contacts_open_ = true;
+            last_contact_at_ = now;
+        }
+    }
     if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
         draining_ = false;
     }
@@ -326,7 +358,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:734` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:800` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -491,6 +523,40 @@ bool MeshCoreCompanion::request_next_message(core::MonotonicTime now)
     }
     draining_ = true;
     draining_since_ = now;
+    return true;
+}
+
+// The tail of the contacts iteration, reached from the node's own boundary
+// frame and from the quiet sweep that stands in for a lost one. False is a full
+// ring and nothing was sent, so the caller decides whether to count it or to
+// try again.
+//
+// Once per session. A node that answers RESP_CODE_ERR to CMD_GET_CUSTOM_VARS --
+// every node too old to define opcode 40, and indistinguishable from one that
+// merely disliked the frame (docs/research/MESHCORE_COMPANION_PROTOCOL.md:526
+// "A client cannot use that error to probe") -- is not asked again and is not an
+// error to the user: the receiver state stays `Unknown`, the coordinate is
+// unaffected, and nothing about the session changes.
+bool MeshCoreCompanion::end_contacts(core::MonotonicTime now)
+{
+    if (contacts_complete_) return true;
+    if (!request_next_message(now)) return false;
+    contacts_complete_ = true;
+    contacts_open_ = false;
+    // AND THE ONE QUESTION THIS SESSION ASKS ABOUT THE NODE'S RECEIVER, here
+    // and nowhere earlier. The contacts iteration is over by the time this
+    // runs, which is the property that matters: a command sent while one is
+    // running is how a client aborts its own sync, and `_iter_started` on the
+    // node is cleared by anything that restarts the app session.
+    if (!custom_vars_requested_) {
+        const std::uint8_t vars[] = {kGetCustomVars};
+        if (enqueue(vars, sizeof(vars))) {
+            custom_vars_requested_ = true;
+            awaiting_custom_vars_ = true;
+            custom_vars_since_ = now;
+            custom_vars_seq_ = tx_seq_;
+        }
+    }
     return true;
 }
 
@@ -783,40 +849,25 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         status_.peers_retained = 0;
         status_.peers_complete = false;
         contacts_complete_ = false;
+        contacts_open_ = true;
+        last_contact_at_ = now;
         break;
     case kResponseContact:
         if (size < 148) { ++malformed_frames_; return false; }
         accept_contact(data, size);
+        last_contact_at_ = now;
         break;
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
-        contacts_complete_ = true;
+        // ONLY THIS ARM MAY CLAIM THE SNAPSHOT IS COMPLETE. The frame is the
+        // node's own statement that the walk reached the end, and ADR-0022
+        // makes `peers_complete` a claim about content rather than about
+        // timing. The quiet sweep in tick() closes the same iteration without
+        // it, and deliberately does not set this.
         status_.peers_complete = true;
-        if (!request_next_message(now)) {
+        if (!end_contacts(now)) {
             ++malformed_frames_;
             return false;
-        }
-        // AND THE ONE QUESTION THIS SESSION ASKS ABOUT THE NODE'S RECEIVER,
-        // here and nowhere earlier. The contacts iteration is over by the time
-        // this frame arrives, which is the property that matters: a command
-        // sent while one is running is how a client aborts its own sync, and
-        // `_iter_started` on the node is cleared by anything that restarts the
-        // app session.
-        //
-        // Once per session. A node that answers RESP_CODE_ERR to it -- every
-        // node too old to define opcode 40, and indistinguishable from one that
-        // merely disliked the frame (docs/research/MESHCORE_COMPANION_PROTOCOL.md:526
-        // "A client cannot use that error to probe") -- is not asked again and is
-        // not an error to the user: the receiver state stays `Unknown`, the
-        // coordinate is unaffected, and nothing about the session changes.
-        if (!custom_vars_requested_) {
-            const std::uint8_t vars[] = {kGetCustomVars};
-            if (enqueue(vars, sizeof(vars))) {
-                custom_vars_requested_ = true;
-                awaiting_custom_vars_ = true;
-                custom_vars_since_ = now;
-                custom_vars_seq_ = tx_seq_;
-            }
         }
         break;
     case kResponseCustomVars:
