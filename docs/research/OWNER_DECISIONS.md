@@ -1976,9 +1976,21 @@ travels **in a message to the people they chose**, not in an advert to everyone
 in radio range. Asked to approve the advert path as the primary one, he rejected
 the ranking and gave the reason: an advert tells a whole festival where you are,
 and a message tells the person you meant. A remote **telemetry request** — the
-watch's companion transmitting to ask a node where it is — is rejected outright
-and separately, because the upstream response frames cannot correlate an answer
-to the node that was asked.
+watch's companion transmitting to ask a node where it is — stays unbuilt, and is
+not the primary wire.
+
+**The reason first written under that last sentence was wrong, and the
+correction belongs here rather than in an implementer's head.** It said the
+telemetry request was rejected outright "because the upstream response frames
+cannot correlate an answer to the node that was asked". The *frame* carries no
+identity — that much is true and is why ADR-0021 decision 4 phrases it as it
+does — but this repository's own research answers the correlation question and
+answers it in the affirmative:
+`docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:481` — "Correlation is by tag **held against the full target key in our own state**,".
+So telemetry is not impossible; it is costlier, and ADR-0020 decision 8 deferred
+it on exactly that basis, with a trigger ADR-0021 decision 4 replaces rather than
+deletes. The owner's decision — a message, to named people, not a request on the
+air — stands untouched. The impossibility claim was never his and is withdrawn.
 
 The advert path is not forbidden. It stays as the fallback for a node running
 firmware that is not ours, which offers a position no other way.

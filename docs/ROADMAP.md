@@ -126,8 +126,11 @@ Written 2026-08-24, after an independent cold read of the repository.
 > the readout, not a defect in it.
 >
 > **And a fourth path arrived on 2026-09-13 that none of the three anticipated.**
-> A position appended to the text of a message a person chooses to send, by the
-> owner's own MeshCore fork, observed on the bench.
+> A position carried in the text of a message a person chooses to send, observed
+> arriving on the bench. What composes it is `UNKNOWN` — the capture is a
+> receiver-side render and the owner's fork publishes no source (M28) — and the
+> decision is deliberately written to need no answer: it specifies what this
+> product accepts, never what a sender emits.
 > [ADR-0021](adr/0021-remote-target-from-a-message.md) takes it and supersedes
 > ADR-0020 **on the wire and on nothing else**, implementing
 > [OD-30](research/OWNER_DECISIONS.md#od-30--a-position-is-shown-to-named-recipients-rather-than-broadcast):

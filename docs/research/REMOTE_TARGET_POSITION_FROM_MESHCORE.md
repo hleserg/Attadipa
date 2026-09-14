@@ -733,12 +733,31 @@ cadence — apply to it and are what ADR-0021 carries forward.
 
 ### 14.1 What it is
 
-The owner's own MeshCore fork for the V4.3 node appends the node's position to
-the **text** of a message a person chooses to send. It therefore arrives on the
-frame this repository already parses and already attributes to a sender, and it
-needs no request, no permission mask and no new protocol: the ask is a message,
-the consent is a person pressing send, and a standing "always let this contact
-find me" is that firmware's own per-contact setting.
+**Coordinates in message text are observed arriving; who or what composes them
+is `UNKNOWN`.** That distinction is the whole of this subsection, because §10.2
+already closed the question of what may be claimed about the V4.3 —
+`docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:530` — "no claim in this document is asserted about the V4.3" —
+and nothing here reopens it.
+
+What exists is one capture (§14.4) of a **MeshCore client conversation**, which
+is a receiver-side render: it shows that messages carrying a coordinate in the
+shape §14.2 records arrive on this network. It does not show which node sent
+them, and it does not show that firmware composed them rather than a person
+typing — §14.2's own spacing row concedes exactly that by allowing for a typed
+message. The owner reports that his fork appends the node's position to the text
+of a message a person chooses to send, and that a per-contact setting makes it
+standing. **That is the owner's report of a black box, not a fact this document
+establishes**, and the producer side is filed as **M28** in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md) rather than asserted here.
+
+The receiving side is what this repository builds, and it does not depend on the
+answer. A coordinate in message text arrives on the frame this repository
+already parses and already attributes to a sender; it needs no request, no
+permission mask and no new protocol, because the ask is a message and the
+consent is a person pressing send. Whether the sender's half is firmware or a
+person typing changes who has to be trusted to get the grammar right — which is
+why §14.2 is a specification of what must be **accepted**, and never of what may
+be assumed to have been sent.
 
 MeshCore has no structured place to put it. `TxtDataHelpers.h` defines three
 text types and none of them is a location record — `MESHCORE_COMPANION_PROTOCOL.md:676` — "`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`" —
@@ -772,12 +791,33 @@ keeps the coordinate whole — visible in the capture as a preset message cut
 mid-character, since the text is UTF-8 and the cut lands inside a two-byte
 letter.
 
-**That priority is the right way round and this repository cannot enforce it.**
-The reverse fails silently: a coordinate cut short is still a syntactically
-perfect number, `@55.98` sits about 2.3 km from `@55.9821`, and nothing in its
-shape says it was ever longer. A sender's firmware is the only place that can
-guarantee the budget, which is why it is recorded here as a property of the
-wire rather than as a parser requirement it is impossible to meet.
+**That priority is the right way round and this repository cannot enforce it on
+the sender.** The reverse fails silently: a coordinate cut short is still a
+syntactically perfect number, `@55.98` sits about **230 m** from `@55.9821`, and
+nothing in its shape says it was ever longer. A sender's firmware is the only
+place that can guarantee the budget, which is why it is recorded here as a
+property of the wire rather than as a parser requirement it is impossible to
+meet.
+
+**But our own receiver truncates too, and that half is detectable.** The text
+buffer is 128 bytes — `core/include/attadipa/core/mesh_service.h:16` — "inline constexpr std::size_t kMeshTextBytes = 128;" —
+while a companion message frame carries up to 173 bytes at a 16-byte text
+offset, so 157 bytes can arrive into 128 and the tail is cut by
+`link/src/meshcore_companion.cpp:78` — "    const std::size_t copy = std::min(size, N - 1);".
+Combine that with §14.2 taking the **last** match, which is where the sender is
+told to put it, and the cut lands on the coordinate: 132 bytes of text ending
+`@55.9821,37.2104` arrive as `@55.9821,37` — the copy keeps `N - 1`, so 127 of
+132 survive and five characters of longitude do not. That is not `(0, 0)`, it is inside
+±90 and inside ±180, so every value refusal passes it and "drop rather than
+clamp" never fires — and the target lands about **13 km** away.
+
+**Unlike the sender's half, ours is already flagged.** The copy reports it —
+`link/src/meshcore_companion.cpp:555` — "        copy_text(status_.last_message, &data[text], size - text);" —
+and the caller receives `message_truncated`. So a message our own receiver
+truncated must not yield a coordinate at all, whatever the remaining text parses
+to. [ADR-0021](../adr/0021-remote-target-from-a-message.md) decision 7 carries
+that as a refusal; it is the one truncation this repository *can* catch, and the
+only reason it is worth separating from the sender's.
 
 ### 14.4 Evidence, and what it does not establish
 
@@ -789,8 +829,13 @@ wire rather than as a parser requirement it is impossible to meet.
   root; the capture carries a contact name and a real position to about 11 m,
   which is what [OD-27](OWNER_DECISIONS.md#od-27--a-bench-capture-that-carries-no-position-and-no-identity-may-be-committed)
   refuses. The hash above is what makes it citable without publishing it.
-- **What it establishes:** that this firmware emits a coordinate in message text,
-  and the shape it emits.
+- **What it establishes:** that messages carrying a coordinate in this shape
+  arrive on this network, and what that shape is. That is a receiver-side
+  observation and the limit of what a conversation render can support.
+- **What it does not establish, and this is the one worth stating twice:** that
+  a firmware composed those coordinates. A client conversation shows text that
+  arrived, not its producer; §10.2 records that the V4.3's firmware cannot be
+  read at all, and the producer side stays `UNKNOWN` under M28.
 - **What it does not establish:** anything about the sender's fix quality, any
   age (the text carries no timestamp, and §6 already forbids inventing one), any
   altitude, the behaviour of the sign or the bounds, or that any other firmware

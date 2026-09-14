@@ -4,8 +4,9 @@ Status: **accepted**
 Date: 2026-09-14
 
 Supersedes [ADR-0020](0020-remote-target-position-source.md) **on which wire is
-paid for, and on nothing else.** Decisions 4, 5, 7 and 9 of that ADR are carried
-here unchanged and are load-bearing; the table below says exactly which of its
+paid for, and on nothing else.** Decisions 2, 4, 5, 6, 7 and 9 of that ADR are
+carried here and are load-bearing — the table below is the authority on this
+list, and this sentence is the same list spelled out rather than a shorter one; the table below says exactly which of its
 clauses stop applying. Rests on
 [OD-30](../research/OWNER_DECISIONS.md#od-30--a-position-is-shown-to-named-recipients-rather-than-broadcast),
 and on the same research: [REMOTE_TARGET_POSITION_FROM_MESHCORE](../research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md),
@@ -52,6 +53,17 @@ parses today — `link/src/meshcore_companion.cpp:527` — "bool MeshCoreCompani
 and the coordinate is a substring of the text it copies. The grammar is fixed in
 §14 of the research report and is the only shape accepted: nothing is inferred
 from a number that does not carry the sigil.
+
+**What is decided is what this repository accepts, not what any sender emits.**
+The evidence is a capture of a client conversation, which shows coordinates in
+this shape arriving and cannot show what composed them; the V4.3 fork publishes
+no source and nothing about its firmware is readable, which §10.2 of the report
+settled and M28 still carries. So this decision rests on an observed *arrival*
+and on the owner's report of his own node, and it deliberately claims no
+producer. That costs nothing here: a parser specified by what it must accept is
+correct whether the sender is firmware or a person typing, and a parser
+justified by an assumed producer would be wrong the first time that assumption
+failed.
 
 This replaces ADR-0020 decision 1 as the primary source.
 
@@ -117,12 +129,25 @@ readout honest while the label is imprecise. Correcting `PositionSource` is an
 ADR-0011 amendment and is not decided here, exactly as ADR-0020 declined to
 decide it.
 
-**7. The refusals of ADR-0020 decision 7 apply before the number is used, and
-the grammar adds two of its own.** Exactly `(0, 0)` is refused; a latitude
-outside ±90° and a longitude outside ±180° are refused; a contact the node has
-deleted is discarded rather than aged. To those the text wire adds: a coordinate
-that does not match the grammar whole is not read at all, and **a value that
-fails any bound is dropped, never clamped** — clamping would invent a place.
+**7. All four refusals of ADR-0020 decision 7 apply before the number is used,
+and the text wire adds three of its own.** ADR-0020's four, restated in full
+because an earlier draft of this clause listed three and dropped the contact
+type: exactly `(0, 0)` is refused; a latitude outside ±90° and a longitude
+outside ±180° are refused; **a contact whose type is not `ADV_TYPE_CHAT` is
+refused** — `docs/adr/0020-remote-target-position-source.md:130` — "a contact whose type is not `ADV_TYPE_CHAT`" —
+which still governs the fallback and is what keeps a repeater out of the target
+slot; and a contact the node has deleted is discarded rather than aged.
+
+To those the text wire adds three. A coordinate that does not match the grammar
+whole is not read at all. **A value that fails any bound is dropped, never
+clamped** — clamping would invent a place. And **a message our own receiver
+truncated yields no coordinate**, whatever the remainder parses to: the text
+buffer is 128 bytes against a frame that can deliver 157, the cut lands on the
+tail where §14.2 tells the sender to put the coordinate, and the result —
+`@55.9821,37` out of `@55.9821,37.2104` — is inside every bound and about 13 km
+wrong. The sender's own truncation cannot be caught here and is recorded as a
+property of the wire (§14.3); ours is reported by the parser already, so
+refusing it costs one branch and is not optional.
 
 The sign is part of the grammar, not an afterthought: a leading `-` on either
 number is accepted and means the southern or western hemisphere. A parser that
@@ -175,10 +200,23 @@ setting. Nothing is transmitted by this product to obtain a coordinate.
 **Harder.** The coordinate is now free text from a remote party rather than a
 fixed-width binary field, so the parser is the trust boundary and decision 7 is
 where that is paid. Two shapes of the sigil already exist in the wild (§14.2), and
-a sender's firmware truncating its own message could in principle cut a
-coordinate into a shorter, perfectly well-formed, and wrong one — the observed
-firmware truncates the human text and keeps the coordinate whole, which is the
-right priority and is not something this repository can enforce.
+truncation cuts a coordinate into a shorter, perfectly well-formed, and wrong
+one — ours is refused under decision 7 and the sender's cannot be caught here at
+all (§14.3).
+
+**Harder, and new with this ADR: the sixteen-peer cap now gates the coordinate
+itself.** Decision 2 attributes through `find_peer_prefix`, which searches only
+the peers this companion retains, and that table holds sixteen —
+`link/src/meshcore_companion.cpp:453` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
+against a contact table the T114 build sizes at 350. Under ADR-0020 that cap did
+not reach the position: `docs/adr/0020-remote-target-position-source.md:224` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
+and that sentence is **falsified by this ADR**, in a paragraph the clause table
+cannot reach because it is Consequences rather than a numbered decision. It is
+named here instead. A person past the sixteenth retained peer sends a
+coordinate, the prefix resolves to nothing, decision 2 says no target, and no
+later message changes it — the cap is consulted when peers sync, not per read.
+That is the price of naming a target by a full key it can verify, it is paid
+knowingly, and widening the table is the fix if the field ever asks for one.
 
 **Unchanged.** `NoFix` at every age, no claimed age, the refusals, and the
 absence of any node configuration. Those are ADR-0020's, and they are the half

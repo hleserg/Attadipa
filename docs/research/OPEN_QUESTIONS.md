@@ -281,7 +281,7 @@ choice between the remote paths is closed —
 [ADR-0020](../adr/0020-remote-target-position-source.md) on the wire and takes a
 coordinate carried in a message; both rest on
 [REMOTE_TARGET_POSITION_FROM_MESHCORE](REMOTE_TARGET_POSITION_FROM_MESHCORE.md),
-whose §13 records the message wire. Four things it could not close, and the
+whose §14 records the message wire. Four things it could not close, and the
 first is not a measurement gap but a source that does not exist. **M29 and M31
 below are unchanged by the new wire**: the advert cadence still governs the
 fallback, and a contact record is still client-writable.
