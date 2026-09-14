@@ -1963,3 +1963,66 @@ capitalization changes, and `AttadipaOS` is still not a name.
 
 **What it does not decide:** the Russian prose form stays **Аттадипа**, and the
 Latin wordmark in UI and logo use takes the hyphen.
+
+---
+
+## OD-30 — A position is shown to named recipients rather than broadcast
+
+**Decided:** 2026-09-14, by the owner, in conversation, against a recommendation
+that had proposed the opposite.
+
+**What was decided:** where a person's position travels to another node, it
+travels **in a message to the people they chose**, not in an advert to everyone
+in radio range. Asked to approve the advert path as the primary one, he rejected
+the ranking and gave the reason: an advert tells a whole festival where you are,
+and a message tells the person you meant. A remote **telemetry request** — the
+watch's companion transmitting to ask a node where it is — stays unbuilt, and is
+not the primary wire.
+
+**The reason first written under that last sentence was wrong, and the
+correction belongs here rather than in an implementer's head.** It said the
+telemetry request was rejected outright "because the upstream response frames
+cannot correlate an answer to the node that was asked". The *frame* carries no
+identity — that much is true and is why ADR-0021 decision 4 phrases it as it
+does — but this repository's own research answers the correlation question and
+answers it in the affirmative:
+`docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:481` — "Correlation is by tag **held against the full target key in our own state**,".
+So telemetry is not impossible; it is costlier, and ADR-0020 decision 8 deferred
+it on exactly that basis, with a trigger ADR-0021 decision 4 replaces rather than
+deletes. The owner's decision — a message, to named people, not a request on the
+air — stands untouched. The impossibility claim was never his and is withdrawn.
+
+The advert path is not forbidden. It stays as the fallback for a node running
+firmware that is not ours, which offers a position no other way.
+
+**What it obliges:** [ADR-0021](../adr/0021-remote-target-from-a-message.md) is
+the decision this produced, and it supersedes ADR-0020 on the wire and on
+nothing else. The remote-target work in
+[#450](https://github.com/hleserg/Attadipa/issues/450) takes its coordinate from
+a message and names the target by the contact the sender's key prefix resolves
+to; a message that resolves to no contact carries no target. The advert path
+stays implemented as the fallback for a node whose firmware is not ours. No
+telemetry request is implemented, and no position is put into an advert by this
+product.
+
+**It obliges no age, and that is deliberate.** ADR-0020 decision 4 already
+forbade the advert's timestamps from reaching `age_at_source_ms` because they
+are on the sender's clock, and a message carries no timestamp this repository
+reads at all. Arrival is not an age. An earlier draft of this entry said the
+coordinate would be aged by the message's own timestamp; that was wrong, it
+described a field that does not exist, and it is corrected here rather than left
+for an implementer to copy.
+
+It also obliges nothing new on the wire: the request is an ordinary text
+message, the consent is a person pressing send, and "always let this contact
+find me" is the sending firmware's own per-contact setting. A structured
+request-and-answer between two of this project's nodes may be built later; it is
+not what this decision asks for.
+
+**What it invalidates:** the recommendation this repository put to him — that
+the signed contact advert be the primary path because it costs nothing on the
+air. The cost it does not count is the one he named, and it is not a radio cost.
+
+**What it does not decide:** how a target is chosen in the interface, how long a
+position is kept, and whether this product ever attaches a position to a message
+it sends. The last of those is a separate decision and has not been asked.
