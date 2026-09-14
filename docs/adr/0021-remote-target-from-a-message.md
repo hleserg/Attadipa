@@ -58,7 +58,7 @@ new wire must apply them to it.
 
 **1. The remote target's coordinate is read from the text of a message this
 companion already accepts.** The message arrives on the path this repository
-parses today — `link/src/meshcore_companion.cpp:527` — "bool MeshCoreCompanion::accept_message(const std::uint8_t* data," —
+parses today — `link/src/meshcore_companion.cpp:612` — "bool MeshCoreCompanion::accept_message(const std::uint8_t* data," —
 and the coordinate is a substring of the text it copies. The grammar is fixed in
 §14 of the research report and is the only shape accepted: nothing is inferred
 from a number that does not carry the sigil.
@@ -80,7 +80,7 @@ This replaces ADR-0020 decision 1 as the primary source.
 message's sender prefix resolved to, and a message that resolves to no contact
 carries no target.** ADR-0020 decision 2 required the full key and refused a
 six-byte prefix. The message frame carries only the prefix —
-`link/src/meshcore_companion.cpp:463` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+`link/src/meshcore_companion.cpp:514` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
 so this decision does not weaken that rule, it routes through it: the prefix is a
 lookup key into a table that holds full keys, never an identity of its own.
 
@@ -88,7 +88,7 @@ lookup key into a table that holds full keys, never an identity of its own.
 inside one contact table would attribute a coordinate to the wrong contact.
 Nothing here measures that risk and nothing should claim it is zero. What is
 decided is the failure mode: an unresolved prefix means **no target**, not an
-unnamed one, because `link/src/meshcore_companion.cpp:548` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" —
+unnamed one, because `link/src/meshcore_companion.cpp:633` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" —
 already answers `nullptr` while the text is accepted regardless. A coordinate
 without a named sender is dropped.
 
@@ -238,7 +238,7 @@ all (§14.3).
 **Harder, and new with this ADR: the sixteen-peer cap now gates the coordinate
 itself.** Decision 2 attributes through `find_peer_prefix`, which searches only
 the peers this companion retains, and that table holds sixteen —
-`link/src/meshcore_companion.cpp:453` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
+`link/src/meshcore_companion.cpp:504` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
 against a contact table the T114 build sizes at 350. Under ADR-0020 that cap did
 not reach the position: `docs/adr/0020-remote-target-position-source.md:226` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
 and that sentence is **falsified by this ADR**, in a paragraph the clause table

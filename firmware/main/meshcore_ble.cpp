@@ -56,8 +56,15 @@ constexpr char kTag[] = "attadipa_mesh_ble";
 //
 // Since #317 this queue carries *only* data. The session lifecycle is not a
 // message here at all — see session_owner.h — so a burst that fills this can
-// cost frames, which the Companion protocol tolerates, and can no longer cost a
-// disconnect, which it does not.
+// cost frames and can no longer cost a disconnect, which the protocol does not
+// tolerate. It does not tolerate every lost frame either, and this comment used
+// to say it did: a bounded queue drops the *tail* of a burst, so the frame it
+// loses is systematically RESP_CODE_END_OF_CONTACTS — MEASURED three sessions
+// out of three on 2026-09-14, #566. A lost contact record the next walk re-sends;
+// a lost boundary used to strand the session, which is why the client now ends
+// a walk on silence. Forty-eight buys the margin; what took the drops to three
+// in an hour on the same node at the same depth was compiling the hex body out
+// of log_frame(), so do not read this number as the protection on its own.
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
@@ -1002,9 +1009,17 @@ int gap_event(ble_gap_event* event, void* arg)
             // whole boot. MEASURED on the bench 2026-08-28 -- two dropped
             // contact records took the link down at 8.3 s and nothing rescanned
             // for the remaining four minutes. A full queue is backpressure, not
-            // a broken subsystem. The Companion protocol tolerates a lost frame:
-            // a contact record is re-sent by the next CMD_GET_CONTACTS and the
-            // sync boundary still arrives, and a lost push is one message.
+            // a broken subsystem.
+            //
+            // WHAT A LOST FRAME COSTS WAS UNDERSTATED HERE UNTIL #566. This
+            // used to read "the sync boundary still arrives"; it does not. On
+            // 2026-09-14 the bench dropped RESP_CODE_END_OF_CONTACTS in three
+            // sessions out of three -- it is the last frame of the burst, so it
+            // is the one the overrun reaches -- and with it went the only
+            // CMD_SYNC_NEXT_MESSAGE the session would ever send. Backpressure
+            // is still the right answer here; tolerating it is the client's
+            // job, and `link/src/meshcore_companion.cpp` now does it with a
+            // quiet-stream sweep rather than by trusting this frame to land.
             {
                 SessionGuard guard;
                 owner.frame_dropped();
@@ -1093,7 +1108,25 @@ void log_frame(const char* direction, const std::uint8_t* data, std::size_t size
                  static_cast<unsigned>(data[0]), static_cast<unsigned>(size));
     }
     if (printable != 0) {
-        ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, printable, ESP_LOG_INFO);
+        // THE BODY IS COMPILED OUT AND THE HEADER IS NOT, because the body is
+        // what costs the queue. A 148-byte contact record is eleven log lines,
+        // and the node sends 234 of them back to back: MEASURED on the bench
+        // 2026-09-14, that backlog is what overran `kEventDepth` and dropped
+        // RESP_CODE_END_OF_CONTACTS in every session captured (#566). Moving it
+        // here took the drops from 162 to zero on the same node.
+        //
+        // NOT "DEMOTED TO DEBUG" -- REMOVED. `CONFIG_LOG_MAXIMUM_LEVEL` is 3
+        // (INFO) in both variants and this file sets no `LOG_LOCAL_LEVEL`, so
+        // the call is compiled out of every image Attadipa ships, HIL included.
+        // That is the intended default and it is also the cost: a bench capture
+        // no longer shows what a frame contained. Getting it back is a build
+        // setting -- raise `CONFIG_LOG_MAXIMUM_LEVEL` and the tag's level -- and
+        // an image built that way drops frames again, which is now survivable
+        // rather than silent: `link/src/meshcore_companion.cpp` closes a walk
+        // whose boundary went missing. The one-line header above stays at INFO
+        // in every image, and it is what named the lost frame in the first
+        // place.
+        ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, printable, ESP_LOG_DEBUG);
     }
 }
 
@@ -1620,11 +1653,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:189` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:196` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1677` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1710` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:931` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:938` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather

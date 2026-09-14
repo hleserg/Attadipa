@@ -506,9 +506,16 @@ same reasoning had simply not been applied to a full queue.
 
 **Fix, two parts:** the queue is 48 deep rather than 16, sized for a contact
 burst; and a frame that cannot be queued is logged and dropped, never faulted.
-The Companion protocol tolerates that — a contact record is re-sent by the next
-`CMD_GET_CONTACTS` and the sync boundary still arrives; a lost push is one
-message.
+
+**This report used to claim the Companion protocol tolerates that, "the sync
+boundary still arrives". It does not, and #566 is the retraction.** MEASURED
+2026-09-14 on a node with 234 contacts: the burst overran the 48-deep queue in
+all three sessions captured, and the frame it dropped last was
+`RESP_CODE_END_OF_CONTACTS` every time — 162, 157 and 160 contact records lost
+and the boundary with them. A bounded queue drops the *tail* of a burst, so the
+frame that ends a stream is systematically the one lost. A contact record is
+still re-sent by the next `CMD_GET_CONTACTS`, and a lost push is still one
+message; what was wrong was treating the boundary as just another data frame.
 
 **MEASURED before and after, same node, same 37-contact list, 40 minutes
 apart:**
@@ -616,6 +623,74 @@ Both ran with a live message feed throughout.
 12.50 dB. Peer count rose from 6 to 37 across the evening's sessions as
 advertisements accumulated.
 
+### 7e. One walk in nineteen fell quiet mid-stream, and the sweep fired · `MEASURED`
+
+7b stopped the queue from swallowing `RESP_CODE_END_OF_CONTACTS`;
+[#566](https://github.com/hleserg/Attadipa/issues/566) closed the same loss in
+the client, by ending a contact walk on silence rather than on a frame that may
+never come. This is what the silence rule costs when the silence is not a lost
+frame.
+
+**The capture.** One continuous boot on the image carrying both fixes, uptime
+1.4 s to 3551 s — 59 minutes, 2026-09-14. **Node A throughout**: `5c62d9bc…`,
+`Beta test companion`, the Heltec T114 on `v1.17.1-d929643`, the same unit as
+7b, its contact list grown to 233. 20 `RESP_CODE_CONTACTS_START`, 19 complete
+walks, 4616 contact records, and **three dropped frames in the whole hour**,
+all three `RESP_CODE_CONTACT` and never a boundary. Eighteen walks delivered
+all 233 records; one delivered 230.
+
+**Gaps, over all 4616 contact records** — each measured from the frame before
+it, so 20 of them are `RESP_CODE_CONTACTS_START` to the first contact and 4596
+are contact to contact: median 0 ms, p99 10 ms, largest-but-one **70 ms** — and
+one outlier of **3850 ms**, longer than the 3000 ms `kContactsQuiet` waits
+before concluding the walk is over. The distribution is not a tail, it is two
+populations: everything under 70 ms, then one pause three orders of magnitude
+out.
+
+At that outlier the sweep did exactly what it is built to do, on a walk that was
+not in fact over:
+
+| t (ms) | what |
+| --- | --- |
+| 1074074 | `RESP_CODE_CONTACTS_START`, then 30 contacts in 50 ms |
+| 1074124 | the stream goes quiet — 30 of 233 delivered |
+| 1077624 | **`CMD_SYNC_NEXT_MESSAGE`** — the quiet sweep, 3500 ms after the last contact |
+| 1077824 | `CMD_GET_CUSTOM_VARS`, the frame the sweep releases behind it |
+| 1077974 | a contact arrives, and with it `RESP_CODE_NO_MORE_MESSAGES` and `RESP_CODE_CUSTOM_VARS` |
+| 1077994 | `CMD_GET_BATTERY_AND_STORAGE`, into the catch-up burst |
+| 1078094–1078104 | three `RESP_CODE_CONTACT` frames dropped — the only three in the hour |
+| 1078484 | 200 further contacts, then `RESP_CODE_END_OF_CONTACTS` |
+
+**`CMD_SYNC_NEXT_MESSAGE` mid-walk did not abort the node's iteration.** The
+node answered it `RESP_CODE_NO_MORE_MESSAGES` and went straight on sending
+contacts to the end of the same walk — 230 delivered plus the 3 dropped is the
+233 the list holds. `MEASURED` 2026-09-14, **one occurrence in 19 walks**: it
+did not abort, once observed, which is not the same as it cannot.
+
+**What the misfire cost, all of it in that one walk:**
+
+- one redundant `CMD_SYNC_NEXT_MESSAGE`, answered and discarded;
+- `status.peers_complete` set at 30 of 233. **On this node that cost nothing
+  and this capture cannot show it**: `kRetainedPeers` caps the retained set at
+  16, so the face prints `16/233` from the sixteenth contact to the end of the
+  session whether the sweep misfires or not. All the misfire moved was *when*
+  that pair appeared — 3850 ms early. The cost is real on the list the flag was
+  introduced for, sixteen contacts or fewer: there a misfire sets
+  `peers_complete` at *k* of *N* and the face counts up through `3/40`, which is
+  what `peers_complete` exists to stop. It self-heals as the walk resumes.
+  `UNKNOWN` — the bench node is the one node that cannot exhibit it;
+- the frames the sweep releases behind it — `CMD_GET_CUSTOM_VARS` and the
+  battery poll — went out into the catch-up burst, and the only three dropped
+  frames of the hour landed ~100 ms after the battery poll. One occurrence, so
+  correlation and not cause; what made the 3850 ms pause, and what made the
+  drops, are both `UNKNOWN`.
+
+**What this does not settle.** It does not close M27 in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md#what-a-position-out-of-a-node-still-does-not-say),
+which asks about `CMD_APP_START` — a different command, and the only one
+MeshCore source documents as clearing `_iter_started`. And n = 1 bounds nothing:
+a node under different load may answer a mid-walk sync differently.
+
 ## 8. Authentication and cryptography, as observed
 
 **Nothing in this section says the link or MeshCore is secure.** It records
@@ -625,7 +700,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1. What the *store* does when a second node bonds is no longer open, but it was settled by reading the vendor tree rather than on this bench: [VERIFIED_FACTS.md](VERIFIED_FACTS.md) "A wrong MeshCore node's bond evicts the pinned node's". This row is the bench half and stays `UNKNOWN` until a run exercises it |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:2174`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1679`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1699` "store_passkey(event.passkey) && clear_reprovision_pending())") and replayed at boot unless node recovery is pending; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:2207`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1712`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1732` "store_passkey(event.passkey) && clear_reprovision_pending())") and replayed at boot unless node recovery is pending; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |
@@ -694,7 +769,7 @@ watch pairs afresh, completes
 the handshake, reads a key that is not the one it is pinned to, and refuses the
 node: [`../../firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
 — "return PinOutcome::Refused;". Nothing in any image erases the pin — the sole
-writer is [`../../firmware/main/meshcore_ble.cpp:457`](../../firmware/main/meshcore_ble.cpp)
+writer is [`../../firmware/main/meshcore_ble.cpp:464`](../../firmware/main/meshcore_ble.cpp)
 — "nvs_set_blob(handle, kNodeKeyNvsKey" and there is no eraser beside it — so
 the watch refuses the node once a minute, indefinitely, and `idf.py erase-flash`
 is the only way back. `mesh-forget-bond` is still correct and still necessary;

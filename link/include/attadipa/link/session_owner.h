@@ -29,8 +29,12 @@
 //
 // The second half is `reconcile()`, and it is there because the lifecycle used
 // to travel as entries in the same bounded queue as bulk data frames. Dropping
-// a data frame under backpressure is deliberate and safe — the node re-sends a
-// contact record and the sync boundary still arrives. Dropping the *disconnect*
+// a data frame under backpressure is deliberate and **not** free — the node
+// re-sends a contact record on the next `CMD_GET_CONTACTS`, but the sync
+// boundary does not come back: it is the last frame of the burst, so it is the
+// one an overrun reaches, and on the bench it was lost in three sessions out of
+// three (#566). A lost data frame costs whatever hung off it, and the client
+// carries that cost rather than this queue. Dropping the *disconnect*
 // is neither: the worker never resets the session, the next connection is
 // established against a link model that thinks the previous peer is still
 // there, and the transport stalls until a reboot. Here the lifecycle is not a

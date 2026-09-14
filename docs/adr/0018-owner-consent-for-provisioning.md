@@ -47,26 +47,26 @@ recorded here so that no option is credited with paying them.
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:2174` — "bool configure_meshcore_ble(std::uint32_t passkey)"
-   reaches `firmware/main/meshcore_ble.cpp:1677` — "secure_pairing.store(event.passkey != 0);"
+   `firmware/main/meshcore_ble.cpp:2207` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   reaches `firmware/main/meshcore_ble.cpp:1710` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
-   `firmware/main/meshcore_ble.cpp:188` — "std::atomic_bool configured{false};"
-   and `firmware/main/meshcore_ble.cpp:190` — "std::atomic_bool reconnect_allowed{false};".
+   `firmware/main/meshcore_ble.cpp:195` — "std::atomic_bool configured{false};"
+   and `firmware/main/meshcore_ble.cpp:197` — "std::atomic_bool reconnect_allowed{false};".
    But the seam that would hold it is already in this translation unit, put
-   there by #304: `firmware/main/meshcore_ble.cpp:252` — "constexpr const char* kMeshNvsNamespace = ",
-   read at `firmware/main/meshcore_ble.cpp:342` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
-   and written at `firmware/main/meshcore_ble.cpp:457` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2121` —
+   there by #304: `firmware/main/meshcore_ble.cpp:259` — "constexpr const char* kMeshNvsNamespace = ",
+   read at `firmware/main/meshcore_ble.cpp:349` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
+   and written at `firmware/main/meshcore_ble.cpp:464` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2154` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
    persisting what was provisioned is orthogonal to the channel that delivered
    it. #356's first change added that key: an accepted pairing passkey is
    stored once the stack has taken it
-   (`firmware/main/meshcore_ble.cpp:1698` — "const bool stored = !event.persist_passkey ||"),
+   (`firmware/main/meshcore_ble.cpp:1731` — "const bool stored = !event.persist_passkey ||"),
    replayed at boot through the same event unless a durable node-forget marker
    requires new owner-entered digits, and erased again by `Deconfigure`
-   (`firmware/main/meshcore_ble.cpp:1747` — "if (!erase_passkey()) {").
+   (`firmware/main/meshcore_ble.cpp:1780` — "if (!erase_passkey()) {").
    `Deconfigure` is reached only from the HIL
    image's `mesh-disconnect`, so a product image cannot revoke on its own: it
    can be given another passkey, or be flashed over with the HIL image and
@@ -80,7 +80,7 @@ recorded here so that no option is credited with paying them.
    not.** It erases the passkey and leaves behind the two pieces of state that
    actually block a reconnect: the bond, and the pinned node public key. The
    bond a HIL image can delete; the pin **no image can**, because the only
-   writer of `firmware/main/meshcore_ble.cpp:253` — "constexpr const char* kNodeKeyNvsKey"
+   writer of `firmware/main/meshcore_ble.cpp:260` — "constexpr const char* kNodeKeyNvsKey"
    is the adopt path and there is no eraser beside it. So "be flashed over with
    the HIL image and told to stop" does not restore a watch whose node was
    factory-reset either — after `mesh-forget-bond` and a `Configure` carrying
@@ -174,11 +174,11 @@ Consent is that a person is holding this watch and touching its screen. Nothing
 on a cable or a radio can do that.
 
 The decisive fact is one the firmware already asserts to its peer:
-`firmware/main/meshcore_ble.cpp:2001` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
+`firmware/main/meshcore_ble.cpp:2034` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:2174` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:2207` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.
@@ -219,9 +219,9 @@ Priced against the current build, B is **A plus a radio**:
 
   One qualifier, because the cost lands later than it looks: the watch only
   reaches the SMP path once a passkey has been armed —
-  `firmware/main/meshcore_ble.cpp:189` — "std::atomic_bool secure_pairing{false};",
-  set at `firmware/main/meshcore_ble.cpp:1677` — "secure_pairing.store(event.passkey != 0);"
-  and read at `firmware/main/meshcore_ble.cpp:931` — "if (secure_pairing.load()) {". An image nobody has provisioned
+  `firmware/main/meshcore_ble.cpp:196` — "std::atomic_bool secure_pairing{false};",
+  set at `firmware/main/meshcore_ble.cpp:1710` — "secure_pairing.store(event.passkey != 0);"
+  and read at `firmware/main/meshcore_ble.cpp:938` — "if (secure_pairing.load()) {". An image nobody has provisioned
   writes no bond at all, so the eviction is a cost of the *second* provisioning
   and of bench images, not of every build. It is still B's cost, because B's
   whole purpose is to provision a second peer.

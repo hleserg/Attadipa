@@ -196,6 +196,40 @@ private:
     static constexpr core::Millis kMinAckWait{1000};
     static constexpr core::Millis kMaxAckWait{15000};
 
+    // HOW LONG A CONTACT STREAM HAS TO BE QUIET before the session concludes
+    // the walk is over without the frame that says so. Chosen, not derived, and
+    // knowingly under the largest pause the bench has seen. A 59-minute capture
+    // on 2026-09-14 measured every one of the 4616 gaps inside a walk on the
+    // 233-contact node:
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:647` — "everything under 70 ms, then"
+    // Three seconds clears that by a factor of forty; the one pause that beat
+    // it beat it outright, at 3850 ms. Nothing lies between the two, so a
+    // longer window would buy no case and delay the real one.
+    //
+    // BEING WRONG IS NOT FREE AND IS NOT FATAL. That same capture caught this
+    // sweep misfiring, once in nineteen walks, and the node did not abort:
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:664` — "did not abort the node's iteration"
+    // It answered RESP_CODE_NO_MORE_MESSAGES and kept sending contacts to the
+    // end of the same walk. What the misfire cost was one redundant command,
+    // and CMD_GET_CUSTOM_VARS and the battery poll released into the catch-up
+    // burst -- beside which the only three dropped frames of the hour landed.
+    // One occurrence, so that last one is correlation and not cause, and one
+    // occurrence bounds nothing: it did not abort, not it cannot.
+    //
+    // AND THE CAPTURE CANNOT PRICE THE THIRD COST, because the node it ran on
+    // has 233 contacts and `kRetainedPeers` is 16: the face prints `16/233`
+    // from the sixteenth record on, misfire or not. The cost lands on the list
+    // `peers_complete` was introduced for -- sixteen or fewer -- where an early
+    // close publishes *k* of *N* and the pair counts up as the walk resumes.
+    // Seconds of a wrong pair on one face, self-healing, and UNKNOWN on a
+    // board; `test_a_misfired_sweep_publishes_a_partial_pair` holds it on the
+    // host.
+    //
+    // WHICH IS WHY THE WINDOW STAYS SHORT. A boundary genuinely lost strands
+    // every inbound message for the rest of the session; a misfire costs a
+    // command the node answers. The costs are not symmetric, so err short.
+    static constexpr core::Millis kContactsQuiet{3000};
+
     // The narrower question, and the one an untagged response has to be matched
     // against. `send_busy()` is about the *operation* -- it stays true through
     // `awaiting_confirm_`, which is a phase the node has already answered with
@@ -226,6 +260,7 @@ private:
     void accept_custom_vars(const std::uint8_t* data, std::size_t size);
     bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
+    bool end_contacts(core::MonotonicTime now);
     bool request_next_message(core::MonotonicTime now);
     bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);
@@ -259,6 +294,13 @@ private:
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;
     bool contacts_complete_ = false;
+    // The node is mid-walk: RESP_CODE_CONTACTS_START arrived and the frame that
+    // ends the walk has not. `last_contact_at_` is the newest frame belonging to
+    // it, and the pair is what lets a quiet stream stand in for a boundary the
+    // transport dropped. Read only while `contacts_open_` is true, so the stale
+    // timestamp a close leaves behind is never consulted.
+    bool contacts_open_ = false;
+    core::MonotonicTime last_contact_at_{};
     enum class BatteryRequest : std::uint8_t { Idle, Queued, Waiting };
     BatteryRequest battery_request_ = BatteryRequest::Idle;
     core::MonotonicTime battery_started_{};

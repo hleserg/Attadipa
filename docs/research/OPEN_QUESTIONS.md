@@ -271,7 +271,7 @@ not say.
 | M24 | **Which build environment is on the free bench T114, and does it answer `gps:1`?** `v1.17.1-d929643` does not encode the environment, and GNSS presence is not a board fact either: `EnvironmentSensorManager` opens the GPS UART, waits one second, and sets `gps_detected` from whether any byte arrived. So a node can disagree with itself across two power cycles, and nothing read from source predicts what this unit reports. It decides whether path B is available at all on the one node we may test against | **UNKNOWN** | one `CMD_GET_CUSTOM_VARS` (40) on the bench, reading `RESP_CODE_CUSTOM_VARS` (21). Costs one command and no write. `NOT EXECUTED — HARDWARE REQUIRED` |
 | M25 | **Does losing the fix really leave the transmitted coordinate unchanged?** Read from source the answer is yes — the receiver's value is copied into `node_lat` only inside `if (_location->isValid())`, so the last good value persists — and every conservative rule in the mapping rests on it. It has never been observed | **ASSUMPTION**, with the source behind it | an open-sky capture of `RESP_CODE_SELF_INFO` with the node's own fix independently visible, then indoor captures for an hour. **The prediction is that bytes 36–43 are byte-identical.** If they are not, the report is wrong in a way worth knowing at once. `NOT EXECUTED — HARDWARE REQUIRED` |
 | M26 | **What datum is the altitude in an `LPP_GPS` record?** Cayenne LPP says "meters" and stops. MicroNMEA reads NMEA GGA field 9, which is orthometric height above mean sea level, so MSL is the better guess — but the chain passes through `LocationProvider::getAltitude()`, which any variant may implement differently, and a geoid separation is tens of metres | **UNKNOWN** | reading every in-tree `getAltitude` implementation, or a bench comparison against a known elevation. Until then populate `altitude_msl_mm` with the provenance recorded, and never `altitude_ellipsoid_mm` |
-| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?** It is the only way to re-read the node's coordinate, and its handler also sets `_iter_started = false`, aborting a contacts iteration in progress. Read from source; the practical cost — whether a client notices, whether contacts resync cleanly — is unmeasured | **UNKNOWN** | a bench session that starts a contacts sync and interrupts it. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?** It is the only way to re-read the node's coordinate, and its handler also sets `_iter_started = false`, aborting a contacts iteration in progress. Read from source; the practical cost — whether a client notices, whether contacts resync cleanly — is unmeasured. A *different* command, `CMD_SYNC_NEXT_MESSAGE`, was observed arriving mid-walk without aborting the iteration — §7e of [MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) — and that says nothing about this one, which is the one whose handler clears `_iter_started` | **UNKNOWN** | a bench session that starts a contacts sync and interrupts it. `NOT EXECUTED — HARDWARE REQUIRED` |
 
 ### What a *remote* node's coordinate still does not say
 
@@ -411,7 +411,7 @@ is the record of what was true at `144459f` and what changed it:
   "  state.entry.emplace(provisioner, attadipa::apps::EntryTask::All, seed);"):
   `firmware/main/waveshare_board.cpp:526` — "set_mesh_passkey(std::uint32_t passkey) override {".
   With nothing on flash and nothing entered the worker's
-  `firmware/main/meshcore_ble.cpp:1276` — "if (configured.load()) start_scan();"
+  `firmware/main/meshcore_ble.cpp:1309` — "if (configured.load()) start_scan();"
   is false forever, which is now the same "not set up yet" as a blank clock
   rather than a product that cannot be set up.
 - **A changed node cannot be recovered from, and this bullet understated it.**
@@ -423,7 +423,7 @@ is the record of what was true at `144459f` and what changed it:
   reads the reset node's new public key, and
   `firmware/main/meshcore_node_pin.h:200` — "return PinOutcome::Refused;" turns
   it away for good. The single writer of that key is
-  `firmware/main/meshcore_ble.cpp:457` — "nvs_set_blob(handle, kNodeKeyNvsKey"
+  `firmware/main/meshcore_ble.cpp:464` — "nvs_set_blob(handle, kNodeKeyNvsKey"
   and there is no eraser; the file's one `nvs_erase_key` names the passkey
   instead. So this is not "the product image lacks a surface the HIL image has";
   no image has the operation. Traced in
