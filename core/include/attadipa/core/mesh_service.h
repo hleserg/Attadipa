@@ -37,6 +37,34 @@ enum class MeshDelivery : std::uint8_t {
     Failed,
 };
 
+// WHETHER THE RETAINED CONTACT LIST IS THE NODE'S LIST, which is a different
+// question from whether the walk that read it finished. The node's table can be
+// appended to, rewritten in place or compacted under its own iterator, and it
+// announces that with a push while the walk is still running --
+// `docs/research/MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md:190` — "**YES.** The one code that covers both"
+// -- so a stream that ended is not a snapshot that is true. ADR-0022 decision 2
+// keeps the two apart rather than folding consistency into `peers_complete`,
+// which means the stream finished and must keep meaning that.
+//
+// `None` is a session that has not finished a walk yet, not a bad snapshot.
+// `Dirty` is finished and unproven with a re-read still owed; `RetryPending`
+// is one on the wire; `Degraded` is the newest read published anyway because
+// the budget of two is spent -- a list that is probably right serves the wearer
+// better than none, provided it does not claim to be proven.
+//
+// NOTHING ON THE FACE READS THIS YET, and that is deliberate rather than
+// unfinished: telling the wearer a peer list is unproven is a UI state with a
+// Russian string and a place on two panel geometries behind it, and `ui/AGENTS.md`
+// is where that is argued. Its first consumer is #552's recipient resolution,
+// which needs to refuse rather than to display.
+enum class MeshSnapshot : std::uint8_t {
+    None,
+    Consistent,
+    Dirty,
+    RetryPending,
+    Degraded,
+};
+
 struct AttachedNodeBattery {
     // Provider topology, independent of whether a reading is available. An
     // integrated provider leaves this false: it shares the watch's supply.
@@ -100,6 +128,10 @@ struct MeshStatus {
     // ever meant "the 16 slots filled" -- a contact the watch drops by advert
     // type never reached that flag and is the ordinary case, not the corner.
     bool peers_complete = false;
+    // Consistency, kept beside completeness and never folded into it. The two
+    // move independently: a truncated list can be consistent, and a full one
+    // that the node rewrote under its own iterator is not.
+    MeshSnapshot snapshot = MeshSnapshot::None;
     bool message_truncated = false;
 };
 

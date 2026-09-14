@@ -230,6 +230,30 @@ private:
     // command the node answers. The costs are not symmetric, so err short.
     static constexpr core::Millis kContactsQuiet{3000};
 
+    // HOW LONG A DIRTY SNAPSHOT WAITS BEFORE IT IS RE-READ, and it is sourced
+    // to the window above rather than chosen round. A re-read issued while the
+    // node is still iterating is answered ERR_CODE_BAD_STATE
+    // (`docs/research/MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md:419` — "A second `CMD_GET_CONTACTS` while the node is iterating"),
+    // and the one way this client can believe a walk ended while the node is
+    // still walking is the quiet sweep firing early -- which the bench caught
+    // it doing, once in nineteen walks. So the delay has to clear the largest
+    // intra-walk pause that capture measured, 3850 ms, *after* the 3000 ms the
+    // sweep already spent reaching that conclusion: 6850 ms is the floor and
+    // ten seconds is the next round number above it.
+    //
+    // It is a policy choice with a reason, not a measurement, and ADR-0022 asks
+    // for exactly that -- the report refuses to invent the number and leaves it
+    // to the issue. Being wrong long costs latency on a consistency nobody yet
+    // reads; being wrong short costs a refused command and, on a node still
+    // iterating, an untagged error the attribution below has to absorb.
+    static constexpr core::Millis kSnapshotRetryDelay{10000};
+
+    // Two, and the budget is the whole of what stops a node under advert load
+    // from being re-read for the life of the session. Section 7.2 expects dirty
+    // to be the *normal* outcome on a busy channel, so the spent budget is the
+    // ordinary path and `Degraded` is the ordinary published state.
+    static constexpr std::uint8_t kSnapshotRetries = 2;
+
     // The narrower question, and the one an untagged response has to be matched
     // against. `send_busy()` is about the *operation* -- it stays true through
     // `awaiting_confirm_`, which is a phase the node has already answered with
@@ -261,6 +285,8 @@ private:
     bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     bool end_contacts(core::MonotonicTime now);
+    void settle_snapshot(core::MonotonicTime now);
+    void finish_retry(core::MonotonicTime now);
     bool request_next_message(core::MonotonicTime now);
     bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);
@@ -301,6 +327,42 @@ private:
     // timestamp a close leaves behind is never consulted.
     bool contacts_open_ = false;
     core::MonotonicTime last_contact_at_{};
+    // AN INVALIDATING PUSH ARRIVED INSIDE THE WALK THAT IS RUNNING. Set by four
+    // codes and only between START and END; the same codes outside that window
+    // mean the world moved on, which is staleness, and staleness is not
+    // repaired by re-reading a snapshot that was true. Cleared by every START,
+    // because each walk is judged on its own pushes.
+    //
+    // It is deliberately not `status_.snapshot`. That field is published at a
+    // boundary and nowhere else -- all four of its states are things that are
+    // true of a *finished* walk -- so a push landing mid-stream moves this bit
+    // and leaves the last proven observation standing, which is the same rule
+    // decision 7 applies to the peer list itself.
+    bool snapshot_dirty_ = false;
+    core::MonotonicTime dirty_end_at_{};
+    std::uint8_t retries_left_ = kSnapshotRetries;
+    // A re-read has been put on the wire and its RESP_CODE_CONTACTS_START has
+    // not arrived; then, once it has, its walk is the one running. The pair is
+    // what tells the second CONTACTS_START of a session apart from the first,
+    // and that distinction is the whole of decision 7a: without it the retry's
+    // own START wipes `peer_count_`, drops `Availability::Ready`, restarts the
+    // `retained/reported` pair at zero, and leaves an incoming message with no
+    // sender to name.
+    bool retry_armed_ = false;
+    bool retry_open_ = false;
+    core::MonotonicTime retry_since_{};
+    std::uint32_t contacts_seq_ = 0;
+    // WHERE A RE-READ'S CONTACTS GO UNTIL IT PROVES ITSELF. Sixteen slots, the
+    // same array the client already carries, and the cost decision 7 has to pay
+    // in full or not claim: the published set in `peers_` is what
+    // `find_peer_prefix()` and `peer()` read, and it is not touched while a
+    // re-read streams. Committed wholesale on a clean END, or on a dirty one
+    // when the budget is spent; discarded otherwise. Never merged -- the
+    // accumulator overwrites a row and never removes one, so a snapshot that
+    // dropped a contact cannot be repaired by merging into it.
+    std::array<core::MeshPeer, kRetainedPeers> incoming_peers_{};
+    std::size_t incoming_count_ = 0;
+    std::uint16_t incoming_reported_ = 0;
     enum class BatteryRequest : std::uint8_t { Idle, Queued, Waiting };
     BatteryRequest battery_request_ = BatteryRequest::Idle;
     core::MonotonicTime battery_started_{};

@@ -43,8 +43,21 @@ constexpr std::uint8_t kResponseCustomVars = 21;
 constexpr std::uint8_t kResponseDeviceInfo = 13;
 constexpr std::uint8_t kResponseContactMessageV3 = 16;
 constexpr std::uint8_t kResponseChannelMessageV3 = 17;
+// THE FOUR PUSH CODES THAT MOVE THE NODE'S CONTACT TABLE, classified from the
+// callback behind each one rather than from its name:
+// `docs/research/MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md:188` — "| Code | Raised by | Table change | Invalidates a walk in progress? |"
+// Two of the names read the other way round and are not here for it. `0x8A`
+// NEW_ADVERT fires where the contact was *refused* a slot, and `0x90`
+// CONTACTS_FULL fires where `allocateContactSlot()` returned NULL, which is
+// precisely the case where nothing was stored and nothing was overwritten.
+constexpr std::uint8_t kPushAdvert = 0x80;
+constexpr std::uint8_t kPushPathUpdated = 0x81;
 constexpr std::uint8_t kPushSendConfirmed = 0x82;
 constexpr std::uint8_t kPushMessageWaiting = 0x83;
+constexpr std::uint8_t kPushNewAdvert = 0x8A;
+constexpr std::uint8_t kPushPathDiscovery = 0x8D;
+constexpr std::uint8_t kPushContactDeleted = 0x8F;
+constexpr std::uint8_t kPushContactsFull = 0x90;
 constexpr std::uint8_t kPushLoginSuccess = 0x85;
 constexpr std::uint8_t kPushLoginFail = 0x86;
 constexpr std::uint8_t kAdvertTypeChat = 1;
@@ -188,6 +201,20 @@ void MeshCoreCompanion::reset_session()
     contacts_complete_ = false;
     contacts_open_ = false;
     last_contact_at_ = {};
+    status_.snapshot = core::MeshSnapshot::None;
+    snapshot_dirty_ = false;
+    dirty_end_at_ = {};
+    retries_left_ = kSnapshotRetries;
+    retry_armed_ = false;
+    retry_open_ = false;
+    retry_since_ = {};
+    contacts_seq_ = 0;
+    incoming_count_ = 0;
+    incoming_reported_ = 0;
+    // Cleared, not merely forgotten, for the same reason the tx ring above is:
+    // these slots hold contact names and full public keys read from a node this
+    // session is no longer talking to.
+    incoming_peers_.fill(core::MeshPeer{});
     draining_ = false;
     draining_since_ = {};
     pending_push_ = false;
@@ -299,6 +326,45 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
         core::elapsed(custom_vars_since_, now) >= kMaxAckWait) {
         awaiting_custom_vars_ = false;
     }
+    // AND THE RE-READ GETS THE SAME BOUND FOR THE SAME REASON. A node that
+    // answers CMD_GET_CONTACTS with neither a CONTACTS_START nor an error would
+    // otherwise leave this claim outstanding for the session, and every later
+    // untagged error would be charged to a request that is never going to be
+    // answered -- a real send's failure absorbed by a re-read nobody is waiting
+    // on. Giving up costs the attempt, which the budget already spent.
+    if (retry_armed_ && core::elapsed(retry_since_, now) >= kMaxAckWait) {
+        retry_armed_ = false;
+        settle_snapshot(now);
+    }
+    // THE RE-READ ITSELF, AND EVERY CONDITION ON IT IS LOAD-BEARING.
+    //
+    // `!contacts_open_ && !retry_open_` is decision 3's "never mid-stream": a
+    // second CMD_GET_CONTACTS while the node is iterating is answered
+    // ERR_CODE_BAD_STATE, and that error carries no correlation field, so it
+    // would be charged to whatever command is still owed an answer.
+    // `retries_left_` is the bound that makes "dirty on every walk" -- which
+    // §7.2 expects to be the *normal* steady state on a busy channel -- cost a
+    // fixed two commands rather than a command per walk forever.
+    // `kSnapshotRetryDelay` is what keeps a node under advert load from being
+    // re-read at loop speed. And `!wrong_node_` is the same guard the pending
+    // push sweep carries, for the same reason: this ask, like that one, leaves
+    // from outside `receive()` and so is the one the refusal latch cannot reach.
+    //
+    // Nothing is retried until a first walk has finished, because `dirty_end_at_`
+    // is stamped by `settle_snapshot()` and `snapshot_dirty_` only survives a
+    // walk that ended.
+    if (snapshot_dirty_ && !contacts_open_ && !retry_open_ && !retry_armed_ &&
+        !wrong_node_ && retries_left_ > 0 &&
+        core::elapsed(dirty_end_at_, now) >= kSnapshotRetryDelay) {
+        const std::uint8_t contacts[] = {kGetContacts};
+        if (enqueue(contacts, sizeof(contacts))) {
+            --retries_left_;
+            retry_armed_ = true;
+            retry_since_ = now;
+            contacts_seq_ = tx_seq_;
+            status_.snapshot = core::MeshSnapshot::RetryPending;
+        }
+    }
     // AND THE DRAIN GETS ONE, because it is the only way the flag comes down
     // without the node's cooperation. The five other clearing paths are all in
     // the dispatcher and all need an answer that arrived and was accepted, so
@@ -355,7 +421,24 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
         core::elapsed(last_contact_at_, now) >= kContactsQuiet) {
         if (end_contacts(now)) {
             status_.peers_complete = true;
+            // A LOST BOUNDARY IS NOT DIRT. The sweep stands in for the frame
+            // that says the walk ended, and says nothing about whether the
+            // table moved under it; a walk nothing invalidated is consistent
+            // whichever of the two ended it.
+            settle_snapshot(now);
         }
+    }
+    // AND A RE-READ NEEDS THE SAME SWEEP, because its end is the one thing in
+    // this design with no other way to arrive. `contacts_open_` is deliberately
+    // false throughout a re-read, so the clause above cannot see it, and a
+    // re-read whose END is dropped would otherwise hold `retry_open_` for the
+    // life of the session -- staging every later contact into a set nothing
+    // commits, and leaving the published snapshot claiming a re-read is still
+    // in flight. A swept re-read commits exactly as the first walk publishes a
+    // partial pair, and heals the same way: contacts that keep arriving after
+    // it go straight into the published set again.
+    if (retry_open_ && core::elapsed(last_contact_at_, now) >= kContactsQuiet) {
+        finish_retry(now);
     }
     if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
         draining_ = false;
@@ -491,15 +574,23 @@ void MeshCoreCompanion::accept_contact(const std::uint8_t* data,
         static_cast<std::size_t>(std::find(&data[100], &data[132], 0) -
                                  &data[100]);
     (void)copy_text(candidate.name, &data[100], name_length);
-    for (std::size_t i = 0; i < peer_count_; ++i) {
-        if (peers_[i].id == candidate.id) {
-            peers_[i] = candidate;
+    // A re-read accumulates beside the published set, never into it, and
+    // de-duplicates against the set it is building. The pair of numbers is not
+    // touched either: decision 7a's whole point is that the face must not watch
+    // `retained` count up from zero a second time.
+    auto& table = retry_open_ ? incoming_peers_ : peers_;
+    std::size_t& count = retry_open_ ? incoming_count_ : peer_count_;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (table[i].id == candidate.id) {
+            table[i] = candidate;
             return;
         }
     }
-    if (peer_count_ < peers_.size()) {
-        peers_[peer_count_++] = candidate;
-        status_.peers_retained = static_cast<std::uint16_t>(peer_count_);
+    if (count < table.size()) {
+        table[count++] = candidate;
+        if (!retry_open_) {
+            status_.peers_retained = static_cast<std::uint16_t>(peer_count_);
+        }
     }
     // A seventeenth distinct contact is dropped and nothing is flagged for it.
     // It is not a separate condition: `peers_retained < peers_reported` already
@@ -577,6 +668,52 @@ bool MeshCoreCompanion::end_contacts(core::MonotonicTime now)
         }
     }
     return true;
+}
+
+// WHAT A FINISHED WALK IS WORTH, decided once, at the one boundary where the
+// question has an answer. Every state this publishes is a property of a walk
+// that has ended: a push landing mid-stream moves `snapshot_dirty_` and leaves
+// the last published observation standing, exactly as it leaves the last
+// published peer list standing.
+//
+// `Dirty` and `RetryPending` are not the same state and the difference is
+// whether a command is on the wire. A full ring leaves a dirty snapshot
+// published as `Dirty` and `tick()` tries again; nothing here can fail.
+void MeshCoreCompanion::settle_snapshot(core::MonotonicTime now)
+{
+    if (!snapshot_dirty_) {
+        status_.snapshot = core::MeshSnapshot::Consistent;
+        return;
+    }
+    if (retries_left_ == 0) {
+        // The budget is spent and the newest read is published anyway. §7.4:
+        // withholding leaves the wearer an empty list where a probably-right
+        // one would serve better, provided it does not claim to be proven.
+        status_.snapshot = core::MeshSnapshot::Degraded;
+        return;
+    }
+    status_.snapshot = core::MeshSnapshot::Dirty;
+    dirty_end_at_ = now;
+}
+
+// THE RE-READ'S OWN END, and the only place the published set is replaced
+// wholesale. Commit on a clean walk, or on a dirty one whose budget is spent --
+// there is nothing better left to wait for. Otherwise the staged set is
+// discarded rather than merged: the accumulator overwrites a row and never
+// removes one, so merging cannot repair the case a re-read exists for.
+//
+// It deliberately does not call `end_contacts()`. Nothing about a re-read is
+// session state: the drain was armed by the first walk and stays armed.
+void MeshCoreCompanion::finish_retry(core::MonotonicTime now)
+{
+    retry_open_ = false;
+    if (!snapshot_dirty_ || retries_left_ == 0) {
+        peers_ = incoming_peers_;
+        peer_count_ = incoming_count_;
+        status_.peers_retained = static_cast<std::uint16_t>(peer_count_);
+        status_.peers_reported = incoming_reported_;
+    }
+    settle_snapshot(now);
 }
 
 // Turns a remembered PUSH_CODE_MSG_WAITING into the one request that answers
@@ -859,18 +996,35 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             }
         }
         break;
-    case kResponseContactsStart:
+    case kResponseContactsStart: {
         if (size < 5) { ++malformed_frames_; return false; }
-        status_.peers_reported = static_cast<std::uint16_t>(
+        const std::uint16_t reported = static_cast<std::uint16_t>(
             std::min<std::uint32_t>(little_u32(&data[1]),
                                     std::numeric_limits<std::uint16_t>::max()));
+        // Each walk is judged on its own pushes, so the bit starts down here
+        // rather than at the end of the walk before.
+        snapshot_dirty_ = false;
+        last_contact_at_ = now;
+        // THE SECOND WALK OF A SESSION IS NOT THE FIRST, and everything below
+        // this branch is what decision 7a says a re-read must not do. The
+        // published set, the pair, `peers_complete` and `contacts_complete_`
+        // all hold; the re-read streams into `incoming_peers_` and replaces
+        // them wholesale only once it has proved itself.
+        if (retry_armed_) {
+            retry_armed_ = false;
+            retry_open_ = true;
+            incoming_count_ = 0;
+            incoming_reported_ = reported;
+            break;
+        }
+        status_.peers_reported = reported;
         peer_count_ = 0;
         status_.peers_retained = 0;
         status_.peers_complete = false;
         contacts_complete_ = false;
         contacts_open_ = true;
-        last_contact_at_ = now;
         break;
+    }
     case kResponseContact:
         if (size < 148) { ++malformed_frames_; return false; }
         accept_contact(data, size);
@@ -878,11 +1032,43 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
+        // A RE-READ'S END SPENDS NOTHING. `end_contacts()` is not only
+        // bookkeeping -- it spends the session's one CMD_SYNC_NEXT_MESSAGE and
+        // resets `draining_since_` with it -- and the drain is a session-level
+        // thing while the retry is a contacts-level one. They were tied
+        // together by nothing more than sharing this arm.
+        if (retry_open_) {
+            finish_retry(now);
+            break;
+        }
         status_.peers_complete = true;
         if (!end_contacts(now)) {
             ++malformed_frames_;
             return false;
         }
+        settle_snapshot(now);
+        break;
+    // A PUSH THIS BUILD UNDERSTANDS AND DELIBERATELY IGNORES IS NOT A PARSE
+    // FAILURE. All six of these reached `default:` and were counted against
+    // `malformed_frames_`, which is the counter a dropped-frame investigation
+    // reads; protocol-correct traffic was landing in it.
+    //
+    // The four invalidating codes are told from the two that merely look it by
+    // §3 of the report, and nothing in the frame is parsed to decide it:
+    // decision 3 conditions on the code and on the position in the stream, not
+    // on which contact moved. Knowing *which* row changed would not help --
+    // `0x80` covers both "a field you already read changed" and "a row you may
+    // not reach appeared", and the second is invisible to any per-row check.
+    case kPushAdvert:
+    case kPushPathUpdated:
+    case kPushPathDiscovery:
+    case kPushContactDeleted:
+        if (contacts_open_ || retry_open_) {
+            snapshot_dirty_ = true;
+        }
+        break;
+    case kPushNewAdvert:
+    case kPushContactsFull:
         break;
     case kResponseCustomVars:
         // Code byte, then `name:value` pairs separated by commas
@@ -1097,9 +1283,31 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // `awaiting_confirm_`, where an unattributable error still fails an
         // accepted send rather than vanishing
         // (test_a_send_that_is_never_confirmed_still_ends pins that).
+        //
+        // A SNAPSHOT RE-READ IS A THIRD CLAIMANT AND JOINS THE SAME ORDER, not
+        // a special case beside it. It is the one command in this client whose
+        // error is *expected*: a node still iterating answers CMD_GET_CONTACTS
+        // with ERR_CODE_BAD_STATE, and the delay exists precisely because that
+        // cannot be ruled out. Without a claim here that error would fall
+        // through to `send_busy()` and fail a message the node had accepted --
+        // #315's fail-closed direction turned against an innocent send by a
+        // command the wearer never asked for.
+        //
+        // Three claimants need the comparison the two needed, once more: the
+        // oldest command still owed an answer takes it, which under FIFO
+        // submission is the smallest sequence number among those outstanding.
         const bool op_owed = op_owed_an_answer();
-        if (awaiting_custom_vars_ && (!op_owed || custom_vars_seq_ < op_seq_)) {
+        if (awaiting_custom_vars_ && (!op_owed || custom_vars_seq_ < op_seq_) &&
+            (!retry_armed_ || custom_vars_seq_ < contacts_seq_)) {
             awaiting_custom_vars_ = false;
+            break;
+        }
+        if (retry_armed_ && (!op_owed || contacts_seq_ < op_seq_)) {
+            // The attempt is spent -- `retries_left_` was decremented when the
+            // command went out -- so a node that refuses every re-read costs a
+            // bounded two errors and then stops being asked.
+            retry_armed_ = false;
+            settle_snapshot(now);
             break;
         }
         if (battery_errors_ambiguous_) break;
