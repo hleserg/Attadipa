@@ -1983,13 +1983,23 @@ to the node that was asked.
 The advert path is not forbidden. It stays as the fallback for a node running
 firmware that is not ours, which offers a position no other way.
 
-**What it obliges:** the remote-target work in
+**What it obliges:** [ADR-0021](../adr/0021-remote-target-from-a-message.md) is
+the decision this produced, and it supersedes ADR-0020 on the wire and on
+nothing else. The remote-target work in
 [#450](https://github.com/hleserg/Attadipa/issues/450) takes its coordinate from
-a message, keeps it with the sender the message was already attributed to, and
-ages it by the message's own timestamp.
-[`REMOTE_TARGET_POSITION.md`](REMOTE_TARGET_POSITION.md) is the research this
-rests on and carries the observed message format and its traps. No telemetry
-request is implemented, and no position is put into an advert by this product.
+a message and names the target by the contact the sender's key prefix resolves
+to; a message that resolves to no contact carries no target. The advert path
+stays implemented as the fallback for a node whose firmware is not ours. No
+telemetry request is implemented, and no position is put into an advert by this
+product.
+
+**It obliges no age, and that is deliberate.** ADR-0020 decision 4 already
+forbade the advert's timestamps from reaching `age_at_source_ms` because they
+are on the sender's clock, and a message carries no timestamp this repository
+reads at all. Arrival is not an age. An earlier draft of this entry said the
+coordinate would be aged by the message's own timestamp; that was wrong, it
+described a field that does not exist, and it is corrected here rather than left
+for an implementer to copy.
 
 It also obliges nothing new on the wire: the request is an ordinary text
 message, the consent is a person pressing send, and "always let this contact

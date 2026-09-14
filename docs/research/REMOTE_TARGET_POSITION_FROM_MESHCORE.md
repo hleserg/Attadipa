@@ -719,3 +719,81 @@ Filed as [OPEN_QUESTIONS](OPEN_QUESTIONS.md) **M28–M31**, plus everything in
   ADR-0011 inside this change. `PositionValidity` staying `NoFix` at every age
   is what keeps the readout honest meanwhile; a source value that says
   "relayed record, provenance unproven" is the fix, and it is not this ADR's.
+
+---
+
+## 14. The fourth wire: a coordinate inside a message
+
+Added 2026-09-14. **Sections 1–13 above enumerate the wires that existed on the
+table when [ADR-0020](../adr/0020-remote-target-position-source.md) was written.
+This one did not, and nothing above is withdrawn by it.**
+[ADR-0021](../adr/0021-remote-target-from-a-message.md) takes it and supersedes
+ADR-0020 on the wire alone; §§5–8 of this report — ages, identity, privacy and
+cadence — apply to it and are what ADR-0021 carries forward.
+
+### 14.1 What it is
+
+The owner's own MeshCore fork for the V4.3 node appends the node's position to
+the **text** of a message a person chooses to send. It therefore arrives on the
+frame this repository already parses and already attributes to a sender, and it
+needs no request, no permission mask and no new protocol: the ask is a message,
+the consent is a person pressing send, and a standing "always let this contact
+find me" is that firmware's own per-contact setting.
+
+MeshCore has no structured place to put it. `TxtDataHelpers.h` defines three
+text types and none of them is a location record — `MESHCORE_COMPANION_PROTOCOL.md:676` — "`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`" —
+so the coordinate is a substring of human-readable text and the grammar below is
+a convention between two firmwares, not a protocol feature. That is the whole
+reason §14.2 is written as a specification rather than a description.
+
+### 14.2 The grammar, as observed
+
+```
+Идём к вам @12.3456,65.4321
+```
+
+**The coordinates in that line are invented.** The real ones are in the evidence
+named in §14.4 and are deliberately not reproduced here.
+
+| | observed | what a parser must therefore do |
+|---|---|---|
+| sigil | `@` | require a line start or whitespace before it, so `@name` and an e-mail address never match |
+| separator | a single `,` | — |
+| decimals | **four** in every observed row | accept one to seven and keep what is given; four is about 11 m of latitude |
+| sign | **not observed** — every captured row is northern and eastern | accept a leading `-` on either number. A parser built only to what was seen drops every southern coordinate or mirrors it into the wrong hemisphere, and both are silent |
+| bounds | not exercised — every captured row is a real place | refuse latitude outside ±90°, longitude outside ±180°, and exactly `(0, 0)`, per ADR-0020 decision 7, and **drop rather than clamp**: clamping invents a place |
+| placement | last thing in the message | do not require it: take the **last** match, so a quoted older message cannot win |
+| spacing | two shapes in the wild — a typed message gives `@55.98…`, a preset gives `@ 55.98…` | accept one optional space after the sigil. Two shapes is itself worth removing at the source |
+
+### 14.3 The truncation hazard, which cannot be caught downstream
+
+The observed firmware truncates the **human text** to fit its message limit and
+keeps the coordinate whole — visible in the capture as a preset message cut
+mid-character, since the text is UTF-8 and the cut lands inside a two-byte
+letter.
+
+**That priority is the right way round and this repository cannot enforce it.**
+The reverse fails silently: a coordinate cut short is still a syntactically
+perfect number, `@55.98` sits about 2.3 km from `@55.9821`, and nothing in its
+shape says it was ever longer. A sender's firmware is the only place that can
+guarantee the budget, which is why it is recorded here as a property of the
+wire rather than as a parser requirement it is impossible to meet.
+
+### 14.4 Evidence, and what it does not establish
+
+- **What:** one screenshot of a MeshCore client conversation, showing seven
+  messages of which five carry a coordinate, on 2026-09-13.
+- **Identity:** SHA-256 `adb2415b49e82c8cbc79dd535320f6d6318ebdd700b95acf9f890bc67d221e89`,
+  390 754 bytes, JPEG. Held by the owner.
+- **Not committed, deliberately.** `docs/` is this repository's GitHub Pages
+  root; the capture carries a contact name and a real position to about 11 m,
+  which is what [OD-27](OWNER_DECISIONS.md#od-27--a-bench-capture-that-carries-no-position-and-no-identity-may-be-committed)
+  refuses. The hash above is what makes it citable without publishing it.
+- **What it establishes:** that this firmware emits a coordinate in message text,
+  and the shape it emits.
+- **What it does not establish:** anything about the sender's fix quality, any
+  age (the text carries no timestamp, and §6 already forbids inventing one), any
+  altitude, the behaviour of the sign or the bounds, or that any other firmware
+  does the same. It is one capture of one fork, and `NOT EXECUTED — HARDWARE
+  REQUIRED` still stands over every claim in this report about what two nodes do
+  to each other.

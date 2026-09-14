@@ -1,7 +1,21 @@
 # 0020 — A remote target's coordinate comes from the contact record, and no age is claimed for it
 
-Status: **accepted**
+Status: **superseded in part by [ADR-0021](0021-remote-target-from-a-message.md)**
 Date: 2026-09-07
+
+> **Superseded on which wire is paid for, and on nothing else.** A third wire
+> reached the bench on 2026-09-13 that was not on the table when this was
+> written: a position appended to the text of a message a person chooses to
+> send. [OD-30](../research/OWNER_DECISIONS.md#od-30--a-position-is-shown-to-named-recipients-rather-than-broadcast)
+> takes it, for a reason this ADR had itself named — decision 8 below already
+> observes that a narrower disclosure is the one axis on which a different path
+> is the better citizen.
+>
+> **Most of what is below is still in force**, and an implementer needs it:
+> decisions 4, 5, 6, 7 and 9 apply to the new wire unchanged, and decisions 1
+> and 3 remain the specification for the fallback. ADR-0021 carries a row-by-row
+> table of which clause survives and which does not — read it there rather than
+> inferring it here, and do not copy decision 8, whose trigger is replaced.
 
 Decides the one seam [#450](https://github.com/hleserg/Attadipa/issues/450) had
 left on the wire half, researched under

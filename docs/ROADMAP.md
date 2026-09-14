@@ -125,6 +125,20 @@ Written 2026-08-24, after an independent cold read of the repository.
 > the honest resting state of a path-C target is `NodePositionStale`. That is
 > the readout, not a defect in it.
 >
+> **And a fourth path arrived on 2026-09-13 that none of the three anticipated.**
+> A position appended to the text of a message a person chooses to send, by the
+> owner's own MeshCore fork, observed on the bench.
+> [ADR-0021](adr/0021-remote-target-from-a-message.md) takes it and supersedes
+> ADR-0020 **on the wire and on nothing else**, implementing
+> [OD-30](research/OWNER_DECISIONS.md#od-30--a-position-is-shown-to-named-recipients-rather-than-broadcast):
+> an advert reaches everyone in radio range and is relayed onward signed, and a
+> message reaches the contact it was addressed to. The contact record stays as
+> the fallback for a node whose firmware is not ours, the telemetry path stays
+> rejected, and the resting state above is unchanged — a person sending a
+> message is a cadence, not a refresh. **No age is claimed on either wire**, and
+> anyone implementing this reads ADR-0021's supersession table before copying a
+> clause out of ADR-0020.
+>
 > **The default slot for a companion's own coordinate is `target`,** and it is
 > settled by body rather than by preference —
 > `apps/include/attadipa/apps/navigation.h:19` — "// **own** position comes from a receiver on this body, **target** position is".
