@@ -2561,6 +2561,103 @@ constants.
   result: the process-exit and pipelined-write checks on the physical watch
   remain **NOT EXECUTED — HARDWARE REQUIRED** (#403).
 
+### The companion protocol has no negative delivery event, at any revision read
+
+- **Claim:** at the pinned MeshCore revision a companion client is told two
+  things about a message it sent — that the node accepted it
+  (`RESP_CODE_SENT`), and that a matching acknowledgement came back
+  (`PUSH_CODE_SEND_CONFIRMED`). There is **no third frame that means the message
+  failed**. `MyMesh::onSendTimeout()` — the override
+  `BaseChatMesh::loop()` calls when the send timer expires — has an **empty
+  body**, and the base class then clears the timer. So the absence of a
+  confirmation is the only negative signal available, and it is produced equally
+  by a message that was never delivered and by one that was delivered while its
+  return acknowledgement was lost.
+- **Source:** `examples/companion_radio/MyMesh.cpp` and
+  `src/helpers/BaseChatMesh.cpp` at
+  [`d92964352441e53b93e8667b802e04f6e072b39e`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/MyMesh.cpp#L861),
+  read 2026-09-14 for [#552](https://github.com/hleserg/Attadipa/issues/552).
+  The full reading is
+  [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §2.4.
+- **Corroborated by the failure reports rather than by them alone:** upstream
+  [issue #1834](https://github.com/meshcore-dev/MeshCore/issues/1834), open since
+  2026-02-24, is six independent reports of a sender showing failure for a
+  message the recipient received.
+- **Not verified:** nothing here was run on a board. The consequence for this
+  product's vocabulary is [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md).
+
+### The ack tag is a keyed hash of the message, so identical messages alias
+
+- **Claim:** the four bytes a client correlates a confirmation by are the first
+  four of `sha256(timestamp ‖ (attempt & 3) ‖ text)` keyed by the **sender's**
+  public key. It is therefore deterministic: the same text to the same recipient
+  at the same Unix second with the same attempt number yields the **same tag**,
+  and `attempt & 3` makes attempt 4 alias attempt 0. The recipient's key is not
+  an input, so the tag identifies neither the message nor the person. Upstream's
+  own comment beside the matcher reads
+  *"NOTE: the same ACK can be received multiple times!"*.
+- **Source:** `BaseChatMesh::composeMsgPacket` and `MyMesh::processAck` at the
+  same pinned revision, read 2026-09-14.
+- **Why it is here:** any per-message correlation this product builds must use
+  an identifier of its own and treat the tag as a hint that can repeat.
+  [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §2.5.
+
+### The node's address book is 350 contacts on the bench build; the watch keeps 16
+
+- **Claim:** `MAX_CONTACTS` is 100 in the companion source and is overridden to
+  **350** by `-D MAX_CONTACTS=350` in every `Heltec_t114*_companion_radio_*`
+  environment. `CMD_GET_CONTACT_BY_KEY` (30) resolves a **full 32-byte** key
+  against that whole table and answers `RESP_CODE_CONTACT` or
+  `ERR_CODE_NOT_FOUND`; it does not iterate and cannot collide.
+- **Source:**
+  [`variants/heltec_t114/platformio.ini`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/variants/heltec_t114/platformio.ini#L217)
+  and `examples/companion_radio/MyMesh.cpp` at the pinned revision, read
+  2026-09-14. It resolves an apparent contradiction rather than creating one:
+  the bench node reported 233 contacts while the source default is 100, and the
+  build flag is why both readings are correct.
+- **Consequence:** this product's sixteen retained contacts are a **cache**, not
+  an address book, and today they are also the only recipients a send can reach.
+  [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §8.
+
+### A text message is bounded at 160 bytes by `strlen`, and the error word is wrong
+
+- **Claim:** `MAX_TEXT_LEN` is `10 × CIPHER_BLOCK_SIZE` = **160 bytes**, checked
+  as `strlen(text) > MAX_TEXT_LEN` — a byte count, not characters and not code
+  points. A companion frame can carry up to 163 bytes of text past the 13-byte
+  header, so 161–163 bytes reach the node and are refused; the refusal is
+  reported as `ERR_CODE_TABLE_FULL`, because `MSG_SEND_FAILED` has no other
+  mapping in the handler. The prose companion documentation's "133 characters"
+  matches no bound in the chain.
+- **Source:** `src/helpers/BaseChatMesh.h`, `src/helpers/BaseChatMesh.cpp` and
+  `src/MeshCore.h` (`CIPHER_BLOCK_SIZE 16`) at the pinned revision, read
+  2026-09-14.
+- **Also read, and it is an absence:** `src/helpers/UTF8Helpers.h` defines a
+  correct `validUtf8PrefixLength`, and **nothing at that revision calls it**;
+  the inbound path carries `// TODO: UTF-8 ??` and truncates on a byte boundary.
+  A client must own its own UTF-8 boundary.
+  [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §6.
+
+### The node's suggested ACK timeout grows with payload and hops
+
+- **Claim:** `est_timeout` in `RESP_CODE_SENT` is computed by the node as
+  `500 + 16.0 × airtime` for a flood send and
+  `500 + (6.0 × airtime + 250) × (hops + 1)` for a direct one. It is not a
+  constant, and the one value this project has observed — `MEASURED` 2406 ms,
+  decoded from `66 09 00 00` in a frame already committed in
+  [MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) §6a — is a short
+  text over a single hop, which is the small end of the formula's range.
+- **Also decoded from that same capture:** the four bytes after the ack in
+  `PUSH_CODE_SEND_CONFIRMED` are the node's own round-trip measurement in
+  milliseconds. `1b 03 00 00` is **795 ms**, against the 720 ms the host observed
+  between the two frames — consistent, because the node's clock starts earlier.
+  Decoding a committed capture is not a new hardware result and none is claimed.
+- **Source:** `MyMesh::calcFloodTimeoutMillisFor` /
+  `calcDirectTimeoutMillisFor` and `MyMesh::processAck` at the pinned revision,
+  corroborated by `meshcore.js` `9e76c514`, which parses both frames identically.
+- **Consequence:** this client clamps the estimate to 15 s, and whether that
+  clamp can sit *below* the node's own estimate for a long multi-hop send is
+  `UNKNOWN` — OPEN_QUESTIONS M37.
+
 ---
 
 ## Read from the pinned ESP-IDF source (S14, continued)
@@ -2881,7 +2978,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2791` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2888` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -2938,7 +3035,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:2862` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:2959` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -2979,7 +3076,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2816` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2913` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3039,7 +3136,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:704` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:718` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3065,7 +3162,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2739` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2836` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3260,7 +3357,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:2865` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:2962` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has

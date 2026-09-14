@@ -57,6 +57,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0020](0020-remote-target-position-source.md) | A remote target's coordinate comes from the contact record, and no age is claimed for it | **superseded in part by 0021** — the wire changed; the honesty rules did not |
 | [0021](0021-remote-target-from-a-message.md) | A remote target's coordinate arrives in a message, and the contact record is the fallback | **accepted** — implements OD-30 |
 | [0022](0022-contact-snapshot-consistency.md) | A finished contact stream and a true contact snapshot are two observations | **accepted** — decided by research, implemented separately |
+| [0023](0023-unconfirmed-is-not-failed.md) | A message nobody acknowledged is unconfirmed, and this product will not call it failed | **accepted** — decided by research, implemented separately |
 
 ### What the statuses mean here
 

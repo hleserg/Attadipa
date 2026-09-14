@@ -1266,7 +1266,7 @@ behaviour the library is admired for is off until you turn it on. Licence remain
 MIT.
 
 **Two `REJECT` verdicts fire their own written revisit triggers**, not a proposal
-of ours: `docs/research/REUSE_LEDGER.md:790` — "an external magnetometer is decided"
+of ours: `docs/research/REUSE_LEDGER.md:791` — "an external magnetometer is decided"
 (OPEN_QUESTIONS A5) — and
 `docs/upstream/research-integration.md:406` — "and not deferred — the finding is inapplicable"
 (*"to this hardware rather than premature"*). The Waveshare with a magnetometer has accel + gyro + mag, which
