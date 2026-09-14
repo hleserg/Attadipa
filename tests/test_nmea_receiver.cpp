@@ -677,10 +677,17 @@ const BadCoordinate kBadCoordinates[] = {
     // 90 degrees is a pole and 90 degrees 60 minutes is nothing. THE ONLY ROW
     // HERE THAT THE OLD CODE ALSO REFUSED, and it refused it by accident: the
     // normalised 91 fell outside `kLatitudeMaxE7` and the limit caught it.
-    // Nothing about the minutes was checked, which is why one degree south of
-    // this -- `0060.00000` -- sailed through. Kept as the case that pins the two
-    // checks apart.
+    // Nothing about the minutes was checked, which is why the same fault at the
+    // equator -- `0060.00000`, the first row above -- sailed through. Kept as
+    // the case that pins the two checks apart.
     {"60 minutes at the pole", "9060.00000", "N", "00100.00004", "E"},
+    // AND ONE DEGREE SOUTH OF THAT ROW IS WHERE THE ACCIDENT RUNS OUT. 89
+    // degrees plus 60 minutes normalises to exactly `kLatitudeMaxE7`, so
+    // `magnitude > limit` never fired and the old code read a malformed
+    // latitude as the north pole itself. No range check can reach this row --
+    // the minutes are the only thing wrong with it, which is the whole claim
+    // of #472 and the one row that cannot be explained any other way.
+    {"60 minutes just under the pole", "8960.00000", "N", "00100.00004", "E"},
 };
 
 void a_coordinate_nmea_could_not_have_written_is_not_a_position()
