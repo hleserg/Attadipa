@@ -479,6 +479,61 @@ def main() -> int:  # noqa: C901 — a list of cases, not a branching function
         check("a --name-len that cannot fit in a page is refused before a page is read",
               code == 2 and "image not read" in output, f"— exit {code}\n{output}")
 
+    with workspace({"/x.bin": b"x"}) as (image, base):
+        code, output = run(image, base / "out", "--name-len", "1")
+        check("a --name-len with no room for a name and its terminator is refused",
+              code == 2 and "image not read" in output, f"— exit {code}\n{output}")
+
+    # The boundary `--name-len` defines, taken on both sides. A 31-character
+    # name and its terminator fill the 32-byte default field exactly; one
+    # character more has nowhere to put the NUL. Every other case in this file
+    # sits well clear of the edge — 45 is thirteen past it and 256 fails the
+    # page-fit guard first — so an off-by-one in the field slice or in the
+    # terminator search passes the whole suite and silently refuses an intact
+    # image over a legitimately maximal name, which is the shape of wrong
+    # answer #549 is about.
+    edge = "/" + "b" * 26 + ".bin"   # 31 characters, 32 with the terminator
+    over = "/" + "b" * 27 + ".bin"   # 32 characters, 33 with the terminator
+    with workspace({edge: b"exactly at the edge"}) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("a name that fills the field exactly is read whole",
+              code == 0 and content(out / edge.lstrip("/")) == b"exactly at the edge",
+              f"— exit {code}\n{output}")
+    with workspace({over: b"one past it"}) as (image, base):
+        out = base / "out"
+        code, output = run(image, out)
+        check("one character more is refused rather than cut to fit", code == 2,
+              f"— exit {code}\n{output}")
+        check("  and the message names the option that would read it",
+              "--name-len" in output, f"— {output}")
+        code, output = run(image, out, "--name-len", "33")
+        check("  and --name-len 33 reads that same name whole",
+              code == 0 and content(out / over.lstrip("/")) == b"one past it",
+              f"— exit {code}\n{output}")
+
+    # A name this parser will not decode is the third refusal the field carries,
+    # and until now the only one nothing exercised. Both halves matter: a byte
+    # under 0x20 would put a control character into a filename, in a tool that
+    # refuses `\\`, `:` and NUL in a component for exactly that reason; a byte
+    # above 0x7E would raise `UnicodeDecodeError` out of `extract()` uncaught —
+    # a traceback and exit 1, where the contract is a refusal and exit 2.
+    for label, raw in (("a control byte in the name", b"/a\x01b\x00"),
+                       ("a byte above ASCII in the name", b"/a\xc3b\x00")):
+        unprintable = bytearray(b"\xff" * 251)
+        unprintable[3:7] = struct.pack("<I", 5)
+        unprintable[7] = 0x01
+        unprintable[8:8 + len(raw)] = raw
+        with workspace({"/kept.bin": b"fine"},
+                       extra=[Page(2 | 0x8000, 2 | 0x8000, 0, LIVE_INDEX,
+                                   bytes(unprintable))]) as (image, base):
+            out = base / "out"
+            code, output = run(image, out)
+            check(f"{label} stops the run", code == 2,
+                  f"— exit {code}\n{output}")
+            check("  and nothing is written", tree(out) == set(),
+                  f"— {sorted(tree(out))}")
+
     print("\nnames that must be refused")
     cases: list[tuple[str, dict[str, bytes], str]] = [
         ("a name that climbs out of outdir", {"/../escape": b"x"}, "move the destination"),

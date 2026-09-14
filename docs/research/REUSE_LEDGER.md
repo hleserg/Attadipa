@@ -1705,8 +1705,14 @@ implementation and would be right for anyone who already has the toolchain.
 **Weaknesses:** all three need something this task did not have — a generator
 that cannot read, a C++ build, or a board on the end of a cable.
 
-**Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, 115 lines, host
-Python with no dependencies.
+**Decision:** `REIMPLEMENT` — `tools/flash/spiffs_extract.py`, host Python with
+no dependencies. It was **115 lines** when this decision was taken and is
+**960** on 2026-09-14. Recording both matters, because the sentence below rests
+on the smaller one: what grew is refusals and the evidence for them — the
+liveness rule, the geometry check, the path rules, the object index header's
+own offsets — and not more format being parsed. A line count in a ledger goes
+stale the next time the file is touched; this one is dated so a reader knows
+which it is.
 
 **Reason:** the only pure-Python option in the ecosystem cannot read images, and
 the two that can each require a build environment to recover six files from one

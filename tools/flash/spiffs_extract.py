@@ -27,11 +27,17 @@ revision that wrote any image this repository will ever be handed:
 That header is `spiffs_page_object_ix_header`, and its members are read where
 the struct puts them: three bytes of alignment after the page header, then
 `u32 size` at offset 8, the `u8` object type at 12, and the name at 13,
-NUL-terminated inside a field `SPIFFS_OBJ_NAME_LEN` long. Nothing SPIFFS can be
-configured with moves those three — `SPIFFS_OBJ_META_LEN` adds its bytes *after*
-the name, and `SPIFFS_OBJ_NAME_LEN` bounds the name without shifting it, which
-is why `--name-len` changes what is accepted and not where anything is looked
-for. An earlier version searched for the name instead, and #549 is what that
+NUL-terminated inside a field `SPIFFS_OBJ_NAME_LEN` long. Nothing this tool
+supports moves those three — `SPIFFS_OBJ_META_LEN` adds its bytes *after* the
+name, and `SPIFFS_OBJ_NAME_LEN` bounds the name without shifting it, which is
+why `--name-len` changes what is accepted and not where anything is looked for.
+What *would* move all three is widening `spiffs_obj_id` or `spiffs_span_ix`
+past `u16_t`, since the page header those sit in is what everything below is
+measured from; ESP-IDF pins both, this tool reads ESP-IDF images, and the
+offsets are derived from `PAGE_HEADER` rather than written out so that the
+dependency is in the code and not only in this paragraph.
+
+An earlier version searched for the name instead, and #549 is what that
 cost: a file of `0x412f` bytes stores its size as `2f 41 00 00`, the search
 found `/A` inside it, and an intact file was reported incomplete.
 
@@ -141,8 +147,9 @@ PAGE_HEADER = 5       # u16 obj_id, u16 span_ix, u8 flags
 # four. `SPIFFS_ALIGNED_OBJECT_INDEX_TABLES` is 0 in ESP-IDF's
 # `spiffs_config.h`, so the struct attribute that would pad it further is not
 # in play. **`meta` comes after `name`**, which is the whole reason these three
-# offsets are constants and not a search: nothing SPIFFS can be configured with
-# moves them.
+# offsets are constants and not a search: nothing this tool supports moves them.
+# They are derived from `PAGE_HEADER` above rather than written out as 8, 12 and
+# 13, because a wider `spiffs_obj_id` would move all three together.
 OBJ_IX_ALIGN = 4 - (PAGE_HEADER & 3) if PAGE_HEADER & 3 else 0
 OBJ_IX_SIZE_AT = PAGE_HEADER + OBJ_IX_ALIGN   # 8: u32_t size
 OBJ_IX_TYPE_AT = OBJ_IX_SIZE_AT + 4           # 12: spiffs_obj_type, a u8_t
@@ -446,6 +453,16 @@ def extract(image: bytes, page: int, block: int,
     released is not part of the filesystem however intact its header looks.
     """
     geo = geometry(len(image), page, block)
+    # The geometry is confirmed against the image's own magic before either
+    # `--name-len` guard runs, and the order is the point. Both guards compare
+    # against `page`, so a low `--page` guess trips the page-fit one — and
+    # answering a wrong `--page` with a complaint about an option the user never
+    # passed sends them to the wrong knob. `confirm_geometry()` names the right
+    # one; let it speak first.
+    census = [
+        f"{geo.page} B pages, {geo.block} B blocks, {geo.blocks} blocks — "
+        f"{confirm_geometry(image, geo)}"
+    ]
     if name_len < 2:
         raise UnsupportedImage(
             f"--name-len {name_len} leaves no room for a name and its terminator")
@@ -453,10 +470,6 @@ def extract(image: bytes, page: int, block: int,
         raise UnsupportedImage(
             f"--name-len {name_len} does not fit in a {page}-byte page: the object "
             f"index header's name field starts at offset {OBJ_IX_NAME_AT}")
-    census = [
-        f"{geo.page} B pages, {geo.block} B blocks, {geo.blocks} blocks — "
-        f"{confirm_geometry(image, geo)}"
-    ]
 
     headers: dict[int, dict] = {}
     payload: dict[int, dict[int, bytes]] = {}
