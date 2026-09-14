@@ -201,21 +201,29 @@ private:
     // knowingly under the largest pause the bench has seen. A 59-minute capture
     // on 2026-09-14 measured every one of the 4616 gaps inside a walk on the
     // 233-contact node:
-    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:643` — "everything under 70 ms, then"
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:647` — "everything under 70 ms, then"
     // Three seconds clears that by a factor of forty; the one pause that beat
     // it beat it outright, at 3850 ms. Nothing lies between the two, so a
     // longer window would buy no case and delay the real one.
     //
     // BEING WRONG IS NOT FREE AND IS NOT FATAL. That same capture caught this
     // sweep misfiring, once in nineteen walks, and the node did not abort:
-    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:660` — "did not abort the node's iteration"
+    // `docs/research/MESHCORE_T114_FIRST_CONTACT.md:664` — "did not abort the node's iteration"
     // It answered RESP_CODE_NO_MORE_MESSAGES and kept sending contacts to the
-    // end of the same walk. What the misfire cost was one redundant command, a
-    // `peers_complete` set at 30 of 233 that the arriving records corrected,
+    // end of the same walk. What the misfire cost was one redundant command,
     // and CMD_GET_CUSTOM_VARS and the battery poll released into the catch-up
     // burst -- beside which the only three dropped frames of the hour landed.
     // One occurrence, so that last one is correlation and not cause, and one
     // occurrence bounds nothing: it did not abort, not it cannot.
+    //
+    // AND THE CAPTURE CANNOT PRICE THE THIRD COST, because the node it ran on
+    // has 233 contacts and `kRetainedPeers` is 16: the face prints `16/233`
+    // from the sixteenth record on, misfire or not. The cost lands on the list
+    // `peers_complete` was introduced for -- sixteen or fewer -- where an early
+    // close publishes *k* of *N* and the pair counts up as the walk resumes.
+    // Seconds of a wrong pair on one face, self-healing, and UNKNOWN on a
+    // board; `test_a_misfired_sweep_publishes_a_partial_pair` holds it on the
+    // host.
     //
     // WHICH IS WHY THE WINDOW STAYS SHORT. A boundary genuinely lost strands
     // every inbound message for the rest of the session; a misfire costs a

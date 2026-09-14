@@ -2440,6 +2440,49 @@ void test_a_quiet_stream_that_cannot_send_tries_again()
     CHECK(client.status().peers_complete);
 }
 
+// WHAT A MISFIRE COSTS THE FACE, which the bench could not price. The 59-minute
+// capture caught the sweep closing a walk that was not over, and on that node
+// the mesh face showed nothing for it: `kRetainedPeers` is 16 against a 233-
+// contact list, so `peers_retained < peers_reported` was already true and stayed
+// true. The cost only exists below the cap -- on the short list `peers_complete`
+// was added for, where the pair would otherwise count up:
+// `apps/src/mesh.cpp:266` -- "        // final, and the pair would count up through `3/40`. Both numbers also".
+// Two contacts announced, one delivered, and the sweep publishes 1 of 2.
+void test_a_misfired_sweep_publishes_a_partial_pair()
+{
+    MeshCoreCompanion client;
+    // CONTACTS_START announces two; `open_a_contact_stream` delivers one.
+    open_a_contact_stream(client, true);
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(!client.status().peers_complete);
+
+    // The stream falls quiet mid-walk and the sweep believes it. The face's
+    // condition is now satisfied on a partial list -- this is the misfire, and
+    // 1/2 is what it publishes.
+    client.tick(at(6 + 3000));
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.status().peers_reported == 2);
+
+    // AND IT HEALS RATHER THAN LATCHING. The walk was not over; the second
+    // contact arrives and the pair completes. `peers_complete` stays set --
+    // the session has already spent its one CMD_SYNC_NEXT_MESSAGE -- so what
+    // the wearer saw was seconds of 1/2, not a wrong number that stays.
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 40);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Two", 3);
+    CHECK(client.receive(contact, sizeof(contact), at(6 + 3100)));
+    CHECK(client.status().peers_retained == 2);
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().peers_complete);
+}
+
 int main()
 {
     test_typed_battery_failure_does_not_create_err_ambiguity();
@@ -2448,6 +2491,7 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_a_misfired_sweep_publishes_a_partial_pair();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();
     test_send_and_receive();

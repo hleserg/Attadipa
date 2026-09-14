@@ -62,7 +62,9 @@ constexpr char kTag[] = "attadipa_mesh_ble";
 // loses is systematically RESP_CODE_END_OF_CONTACTS — MEASURED three sessions
 // out of three on 2026-09-14, #566. A lost contact record the next walk re-sends;
 // a lost boundary used to strand the session, which is why the client now ends
-// a walk on silence. Forty-eight is what keeps the burst off that path at all.
+// a walk on silence. Forty-eight buys the margin; what took the drops to three
+// in an hour on the same node at the same depth was compiling the hex body out
+// of log_frame(), so do not read this number as the protection on its own.
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
@@ -1651,11 +1653,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:194` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:196` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1708` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1710` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:936` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:938` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
