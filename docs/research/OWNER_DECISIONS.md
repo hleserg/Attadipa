@@ -1963,3 +1963,44 @@ capitalization changes, and `AttadipaOS` is still not a name.
 
 **What it does not decide:** the Russian prose form stays **Аттадипа**, and the
 Latin wordmark in UI and logo use takes the hyphen.
+
+---
+
+## OD-30 — A position is shown to named recipients rather than broadcast
+
+**Decided:** 2026-09-14, by the owner, in conversation, against a recommendation
+that had proposed the opposite.
+
+**What was decided:** where a person's position travels to another node, it
+travels **in a message to the people they chose**, not in an advert to everyone
+in radio range. Asked to approve the advert path as the primary one, he rejected
+the ranking and gave the reason: an advert tells a whole festival where you are,
+and a message tells the person you meant. A remote **telemetry request** — the
+watch's companion transmitting to ask a node where it is — is rejected outright
+and separately, because the upstream response frames cannot correlate an answer
+to the node that was asked.
+
+The advert path is not forbidden. It stays as the fallback for a node running
+firmware that is not ours, which offers a position no other way.
+
+**What it obliges:** the remote-target work in
+[#450](https://github.com/hleserg/Attadipa/issues/450) takes its coordinate from
+a message, keeps it with the sender the message was already attributed to, and
+ages it by the message's own timestamp.
+[`REMOTE_TARGET_POSITION.md`](REMOTE_TARGET_POSITION.md) is the research this
+rests on and carries the observed message format and its traps. No telemetry
+request is implemented, and no position is put into an advert by this product.
+
+It also obliges nothing new on the wire: the request is an ordinary text
+message, the consent is a person pressing send, and "always let this contact
+find me" is the sending firmware's own per-contact setting. A structured
+request-and-answer between two of this project's nodes may be built later; it is
+not what this decision asks for.
+
+**What it invalidates:** the recommendation this repository put to him — that
+the signed contact advert be the primary path because it costs nothing on the
+air. The cost it does not count is the one he named, and it is not a radio cost.
+
+**What it does not decide:** how a target is chosen in the interface, how long a
+position is kept, and whether this product ever attaches a position to a message
+it sends. The last of those is a separate decision and has not been asked.
