@@ -1101,12 +1101,24 @@ void log_frame(const char* direction, const std::uint8_t* data, std::size_t size
                  static_cast<unsigned>(data[0]), static_cast<unsigned>(size));
     }
     if (printable != 0) {
-        // THE BODY IS DEBUG AND THE HEADER IS NOT, because the body is what
-        // costs the queue. A 148-byte contact record is eleven log lines, and
-        // the node sends 234 of them back to back: MEASURED on the bench
+        // THE BODY IS COMPILED OUT AND THE HEADER IS NOT, because the body is
+        // what costs the queue. A 148-byte contact record is eleven log lines,
+        // and the node sends 234 of them back to back: MEASURED on the bench
         // 2026-09-14, that backlog is what overran `kEventDepth` and dropped
-        // RESP_CODE_END_OF_CONTACTS in every session captured (#566). The
-        // header line above is one line and stays where a capture can see it.
+        // RESP_CODE_END_OF_CONTACTS in every session captured (#566). Moving it
+        // here took the drops from 162 to zero on the same node.
+        //
+        // NOT "DEMOTED TO DEBUG" -- REMOVED. `CONFIG_LOG_MAXIMUM_LEVEL` is 3
+        // (INFO) in both variants and this file sets no `LOG_LOCAL_LEVEL`, so
+        // the call is compiled out of every image Attadipa ships, HIL included.
+        // That is the intended default and it is also the cost: a bench capture
+        // no longer shows what a frame contained. Getting it back is a build
+        // setting -- raise `CONFIG_LOG_MAXIMUM_LEVEL` and the tag's level -- and
+        // an image built that way drops frames again, which is now survivable
+        // rather than silent: `link/src/meshcore_companion.cpp` closes a walk
+        // whose boundary went missing. The one-line header above stays at INFO
+        // in every image, and it is what named the lost frame in the first
+        // place.
         ESP_LOG_BUFFER_HEX_LEVEL(kTag, data, printable, ESP_LOG_DEBUG);
     }
 }
@@ -1636,7 +1648,7 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:189` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1691` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1703` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
         // `firmware/main/meshcore_ble.cpp:931` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store

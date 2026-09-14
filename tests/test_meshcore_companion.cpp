@@ -2297,17 +2297,147 @@ void test_a_lost_contacts_end_still_asks_for_messages()
     CHECK(frame.size == 1 && frame.bytes[0] == 40);
     CHECK(!client.next_tx(frame));
 
-    // AND THE SNAPSHOT IS STILL NOT CLAIMED COMPLETE. ADR-0022 makes
-    // `peers_complete` a statement about content, and a quiet stream observed
-    // no end -- it only observed silence.
-    CHECK(!client.status().peers_complete);
+    // AND THE SNAPSHOT IS COMPLETE. `peers_complete` is what the face reads to
+    // decide whether it may print the kept/reported pair --
+    // `apps/src/mesh.cpp:282` -- "if (status.peers_complete && retained <
+    // reported) {". Withholding it here would make the watch print the node's
+    // own total alone on exactly the session where the two numbers differ.
+    CHECK(client.status().peers_complete);
 
-    // A late boundary frame is still the node's own statement and still says so,
-    // and it does not ask a second time.
+    // A late boundary frame is still the node's own statement, and it does not
+    // ask a second time: `end_contacts()` is idempotent through
+    // `contacts_complete_`.
     const std::uint8_t end[] = {4, 0, 0, 0, 0};
     CHECK(client.receive(end, sizeof(end), at(6 + 4000)));
     CHECK(client.status().peers_complete);
     CHECK(!client.next_tx(frame));
+}
+
+// Handshake far enough that CMD_GET_CONTACTS has gone out and the node has
+// begun answering it: one contact in, the stream live, the quiet window armed
+// at `at(6)`. Frames are left in the ring unless `drain` says otherwise --
+// `test_a_quiet_stream_that_cannot_send_tries_again` needs them there.
+void open_a_contact_stream(MeshCoreCompanion& client, bool drain)
+{
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+
+    if (drain) {
+        MeshCoreFrame frame{};
+        while (client.next_tx(frame)) {
+        }
+    }
+
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(5)));
+
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(6)));
+}
+
+// THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
+// is the one place that asks a question from outside `receive()`, and
+// `receive()` is where the refusal guard lives:
+// `link/src/meshcore_companion.cpp:776` -- "    if (wrong_node_) return false;".
+// So the sweep has to carry
+// the guard itself, and the interesting half is what it does with the window
+// afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
+// that closed the walk on the way past -- or that re-armed its window -- would
+// leave the un-refused session waiting, or waiting forever.
+//
+// `pin()` is public and takes no view of where the session has got to, so this
+// ordering is the class's contract, not a path the firmware walks today: it
+// adopts a key on the frame that first carries one (`settle_node_pin()` in
+// firmware/main/meshcore_node_pin.h:190 -- "        ops.adopt(seen);") and a
+// mismatch there stops the handshake before CMD_GET_CONTACTS ever goes out.
+void test_a_refused_session_keeps_its_quiet_window()
+{
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+
+    // The watch is pinned to somebody else and the node says who it is. The
+    // refusal latches on this frame, with the contact stream already open.
+    client.pin(key_of(0x91));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(7)));
+    CHECK(client.wrong_node());
+
+    // Quiet for a full window, twice over, and nothing goes out. This is the
+    // assertion the guard exists for: CMD_SYNC_NEXT_MESSAGE to a refused node
+    // is the watch asking a stranger's node for its queued messages.
+    MeshCoreFrame frame{};
+    client.tick(at(7 + 3000));
+    CHECK(!client.next_tx(frame));
+    client.tick(at(7 + 9000));
+    CHECK(!client.next_tx(frame));
+    CHECK(!client.status().peers_complete);
+
+    // And the window was kept, not spent. The tick after the repudiation closes
+    // the walk exactly as it would have.
+    CHECK(client.unpin());
+    client.tick(at(7 + 9001));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(client.status().peers_complete);
+}
+
+// A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:536` --
+// "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
+// CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
+// never left would strand the node's backlog for the session, which is the
+// defect #566 is about, reached by a different road.
+void test_a_quiet_stream_that_cannot_send_tries_again()
+{
+    MeshCoreCompanion client;
+    // Undrained: CMD_APP_START, CMD_DEVICE_QUERY and CMD_GET_CONTACTS are all
+    // still in the ring, and the text below fills its fourth and last slot.
+    open_a_contact_stream(client, false);
+
+    core::MeshPeerId peer{};
+    for (std::size_t i = 0; i < 32; ++i) {
+        peer.public_key[i] = static_cast<std::uint8_t>(i + 1);
+    }
+    CHECK(client.send_private(peer, "Hello", core::WallTime{1000}));
+
+    client.tick(at(6 + 3000));
+    CHECK(!client.status().peers_complete);
+
+    // Four frames, none of them the sync: the ring held what it already had.
+    MeshCoreFrame frame{};
+    for (int i = 0; i < 4; ++i) {
+        CHECK(client.next_tx(frame));
+        CHECK(frame.bytes[0] != 10);
+    }
+    CHECK(!client.next_tx(frame));
+
+    // The window was kept, not spent: the ring is empty now and the next tick
+    // does what the last one could not.
+    client.tick(at(6 + 3001));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(client.status().peers_complete);
 }
 
 int main()
@@ -2316,6 +2446,8 @@ int main()
     test_attached_node_battery_uses_the_live_queue_and_public_status();
     test_handshake_contacts_and_service_boundary();
     test_a_lost_contacts_end_still_asks_for_messages();
+    test_a_refused_session_keeps_its_quiet_window();
+    test_a_quiet_stream_that_cannot_send_tries_again();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();
     test_send_and_receive();

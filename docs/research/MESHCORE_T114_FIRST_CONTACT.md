@@ -506,9 +506,16 @@ same reasoning had simply not been applied to a full queue.
 
 **Fix, two parts:** the queue is 48 deep rather than 16, sized for a contact
 burst; and a frame that cannot be queued is logged and dropped, never faulted.
-The Companion protocol tolerates that — a contact record is re-sent by the next
-`CMD_GET_CONTACTS` and the sync boundary still arrives; a lost push is one
-message.
+
+**This report used to claim the Companion protocol tolerates that, "the sync
+boundary still arrives". It does not, and #566 is the retraction.** MEASURED
+2026-09-14 on a node with 234 contacts: the burst overran the 48-deep queue in
+all three sessions captured, and the frame it dropped last was
+`RESP_CODE_END_OF_CONTACTS` every time — 162, 157 and 160 contact records lost
+and the boundary with them. A bounded queue drops the *tail* of a burst, so the
+frame that ends a stream is systematically the one lost. A contact record is
+still re-sent by the next `CMD_GET_CONTACTS`, and a lost push is still one
+message; what was wrong was treating the boundary as just another data frame.
 
 **MEASURED before and after, same node, same 37-contact list, 40 minutes
 apart:**
@@ -625,7 +632,7 @@ state.
 | --- | --- | --- |
 | BLE pairing | static passkey, injected by the watch; the node accepted it and the link was encrypted by the BLE link layer | `MEASURED` |
 | BLE bonding | `UNKNOWN` — not exercised; every session in this report re-paired from scratch. Bonds do persist (`CONFIG_BT_NIMBLE_NVS_PERSIST=y`), and what happens when the *node's* half is gone is #325 — see section 8.1. What the *store* does when a second node bonds is no longer open, but it was settled by reading the vendor tree rather than on this bench: [VERIFIED_FACTS.md](VERIFIED_FACTS.md) "A wrong MeshCore node's bond evicts the pinned node's". This row is the bench half and stays `UNKNOWN` until a run exercises it |  |
-| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:2188`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1693`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1713` "store_passkey(event.passkey) && clear_reprovision_pending())") and replayed at boot unless node recovery is pending; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
+| Passkey handling | the 6-digit passkey is **not** in the firmware image. It is supplied at runtime by the operator over the USB debug channel, reaches NimBLE through `configure_meshcore_ble()` -> `ble_sm_configure_static_passkey()` ([`meshcore_ble.cpp:2200`](../../firmware/main/meshcore_ble.cpp) "bool configure_meshcore_ble", [`meshcore_ble.cpp:1705`](../../firmware/main/meshcore_ble.cpp) "ble_sm_configure_static_passkey(event.passkey"). Every session in this report ran it from RAM, gone on reset — `MEASURED`. Since #356 an accepted six-digit passkey is also written to plain NVS (`meshcore_ble.cpp:1725` "store_passkey(event.passkey) && clear_reprovision_pending())") and replayed at boot unless node recovery is pending; the zero of the unpaired probe is not stored. That round trip is `NOT EXECUTED — HARDWARE REQUIRED`. `CONFIG_BT_NIMBLE_STATIC_PASSKEY=y` enables the mechanism, not a value | `MEASURED`; persistence `NOT EXECUTED — HARDWARE REQUIRED` |
 | Passkey strength | 6 decimal digits, static for the session, not per-device and not rotated. Whoever holds it can pair | structural, from the mechanism |
 | Companion frame integrity | none at the Companion layer. Frames carry no MAC, no sequence number and no replay counter. Their only protection is whatever the BLE link layer provides | `MEASURED` — every frame in section 4 is plaintext on the wire |
 | Mesh payload encryption | the `0x88` push payloads are ciphertext the watch does not decrypt; the node does the mesh crypto | `MEASURED` |

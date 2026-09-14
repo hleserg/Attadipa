@@ -323,19 +323,38 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // was holding -- in a 16-deep queue that evicts when it fills, so lost, not
     // merely late -- and left the battery poll gated off with it.
     //
-    // A quiet stream is the weaker evidence that the walk is over, and it is
-    // enough for the only thing this decides: whether a command may go out
-    // without aborting the node's own iteration. It is not enough for
-    // `peers_complete`, which is why that stays where the node's own statement
-    // sets it.
-    if (contacts_open_ && core::elapsed(last_contact_at_, now) >= kContactsQuiet) {
-        contacts_open_ = false;
-        if (!wrong_node_ && !end_contacts(now)) {
-            // A full ring is the one refusal worth retrying: reopening the
-            // window lets the next quiet interval ask again rather than
-            // spending the session's one question on a frame that never left.
-            contacts_open_ = true;
-            last_contact_at_ = now;
+    // A quiet stream is weaker evidence than the node's own frame, and what it
+    // is evidence *for* is the same thing: the walk is over. The one command
+    // sourced to abort an iteration is `CMD_APP_START`, whose handler sets
+    // `_iter_started = false` (`docs/research/MESHCORE_COMPANION_PROTOCOL.md:292`
+    // -- "**The one thing the handshake does clear** is `_iter_started = false` in the"),
+    // and what that costs in practice is
+    // `docs/research/OPEN_QUESTIONS.md:274` -- "| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?**"
+    // -- UNKNOWN. CMD_SYNC_NEXT_MESSAGE is not that command, so the window is
+    // not here to protect the node from us. It is here because `contacts_-
+    // complete_` is a claim *this* client makes and acts on: it releases the
+    // battery poll, and the mesh face compares the retained count against the
+    // node's total only once it is set. Setting it while frames were still
+    // arriving would start polling into a queue that is still overrunning and
+    // print a pair that is still counting up.
+    //
+    // So the quiet path sets `peers_complete` exactly as the boundary frame
+    // does. The alternative was tried and is worse: on the very session where
+    // the watch kept fewer contacts than the node has -- which is what a
+    // dropped burst *is* -- withholding the flag makes the face print the
+    // node's total alone and drop the `kept/reported` pair that says so.
+    //
+    // AND THE WINDOW OUTLIVES BOTH WAYS OF NOT SENDING. A refusal is latched,
+    // not final -- `unpin()` clears `wrong_node_` inside the session -- and a
+    // full ring empties. Neither closes the walk and neither touches
+    // `contacts_open_` or `last_contact_at_`, so the sweep stays armed and the
+    // next tick after the obstacle clears does what this one could not. The
+    // session has exactly one CMD_SYNC_NEXT_MESSAGE to spend on a lost
+    // boundary, and `end_contacts()` spends it only on a frame that left.
+    if (contacts_open_ && !wrong_node_ &&
+        core::elapsed(last_contact_at_, now) >= kContactsQuiet) {
+        if (end_contacts(now)) {
+            status_.peers_complete = true;
         }
     }
     if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
@@ -358,7 +377,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:800` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:819` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -859,11 +878,6 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         break;
     case kResponseContactsEnd:
         if (size < 5) { ++malformed_frames_; return false; }
-        // ONLY THIS ARM MAY CLAIM THE SNAPSHOT IS COMPLETE. The frame is the
-        // node's own statement that the walk reached the end, and ADR-0022
-        // makes `peers_complete` a claim about content rather than about
-        // timing. The quiet sweep in tick() closes the same iteration without
-        // it, and deliberately does not set this.
         status_.peers_complete = true;
         if (!end_contacts(now)) {
             ++malformed_frames_;
