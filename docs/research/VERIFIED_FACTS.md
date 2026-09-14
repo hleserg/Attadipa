@@ -2783,38 +2783,68 @@ ones that heading states.
   board draw plus a constant-current charge; forty-five flat minutes rule out
   only the tapering CV phase of a charge, not a charge. **Do not derive a
   battery life, a per-rail split, or a sleep figure from this.**
-- **The cheap read is an upper bound on the charge current, not a measurement
-  of it.** Power the watch off with a long press while leaving it inline and
-  read what is left: that costs nothing, has not been run, and is worth
-  running. But the meter stays upstream of the AXP2101 when the watch is off,
-  so what it returns is the whole of
-  `I_VBUS_off = I_charge + I_PMU + I_RTCLDO + I_other`, offset by the meter's
-  own zero: the PMU's quiescent draw and input conversion loss, the RTCLDO and
-  backup domain, and whatever else outlives the press, each of them a term the
-  same reading contains. Only the sum is measurable this way, and for S17 every
-  individual term is `UNKNOWN`. So a single powered-off read can show that
-  current did not vanish, and it bounds the charge share **from above**; it does
-  not separate charge from the loads that outlive the long press, and **the
-  residual is not the charge current.** That
-  a powered-off system draws something is already vendor-published for this
-  board — `docs/research/HARDWARE_MATRIX.md:341` — "| Power off | backup only | 50 µA |" —
+- **The cheap read is an upper bound on the VBUS-side charge share, not a
+  measurement of it.** Power the watch off with a long press while leaving it
+  inline and read what is left: that costs nothing and is worth running. But
+  the meter stays upstream of the AXP2101 when the watch is off, so what it
+  returns is the whole of
+  `I_VBUS_off = I_charge_vbus + I_PMU + I_RTCLDO + I_other`, offset by the
+  meter's own zero: the PMU's quiescent draw and input conversion loss, the
+  RTCLDO and backup domain, and whatever else outlives the press, each of them
+  a term the same reading contains. Only the sum is measurable this way, and
+  for S17 every individual term is `UNKNOWN`. So a single powered-off read can
+  show that current did not vanish, and it bounds the charge share **from
+  above**; it does not separate charge from the loads that outlive the long
+  press, and **the residual is not the charge current.**
+- **Every term in that sum is on the VBUS side, `I_charge_vbus` included, and
+  that is not the same quantity as the current entering the cell.** The charger
+  sits behind the input, so the battery-side charge current and the VBUS-side
+  share it consumes are related by the front end's conversion — and which front
+  end this unit fits has never been asked of the T-Watch part:
+  `docs/research/BATTERY_UPGRADE.md:131` — "- **Which AXP2101 variant is fitted**, and this is not a footnote — see §6."
+  On the linear part the two coincide. On the switching part they do not, and
+  the difference runs in the direction that makes a VBUS bound too loose rather
+  than too tight — `docs/research/BATTERY_UPGRADE.md:640` — "  at 5 V supports roughly 560 mA of charge current — so **`REG 0x62` is the real" —
+  describes a front end whose battery-side current can **exceed** the input
+  current it came from. So a VBUS residual of R mA bounds the VBUS-side charge
+  share at R and bounds the cell's charge current at nothing in particular, and
+  **a battery-side measurement is not an interchangeable route to the same
+  number** until the variant is settled. Both stay `UNKNOWN` for this unit.
+- **That a powered-off system draws something is published; how much, on this
+  side of the PMU, is not.** The vendor table has a row for it —
+  `docs/research/HARDWARE_MATRIX.md:341` — "| Power off | backup only | 50 µA |" —
   and the AXP2101 datasheet keeps a rail up in that state by design:
   `docs/research/TWATCH_RTC_INPUT_WAKE.md:345` — "all voltage outputs are turned off except RTCLDO".
-  **Neither figure may be subtracted from an S17 reading.** The 50 µA is the
-  vendor's number for the vendor's conditions — order of magnitude, evidence
-  that zero is the wrong prior — and not a matched VBUS baseline on this unit,
-  this meter and this cable; S16's 2.484 mA zero offset belongs to a different
-  meter run on a different board and is already carried as a bias rather than
-  applied (below). Quantifying the charge share needs one of three things, none
-  of which is a single read: a **matched powered-off baseline** — same unit,
-  same meter, same cable and source, cell physically disconnected, then the
-  same measurement with the cell fitted — or a **battery-side current
-  measurement**, or another method that reads the charge branch on its own. Any
-  of them has to record the meter's zero offset and the exact rail and power
-  state for *both* halves, or the difference is not attributable either. Until
-  that control runs, whether a cell was in the watch, whether it was charging
-  and how much of the 158 mA was charge all stay `UNKNOWN`, and the split is
-  **NOT EXECUTED — HARDWARE REQUIRED**.
+  Together those establish the qualitative point and only that: **zero is the
+  wrong prior for a powered-off reading.** They fix no order of magnitude for a
+  *VBUS-side* residual, because the table nowhere records which side of the PMU
+  it was taken on, and this tree already says what such rows are worth —
+  `docs/research/VERIFIED_FACTS.md:812` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
+  Its neighbouring rows read as battery-side figures —
+  `docs/research/HARDWARE_MATRIX.md:337` — "| Deep sleep | PWR + BOOT, backup off | 460 µA |" —
+  and 460 µA of deep sleep is not what an inline USB meter returns with a
+  charger attached. **The expected size of a VBUS-side powered-off residual is
+  `UNKNOWN`**, and neither the 50 µA nor the RTCLDO fact may be subtracted from
+  an S17 reading. S16's 2.484 mA zero offset belongs to a different meter run
+  on a different board and is already carried as a bias rather than applied
+  (below).
+- **The S17 split is not waiting on an experiment; it is unrecoverable.** The
+  matched control is real and worth designing — same unit, same meter, same
+  cable and source, cell physically disconnected, then the same measurement
+  with the cell fitted, each half recording the meter's zero offset and the
+  exact rail and power state — or a battery-side measurement, once the variant
+  question above is closed. But whatever it returns is the charge current **on
+  the day it is run**, and a charge current is a function of the cell's state
+  of charge: this entry says so itself, two bullets above, where the tapering
+  phase is the one thing forty-five flat minutes rule out
+  (`docs/research/VERIFIED_FACTS.md:2783` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  The cell's state of charge on 2026-09-08 was not recorded and cannot be
+  reconstructed, and no later reading says whether a cell was in the watch that
+  day at all. So the control **supersedes** S17 rather than decomposing it: it
+  is the design of the *next* capture, and it is that capture which carries
+  **NOT EXECUTED — HARDWARE REQUIRED**. For S17 itself, whether a cell was in
+  the watch, whether it was charging, and how much of the 158 mA was charge
+  stay `UNKNOWN` **permanently**.
 - **A powered GNSS receiver is inside this number, and its share is
   `UNKNOWN`.** The boot log's own byte says so. `LDO enable 0x17 -> 0x17` prints
   the register **as read, before the write** —
@@ -3122,15 +3152,17 @@ ones that heading states.
   unbounded in direction", and a premise cannot be `UNKNOWN` in the Claim and
   load-bearing here. So the demotion is withdrawn: **the charge current stays
   exactly what it was, an unruled-out share of unknown size**, neither the
-  leading suspect nor demoted from it. **Nor is there a one-read experiment
-  that settles it**, which an earlier revision of this bullet also claimed:
-  powering the watch off with a long press while inline bounds the charge share
-  from above and leaves the non-charge loads in the same number, for the reason
-  the composition bullet above gives
-  (`docs/research/VERIFIED_FACTS.md:2786` — "- **The cheap read is an upper bound on the charge current").
-  What settles it is that read's **matched control** — cell physically
-  disconnected, same unit, meter, cable and source — or a battery-side
-  measurement, and both are `NOT EXECUTED — HARDWARE REQUIRED`. **The burst structure has
+  leading suspect nor demoted from it. **Nor is there any experiment that
+  settles it for this capture**, which an earlier revision of this bullet also
+  claimed: powering the watch off with a long press while inline bounds the
+  VBUS-side charge share from above and leaves the non-charge loads inside the
+  same number, and its matched control measures a charge current belonging to
+  the day it runs rather than to 2026-09-08 — the composition bullets above
+  give both reasons
+  (`docs/research/VERIFIED_FACTS.md:2786` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  Those bullets design the *next* capture, and that is what carries
+  `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
+  permanently `UNKNOWN`. **The burst structure has
   a named candidate in the receiver, and the argument is size, not rhythm**:
   the bursts sit 131.7 mW above the floor, which at 4.930 V is **~26.7 mA held
   for a median 300 ms** — the price of a powered module doing something, not of
