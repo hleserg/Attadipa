@@ -48,8 +48,14 @@ owner can move, and moving it would change what executes here with no change to
 any workflow, pull request, review or required check. **No upstream compromise
 is claimed or observed** — the exposure is the execution path.
 
-Resolved 2026-08-28, except `anthropics/claude-code-action`, re-resolved
-2026-09-08 and again 2026-09-14 after Dependabot bumped it. `anthropics/claude-code-action@v1` and
+Resolved 2026-08-28, except the two rows Dependabot has moved since:
+`anthropics/claude-code-action`, re-resolved 2026-09-08 and again 2026-09-14,
+and `github/codeql-action`, re-resolved 2026-09-14. **A date in a row is the
+commit's own, not the day the row was resolved**, so the two moved rows name
+commits of 2026-09-11 and 2026-09-09 — later than the 2026-08-28 above, which
+would otherwise date them before they existed. The three rows that have not
+moved still name commits older than that sweep, which is what an unmoved pin
+looks like. `anthropics/claude-code-action@v1` and
 `github/codeql-action@v4` are **annotated** tags: `git/ref/tags/<tag>` returns a
 tag object whose SHA is not a commit SHA, and pinning to it pins to something
 GitHub will not check out. `.github/tests/action-pin-test.sh` asserts every pin
@@ -105,7 +111,7 @@ the commit assertion.
 | **`actions/checkout`** | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
 | **`anthropics/claude-code-action`** | `56cf60fde42f7b19c3abfd5c9c48b69a1288461f`, 2026-09-11 | release `v1.0.222`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
 | **`actions/upload-artifact`** | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
-| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `cdf488f595d80d6e07e03d4674febd5ab45fa938`, 2026-08-26 | `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
+| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `b96794f015dfd88f77b49b1c93e0fa7110f94c63`, 2026-09-09 | release `v4.38.0`, reached as `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle |
 | **`actions/cache`** | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
 
 `v1` moved twice while this pin was being prepared — the tag resolved to a
