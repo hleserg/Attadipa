@@ -159,11 +159,20 @@ public:
     // keyed by full public key when #304 lets a wearer pick a contact and more
     // than one of them can matter at the same time.
     //
-    // The time is when these *bytes* first arrived, not when the message did. A
-    // contact who re-sends the same coordinate does not refresh it -- ADR-0021
-    // decision 5 carries ADR-0020 decision 6, and a coordinate that has not
-    // moved has not been re-observed. Nor is it an age at the source: there is
-    // none, and `PositionValidity` stays `NoFix` whatever this says.
+    // The time is when these *bytes* first arrived, not when the message did --
+    // ADR-0021 decision 5 carries ADR-0020 decision 6, and a coordinate that
+    // has not moved has not been re-observed. Nor is it an age at the source:
+    // there is none, and `PositionValidity` stays `NoFix` whatever this says.
+    //
+    // ONE SLOT CANNOT KEEP THAT RULE UNCONDITIONALLY, and this header will not
+    // claim it does. What the single slot implements is the first arrival
+    // since the slot last held these bytes for this sender: with one contact
+    // that is decision 5 exactly, and with two it is not, because B's
+    // coordinate evicts A's and A's identical re-send is then stamped fresh.
+    // `tests/test_meshcore_companion.cpp` walks that denial path in
+    // `test_a_second_peer_restarts_the_first_peers_arrival()`, which passes
+    // against the code as written on purpose: it records the ceiling rather
+    // than a fix, and the fix is the keyed table above -- #304, not this file.
     //
     // NOTHING READS THIS YET, AND THAT IS THE STATE THE ISSUE ASKS FOR. #450
     // gap 5 is the wire and gap 6 is which slot a coordinate fills; the second
