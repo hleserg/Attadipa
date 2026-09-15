@@ -384,7 +384,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1006` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1048` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -782,23 +782,65 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
 // remaining text parses to. That is the one truncation this repository can
 // catch, and the reason it must: 128 bytes of buffer against 157 that can
 // arrive cuts the tail, the sender is told to put the coordinate on the tail,
-// and `@55.9821,37.2104` arriving as `@55.9821,37` passes every bound while
-// landing about thirteen kilometres away:
-// `docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:815` — "the target lands about **13 km**"
+// and `@55.9821,37.2104` arriving as `@55.9821,37.2` passes every bound while
+// landing about six hundred and fifty metres away:
+// `docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:812` — "`@55.9821,37.2104` arrive as `@55.9821,37.2` — the copy keeps `N - 1`, and `N`"
+// The copy keeps `N - 1` of `kMeshTextBytes + 1`, which is 128 and not 127, so
+// a cut leaves one decimal of longitude rather than none -- and one decimal is
+// the interesting case precisely because it still parses -- cut a byte deeper
+// and the grammar refuses the remainder for carrying no decimal place at all.
+// So a single decimal is the fewest that survives, and it is also the worst
+// this guard has to catch: such a survivor can be just under 0.1 degrees of
+// longitude wrong, some six kilometres at that latitude. 650 m is what this
+// particular coordinate costs, not the ceiling.
+//
 // A shortened number keeps no trace of having been longer, so nothing further
 // down the tree could refuse it.
+//
+// WHICH OF DECISION 7'S INHERITED REFUSALS THIS PATH PAYS, named rather than
+// left to be counted, because the clause lists four and this function is not
+// where all four land. Exactly `(0, 0)` and the two bounds are refused in
+// `parse_trailing_coordinate()` above. The advert-type refusal is paid earlier
+// and elsewhere: `accept_contact()` never admits a non-chat contact to
+// `peers_`, so `find_peer_prefix()` cannot resolve a sender to one and decision
+// 2 drops the message before this function runs.
+//
+// The fourth is **not** implemented on this branch:
+// `docs/adr/0021-remote-target-from-a-message.md:163` — "slot; and a contact the node has deleted is discarded rather than aged."
+// A key this session keeps a coordinate for can be deleted on the node while
+// the coordinate stays published under it. The mechanism that would close it is
+// small and specific -- on `RESP_CODE_CONTACT_DELETED` whose key equals
+// `remote_position_id_`, clear `has_remote_position_` -- and it is deliberately
+// not added here, because this branch adds no push arm at all and a half-arm
+// that only notices the deletion is worse than none. `remote_position()` still
+// refuses on `wrong_node_`, which is a different disowning: the whole node,
+// not one contact in it.
 void MeshCoreCompanion::adopt_remote_position(const core::MeshPeer* sender,
                                               core::MonotonicTime now)
 {
     if (sender == nullptr || status_.message_truncated) return;
     core::Position position{};
     if (!parse_trailing_coordinate(status_.last_message.data(), position)) return;
-    // NOT RE-STAMPED WHEN NOTHING MOVED. ADR-0021 decision 5 carries ADR-0020
-    // decision 6 onto this wire, and the reason survives the change of wire
-    // intact: arrival is not an age, and a contact who sends the same
-    // coordinate twice has reported one observation, not two. Re-stamping would
-    // make a coordinate look fresher every time its owner said anything, which
-    // is precisely the freshness this repository has no evidence for.
+    // NOT RE-STAMPED WHEN NOTHING MOVED -- where "nothing moved" is as much as
+    // one slot can see, which is narrower than the sentence it implements.
+    // ADR-0021 decision 5 carries ADR-0020 decision 6 onto this wire and the
+    // reason survives the change of wire intact: arrival is not an age, and a
+    // contact who sends the same coordinate twice has reported one observation,
+    // not two. Re-stamping would make a coordinate look fresher every time its
+    // owner said anything, which is precisely the freshness this repository has
+    // no evidence for.
+    //
+    // THE RULE THE CODE BELOW ACTUALLY IMPLEMENTS is: the first arrival since
+    // the slot last held these bytes for this sender. With one contact talking
+    // that is decision 5 exactly. With two it is not, and the gap is the other
+    // half of the single-slot ceiling rather than a second defect -- a
+    // coordinate from B overwrites A's, and A's next identical message finds an
+    // empty memory and is stamped fresh, so a chatty second peer restarts the
+    // first peer's freshness without either of them reporting anything new.
+    // That is a denial path, it is cheap to walk, and it is pinned by
+    // `test_a_second_peer_restarts_the_first_peers_arrival()` rather than fixed
+    // here: the fix is a coordinate per key, which is #304's stored table and
+    // not this branch.
     if (has_remote_position_ && remote_position_id_ == sender->id &&
         remote_position_.latitude_e7 == position.latitude_e7 &&
         remote_position_.longitude_e7 == position.longitude_e7) {

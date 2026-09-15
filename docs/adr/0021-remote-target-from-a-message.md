@@ -175,8 +175,11 @@ clamped** — clamping would invent a place. And **a message our own receiver
 truncated yields no coordinate**, whatever the remainder parses to: the text
 buffer is 128 bytes against a frame that can deliver 157, the cut lands on the
 tail where §14.2 tells the sender to put the coordinate, and the result —
-`@55.9821,37` out of `@55.9821,37.2104` — is inside every bound and about 13 km
-wrong. The sender's own truncation cannot be caught here and is recorded as a
+`@55.9821,37.2` out of `@55.9821,37.2104` — is inside every bound and about
+650 m wrong. 650 m is this coordinate's cost, not the clause's worst case: a
+survivor cut back to a single decimal — the fewest the grammar still accepts —
+can be under 0.1° of longitude wrong, some 6 km at that latitude. The sender's
+own truncation cannot be caught here and is recorded as a
 property of the wire (§14.3); ours is reported by the parser already, so
 refusing it costs one branch and is not optional.
 

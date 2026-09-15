@@ -2354,7 +2354,7 @@ void open_a_contact_stream(MeshCoreCompanion& client, bool drain)
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:963` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1005` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -2502,6 +2502,20 @@ void deliver_message(MeshCoreCompanion& client, const MeshPeer& peer,
     CHECK(client.receive(frame, 16 + length, at(when)));
 }
 
+// A SECOND RESOLVABLE CONTACT, delivered outside a walk on purpose:
+// `RESP_CODE_CONTACT` is routed to `accept_contact()` whatever the stream state,
+// which is how a node announces a contact it learned after the sync finished.
+void add_a_second_contact(MeshCoreCompanion& client, std::uint64_t when)
+{
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i)
+        contact[1 + i] = static_cast<std::uint8_t>(0x80 + i);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Other", 5);
+    CHECK(client.receive(contact, sizeof(contact), at(when)));
+}
+
 // The same frame from a prefix no contact in the table matches.
 void deliver_from_a_stranger(MeshCoreCompanion& client, const char* text,
                              std::uint64_t when)
@@ -2626,7 +2640,7 @@ void test_a_coordinate_from_nobody_is_dropped()
 // A MESSAGE OUR OWN RECEIVER CUT YIELDS NOTHING, whatever the remainder parses
 // to. The tail is where the coordinate goes and the tail is what is lost, so
 // what survives is a shorter number that passes every bound -- and is, in the
-// report's worked case, about thirteen kilometres wrong.
+// report's worked case, about six hundred and fifty metres wrong.
 void test_a_truncated_message_yields_no_coordinate()
 {
     MeshCoreCompanion client;
@@ -2634,26 +2648,73 @@ void test_a_truncated_message_yields_no_coordinate()
     MeshPeer peer{};
     CHECK(client.peer(0, peer));
 
-    // 129 bytes into a buffer that keeps 127, so the coordinate loses its last
-    // two characters and nothing else does. That is the case the report works
-    // out by hand, and the length is chosen rather than round: a cut two
-    // characters earlier leaves `@55.9821,37`, which the grammar refuses on its
-    // own and which would therefore prove nothing about this guard.
-    std::string text(112, 'x');
+    // 131 bytes into a buffer that keeps 128, so the coordinate loses its last
+    // three characters and nothing else does. `copy_text` keeps `N - 1` where
+    // `N` is `kMeshTextBytes + 1`, which is 128 -- an earlier revision of this
+    // test said 127 and inherited the same error from the report, so the
+    // surviving length is asserted below rather than described.
+    //
+    // 131 is chosen rather than round because it is the *longest* text whose
+    // remainder still parses: at 132 the survivor is `@55.9821,37.` and at 133
+    // it is `@55.9821,37`, and the grammar refuses both for carrying no decimal
+    // place, so either would prove nothing about this guard.
+    std::string text(114, 'x');
     text += " @55.9821,37.2104";
-    CHECK(text.size() == 129);
+    CHECK(text.size() == 131);
     deliver_message(client, peer, text.c_str(), 60);
     CHECK(client.status().message_truncated);
+    CHECK(std::strlen(client.status().last_message.data()) == core::kMeshTextBytes);
     core::MeshPeerId who{};
     core::Position position{};
     core::MonotonicTime arrived{};
     CHECK(!client.remote_position(who, position, arrived));
 
     // The mutation this is really guarding: what survived the cut is
-    // `@55.9821,37.21`, which parses, is inside every bound, and is about
-    // thirteen kilometres from where the sender is.
-    CHECK(std::strstr(client.status().last_message.data(), "@55.9821,37.21") != nullptr);
-    CHECK(std::strstr(client.status().last_message.data(), "37.2104") == nullptr);
+    // `@55.9821,37.2`, which parses, is inside every bound, and is about 650 m
+    // from where the sender is at this latitude.
+    CHECK(std::strstr(client.status().last_message.data(), "@55.9821,37.2") != nullptr);
+    CHECK(std::strstr(client.status().last_message.data(), "37.21") == nullptr);
+}
+
+// A SECOND PEER'S COORDINATE EVICTS THE FIRST, AND THE FIRST IS THEN STAMPED
+// AFRESH. This is the half of ADR-0021 decision 5 that one slot cannot keep:
+// A's third message is identical bytes from an unchanged sender, which the
+// decision calls one observation, and it is stamped 300 anyway because B's
+// coordinate erased the memory of A's. Pinned rather than fixed -- a coordinate
+// per key is #304's stored table, not this branch -- and pinned rather than
+// left implicit, because the comment above the guard used to promise the
+// unconditional rule and this is the case that falsifies it.
+void test_a_second_peer_restarts_the_first_peers_arrival()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer first{};
+    CHECK(client.peer(0, first));
+    add_a_second_contact(client, 90);
+    MeshPeer second{};
+    CHECK(client.peer(1, second));
+    CHECK(!(first.id == second.id));
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+
+    deliver_message(client, first, "@12.3456,65.4321", 100);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == first.id);
+    CHECK(arrived == at(100));
+
+    deliver_message(client, second, "@30.0000,40.0000", 200);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == second.id);
+    CHECK(arrived == at(200));
+
+    // Byte for byte what arrived at 100, from the same sender -- and stamped
+    // 300, because nothing remembers that it was ever here.
+    deliver_message(client, first, "@12.3456,65.4321", 300);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == first.id);
+    CHECK(arrived == at(300));
 }
 
 // THE SAME COORDINATE TWICE IS ONE OBSERVATION. ADR-0021 decision 5 carries
@@ -2715,6 +2776,7 @@ int main()
     test_a_coordinate_that_is_not_one_is_refused();
     test_a_coordinate_from_nobody_is_dropped();
     test_a_truncated_message_yields_no_coordinate();
+    test_a_second_peer_restarts_the_first_peers_arrival();
     test_an_unchanged_coordinate_is_not_re_stamped();
     test_a_reconnect_does_not_inherit_a_contact_coordinate();
     test_a_misfired_sweep_publishes_a_partial_pair();
