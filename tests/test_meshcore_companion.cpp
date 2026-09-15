@@ -2354,7 +2354,7 @@ void open_a_contact_stream(MeshCoreCompanion& client, bool drain)
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1005` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1033` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -2575,6 +2575,31 @@ void test_a_message_carries_a_coordinate_or_nothing()
     CHECK(client.remote_position(who, position, arrived));
     CHECK(position.latitude_e7 == 200000000);  // still #36's, not #37's earlier one
     CHECK(arrived == at(36));
+
+    // AND NEITHER DOES A LAST MATCH THAT FAILS THE *GRAMMAR*. This is the same
+    // refusal paid for the other way a match can go wrong, and the shape that
+    // arrives in the wild is the sender's own truncation: a cut on or before
+    // the decimal point fails the grammar rather than a bound, so before this
+    // was paid the quoted `10.0000` was published with message #38's fresh
+    // stamp -- a place nobody sent, at a time nobody sent it.
+    deliver_message(client, peer, "was @10.0000,10.0000 now @20.0000,2", 38);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(position.latitude_e7 == 200000000);  // still #36's
+    CHECK(arrived == at(36));
+
+    // A FULL STOP ENDS A SENTENCE, not a number's claim to be one. §14.2 does
+    // not require the coordinate to come last, and a coordinate that is not
+    // last is the one likeliest to carry punctuation.
+    CHECK(parsed_to(client, peer, "@12.3456,65.4321. Буду через час", 39,
+                    123456000, 654321000));
+    CHECK(parsed_to(client, peer, "was @10.0000,10.0000 now @20.0000,20.0000.", 40,
+                    200000000, 200000000));
+
+    // AND AN ANCHORED `@` THAT NEVER BEGAN A NUMBER TAKES NOTHING WITH IT: a
+    // mention is not a coordinate that failed, and the coordinate before it
+    // still stands.
+    CHECK(parsed_to(client, peer, "@12.3456,65.4321 cc @alice", 41,
+                    123456000, 654321000));
 }
 
 void test_a_coordinate_that_is_not_one_is_refused()
@@ -2611,6 +2636,7 @@ void test_a_coordinate_that_is_not_one_is_refused()
         "@0.0000,0.0000",            // exactly the null island
         "@12.3456;65.4321",          // the separator is a comma
         "@12.3456,",                 // no second number
+        "@1.2,3.4.5",                // a further digit group still is not one
     };
     std::uint64_t when = 40;
     for (const char* text : refused) {

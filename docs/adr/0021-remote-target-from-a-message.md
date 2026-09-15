@@ -58,7 +58,7 @@ new wire must apply them to it.
 
 **1. The remote target's coordinate is read from the text of a message this
 companion already accepts.** The message arrives on the path this repository
-parses today — `link/src/meshcore_companion.cpp:738` — "bool MeshCoreCompanion::accept_message(const std::uint8_t* data," —
+parses today — `link/src/meshcore_companion.cpp:766` — "bool MeshCoreCompanion::accept_message(const std::uint8_t* data," —
 and the coordinate is a substring of the text it copies. The grammar is fixed in
 §14 of the research report and is the only shape accepted: nothing is inferred
 from a number that does not carry the sigil.
@@ -88,7 +88,7 @@ lookup key into a table that holds full keys, never an identity of its own.
 inside one contact table would attribute a coordinate to the wrong contact.
 Nothing here measures that risk and nothing should claim it is zero. What is
 decided is the failure mode: an unresolved prefix means **no target**, not an
-unnamed one, because `link/src/meshcore_companion.cpp:760` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" —
+unnamed one, because `link/src/meshcore_companion.cpp:788` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" —
 already answers `nullptr` while the text is accepted regardless. A coordinate
 without a named sender is dropped.
 
@@ -182,6 +182,17 @@ can be under 0.1° of longitude wrong, some 6 km at that latitude. The sender's
 own truncation cannot be caught here and is recorded as a
 property of the wire (§14.3); ours is reported by the parser already, so
 refusing it costs one branch and is not optional.
+
+**A match that goes wrong replaces the previous one with nothing**, and it does
+that whichever way it went wrong. The bound and the grammar are one rule here,
+not two: a fallback reaches for a stale place exactly when the fresh one is
+malformed, and the sender's own truncation is the shape that arrives in the
+wild — a cut on or before the decimal point fails the grammar rather than a
+bound, so paying this for bounds alone would publish a quoted older coordinate
+with the new message's arrival stamp. What does *not* clear anything is an
+anchored `@` that never began a number: `@alice` is a mention. The same reading
+settles the punctuation that ends a sentence — a full stop after the decimals
+ends the number, and only a further digit group after it refuses the shape.
 
 The sign is part of the grammar, not an afterthought: a leading `-` on either
 number is accepted and means the southern or western hemisphere. A parser that

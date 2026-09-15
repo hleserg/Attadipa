@@ -384,7 +384,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1048` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1076` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -677,7 +677,16 @@ bool scan_number(const char* text, std::size_t size, std::size_t& at,
         ++i;
     }
     if (places == 0) return false;
-    if (i < size && text[i] == '.') return false;  // 1.2.3 is not a number
+    // 1.2.3 is not a number, and this is the only thing that says so -- but it
+    // says it about a further *digit group*, not about every full stop. A
+    // sentence ends in one, and refusing `@12.3456,65.4321.` here used to send
+    // the caller back to whatever earlier match it had, which is the fallback
+    // ADR-0021 decision 7 refuses. `!`, `,`, a letter and end-of-text already
+    // ended a number cleanly; a full stop now does too.
+    if (i + 1 < size && text[i] == '.' && text[i + 1] >= '0' &&
+        text[i + 1] <= '9') {
+        return false;
+    }
     for (std::size_t pad = places; pad < 7; ++pad) fraction *= 10;
     // At most 999.9999999 degrees, so this cannot approach the width of the
     // accumulator and the range test below is the only thing that narrows it.
@@ -699,10 +708,29 @@ bool parse_trailing_coordinate(const char* text, core::Position& out)
         if (at < size && text[at] == ' ') ++at;
         std::int64_t latitude = 0;
         std::int64_t longitude = 0;
-        if (!scan_number(text, size, at, latitude)) continue;
-        if (at >= size || text[at] != ',') continue;
+        // A MATCH THAT FAILED THE GRAMMAR IS A FAILED MATCH, not an absent
+        // one, and it clears `found` exactly as a failed bound does below.
+        // Paying this for only one of the two ways a match can be malformed is
+        // what let a quoted older coordinate win, stamped fresh, at the moment
+        // the live one went wrong -- the sender's own truncation being the
+        // shape that arrives in the wild. What still does *not* clear anything
+        // is an anchored `@` that never began a number at all: `@alice` is a
+        // mention, not a coordinate that failed.
+        const bool numeric = at < size && (text[at] == '-' ||
+                                           (text[at] >= '0' && text[at] <= '9'));
+        if (!scan_number(text, size, at, latitude)) {
+            if (numeric) found = false;
+            continue;
+        }
+        if (at >= size || text[at] != ',') {
+            found = false;
+            continue;
+        }
         ++at;
-        if (!scan_number(text, size, at, longitude)) continue;
+        if (!scan_number(text, size, at, longitude)) {
+            found = false;
+            continue;
+        }
         // Bounds before the narrowing, which is the ordering ADR-0020 made
         // explicit for the binary wire and ADR-0021 decision 7 carries onto
         // this one. Dropped and never clamped: a clamped coordinate is a place
@@ -809,7 +837,7 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
 // `docs/adr/0021-remote-target-from-a-message.md:163` — "slot; and a contact the node has deleted is discarded rather than aged."
 // A key this session keeps a coordinate for can be deleted on the node while
 // the coordinate stays published under it. The mechanism that would close it is
-// small and specific -- on `RESP_CODE_CONTACT_DELETED` whose key equals
+// small and specific -- on `PUSH_CODE_CONTACT_DELETED` whose key equals
 // `remote_position_id_`, clear `has_remote_position_` -- and it is deliberately
 // not added here, because this branch adds no push arm at all and a half-arm
 // that only notices the deletion is worse than none. `remote_position()` still
