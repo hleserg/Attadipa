@@ -2350,6 +2350,206 @@ void open_a_contact_stream(MeshCoreCompanion& client, bool drain)
     CHECK(client.receive(contact, sizeof(contact), at(6)));
 }
 
+// A WALK A PUSH INVALIDATED, opened and ended by hand because the shape is the
+// point: the four codes are dirt only between `RESP_CODE_CONTACTS_START` and
+// `RESP_CODE_END_OF_CONTACTS`, so the push has to land inside the stream and
+// the stream has to end for anything to be published. `drain` leaves the
+// handshake's commands in the ring for the caller that needs it full.
+void open_a_dirty_walk(MeshCoreCompanion& client, bool drain)
+{
+    open_a_contact_stream(client, drain);
+
+    // PUSH_CODE_CONTACT_DELETED, inside the walk: the node compacted its table
+    // under its own iterator and the rows this walk has not reached moved.
+    const std::uint8_t deleted[] = {0x8F};
+    CHECK(client.receive(deleted, sizeof(deleted), at(7)));
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(8)));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+}
+
+// ROW 17 OF ADR-0022 §9. The re-read's own `CONTACTS_START` is the second one
+// of the session, and everything the first one does to the published state is
+// what decision 7a forbids the second one from doing. The assertion that makes
+// this a test rather than a restatement is the message in the middle: a
+// contact message names its sender by resolving a six-byte prefix against
+// `peers_`, so a re-read that wiped the published set would deliver the text
+// with no name on it -- and the face would have watched `retained` count up
+// from zero while a walk it never asked for ran.
+void test_a_re_read_does_not_unname_a_sender_mid_walk()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    const std::uint8_t drained[] = {10};
+    CHECK(client.receive(drained, sizeof(drained), at(9)));
+
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.status().availability == Availability::Ready);
+
+    // Ten seconds later the re-read goes out, and until its answer arrives the
+    // published snapshot says a command is on the wire rather than that the
+    // list is proven.
+    client.tick(at(9 + 10000));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 4);
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    // The second CONTACTS_START of the session. Nothing below it may move.
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(9 + 10001)));
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().availability == Availability::Ready);
+
+    // And the message arrives while the re-read is still streaming, which is
+    // the moment the shadow copy earns its cost.
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    std::uint8_t message[16 + 11]{};
+    message[0] = 16;  // RESP_CODE_CONTACT_MSG_RECV_V3
+    std::memcpy(&message[4], peer.id.public_key.data(), 6);
+    std::memcpy(&message[16], "still named", 11);
+    CHECK(client.receive(message, sizeof(message), at(9 + 10002)));
+    CHECK(std::strcmp(client.status().last_sender.data(), "Peer") == 0);
+    CHECK(std::strcmp(client.status().last_message.data(), "still named") == 0);
+
+    // The re-read finds the same table it was sent to re-read, and committing
+    // it changes nothing a reader can see -- which is the outcome to assert,
+    // because it is indistinguishable from the bug only if nothing is checked
+    // between the two boundaries above.
+    // The re-read finds both rows the first walk was told to expect -- the one
+    // it read and the one the deletion moved out from under it. The pair must
+    // not move while that is streaming: `1 of 2` is the last proven
+    // observation and stays published until a walk replaces it.
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(9 + 10003)));
+    CHECK(client.status().peers_retained == 1);
+    std::uint8_t second[148]{};
+    second[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i)
+        second[1 + i] = static_cast<std::uint8_t>(0x80 + i);
+    second[33] = 1;
+    std::memcpy(&second[100], "Other", 5);
+    CHECK(client.receive(second, sizeof(second), at(9 + 10004)));
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.peer_count() == 1);
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(9 + 10005)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().peers_retained == 2);
+    CHECK(client.peer_count() == 2);
+    CHECK(client.status().availability == Availability::Ready);
+    CHECK(client.peer(0, peer));
+    CHECK(std::strcmp(peer.name.data(), "Peer") == 0);
+
+    // One command follows, and it is the message's own continuation rather
+    // than anything the re-read spent: a delivered message means the node may
+    // be holding more. The re-read's end adds nothing to it.
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(!client.next_tx(frame));
+    CHECK(client.malformed_frames() == 0);
+}
+
+// ROW 18 OF ADR-0022 §9, and the ring is full on purpose. A re-read's
+// `END_OF_CONTACTS` has to reach `finish_retry()` and nothing else, and this
+// test pins both halves of that separately, because they fail separately.
+//
+// The first half is the commit. Route the re-read's END through the session
+// arm and `finish_retry()` never runs: the staged set is never published, so
+// the contact the node renamed keeps its old name forever. That is what the
+// `Renamed` assertion below catches, and it is the only thing that does --
+// `end_contacts()` on this session short-circuits on `contacts_complete_`,
+// which the re-read's START never cleared, so a re-read routed the wrong way
+// is otherwise perfectly quiet.
+//
+// The second half is the drain. If the END did reach a live `end_contacts()`,
+// it would ask for a second CMD_SYNC_NEXT_MESSAGE, find no room, and charge
+// the node a malformed frame for a frame that was perfectly well formed -- and
+// take the drain down with it, because `request_next_message()` clears
+// `draining_` when the ring refuses it. That is right for a drain that failed
+// to go out and wrong for a drain that is still outstanding, which is what the
+// closing `kPushMessageWaiting` proves: it is folded into the live drain
+// rather than spent on a request of its own.
+void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
+{
+    MeshCoreCompanion client;
+    // Undrained: CMD_APP_START, CMD_DEVICE_QUERY and CMD_GET_CONTACTS are in
+    // the ring, and the walk's own CMD_SYNC_NEXT_MESSAGE takes the fourth slot.
+    // The drain is outstanding from here to the end of this test.
+    open_a_dirty_walk(client, false);
+
+    // One slot freed, and the re-read takes it back: the ring is full again
+    // from the moment the re-read goes out until the test drains it.
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+
+    client.tick(at(8 + 10000));
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(8 + 10001)));
+
+    // The re-read finds the contact under a new name, which is the whole
+    // reason the walk was repeated: the node moved the row while the first
+    // walk was reading it. Nothing may show the new name before the END.
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Renamed", 7);
+    CHECK(client.receive(contact, sizeof(contact), at(8 + 10002)));
+    MeshPeer staged{};
+    CHECK(client.peer(0, staged));
+    CHECK(std::strcmp(staged.name.data(), "Peer") == 0);
+
+    // The frame that would have cost a command there is no room for. It is
+    // accepted, it is not counted, and it publishes the snapshot it proves --
+    // and this is the one boundary that replaces the published set wholesale,
+    // so the new name arrives here or nowhere.
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(8 + 10003)));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    MeshPeer committed{};
+    CHECK(client.peer(0, committed));
+    CHECK(std::strcmp(committed.name.data(), "Renamed") == 0);
+    CHECK(client.status().peers_retained == 1);
+
+    // Four frames, exactly one of them a sync: the session's, not a second one.
+    int syncs = 0;
+    for (int i = 0; i < 4; ++i) {
+        CHECK(client.next_tx(frame));
+        if (frame.size == 1 && frame.bytes[0] == 10) ++syncs;
+    }
+    CHECK(syncs == 1);
+    CHECK(!client.next_tx(frame));
+
+    // AND THE DRAIN IS STILL OUTSTANDING, which is the half of this a frame
+    // count cannot see. A push while a drain is in flight costs nothing,
+    // because the request already out is going to bring back everything the
+    // node holds; a drain the re-read's end had quietly cleared would answer
+    // this push with a second request.
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(8 + 10004)));
+    CHECK(!client.next_tx(frame));
+}
+
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
@@ -2491,6 +2691,8 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_a_re_read_does_not_unname_a_sender_mid_walk();
+    test_a_re_reads_end_spends_no_drain_on_a_full_ring();
     test_a_misfired_sweep_publishes_a_partial_pair();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();
