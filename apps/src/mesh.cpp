@@ -34,12 +34,12 @@ bool is_terminal(const MeshStatus& status) {
 // turned the only node in range away has no session at all, so the phase is
 // some flavour of "nothing here" and every session-scoped field is empty --
 // exactly when the operator most needs to know that the silence is deliberate.
-// `core/include/attadipa/core/mesh_service.h:70` — "    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY."
+// `core/include/attadipa/core/mesh_service.h:98` — "    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY."
 //
 // BUT NOT OVER A TERMINAL ONE, because there the refusal is history and the
 // fault is now. `MeshCoreCompanion::reset_session()` deliberately keeps the pin
 // and the refusal across a disconnect
-// (`link/src/meshcore_companion.cpp:161` — "    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared"),
+// (`link/src/meshcore_companion.cpp:174` — "    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared"),
 // which is right, and it means a refusal latched at any point in the past is
 // still latched after the transport later faults. Ranked first, it answered
 // `TurnedAway` there -- telling the wearer to go and select a different node,
