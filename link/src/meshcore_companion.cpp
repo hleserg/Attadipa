@@ -208,6 +208,7 @@ void MeshCoreCompanion::reset_session()
     retry_armed_ = false;
     retry_unanswered_ = false;
     retry_open_ = false;
+    retry_swept_ = false;
     retry_since_ = {};
     contacts_seq_ = 0;
     incoming_count_ = 0;
@@ -476,7 +477,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1260` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1270` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -604,6 +605,11 @@ void MeshCoreCompanion::accept_contact(const std::uint8_t* data,
     // de-duplicates against the set it is building. The pair of numbers is not
     // touched either: decision 7a's whole point is that the face must not watch
     // `retained` count up from zero a second time.
+    if (retry_swept_ && !retry_open_) {
+        // The tail of a re-read the sweep abandoned. It has nowhere to go: the
+        // staging is gone and the published set belongs to a different walk.
+        return;
+    }
     auto& table = retry_open_ ? incoming_peers_ : peers_;
     std::size_t& count = retry_open_ ? incoming_count_ : peer_count_;
     for (std::size_t i = 0; i < count; ++i) {
@@ -712,7 +718,9 @@ void MeshCoreCompanion::settle_snapshot(core::MonotonicTime now)
         return;
     }
     if (retries_left_ == 0) {
-        // The budget is spent and the newest read is published anyway. §7.4:
+        // The budget is spent and the newest *proven* read is published anyway
+        // -- the newest one the node ended, which on the swept path is the walk
+        // before this one rather than the fragment just abandoned. §7.4:
         // withholding leaves the wearer an empty list where a probably-right
         // one would serve better, provided it does not claim to be proven.
         status_.snapshot = core::MeshSnapshot::Degraded;
@@ -752,6 +760,8 @@ void MeshCoreCompanion::finish_retry(core::MonotonicTime now, bool ended_by_node
 {
     retry_open_ = false;
     if (!ended_by_node) {
+        // Every later frame of this walk is now unowned -- see `retry_swept_`.
+        retry_swept_ = true;
         // The bit the re-read's own START cleared, put back: the dirt this
         // attempt was sent to clear has not been cleared, and `settle_snapshot`
         // reads exactly that to choose between another attempt and `Degraded`.
@@ -1309,6 +1319,8 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // rather than at the end of the walk before.
         snapshot_dirty_ = false;
         last_contact_at_ = now;
+        // Whatever this walk is, its frames have an owner again.
+        retry_swept_ = false;
         // THE SECOND WALK OF A SESSION IS NOT THE FIRST, and everything below
         // this branch is what decision 7a says a re-read must not do. The
         // published set, the pair, `peers_complete` and `contacts_complete_`

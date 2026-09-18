@@ -3398,6 +3398,28 @@ void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
         }
     }
 
+    // AND THE TAIL OF THE WALK IT ABANDONED GOES NOWHERE. Closing a re-read
+    // does not stop the node sending it: the sweep fires on a three-second gap,
+    // which on a busy channel is an ordinary pause mid-iteration, and the node
+    // resumes afterwards. Those rows belong to a walk this client decided not to
+    // trust. Routed on `retry_open_` alone they would land in the published set
+    // -- a union of two walks that `peers_retained` counts and `peers_reported`
+    // does not, which is the pair `apps/src/mesh.cpp:282` -- "        if (status.peers_complete && retained < reported) {"
+    // -- compares. A second key, so a merge would show as a count rather than
+    // as a rename.
+    std::uint8_t third[148]{};
+    third[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) third[1 + i] = static_cast<std::uint8_t>(i + 33);
+    third[33] = 1;
+    std::memcpy(&third[100], "Third", 5);
+    CHECK(client.receive(third, sizeof(third), at(++when)));
+    CHECK(client.peer_count() == 1);
+    CHECK(client.status().peers_retained == 1);
+    MeshPeer still{};
+    CHECK(client.peer(0, still));
+    CHECK(std::strcmp(still.name.data(), "Peer") == 0);
+    CHECK(client.malformed_frames() == 0);
+
     // NO LIVE-LOCK EITHER. `Degraded` is terminal for the session: two
     // attempts is the whole budget whether the node answered them or not.
     when += 10001;
@@ -3410,7 +3432,7 @@ void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1217` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1227` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3458,7 +3480,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:653` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:659` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
