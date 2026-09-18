@@ -29,7 +29,7 @@
 // `esp_light_sleep_start()`, is still a declaration the sleeper never saw, the
 // same width as before with the snapshot carrying it instead of the table.
 // Closing that needs the sleep itself to be refusable by the transport, which
-// `core/include/attadipa/core/power_owner.h:331` — "// does not yet have and which nothing in the current firmware needs, because"
+// `core/include/attadipa/core/power_owner.h:356` — "// does not yet have and which nothing in the current firmware needs, because"
 // — records as absent, and which
 // `docs/adr/0016-one-power-owner.md:97` — "consumer declares; **the first plan that does must close this window before it"
 // — requires of the first plan gating a rail on `NodeLink`, before that plan ships.

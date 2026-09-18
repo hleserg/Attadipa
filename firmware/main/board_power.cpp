@@ -242,9 +242,10 @@ public:
     debug_timer_wake_ = false;
   }
 
-  bool suspend(attadipa::core::PowerDomain domain) override {
+  attadipa::core::StepResult
+  suspend(attadipa::core::PowerDomain domain) override {
     if (panel_ == nullptr) {
-      return false;
+      return attadipa::core::StepResult::Unchanged;
     }
     if (domain != attadipa::core::PowerDomain::Display) {
       // No other consumer has a suspend path on this board yet, and saying yes
@@ -252,7 +253,7 @@ public:
       // something.
       ESP_LOGE(kTag, "no suspend path for %s",
                attadipa::core::to_string(domain));
-      return false;
+      return attadipa::core::StepResult::Unchanged;
     }
     esp_err_t result = esp_lcd_panel_co5300_set_brightness(panel_, 0);
     if (result == ESP_OK) {
@@ -261,14 +262,26 @@ public:
         // Half-done is not done. The brightness went to zero and the panel is
         // still on, so put the brightness back before reporting the failure:
         // the owner will not call resume() for a suspend that never succeeded.
-        (void)esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+        //
+        // AND WHETHER IT WENT BACK IS THE ONLY PART THE OWNER CANNOT FIND OUT
+        // FOR ITSELF. Discarded, this return turned a display left at an
+        // unnameable brightness into the same word as a display nothing
+        // touched, and the owner published Ready over it.
+        const esp_err_t restored =
+            esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+        if (restored != ESP_OK) {
+          ESP_LOGE(kTag,
+                   "suspend display: %s, and the brightness did not go back: %s",
+                   esp_err_to_name(result), esp_err_to_name(restored));
+          return attadipa::core::StepResult::Unknown;
+        }
       }
     }
     if (result != ESP_OK) {
       ESP_LOGE(kTag, "suspend display: %s", esp_err_to_name(result));
-      return false;
+      return attadipa::core::StepResult::Unchanged;
     }
-    return true;
+    return attadipa::core::StepResult::Done;
   }
 
   bool resume(attadipa::core::PowerDomain domain) override {
@@ -311,38 +324,55 @@ public:
     return false;
   }
 
-  bool arm_wake(attadipa::core::WakeSource source) override {
+  attadipa::core::StepResult
+  arm_wake(attadipa::core::WakeSource source) override {
     switch (source) {
     case attadipa::core::WakeSource::Timer: {
       const std::uint64_t us =
           debug_timer_wake_ ? kDebugWakeDelayUs : kPmuSleepPollUs;
       const esp_err_t result = esp_sleep_enable_timer_wakeup(us);
       if (result != ESP_OK) {
+        // One operation, nothing to put back: a failure here is a failure that
+        // changed nothing, and that is the whole claim.
         ESP_LOGE(kTag, "arm timer wake: %s", esp_err_to_name(result));
-        return false;
+        return attadipa::core::StepResult::Unchanged;
       }
-      return true;
+      return attadipa::core::StepResult::Done;
     }
     case attadipa::core::WakeSource::Touch: {
       if (touch_interrupt_ == GPIO_NUM_NC) {
         // Attached without a touch controller: the line is undriven and its
         // level UNKNOWN, so it is refused like Button below, not guessed.
+        // Nothing was configured, so the refusal is `Unchanged` -- the pin's
+        // level being unknown is not the same as this step having left it that
+        // way.
         ESP_LOGE(kTag, "no touch line to arm on this boot");
-        return false;
+        return attadipa::core::StepResult::Unchanged;
       }
       esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);
       if (result == ESP_OK) {
         result = esp_sleep_enable_gpio_wakeup();
         if (result != ESP_OK) {
-          (void)gpio_wakeup_disable(touch_interrupt_);
+          // The per-pin enable took and the global one did not, so the pin is
+          // configured for a wake the SoC will not act on. If putting it back
+          // fails as well, that configuration is still there and no longer
+          // recorded anywhere -- which is a wake nobody can explain, the exact
+          // state `unwind_wake()` names its sources for.
+          const esp_err_t undone = gpio_wakeup_disable(touch_interrupt_);
+          if (undone != ESP_OK) {
+            ESP_LOGE(kTag,
+                     "arm touch wake: %s, and the pin did not go back: %s",
+                     esp_err_to_name(result), esp_err_to_name(undone));
+            return attadipa::core::StepResult::Unknown;
+          }
         }
       }
       if (result != ESP_OK) {
         ESP_LOGE(kTag, "arm touch wake: %s", esp_err_to_name(result));
-        return false;
+        return attadipa::core::StepResult::Unchanged;
       }
       touch_armed_ = true;
-      return true;
+      return attadipa::core::StepResult::Done;
     }
     default:
       break;
@@ -354,7 +384,7 @@ public:
     // place nothing downstream can detect.
     ESP_LOGE(kTag, "this board cannot arm %s as a wake source",
              attadipa::core::to_string(source));
-    return false;
+    return attadipa::core::StepResult::Unchanged;
   }
 
   bool disarm_wake(attadipa::core::WakeSource source) override {

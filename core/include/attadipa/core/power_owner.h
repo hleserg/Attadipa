@@ -212,13 +212,38 @@ struct WakeCauses {
     std::uint32_t unmapped_from_soc = 0;
 };
 
+// WHAT A STEP LEFT BEHIND, WHICH IS NOT THE SAME QUESTION AS WHETHER IT WORKED.
+//
+// A `bool` answers "did the postcondition happen". On this board two steps are
+// several operations, and when the second fails the adapter issues a third to
+// put the first one back. That third can fail as well, and then there are two
+// different failures wearing one word: the board is where it started, or the
+// board is somewhere nobody can name. Only the adapter is in a position to
+// tell them apart -- the owner cannot re-derive it, because the evidence is
+// the return value of a call the owner never made.
+//
+// `Unchanged` is therefore the ordinary failure and stays the default reading
+// of every refusal: a step that never touched the hardware, a board that has
+// no path for this domain, a single operation that failed on its own. `Unknown`
+// is the narrow one, and it is claimed only where a compensation was issued
+// and did not succeed.
+enum class StepResult : std::uint8_t {
+    Done,       // the postcondition holds
+    Unchanged,  // it does not, and the state before the step was restored
+    Unknown,    // it does not, and the state before the step was not restored
+};
+
 class PowerHardware {
 public:
     virtual ~PowerHardware() = default;
 
     // Quiesce the consumer on this domain, with its clock and its bus still up.
     // This is why rail gating comes after suspension and never before.
-    virtual bool suspend(PowerDomain domain) = 0;
+    //
+    // `Unknown` here means the adapter changed something, could not finish, and
+    // could not put it back. The owner latches it rather than unwinding around
+    // it: see `sleep()`.
+    virtual StepResult suspend(PowerDomain domain) = 0;
     virtual bool resume(PowerDomain domain) = 0;
 
     // The rail that feeds a domain. Cutting one is authorised by a measurement,
@@ -231,7 +256,7 @@ public:
     // did not actually arm has manufactured exactly the state ADR-0016 exists to
     // prevent — software believing the hardware holds something it does not —
     // and it has done it in the one place nothing downstream can detect.
-    virtual bool arm_wake(WakeSource source) = 0;
+    virtual StepResult arm_wake(WakeSource source) = 0;
     virtual bool disarm_wake(WakeSource source) = 0;
 
     // Stop the CPU, and report every source that brought it back.
