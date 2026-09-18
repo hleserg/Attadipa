@@ -813,6 +813,26 @@ constexpr attadipa::core::Millis kBoardTickPeriod{1000};
 constexpr attadipa::core::Millis kMeshPagePeriod{500};
 #endif
 
+// This board's hardware inventory, and the object ADR-0007 §1a gives a writer.
+//
+// Split out of `board_capabilities()` below so that boot can write to it.
+// Nothing on a device called `set_state()` before this -- issue #592 -- so
+// every present feature stayed at the state the constructor seeds,
+// `platform/src/profile_inventory.cpp:13` -- "        states_[i] = profile.present(feature) ? HardwareState::Untouched"
+// -- and `from_state()` publishes `Untouched` as `Availability::Off`, whose
+// user-facing sentence is "deliberately powered down; can be brought up".
+// That sentence was false about every part this board does bring up, and it
+// was the only sentence the capability layer could produce on a running watch.
+attadipa::platform::ProfileInventory *board_inventory() {
+  static const attadipa::platform::BoardProfile *profile =
+      attadipa::platform::find_board_profile(kBoardProfileId);
+  if (profile == nullptr) {
+    return nullptr;
+  }
+  static attadipa::platform::ProfileInventory inventory(*profile);
+  return &inventory;
+}
+
 // This board's capability registry, and the first one in this firmware.
 //
 // `apps::launcher_entry()` needs something to ask, and until now nothing on a
@@ -822,13 +842,11 @@ constexpr attadipa::core::Millis kMeshPagePeriod{500};
 // registry over a profile that is not there would answer confidently about a
 // board it cannot describe.
 attadipa::core::CapabilityRegistry *board_capabilities() {
-  static const attadipa::platform::BoardProfile *profile =
-      attadipa::platform::find_board_profile(kBoardProfileId);
-  if (profile == nullptr) {
+  attadipa::platform::ProfileInventory *inventory = board_inventory();
+  if (inventory == nullptr) {
     return nullptr;
   }
-  static attadipa::platform::ProfileInventory inventory(*profile);
-  static attadipa::core::CapabilityRegistry caps(inventory);
+  static attadipa::core::CapabilityRegistry caps(*inventory);
   return &caps;
 }
 
@@ -1450,6 +1468,76 @@ esp_err_t abandon_board_after(esp_err_t err, const char *step) {
   return err;
 }
 
+// WHAT BOOT LEARNED, WRITTEN WHERE THE CAPABILITY LAYER CAN READ IT.
+//
+// ADR-0007 §1a: the board composition owns the move out of `Untouched`,
+// because it is the only layer holding both halves of the answer -- which
+// `HardwareFeature` a driver belongs to, and whether that driver came up. The
+// drivers above are ESP-IDF code and must not learn a `platform/` type to say
+// so, and a second bring-up pass would re-probe parts this function already
+// probed and become a second answer to the same question.
+//
+// WRITTEN ONCE, BY THE BOOT TASK, BEFORE THE UI TASK EXISTS -- and that is the
+// invariant, not an implementation detail. `states_[]` is a plain byte array
+// with no lock; the only readers are `refresh_node_link()` and
+// `page_is_offered()`, both on the LVGL task, and both are reachable only
+// through the timer and the handlers `create_ui()` arms under the lock below.
+// Recording here is therefore ordered before every read without costing a
+// mutex. A later transition -- a rail cut, a driver that dies at runtime --
+// needs a synchronisation decision this issue does not make, and #592's
+// scope stops at bring-up for that reason.
+//
+// `Display` is judged by `esp_lcd_panel_init()`'s handle and not by
+// `esp_lcd_panel_disp_on_off()` further down, which is the honest cost of the
+// paragraph above: a panel that initialised and then would not light is
+// reported by the log line that says exactly that, and by nothing here. It
+// costs nothing today -- no capability derives from `Display` -- and the
+// alternative is the only data race in this file.
+//
+// FOUR FEATURES, AND THE REST STAY `Untouched` ON PURPOSE. `Buttons` is
+// PARTIAL on this board -- `platform/src/board_profiles.cpp:53` -- "    feature_bit(HF::Buttons) |          // PARTIAL — see D5"
+// -- the keys are fitted, no GPIO assignment is resolved, nothing brings them
+// up, and `Untouched` is precisely what the enum carries that value for.
+// `BatterySense` is read by nothing in this firmware; the accelerometer, the
+// gyroscope, the motor, both audio codecs and the SD slot have no driver here
+// at all. None of them may claim a state, so the five capabilities that derive
+// from them still report `Off` on this board. That is #592's remaining half,
+// and it is recorded in the issue rather than papered over with a `Ready`
+// nothing could honour.
+void record_bring_up() {
+  attadipa::platform::ProfileInventory *inventory = board_inventory();
+  if (inventory == nullptr) {
+    return;
+  }
+  using HF = attadipa::platform::HardwareFeature;
+  using HS = attadipa::platform::HardwareState;
+  const auto record = [inventory](HF feature, bool up) {
+    inventory->set_state(feature, up ? HS::Ready : HS::Failed);
+  };
+  // Two of the four can only be `Ready` on this line: the rails and the
+  // display are required steps, so a boot that got here has them. `record()`
+  // stays uniform because which steps are required is `start_waveshare_ui()`'s
+  // decision to change, not this function's to hard-code twice.
+  record(HF::Pmu, state.pmu != nullptr);
+  record(HF::Rtc, state.rtc != nullptr);
+  record(HF::Display, state.panel != nullptr);
+  record(HF::Touch, state.touch != nullptr);
+
+  // Every present feature, including the ones nothing touched. An operator
+  // holding a board needs the whole column to tell "this build does not drive
+  // the part" from "the part did not answer", and those are the two states
+  // this line keeps apart.
+  for (std::uint8_t i = 0; i < attadipa::platform::kHardwareFeatureCount; ++i) {
+    const auto feature = static_cast<HF>(i);
+    if (!inventory->present(feature)) {
+      continue;
+    }
+    ESP_LOGI(kTag, "inventory: %-18s %s",
+             attadipa::platform::to_string(feature),
+             attadipa::platform::to_string(inventory->state(feature)));
+  }
+}
+
 } // namespace
 
 // Boot is a transaction. Three steps are required -- the bus, the rails and
@@ -1498,6 +1586,8 @@ esp_err_t start_waveshare_ui() {
                    "and the clock still work",
              esp_err_to_name(err));
   }
+
+  record_bring_up();
 
   if (!lvgl_port_lock(1000)) {
     return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL");
