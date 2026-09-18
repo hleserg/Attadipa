@@ -235,23 +235,31 @@ same tag by (1).
 
 ---
 
-## 3. What the current vocabulary gets wrong
+## 3. What the vocabulary got wrong
 
-`MeshDelivery` has five values and one slot. Four defects, in order of how badly
+**This section describes the vocabulary as it was at `eb7460a9`, the tree this
+research was written against. Its citations into the catalogue are pinned to
+that revision and carry no line number, because the entry they name is the one
+[#573](https://github.com/hleserg/Attadipa/issues/573) deleted.** Each defect
+below says what replaced it.
+
+`MeshDelivery` had five values and one slot. Four defects, in order of how badly
 they mislead:
 
 **Defect 1 — `Failed` asserts a fact the wire cannot carry.** §2.4. The word
-reaches the owner's screen through
-`apps/src/mesh.cpp:243` — "put(text.delivery, sizeof(text.delivery)," and the
-catalogue renders it `l10n/strings.toml:921` — "failed" in English and
-`l10n/strings.toml:922` — "не доставлено" in Russian. The Russian string is
+reached the owner's screen through
+`apps/src/mesh.cpp:244` — "l10n::tr(delivery_word(status.delivery), locale));" and the
+catalogue rendered it from the entry `l10n/strings.toml` at `eb7460a9` —
+"[mesh_delivery_failed]" — as *failed* in English and
+*не доставлено* in Russian. The Russian string was
 literally *"not delivered"*: a claim of non-delivery, made by a client that
 cannot observe non-delivery. Upstream #1834 is eight months of people reporting
 precisely this, including a MeshCore contributor's own diagnosis — *"the message
 packet successfully made it's way from the sender to the recipient, but … the
 ack packet didn't make it's way … back"* — and a user asking, in April, for the
 word this document recommends: *"a third option akin to 'delivery
-unconfirmed'"*.
+unconfirmed'"*. [#573](https://github.com/hleserg/Attadipa/issues/573) deleted
+the entry rather than rewording it, and §4.2's three verdicts replace it.
 
 **Defect 2 — the budget can expire before the node's own estimate does.**
 `kMaxAckWait` is 15 s and the node's estimate is clamped to it. Against the
@@ -272,8 +280,11 @@ still legitimately waiting. The clamp is right — a peer's number must be bound
 upstream will still push the confirmation. `end_operation()` has already cleared
 `awaiting_confirm_`, so the frame arrives, matches nothing, is not counted
 malformed, and is dropped. **The node proves delivery and the watch, having
-already said `Failed`, discards the proof.** Today this is the *correct* code
-given today's vocabulary; it is the vocabulary that makes it a loss.
+already said `Failed`, discards the proof.** That was the *correct* code given
+that vocabulary; it was the vocabulary that made it a loss. ADR-0023 decision 2a
+is the fix [#573](https://github.com/hleserg/Attadipa/issues/573) carried out: a
+confirmation that arrives after the budget upgrades `Unconfirmed` to `Confirmed`
+rather than matching nothing.
 
 **Defect 4 — a disconnect erased the verdict instead of qualifying it.**
 `link/src/meshcore_companion.cpp` at `40271f5` — "status_.delivery = core::MeshDelivery::None;"

@@ -397,10 +397,13 @@ void MeshFace::lay_out(const apps::MeshText &text) {
     // (the message row two lines up carries the long version of this), and what
     // this row renders is not a fixture: `sender` is a peer's advertised name
     // off the link, up to `kMeshPeerNameBytes`, joined here with the delivery
-    // word. A 32-character name plus "не доставлено" does not fit 346 px at
+    // word. A 32-character name plus "нет подтверждения" does not fit 346 px at
     // `nunito_sans_14`, so the second line landed on the measurements at y=452
     // -- six rows of collision chosen by whoever named the node, and invisible
-    // to the simulator, whose fixture name is fifteen characters.
+    // to the simulator, whose fixture name is fifteen characters. That example
+    // used to be "не доставлено", which #573 deleted as a claim the wire cannot
+    // carry; the phrase that replaced it is four characters longer, so the
+    // collision this bound prevents got wider rather than going away.
     lv_obj_set_height(msg_meta_,
                       lv_font_get_line_height(
                           lv_obj_get_style_text_font(msg_meta_, LV_PART_MAIN)));

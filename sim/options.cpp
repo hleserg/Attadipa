@@ -101,6 +101,7 @@ void print_usage(const char *argv0) {
       "  --mesh-state <name> unprovisioned, absent, attached, connecting, ready,\n"
       "                   suspended, faulted, refused, refused-faulted,\n"
       "                   refused-unnamed, truncated,\n"
+      "                   unconfirmed, send-refused, send-unknown,\n"
       "                   battery-unknown, battery-stale, battery-low, integrated\n"
       "  --no-bring-up    leave every part untouched instead of pretending it "
       "came up\n"
