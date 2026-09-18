@@ -2383,6 +2383,160 @@ int drain_counting_re_reads(MeshCoreCompanion& client)
     return asked;
 }
 
+// ROW 11 OF ADR-0022 §9, twice over: a disconnect mid-stream and a disconnect
+// mid-retry. Neither may leave a false completion behind, and the reconnect's
+// sync must be a fresh one rather than the resumption of a walk whose node is
+// gone -- `_iter_started` on the node is cleared by anything that restarts the
+// app session, so a client that carried its own half across would be reading
+// against an iterator that no longer exists.
+void test_a_disconnect_leaves_no_half_finished_snapshot()
+{
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+    CHECK(client.peer_count() == 1);
+    CHECK(!client.status().peers_complete);
+
+    client.disconnected(at(7));
+    CHECK(client.status().snapshot == core::MeshSnapshot::None);
+    CHECK(!client.status().peers_complete);
+    CHECK(client.peer_count() == 0);
+    CHECK(client.status().peers_reported == 0);
+    CHECK(client.status().peers_retained == 0);
+
+    // A CONTACTS_START that arrives after the link is gone is not the walk
+    // resuming: there is no session for it to belong to.
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    client.tick(at(7 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+
+    // AND THE SAME MID-RETRY, which is the state a dirty walk leaves behind.
+    MeshCoreCompanion second;
+    open_a_dirty_walk(second, true);
+    while (second.next_tx(frame)) {
+    }
+    second.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(second) == 1);
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(second.receive(start, sizeof(start), at(8 + 10002)));
+    CHECK(second.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    second.disconnected(at(8 + 10003));
+    CHECK(second.status().snapshot == core::MeshSnapshot::None);
+    CHECK(second.peer_count() == 0);
+    CHECK(!second.status().peers_complete);
+
+    CHECK(drain_counting_re_reads(second) == 0);
+
+    // AND THE BUDGET IS RESTORED WITH THE SESSION, not carried across it. The
+    // next node gets its own two attempts: a client that kept the spent count
+    // would give a fresh node one re-read, or none, for a walk of its own that
+    // the first node's behaviour had already paid for.
+    const std::uint64_t base = 8 + 10004;
+    second.peer_arriving(at(base));
+    second.connected(at(base + 1));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(second.receive(self, sizeof(self), at(base + 2)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(second.receive(device, sizeof(device), at(base + 3)));
+    while (second.next_tx(frame)) {
+    }
+    CHECK(second.receive(start, sizeof(start), at(base + 4)));
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(second.receive(contact, sizeof(contact), at(base + 5)));
+    const std::uint8_t deleted[] = {0x8F};
+    CHECK(second.receive(deleted, sizeof(deleted), at(base + 6)));
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(second.receive(end, sizeof(end), at(base + 7)));
+    CHECK(second.status().snapshot == core::MeshSnapshot::Dirty);
+
+    std::uint64_t when = base + 7;
+    int re_reads = 0;
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        when += 10001;
+        second.tick(at(when));
+        const int asked = drain_counting_re_reads(second);
+        CHECK(asked <= 1);
+        if (asked == 0) continue;
+        ++re_reads;
+        CHECK(second.receive(start, sizeof(start), at(++when)));
+        CHECK(second.receive(contact, sizeof(contact), at(++when)));
+        CHECK(second.receive(deleted, sizeof(deleted), at(++when)));
+        CHECK(second.receive(end, sizeof(end), at(++when)));
+        while (second.next_tx(frame)) {
+        }
+    }
+    CHECK(re_reads == 2);
+    CHECK(second.malformed_frames() == 0);
+}
+
+// ROW 12 OF ADR-0022 §9. Consistent and truncated are two different
+// observations and the row exists to keep them independently assertable: the
+// watch retains sixteen contacts, so a node with seventeen produces a walk
+// that is *proven* and a list that is *short*. Reading one off the other is
+// how `16/233` came to look like a broken sync on the bench.
+void test_a_truncated_list_is_still_a_consistent_snapshot()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    const std::uint8_t start[] = {2, 17, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(5)));
+    for (std::uint8_t n = 0; n < 17; ++n) {
+        std::uint8_t contact[148]{};
+        contact[0] = 3;
+        // Distinct in the first prefix byte, which is what `accept_contact()`
+        // files them under: a key that repeats overwrites a row rather than
+        // adding one, and the seventeen would silently become eight.
+        for (std::size_t i = 0; i < 32; ++i)
+            contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+        contact[1] = static_cast<std::uint8_t>(n + 1);
+        contact[33] = 1;
+        contact[100] = static_cast<char>('A' + n);
+        CHECK(client.receive(contact, sizeof(contact), at(6 + n)));
+    }
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(30)));
+
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.status().peers_complete);
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().peers_reported == 17);
+    CHECK(client.status().peers_retained == 16);
+    CHECK(client.peer_count() == 16);
+
+    // And truncation asks for nothing: the node did not move the table, this
+    // watch simply cannot hold all of it, and re-reading would return the same
+    // seventeen.
+    while (client.next_tx(frame)) {
+    }
+    client.tick(at(30 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+}
+
 // ROW 6 OF ADR-0022 §9. `0x83` is not one of the four, and the row exists to
 // say what it *is*: a message waiting behind a contact burst. The snapshot
 // stays consistent and -- the half that matters on the wire -- the drain still
@@ -3102,6 +3256,8 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_a_disconnect_leaves_no_half_finished_snapshot();
+    test_a_truncated_list_is_still_a_consistent_snapshot();
     test_a_message_waiting_mid_walk_neither_dirties_nor_is_swallowed();
     test_a_deletion_after_the_end_is_staleness_not_inconsistency();
     test_a_swept_stream_with_no_push_is_consistent();
