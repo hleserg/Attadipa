@@ -3083,9 +3083,9 @@ ones that heading states.
 - **A powered GNSS receiver is inside this number, and its share is
   `UNKNOWN`.** The boot log's own byte says so. `LDO enable 0x17 -> 0x17` prints
   the register **as read, before the write** —
-  `firmware/main/board_power.cpp:646` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
+  `firmware/main/board_power.cpp:659` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
   and `0x17` is `0b10111`: bit 4 is BLDO1
-  (`firmware/main/board_power.cpp:607` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
+  (`firmware/main/board_power.cpp:620` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
   2026-09-05 and recorded above
   (`docs/research/VERIFIED_FACTS.md:799` — "Claim, on the bench unit, MEASURED 2026-09-05"),
@@ -3105,7 +3105,7 @@ ones that heading states.
   V1.4 §6.13.2.75, `REG 90: LDOS ON/OFF control 0`, which gives bit 3
   `aldo4 enable`, bit 4 `bldo1 enable`, bits 2 and 1 `aldo3`/`aldo2`. That is
   the section this tree already names for this register
-  (`firmware/main/board_power.cpp:641` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
+  (`firmware/main/board_power.cpp:654` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
   cited here for the bit rather than for the rail: bits 1, 2 and 4 being
   sourced does not make bit 3 sourced. ALDO4 on this board is the radio
   (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
@@ -3311,7 +3311,7 @@ ones that heading states.
   Its [backlight helper was a plain GPIO output](https://github.com/hleserg/Attadipa/blob/7a20c8e8a4528ab2d2c47189719cba0da62fcc12/firmware/main/twatch_board.cpp#L152),
   fed by
   a rail the firmware writes to a fixed 3.3 V
-  (`firmware/main/board_power.cpp:644` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
+  (`firmware/main/board_power.cpp:657` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
   The historical "undimmed" classification came from this source inspection;
   actual backlight duty during the capture was not separately measured. This
   does not prove the exact September 5 compiled tree identified below and is

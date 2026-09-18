@@ -439,20 +439,33 @@ public:
       // chain of `else if` guards that all fail reaches the final `else`. The
       // trace is in docs/research/POWER_OWNERSHIP.md.
       //
-      // **One path in this tree reaches it, and it is the line above**: a
-      // `disarm_wake(Touch)` on a board with no touch interrupt pin produces
-      // this value deliberately, so that a source which was never armable is
-      // reported disarmed rather than as a failure the owner would latch. The
-      // ESP-IDF paths that could also produce it close themselves: the owner
-      // disarms only a source it recorded as armed, `arm_wake(Touch)` un-does
-      // its own first step when its second fails, and `recover()` retries a
-      // disarm only when one failed -- which left the trigger bit set, so the
-      // retry gets `ESP_OK`.
-      // What the branch is for is the arithmetic on the other side. Mapping
-      // this code to a failure costs a board that is provably in the requested
-      // state a latch into `Failed` and a reboot to leave it; mapping it to
-      // success costs one log line if a future source can be half-armed. The
-      // second is the cheaper way to be wrong.
+      // **TWO PATHS REACH IT, AND THE SECOND IS WHY IT CANNOT BE DELETED.**
+      //
+      // The first is the line above: `disarm_wake(Touch)` on a board with no
+      // touch interrupt pin produces this value deliberately, so that a source
+      // which was never armable is reported disarmed rather than as a failure
+      // the owner would latch.
+      //
+      // The second is recovery after an `Unknown`, and it is load-bearing.
+      // `core/src/power_owner.cpp:459` -- "                failed_disarm_         = static_cast<std::uint16_t>("
+      // records the source when `arm_wake()` answers `Unknown`, precisely
+      // because nobody knows whether it is armed. `recover()` then re-issues
+      // `disarm_wake()` on it, and if it was in fact never armed the trigger
+      // bit is clear and ESP-IDF answers `ESP_ERR_INVALID_STATE`. Mapping that
+      // to failure would leave `failed_disarm_` set for ever: `recover()`
+      // returns false, `availability()` stays `Failed`, and the watch needs a
+      // reboot to leave a state it is provably already out of. This branch is
+      // that loop's exit.
+      //
+      // An earlier round of this comment claimed the owner "disarms only a
+      // source it recorded as armed" and called the branch dead code kept for
+      // a future board. Both were wrong, and in the same direction: the
+      // recovery path was already the caller.
+      //
+      // The arithmetic on the other side is unchanged. Mapping this code to
+      // success costs one log line if a future source can be half-armed;
+      // mapping it to failure costs the reboot above. The first is the cheaper
+      // way to be wrong.
       ESP_LOGW(kTag, "disarm %s: already disarmed",
                attadipa::core::to_string(source));
       return true;
