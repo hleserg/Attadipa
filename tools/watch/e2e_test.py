@@ -42,6 +42,26 @@ failures: list[str] = []
 skipped: list[str] = []
 
 
+def _refusal(simulator: str, board: str, path: str, environment) -> tuple[int, str]:
+    """Start the simulator on `path` and return what it said before exiting.
+
+    A refusal exits within milliseconds. A simulator that bound the path
+    instead never exits at all, so a timeout here is not an infrastructure
+    hiccup -- it IS the failure under test, and it is returned as `0, output`
+    so the caller's `returncode != 0` check reports a FAIL like any other.
+    Left to propagate, `TimeoutExpired` takes the whole suite down with a
+    traceback and no line saying which assertion was being made.
+    """
+    try:
+        done = subprocess.run(
+            [simulator, "--board", board, "--debug-socket", path],
+            capture_output=True, text=True, env=environment, timeout=30)
+        return done.returncode, done.stdout + done.stderr
+    except subprocess.TimeoutExpired as still_running:
+        kept = (still_running.stdout or b"") + (still_running.stderr or b"")
+        return 0, kept.decode(errors="replace")
+
+
 def check(condition: bool, what: str) -> None:
     if not condition:
         failures.append(what)
@@ -210,6 +230,36 @@ def _socket_path_is_not_a_scratch_pad(simulator: str, board: str) -> None:
                     third.wait(timeout=10)
                 except subprocess.TimeoutExpired:      # pragma: no cover
                     third.kill()
+
+        # #554. A SYMLINK IS NOT THE THING IT POINTS AT, and the two calls that
+        # decided this used to disagree about which one they meant: `stat`
+        # follows the final link and said "socket", `unlink` never follows one
+        # and removed the link. So a stable alias somebody keeps pointing at
+        # whichever simulator is current -- the shape `WATCH_CONTROL.md`
+        # invites -- was replaced by a socket, and the stale target it named
+        # was left where it was. Neither of the three cases above notices:
+        # every one of them passes a path that is its own directory entry.
+        alias = os.path.join(workdir, "current.sock")
+        os.symlink(taken, alias)
+        code, said = _refusal(simulator, board, alias, environment)
+        check(code != 0, "a symlink is not taken for a stale socket")
+        check("symbolic link" in said,
+              f"and says which thing it refused: {said[-200:]!r}")
+        check(os.path.islink(alias), "and the link itself survives")
+        check(os.readlink(alias) == taken, "still naming what it named")
+
+        # The other half, and the one that says the refusal is about the LINK
+        # rather than about the target being stale: a link to a path that does
+        # not exist at all is refused the same way. `stat` would have failed
+        # here and fallen through to the bind, which is how the alias got
+        # replaced without anything even reporting a type.
+        dangling = os.path.join(workdir, "dangling.sock")
+        os.symlink(os.path.join(workdir, "nothing-here.sock"), dangling)
+        code, said = _refusal(simulator, board, dangling, environment)
+        check(code != 0, "a dangling symlink is refused too")
+        check("symbolic link" in said,
+              f"for the same stated reason: {said[-200:]!r}")
+        check(os.path.islink(dangling), "and that link survives as well")
 
 
 def run(simulator: str, board: str = "waveshare-amoled-206") -> int:
