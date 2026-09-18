@@ -2370,6 +2370,87 @@ void open_a_dirty_walk(MeshCoreCompanion& client, bool drain)
     CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
 }
 
+// ROWS 1-5, 15 AND 16 OF ADR-0022 §9 IN ONE TABLE, because the rows differ
+// only in the code byte and the claim they make together is exactly that: the
+// four invalidating pushes are told from the two that merely look it by §3's
+// classification of the code and by where it landed, and by nothing in the
+// frame. Six codes that all used to reach `default:` and count against
+// `malformed_frames_` -- the counter a dropped-frame investigation reads --
+// which is why every row asserts it stayed at zero.
+//
+// Row 15 is the same table read from outside a walk: a `0x80` arriving while
+// no iteration is running dirties nothing, because there is no read in flight
+// for it to invalidate. Staleness is not inconsistency.
+void test_which_pushes_dirty_a_walk_and_which_only_look_it()
+{
+    struct Case {
+        std::uint8_t code;
+        bool dirties;
+        const char* row;
+    };
+    const Case cases[] = {
+        {0x8F, true, "1 -- a contact the node deleted under its own iterator"},
+        {0x80, true, "2 -- an advert changed a row, or added one not reached"},
+        {0x81, true, "5 -- a path this walk may already have read was updated"},
+        {0x8D, true, "16 -- a path discovery, the fourth invalidating code"},
+        {0x8A, false, "3 -- a new advert names a contact never stored"},
+        {0x90, false, "4 -- the contacts-full notice moves no row"},
+    };
+
+    for (const Case& c : cases) {
+        MeshCoreCompanion client;
+        open_a_contact_stream(client, true);
+        const std::uint8_t push[] = {c.code};
+        CHECK(client.receive(push, sizeof(push), at(7)));
+        const std::uint8_t end[] = {4, 0, 0, 0, 0};
+        CHECK(client.receive(end, sizeof(end), at(8)));
+
+        CHECK(client.status().peers_complete);
+        CHECK(client.malformed_frames() == 0);
+        CHECK(client.status().snapshot ==
+              (c.dirties ? core::MeshSnapshot::Dirty : core::MeshSnapshot::Consistent));
+        // The published set is the one the walk just read either way: a dirty
+        // snapshot keeps what it has and says so, rather than emptying the
+        // face while it asks again.
+        CHECK(client.peer_count() == 1);
+        MeshPeer kept{};
+        CHECK(client.peer(0, kept));
+        CHECK(std::strcmp(kept.name.data(), "Peer") == 0);
+
+        // Exactly one re-read is on the wire ten seconds later, and only for
+        // the codes that invalidated the walk.
+        MeshCoreFrame frame{};
+        while (client.next_tx(frame)) {
+        }
+        client.tick(at(8 + 10001));
+        if (c.dirties) {
+            CHECK(client.next_tx(frame));
+            CHECK(frame.size == 1 && frame.bytes[0] == 4);
+            CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+        }
+        CHECK(!client.next_tx(frame));
+    }
+
+    // ROW 15. The same `0x80` outside any iteration: understood, ignored, and
+    // not a reason to read the table again.
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(8)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+
+    const std::uint8_t advert[] = {0x80};
+    CHECK(client.receive(advert, sizeof(advert), at(9)));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    client.tick(at(9 + 10001));
+    CHECK(!client.next_tx(frame));
+}
+
 // ROW 14 OF ADR-0022 §9, and the report calls it the regression risk the whole
 // design has to be checked against. `RESP_CODE_ERR` carries nothing to
 // correlate it by, so it is attributed by order: the oldest command still owed
@@ -2813,6 +2894,7 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_which_pushes_dirty_a_walk_and_which_only_look_it();
     test_an_error_owed_to_a_re_read_does_not_fail_a_send();
     test_an_error_older_than_the_re_read_still_fails_the_send();
     test_a_re_read_does_not_unname_a_sender_mid_walk();
