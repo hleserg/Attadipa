@@ -101,7 +101,15 @@ def _format_signature(text):
     that agree on `%s` agree, and still hand an integer to snprintf as a
     pointer. For plural entries `_check_count_format` asks the other question.
     """
-    return tuple(m.group(0) for m in FORMAT_RE.finditer(text) if m.group("conv") != "%")
+    # `!= "%%"` and not `conv != "%"`: `FORMAT_RE` matches flags and a width
+    # between the two percent signs, so `"0%-100%"` is one match whose
+    # conversion is `%`. Dropping every percent-terminated spelling would take
+    # that match out of the signature as well, and `en = "0%-100%"` against
+    # `ru = "0-100 %"` would compare `()` with `()` and be accepted -- a
+    # singular pair this comparison is the only check on. The named groups are
+    # for `_check_count_format`, which asks a different question of the same
+    # matches.
+    return tuple(m.group(0) for m in FORMAT_RE.finditer(text) if m.group(0) != "%%")
 
 
 def _check_id(ident):
@@ -132,6 +140,14 @@ def _check_plain(ident, table):
 
 
 def _check_plural(ident, table):
+    # The same rule `_check_plain` applies one function up, and it belongs here
+    # rather than as a second isinstance guard downstream: the loop below reads
+    # `LOCALES`, so a third locale was carried, untouched, as far as
+    # `_check_formats`, where `.items()` on a plain string raised AttributeError
+    # -- a traceback where `gen_strings.py` promises a message naming the id.
+    unknown = set(table) - set(LOCALES)
+    if unknown:
+        raise CatalogueError(f"plural '{ident}' has unknown locale(s): {sorted(unknown)}")
     for locale in LOCALES:
         if locale not in table:
             raise CatalogueError(f"plural '{ident}' has no '{locale}' forms")
@@ -168,7 +184,9 @@ _COUNT_CONTRACT = (
     "  passes exactly one argument: the count, as an unsigned int. So every form has\n"
     "  to contain exactly one conversion, and it has to be that argument -- "
     f"{', '.join('%' + c for c in PLURAL_COUNT_CONVERSIONS)},\n"
-    "  with an optional width, precision and `-`/`0` flag, and no length modifier.\n"
+    "  with an optional width, precision and `-`/`0` flag -- and `#` with `%o`, `%x`\n"
+    "  or `%X`, which changes how the number is spelled and not what is read --, and\n"
+    "  no length modifier.\n"
     "  A literal percent is `%%` and does not count. Nothing checks this later: the\n"
     "  compiler cannot see a format it reads out of a table at run time."
 )
@@ -186,7 +204,13 @@ def _unrecognised_percent(text):
     for match in FORMAT_RE.finditer(text):
         covered.add(match.start())
         if match.group("conv") == "%":
-            covered.add(match.start() + 1)
+            # The closing percent, which is `start + 1` only when nothing sits
+            # between the two. `FORMAT_RE` accepts flags, a width and a
+            # precision there, so `"%-100% items"` left its own closing `%`
+            # uncovered and was reported as an unrecognised one -- a rejection
+            # with the wrong reason printed and the wrong eight characters
+            # quoted. It is 0 count conversions, and that is what it says now.
+            covered.add(match.end() - 1)
     for index, char in enumerate(text):
         if char == "%" and index not in covered:
             return index
@@ -250,7 +274,7 @@ def _check_count_format(ident, locale, form, text):
         else:
             why = "it does not read an unsigned int"
         raise CatalogueError(
-            f"{where} uses '{spec.group(0)}': {why}.\n{_COUNT_CONTRACT}"
+            f"{where} uses '{spec.group(0)}': {why}.{literal}\n{_COUNT_CONTRACT}"
         )
     bad_flags = [f for f in spec.group("flags") if f not in PLURAL_COUNT_FLAGS
                  and not (f == "#" and conversion in PLURAL_COUNT_HASH_CONVERSIONS)]

@@ -36,3 +36,16 @@ en.other = "0x%04x messages"
 ru.one = "0x%04x сообщение"
 ru.few = "0x%04x сообщения"
 ru.many = "0x%04x сообщений"
+
+# The `#` flag, which the checker accepts for the three conversions C defines it
+# for. It writes `0x` in front of the number rather than changing what is read,
+# so it is the same unsigned int the caller passed -- and it is here because the
+# code allowed it while none of the contract texts named it, which is a rule
+# only its author knew.
+[hash_count]
+plural = true
+en.one = "%#x message"
+en.other = "%#x messages"
+ru.one = "%#x сообщение"
+ru.few = "%#x сообщения"
+ru.many = "%#x сообщений"

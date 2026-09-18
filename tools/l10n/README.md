@@ -68,7 +68,9 @@ and not sufficient: `%s` in all five forms of an entry agrees with itself, and
 `format_plural` still hands `snprintf` an integer where it will read a pointer.
 So a plural form is checked against the one argument that call actually passes
 — exactly one conversion, reading an `unsigned int` (`%u`, or `%o`/`%x`/`%X`),
-with an optional width, precision and `-`/`0` flag, and no length modifier.
+with an optional width, precision and `-`/`0` flag — plus `#` with `%o`, `%x`
+or `%X`, which changes how the number is spelled and not what is read — and no
+length modifier.
 `%%` is a literal and does not count; a `%` this parser does not recognise at
 all, like `%q` or `%*u`, is refused rather than ignored, because `snprintf`
 does not ignore it either.
