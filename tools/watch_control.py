@@ -708,7 +708,12 @@ def build_parser() -> argparse.ArgumentParser:
         "mesh-send", help="send one private MeshCore message")
     mesh_send.add_argument("--peer", required=True,
                            help="the target contact's 64-digit public key")
-    mesh_send.add_argument("--text", required=True)
+    # Bytes, not characters, and the watch's number rather than upstream's --
+    # see `tools/watch/protocol.py:472` -- "MESH_TEXT_BYTES = 128". Saying so
+    # here is the cheap half of #609: an operator who is one Cyrillic letter
+    # over reads a refusal about a count they did not type.
+    mesh_send.add_argument("--text", required=True,
+                           help=f"the message, 1..{p.MESH_TEXT_BYTES} UTF-8 bytes")
     mesh_send.add_argument("--utc-seconds", type=int,
                            help="Unix UTC seconds (default: this host's current time)")
     mesh_send.set_defaults(func=cmd_mesh_send)

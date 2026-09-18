@@ -182,12 +182,23 @@ public:
 enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed, Pending, Busy };
 
 // The array extents below are a contract, not a constraint: an array parameter
-// decays to a pointer, so nothing makes the compiler check that 6 or 32 bytes
-// are really there. What does check it is the caller -- bridge.cpp refuses
-// MeshSend under 15 body bytes and MeshRoomSend under 42 before either call,
-// so the prefix and the room key are whole by the time they arrive. A sized
-// type here would not add a check; the body is a pointer into the wire buffer,
-// so it would only move a reinterpret_cast to the call site.
+// decays to a pointer, so nothing makes the compiler check that 32 bytes are
+// really there. What does check it is the caller -- bridge.cpp refuses
+// MeshSend under 41 body bytes and MeshRoomSend under 42 before either call,
+// so both keys are whole by the time they arrive. A sized type here would not
+// add a check; the body is a pointer into the wire buffer, so it would only
+// move a reinterpret_cast to the call site.
+//
+// The numbers are the whole-key ones. This said "6 or 32" and "under 15" until
+// #609, which was the arithmetic from before #573 widened MeshSend's recipient
+// from a six-byte prefix: 15 body bytes leave seven for a 32-byte key, so the
+// sentence offered as evidence for the memcpy being safe described a frame the
+// code had already refused for two releases. Nothing read it and shipped a
+// short key -- `debug/src/bridge.cpp:304` -- "        constexpr std::size_t kHeader = 32 + 8;"
+// -- has been the real bound throughout. It started to matter when
+// `firmware/main/meshcore_send_request.h` cited it as the reason its own rule
+// does not re-check the key, which is a decision *not* to check resting on a
+// number that was wrong.
 class MeshSink {
 public:
     virtual ~MeshSink() = default;
