@@ -180,10 +180,10 @@ The arithmetic is confirmed from two independent directions, exactly as path A's
 was. `meshcore.js`'s `onContactResponse` reads the same ten fields in the same
 order and calls the last three `advLat`, `advLon`, `lastMod`; and this
 repository already demands all 148 bytes before it will look at one —
-`link/src/meshcore_companion.cpp:1375` — "        if (size < 148) { ++malformed_frames_; return false; }".
+`link/src/meshcore_companion.cpp:1381` — "        if (size < 148) { ++malformed_frames_; return false; }".
 
 `accept_contact` then reads the key at 1, filters on
-`link/src/meshcore_companion.cpp:623` — "    if (size < 148 || data[33] != kAdvertTypeChat) {" —
+`link/src/meshcore_companion.cpp:629` — "    if (size < 148 || data[33] != kAdvertTypeChat) {" —
 and copies the name from 100. **Bytes 132–147 are present in every contact frame
 this watch has ever parsed, and they are discarded.** That is the same shape as
 #412's discovery about bytes 36–43 of `RESP_CODE_SELF_INFO`, one frame over.
@@ -361,7 +361,7 @@ Refused, each for its own reason:
   `TEST_FLEET.md:92` — "the T114 answers `Beta test companion` and the" — and
   `StrHelper::strncpy` into a 32-byte field truncates without complaint;
 - **a 6-byte prefix.** `find_peer_prefix` already matches on six bytes for
-  message attribution — `link/src/meshcore_companion.cpp:666` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+  message attribution — `link/src/meshcore_companion.cpp:672` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
   and that is defensible for *labelling a message that already arrived*. It is
   not defensible for *choosing which coordinate is the destination*: 48 bits is
   a birthday collision at ~16 M keys and a deliberate collision at far less, and
@@ -439,9 +439,9 @@ an iteration is in progress, which the session already tracks.
 | Rule | Why |
 |---|---|
 | The coordinate is admitted **only** from a contact frame whose full 32-byte key equals the selected target key | §7 |
-| A `0x80` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | `0x80` is `[0x80][pub_key×32]` (§7). The dispatcher owns no shared bound — `link/src/meshcore_companion.cpp:1243` — "size > kMeshCoreFrameBytes" — rejects only an empty or over-long frame, and **no** arm after it inherits a bound — each one that reads a fixed-size field carries its own check. An arm that inherits a guard it does not have reads 32 bytes off the end of a one-byte frame |
-| A `0x8A` shorter than **148 bytes** is refused and counted malformed, in the new arm's **own** guard | It is §3.1's contact layout under a different opcode, and the coordinate is at its far end, bytes 136–143. The 148-byte guard that exists today is one `case` arm and covers `RESP_CODE_CONTACT` alone — `link/src/meshcore_companion.cpp:1375` — "        if (size < 148) { ++malformed_frames_; return false; }". A new opcode does not inherit it |
-| A `0x8F` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | It carries `0x80`'s `[opcode][pub_key×32]` shape and is compared against the target key the same way, so it over-reads a one-byte frame by the same 32 bytes. `0x8F` has an arm at head and so do `0x80`, `0x8A` and `0x90` — `link/src/meshcore_companion.cpp:1408` — "    case kPushAdvert:" — added by ADR-0022 decision 4 so that a push this build understands is not counted as a parse failure. So this is an arm to widen rather than one to add, and it hands its widener no bound at all: none of the four carries a length guard, correctly, because none of them reads a byte past the opcode |
+| A `0x80` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | `0x80` is `[0x80][pub_key×32]` (§7). The dispatcher owns no shared bound — `link/src/meshcore_companion.cpp:1249` — "size > kMeshCoreFrameBytes" — rejects only an empty or over-long frame, and **no** arm after it inherits a bound — each one that reads a fixed-size field carries its own check. An arm that inherits a guard it does not have reads 32 bytes off the end of a one-byte frame |
+| A `0x8A` shorter than **148 bytes** is refused and counted malformed, in the new arm's **own** guard | It is §3.1's contact layout under a different opcode, and the coordinate is at its far end, bytes 136–143. The 148-byte guard that exists today is one `case` arm and covers `RESP_CODE_CONTACT` alone — `link/src/meshcore_companion.cpp:1381` — "        if (size < 148) { ++malformed_frames_; return false; }". A new opcode does not inherit it |
+| A `0x8F` shorter than **33 bytes** is refused and counted malformed, in the new arm's **own** guard | It carries `0x80`'s `[opcode][pub_key×32]` shape and is compared against the target key the same way, so it over-reads a one-byte frame by the same 32 bytes. `0x8F` has an arm at head and so do `0x80`, `0x8A` and `0x90` — `link/src/meshcore_companion.cpp:1423` — "    case kPushAdvert:" — added by ADR-0022 decision 4 so that a push this build understands is not counted as a parse failure. So this is an arm to widen rather than one to add, and it hands its widener no bound at all: none of the four carries a length guard, correctly, because none of them reads a byte past the opcode |
 | A `0x90` carries nothing past its opcode, and the arm reads nothing past it | `PUSH_CODE_CONTACTS_FULL` is a bare notification. The rule is written down so the arm is implemented that way rather than reaching for a payload that is not there; the dispatcher's own `size == 0` rejection is the only bound it needs |
 | Exactly `(0, 0)` is **refused** and the target slot stays empty | `populateContactFromAdvert` `memset`s the record and writes the coordinate only under `hasLatLon()`, so a contact that has never shared one reads exactly `(0,0)`. ADR-0019 already refuses the same value for `own`, for the same reason, one slot over |
 | `\|raw_lat\| > 90 000 000` or `\|raw_lon\| > 180 000 000` ⇒ the coordinate is refused, **checked on the raw `int32` before any scaling** | The wire is degrees × 10⁶ (§3.1), so ±90° is 90 000 000 and ±180° is 180 000 000 — a bound of 900 000 would refuse everything outside 0.9° of the equator and 1.8° of Greenwich, silently, because an absent coordinate is deliberately not an error. `AdvertDataParser` range-checks nothing and `CMD_ADD_UPDATE_CONTACT` range-checks nothing. `raw × 10` overflows `int32` above 214 748 364, and `core/include/attadipa/core/position.h:55` — "constexpr bool in_range(Position p)" — cannot save a value that already overflowed |
@@ -806,7 +806,7 @@ as a parser requirement that is impossible to meet.
 buffer is 128 bytes — `core/include/attadipa/core/mesh_service.h:16` — "inline constexpr std::size_t kMeshTextBytes = 128;" —
 while a companion message frame carries up to 173 bytes at a 16-byte text
 offset, so 157 bytes can arrive into 128 and the tail is cut by
-`link/src/meshcore_companion.cpp:91` — "    const std::size_t copy = std::min(size, N - 1);".
+`link/src/meshcore_companion.cpp:92` — "    const std::size_t copy = std::min(size, N - 1);".
 Combine that with §14.2 taking the **last** match, which is where the sender is
 told to put it, and the cut lands on the coordinate: 131 bytes of text ending
 `@55.9821,37.2104` arrive as `@55.9821,37.2` — the copy keeps `N - 1`, and `N`
@@ -827,7 +827,7 @@ latitude and about 11 km at the equator. The guard is sized for the class, not
 for the example.
 
 **Unlike the sender's half, ours is already flagged.** The copy reports it —
-`link/src/meshcore_companion.cpp:1018` — "        copy_text(status_.last_message, &data[text], size - text);" —
+`link/src/meshcore_companion.cpp:1024` — "        copy_text(status_.last_message, &data[text], size - text);" —
 and the caller receives `message_truncated`. So a message our own receiver
 truncated must not yield a coordinate at all, whatever the remaining text parses
 to. [ADR-0021](../adr/0021-remote-target-from-a-message.md) decision 7 carries

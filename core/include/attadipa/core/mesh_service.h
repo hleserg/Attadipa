@@ -91,6 +91,11 @@ enum class MeshSendRefusal : std::uint8_t {
     TimestampOutOfRange,  // Before the epoch, or past what the frame's u32 holds.
     RoomPasswordInvalid,  // Empty, or longer than the login frame allows.
     RingFull,             // This client's own transmit ring had no slot.
+    // A contacts walk is streaming, and its frames and the reply to a
+    // fetch-by-key are the same response code. Only one of the two may own that
+    // arm at a time, so a send to a recipient this client does not hold waits
+    // for the walk. A send to one it does hold is unaffected.
+    ContactsBusy,
 };
 
 // EITHER A NON-ZERO LOCAL REQUEST ID, OR A REFUSAL WITH A REASON. Never both,

@@ -182,7 +182,7 @@ handshake runs, and the watch reads the node's public key out of
 [`MESHCORE_T114_FIRST_CONTACT.md:50`](MESHCORE_T114_FIRST_CONTACT.md) —
 "a factory reset regenerates it" is `MEASURED` on this bench. So:
 
-- [`link/src/meshcore_companion.cpp:1291`](../../link/src/meshcore_companion.cpp) —
+- [`link/src/meshcore_companion.cpp:1297`](../../link/src/meshcore_companion.cpp) —
   "if (pinned_set_ && !(status_.node_id == pinned_)) {" latches `wrong_node_`;
 - [`firmware/main/meshcore_node_pin.h:194`](../../firmware/main/meshcore_node_pin.h) —
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" therefore falls through to
@@ -214,7 +214,7 @@ field:
 
 - [`firmware/main/meshcore_ble.cpp:252`](../../firmware/main/meshcore_ble.cpp) —
   "What the image has since #411 is the reverse";
-- [`core/include/attadipa/core/mesh_service.h:180`](../../core/include/attadipa/core/mesh_service.h) —
+- [`core/include/attadipa/core/mesh_service.h:185`](../../core/include/attadipa/core/mesh_service.h) —
   "the way out, the entry screen's node field (#411)".
 
 **#356 did not close it.** PR #406 — the second and last change for #356 —

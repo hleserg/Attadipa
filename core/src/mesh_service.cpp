@@ -32,6 +32,7 @@ const char* to_string(MeshSendRefusal refusal)
     case MeshSendRefusal::TimestampOutOfRange: return "timestamp out of range";
     case MeshSendRefusal::RoomPasswordInvalid: return "room password invalid";
     case MeshSendRefusal::RingFull:            return "ring full";
+    case MeshSendRefusal::ContactsBusy:        return "contacts busy";
     }
     return "invalid";
 }

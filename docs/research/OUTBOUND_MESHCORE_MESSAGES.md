@@ -63,7 +63,7 @@ two of them touched this file. All five claims hold.
 |---|---|
 | `kMeshTextBytes = 128` | holds — `core/include/attadipa/core/mesh_service.h:16` — "inline constexpr std::size_t kMeshTextBytes = 128;" |
 | `send_private()` returns only `bool` | held — `core/include/attadipa/core/mesh_service.h` at `40271f5` — "virtual bool send_private(const MeshPeerId& peer". Since [#573](https://github.com/hleserg/Attadipa/issues/573) it returns `MeshSendResult` |
-| one global `delivery`, no message ID, no recipient | holds — `core/include/attadipa/core/mesh_service.h:193` — "MeshDelivery delivery = MeshDelivery::None;" |
+| one global `delivery`, no message ID, no recipient | holds — `core/include/attadipa/core/mesh_service.h:198` — "MeshDelivery delivery = MeshDelivery::None;" |
 | an expired ACK budget becomes `Failed` | held — `link/src/meshcore_companion.cpp` at `40271f5` — "status_.delivery = core::MeshDelivery::Failed;". Since [#573](https://github.com/hleserg/Attadipa/issues/573) it is `Unconfirmed`, or `Unknown` before `Accepted` |
 | send resolves by 6-byte prefix in the retained window only | holds — `firmware/main/meshcore_ble.cpp:1371` — "requested contact prefix is not in retained chat contacts" |
 
@@ -365,7 +365,7 @@ would hold `Queued` for the rest of the session.
 
 **One budget, three phases, and only the last of them has an acceptance to be
 unsure about.** `op_budget_` is armed for anything `send_busy()` covers —
-`link/src/meshcore_companion.cpp:344` — "    if (!send_busy()) {" — which is a
+`link/src/meshcore_companion.cpp:350` — "    if (!send_busy()) {" — which is a
 room login outstanding, a text awaiting `RESP_CODE_SENT`, and a text awaiting
 its acknowledgement. `Unconfirmed` is a claim about the third: *the node
 accepted this message and this product cannot tell whether it arrived.* In the
@@ -387,7 +387,7 @@ owner's side: nothing reached the radio, and a resend cannot duplicate anything.
 path answers `CMD_SEND_LOGIN` and publishes `Accepted` for a text the node has
 not been sent. That defect does not exist, and this is a retraction rather than
 a softening: the claim was checked by running it, and it was false.** The arm is
-gated on the phase — `link/src/meshcore_companion.cpp:1462` — "if (awaiting_send_) {" — and a
+gated on the phase — `link/src/meshcore_companion.cpp:1477` — "if (awaiting_send_) {" — and a
 room login has `awaiting_login_` set with `awaiting_send_` clear, so the
 login's `RESP_CODE_SENT` publishes no `Accepted` at all. The gate predates this
 report: it is #315's, written so that a second send could not overwrite
@@ -665,7 +665,7 @@ reasons the command is a design task and not a one-line addition:
    in silence**, which is the case that matters, because the whole point of the
    fetch is that the contact is not in the cache.
 2. **The chat-type filter drops it too.**
-   `link/src/meshcore_companion.cpp:623` — "if (size < 148 || data[33] != kAdvertTypeChat) {"
+   `link/src/meshcore_companion.cpp:629` — "if (size < 148 || data[33] != kAdvertTypeChat) {"
    refuses any advert type that is not chat, correctly for a contact list and
    incorrectly for a targeted fetch, where the refusal must be *reported* rather
    than absorbed.
@@ -680,7 +680,7 @@ flag* the `RESP_CODE_CONTACT` arm consults, which does not exist yet.
 ### 8.3 Three refusals
 
 - **Never send by display name.** Two bench nodes' names differed by an emoji —
-  `core/include/attadipa/core/mesh_service.h:162` — "whose names differed by an emoji and" — and a
+  `core/include/attadipa/core/mesh_service.h:167` — "whose names differed by an emoji and" — and a
   name is not an identity.
 - **Never resolve a prefix collision by picking one.** Six bytes over 233
   contacts is comfortable and over an unbounded network is not; the first-match
@@ -753,7 +753,7 @@ harness, which delivers bytes to `receive()` rather than calling internals.
 | 15 | disconnect after `Accepted` | `Unknown`; and a reconnect does not resurrect the request |
 | 16 | `RESP_CODE_ERR` with `ERR_CODE_NOT_FOUND` after a send | `Refused`, distinguishable from a timeout |
 | 17 | `RESP_CODE_ERR` with `ERR_CODE_TABLE_FULL` | not reported to the owner as "the node is full" — §2.1 point 4 |
-| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1463` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
+| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1478` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
 
 Rows 11, 12 and 18 are the ones this research exists to produce. A test suite
 without them can pass while the product lies.
