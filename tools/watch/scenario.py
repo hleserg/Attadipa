@@ -37,7 +37,7 @@ import os
 import time
 from dataclasses import dataclass, field
 
-from .client import Watch, WatchError
+from .client import Watch, WatchError, _duration_seconds
 from .protocol import ProtocolError
 
 
@@ -270,7 +270,10 @@ def run(watch: Watch, steps: list[dict], output_dir: str,
                 result.detail = f"{shot.width}x{shot.height}"
                 report.artefacts.append(absolute)
             elif action == "wait":
-                time.sleep(float(step.get("seconds", 0.2)))
+                # `.nan` and `.inf` are valid YAML floats: the first makes this
+                # step take no time and pass, the second never returns (#580).
+                time.sleep(_duration_seconds(step.get("seconds", 0.2),
+                                             "a wait step's seconds"))
             elif action == "wait_stable":
                 quiet_ms = int(step.get("quiet_ms", 300))
                 limit = float(step.get("timeout", 5.0))

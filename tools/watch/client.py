@@ -249,7 +249,14 @@ class Watch:
     def __init__(self, transport: Transport, timeout: float = DEFAULT_TIMEOUT) -> None:
         self._transport = transport
         self._decoder = p.FrameDecoder()
-        self._timeout = timeout
+        # A DEADLINE IS ONLY A BOUND IF ITS INPUT IS A LENGTH OF TIME. `nan`
+        # and `inf` are both accepted by `float()` and by argparse, and both
+        # disable the check they were asked to arm: `monotonic() >= nan` is
+        # false forever and a finite clock never reaches `+inf`, so the request
+        # loop below runs until something outside kills it (#580). Refused here
+        # rather than at the first request, so the caller is still the one
+        # holding the mistake.
+        self._timeout = _duration_seconds(timeout, "the request timeout")
         # `None` once the space is spent. Not a counter that wraps: see
         # `_allocate_req_id`.
         self._next_req_id: int | None = 1
@@ -326,7 +333,8 @@ class Watch:
 
     def _await(self, req_id: int, ops: tuple[p.Op, ...], timeout: float | None = None,
                session: int | None = None):
-        waited = timeout if timeout is not None else self._timeout
+        waited = (_duration_seconds(timeout, "the request timeout")
+                  if timeout is not None else self._timeout)
         deadline = time.monotonic() + waited
         previous, self._awaiting = self._awaiting, req_id
         try:
@@ -397,6 +405,8 @@ class Watch:
         exactly whether a second attempt is answered. Retrying is skipped for a
         typed error, which is an answer.
         """
+        if timeout is not None:
+            timeout = _duration_seconds(timeout, "the request timeout")
         last: Exception | None = None
         for attempt in range(retries + 1):
             req_id = self._allocate_req_id()
@@ -655,6 +665,10 @@ class Watch:
         """
         if not 0 <= quiet_ms <= 0xFFFF:
             raise WatchError(f"quiet_ms must fit in 16 bits, got {quiet_ms}")
+        # Its own deadline and its own sleep, so neither reaches `_await`'s
+        # check. A scenario file can put `.nan` in either (#580).
+        timeout = _duration_seconds(timeout, "wait_stable's timeout")
+        poll = _duration_seconds(poll, "wait_stable's poll interval")
         body = struct.pack("<H", quiet_ms)
         deadline = time.monotonic() + timeout
         while True:
@@ -769,18 +783,31 @@ class Watch:
         self._event(p.EventType.BUTTON_UP, button=self.button_index(name))
 
     def button_click(self, name: str, duration: float = 0.05) -> None:
+        # BEFORE THE BUTTON GOES DOWN, not between the two events. A pointer
+        # gesture asked for an unreadable length of time is refused with
+        # nothing on the panel; a button is worse, because `inf` here parks
+        # `time.sleep` with BUTTON_DOWN already delivered and only the device's
+        # own 30 s hold expiry lets go. `nan` is the quiet half: `sleep(nan)`
+        # returns at once, so the click is reported as made and the interface
+        # was never held at all.
+        seconds = _duration_seconds(duration, "a button click")
         index = self.button_index(name)
         self._event(p.EventType.BUTTON_DOWN, button=index)
-        time.sleep(duration)
+        time.sleep(seconds)
         self._event(p.EventType.BUTTON_UP, button=index)
 
     def button_hold(self, name: str, duration: float) -> None:
+        # Checked here as well as in `button_click`, because this one does
+        # arithmetic on the value first and `nan * 1000 > anything` is False:
+        # an unreadable hold would walk past the cap that exists to say the
+        # device will cut it short, and only then reach the sleep.
+        seconds = _duration_seconds(duration, "a button hold")
         caps = self._caps()
-        if caps.max_hold_ms and duration * 1000 > caps.max_hold_ms:
+        if caps.max_hold_ms and seconds * 1000 > caps.max_hold_ms:
             raise WatchError(
                 f"the device releases anything held longer than {caps.max_hold_ms} ms, "
-                f"so a {duration:.1f}s hold would be cut short")
-        self.button_click(name, duration)
+                f"so a {seconds:.1f}s hold would be cut short")
+        self.button_click(name, seconds)
 
     def screen_size(self) -> tuple[int, int]:
         """The geometry a coordinate is expressed in: the **displayed** one.
