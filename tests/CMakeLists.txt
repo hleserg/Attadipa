@@ -763,3 +763,20 @@ add_test(NAME ak09911 COMMAND test_ak09911)
 add_executable(test_qmi8658_fifo test_qmi8658_fifo.cpp)
 target_include_directories(test_qmi8658_fifo PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 add_test(NAME qmi8658_fifo COMMAND test_qmi8658_fifo)
+
+# The board adapter's MeshCore send-argument rule -- #609, where the adapter's
+# own 160 outlived the product's 128 and turned a message the watch refuses
+# into a radio failure that never happened -- is a header in firmware/main on
+# the same pattern as the two above, and it is registered down here with them
+# rather than beside test_meshcore_passkey for a duller reason: five citations
+# name lines further up this file by number, one of them in a workflow, and
+# inserting there moves all five.
+#
+# It links attadipa_core because the bound it enforces is `core::kMeshTextBytes`
+# and never a number of its own.
+add_executable(test_meshcore_send_request test_meshcore_send_request.cpp)
+target_include_directories(test_meshcore_send_request PRIVATE
+    ${PROJECT_SOURCE_DIR}/firmware/main)
+target_link_libraries(test_meshcore_send_request PRIVATE attadipa_core)
+add_test(NAME meshcore_send_request COMMAND test_meshcore_send_request)
+set_tests_properties(meshcore_send_request PROPERTIES LABELS mesh)

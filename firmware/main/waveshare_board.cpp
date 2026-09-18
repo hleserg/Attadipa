@@ -5,6 +5,7 @@
 #include "board_power.h"
 #include "boot_rollback.h"
 #include "local_gnss.h"
+#include "meshcore_send_request.h"
 
 #include "pcf85063_time.h"
 #include "provision_time.h"
@@ -15,7 +16,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <limits>
 #include <optional>
 #include <string_view>
 
@@ -742,10 +742,13 @@ public:
   attadipa::debug::MeshSinkResult
   send(const std::uint8_t peer_key[32], const char *text,
        std::size_t text_length, std::int64_t utc_seconds) override {
-    if (peer_key == nullptr || text == nullptr || text_length == 0 ||
-        text_length > 160 ||
-        std::memchr(text, '\0', text_length) != nullptr || utc_seconds < 0 ||
-        utc_seconds > std::numeric_limits<std::uint32_t>::max()) {
+    // Bad input, and answered as bad input. `meshcore_ble_send()` refuses an
+    // over-long text synchronously, before it claims the send slot or queues
+    // anything, so letting one through here bought a `Failed` -- and the
+    // bridge reports `Failed` as `OperationFailed`, which says a radio tried
+    // and could not. See `meshcore_send_request.h` for the whole of #609.
+    if (!attadipa::firmware::mesh_send_arguments_ok(peer_key, text, text_length,
+                                                    utc_seconds)) {
       return attadipa::debug::MeshSinkResult::Rejected;
     }
     std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes> key{};
@@ -760,12 +763,8 @@ public:
   send_room(const std::uint8_t room[32], const char *password,
             std::size_t password_length, const char *text,
             std::size_t text_length, std::int64_t utc_seconds) override {
-    if (room == nullptr || password == nullptr || text == nullptr ||
-        password_length == 0 || password_length > 15 || text_length == 0 ||
-        text_length > attadipa::core::kMeshTextBytes ||
-        std::memchr(password, '\0', password_length) != nullptr ||
-        std::memchr(text, '\0', text_length) != nullptr || utc_seconds < 0 ||
-        utc_seconds > std::numeric_limits<std::uint32_t>::max()) {
+    if (!attadipa::firmware::mesh_room_send_arguments_ok(
+            room, password, password_length, text, text_length, utc_seconds)) {
       return attadipa::debug::MeshSinkResult::Rejected;
     }
     std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes> key{};
