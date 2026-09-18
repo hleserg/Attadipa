@@ -331,17 +331,20 @@ def cmd_mesh_disconnect(watch: Watch, args) -> int:
 
 
 def cmd_mesh_send(watch: Watch, args) -> int:
+    # The whole key, as `mesh-room-send` has always wanted. A prefix is what the
+    # MeshCore frame carries and nothing above it: the watch asks the node for
+    # the contact by full key when it is not one of the sixteen it caches.
     try:
-        prefix = bytes.fromhex(args.peer)
+        key = bytes.fromhex(args.peer)
     except ValueError as exc:
-        raise WatchError("peer must be a 12-digit hexadecimal prefix") from exc
-    if len(prefix) != 6:
-        raise WatchError("peer must be a 12-digit hexadecimal prefix")
+        raise WatchError("peer must be a 64-digit hexadecimal public key") from exc
+    if len(key) != 32:
+        raise WatchError("peer must be a 64-digit hexadecimal public key")
     utc_seconds = args.utc_seconds if args.utc_seconds is not None else int(time.time())
-    watch.mesh_send(prefix, args.text, utc_seconds)
-    emit(args, {"peer": prefix.hex(), "text": args.text,
+    watch.mesh_send(key, args.text, utc_seconds)
+    emit(args, {"peer": key.hex(), "text": args.text,
                 "utc_seconds": utc_seconds},
-         f"MeshCore message queued for {prefix.hex()}")
+         f"MeshCore message queued for {key.hex()[:12]}")
     return 0
 
 
@@ -704,7 +707,7 @@ def build_parser() -> argparse.ArgumentParser:
     mesh_send = subparsers.add_parser(
         "mesh-send", help="send one private MeshCore message")
     mesh_send.add_argument("--peer", required=True,
-                           help="the target contact's 12-digit public-key prefix")
+                           help="the target contact's 64-digit public key")
     mesh_send.add_argument("--text", required=True)
     mesh_send.add_argument("--utc-seconds", type=int,
                            help="Unix UTC seconds (default: this host's current time)")

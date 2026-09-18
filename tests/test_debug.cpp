@@ -343,14 +343,17 @@ void the_wire_bytes_are_pinned_to_a_literal()
 // `struct` formats. Every field is a distinct value on purpose, so a transposed
 // pair cannot survive -- `x` is negative, `width` and `height` differ, and the
 // session `HelloOk` echoes is `0xA5B6C7D8`. All three begin with the version
-// byte, so a version bump re-pins all three: v2 added the session to Hello.
+// byte, so a version bump re-pins all three: v2 added the session to Hello, and v3
+// widened `MeshSend` to a whole public key without touching any of these three
+// bodies -- which is the case this pinning is for: nothing about these messages
+// moved and all three still had to change.
 const char* const kHelloOkHex =
-    "020234120180350016bb027761766573686172652d616d6f6c65642d3230360000"
-    "000073696d20302e302e31000000000000000000000000000000d8c7b6a5";
+    "03023412018035005a6d037761766573686172652d616d6f6c65642d32303600"
+    "00000073696d20302e302e31000000000000000000000000000000d8c7b6a5";
 const char* const kScreenInfoHex =
-    "0202785610801600af50443322119a01f6010201144b06002639f4cb4e61bc00";
+    "0302785610801600b059443322119a01f6010201144b06002639f4cb4e61bc00";
 const char* const kInputEventHex =
-    "0202bc9a20000b00a1d20301feff2c0107feff0000";
+    "0302bc9a20000b00be0c0301feff2c0107feff0000";
 
 std::vector<std::uint8_t> from_hex(const char* hex)
 {
@@ -634,11 +637,11 @@ public:
         return answer;
     }
 
-    MeshSinkResult send(const std::uint8_t incoming_prefix[6],
+    MeshSinkResult send(const std::uint8_t incoming_key[32],
                         const char* incoming_text, std::size_t length,
                         std::int64_t incoming_utc) override
     {
-        std::memcpy(prefix, incoming_prefix, sizeof(prefix));
+        std::memcpy(key, incoming_key, sizeof(key));
         text.assign(incoming_text, length);
         utc_seconds = incoming_utc;
         ++send_calls;
@@ -668,7 +671,7 @@ public:
     unsigned outcome_polls = 0;
     unsigned send_calls = 0;
     unsigned room_calls = 0;
-    std::uint8_t prefix[6]{};
+    std::uint8_t key[32]{};
     std::uint8_t room[32]{};
     std::string password;
     std::string text;
@@ -779,15 +782,20 @@ void mesh_commands_are_typed_and_require_a_sink()
     no_sink.send(request(Opcode::MeshForgetBond, 7));
     CHECK(no_sink.sink.last_error() == ErrorCode::Unsupported);
 
-    const std::uint8_t send[] = {
-        1, 2, 3, 4, 5, 6,
-        0xD2, 0x02, 0x96, 0x49, 0, 0, 0, 0,
-        'H', 'e', 'l', 'l', 'o'};
+    // A WHOLE 32-BYTE KEY, not the six-byte prefix this opcode carried until
+    // #573. The bytes are distinct so a body read from the wrong offset shows,
+    // and the timestamp after them is what would move if the header width were
+    // wrong in only one of the two places that know it.
+    std::uint8_t send[32 + 8 + 5]{};
+    for (std::size_t i = 0; i < 32; ++i) send[i] = static_cast<std::uint8_t>(i + 1);
+    const std::uint8_t when[] = {0xD2, 0x02, 0x96, 0x49, 0, 0, 0, 0};
+    std::memcpy(send + 32, when, sizeof(when));
+    std::memcpy(send + 40, "Hello", 5);
     rig.sink.clear();
     rig.send(request(Opcode::MeshSend, 4, send, sizeof(send)));
     CHECK(rig.sink.last_is(Opcode::MeshOk));
     CHECK(mesh.send_calls == 1);
-    CHECK(std::memcmp(mesh.prefix, send, 6) == 0);
+    CHECK(std::memcmp(mesh.key, send, 32) == 0);
     CHECK(mesh.utc_seconds == 1'234'567'890);
     CHECK(mesh.text == "Hello");
 
@@ -795,7 +803,7 @@ void mesh_commands_are_typed_and_require_a_sink()
     for (std::size_t i = 0; i < 32; ++i) room_send[i] = static_cast<std::uint8_t>(i);
     room_send[32] = 4;
     std::memcpy(room_send + 33, "pass", 4);
-    std::memcpy(room_send + 37, send + 6, 8);
+    std::memcpy(room_send + 37, when, sizeof(when));
     std::memcpy(room_send + 45, "Hello", 5);
     rig.sink.clear();
     rig.send(request(Opcode::MeshRoomSend, 5, room_send, sizeof(room_send)));

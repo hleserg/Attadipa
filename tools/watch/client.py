@@ -705,9 +705,9 @@ class Watch:
         # would have to interpret -- so a lost acknowledgement is reported.
         self.request(p.Op.MESH_FORGET_BOND, b"", (p.Op.MESH_OK,), retries=0)
 
-    def mesh_send(self, peer_prefix: bytes, text: str, utc_seconds: int) -> None:
+    def mesh_send(self, peer_key: bytes, text: str, utc_seconds: int) -> None:
         try:
-            body = p.mesh_send_encode(peer_prefix, text, utc_seconds)
+            body = p.mesh_send_encode(peer_key, text, utc_seconds)
         except (TypeError, ValueError, UnicodeError, struct.error) as exc:
             raise WatchError(str(exc)) from exc
         # A private message is not idempotent. A lost acknowledgement is an

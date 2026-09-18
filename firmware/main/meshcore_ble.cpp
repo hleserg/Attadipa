@@ -124,7 +124,7 @@ struct Event {
     std::uint32_t ticket = 0;
     attadipa::core::WallTime timestamp{};
     std::array<std::uint8_t, attadipa::link::kMeshCoreFrameBytes> bytes{};
-    std::array<std::uint8_t, 6> peer_prefix{};
+    attadipa::core::MeshPeerId peer{};
     std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes> room{};
     std::array<char, 16> password{};
     std::uint8_t password_length = 0;
@@ -1340,35 +1340,39 @@ SessionCatchUp apply_lifecycle(SessionMark& applied)
 // Both return whether the provider took ownership of the request. The worker
 // releases the send claim itself when they say no, because nothing downstream
 // will: the operation never became one.
+// THE RECIPIENT IS NOT LOOKED UP HERE ANY MORE, and that is the whole of #573's
+// second half. This function used to walk the sixteen retained contacts for a
+// six-byte prefix and refuse anything it did not find -- a first-match loop over
+// a seven-per-cent sample of the node's table, which is both of the refusals in
+// the outbound report's §8.3. The provider takes a whole key and asks the node
+// when it does not hold one, so there is nothing left for this to decide.
 bool handle_send(const Event& event)
 {
-    attadipa::core::MeshPeer peer{};
-    for (std::size_t i = 0; i < service.peer_count(); ++i) {
-        if (service.peer(i, peer) &&
-            std::memcmp(peer.id.public_key.data(), event.peer_prefix.data(),
-                        event.peer_prefix.size()) == 0) {
-            const std::size_t length =
-                static_cast<std::size_t>(std::find(event.text.begin(),
-                                                   event.text.end(), '\0') -
-                                         event.text.begin());
-            const auto result = service.send_private(
-                peer.id, std::string_view(event.text.data(), length),
-                event.timestamp);
-            if (result.accepted()) {
-                return true;
-            }
-            // The provider refused, and now says which refusal: the link is not
-            // ready, a send it has not finished is still in flight, the body is
-            // over the byte budget or cut through a code point. Either way this
-            // request is over -- and the reason reaches the serial log, which is
-            // where an operator debugging a send that "just does not work" looks
-            // first. The text itself never does; only its length.
-            ESP_LOGW(kTag, "the provider refused the send (%s); it is not in flight",
-                     attadipa::core::to_string(result.refusal));
-            return false;
-        }
+    const std::size_t length =
+        static_cast<std::size_t>(std::find(event.text.begin(),
+                                           event.text.end(), '\0') -
+                                 event.text.begin());
+    const auto result = service.send_private(
+        event.peer, std::string_view(event.text.data(), length),
+        event.timestamp);
+    if (result.accepted()) {
+        return true;
     }
-    ESP_LOGW(kTag, "requested contact prefix is not in retained chat contacts");
+    // The provider refused, and says which refusal: the link is not ready, a
+    // send it has not finished is still in flight, a contacts walk owns the
+    // reply a lookup would need, the body is over the byte budget or cut
+    // through a code point. Either way this request is over -- and the reason
+    // reaches the serial log, which is where an operator debugging a send that
+    // "just does not work" looks first. The text itself never does; only its
+    // length.
+    //
+    // Nothing is published about it. A refusal is an answer to the call and not
+    // a statement about a message, because no message exists -- ADR-0023
+    // decision 3, which is why `send_abandoned()` is gone rather than moved: a
+    // caller that wants to know whether the verdict on the screen is its own
+    // compares `MeshStatus::request_id` against the id it was given.
+    ESP_LOGW(kTag, "the provider refused the send (%s); it is not in flight",
+             attadipa::core::to_string(result.refusal));
     return false;
 }
 
@@ -1659,7 +1663,7 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:196` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1714` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1718` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
         // `firmware/main/meshcore_ble.cpp:938` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
@@ -2286,16 +2290,16 @@ bool stop_meshcore_ble()
     return false;
 }
 
-bool meshcore_ble_send(const std::array<std::uint8_t, 6>& peer_prefix,
-                       std::string_view text,
-                       attadipa::core::WallTime timestamp)
+bool meshcore_ble_send(
+    const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& peer_key,
+    std::string_view text, attadipa::core::WallTime timestamp)
 {
     if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
     if (!claim_send()) return false;
     Event event{EventKind::Send};
-    event.peer_prefix = peer_prefix;
+    event.peer.public_key = peer_key;
     event.timestamp = timestamp;
     std::memcpy(event.text.data(), text.data(), text.size());
     event.text[text.size()] = '\0';

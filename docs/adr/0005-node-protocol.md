@@ -264,7 +264,7 @@ connected while the host sends SOF") — so nothing reset the session, and
 the next process — restarting its request ids at 1 — read its predecessor's
 late replies as its own. `HelloBody` carries a 32-bit session the host draws
 per connection
-(`debug/include/attadipa/debug/protocol.h:242` — "std::uint32_t session"); the
+(`debug/include/attadipa/debug/protocol.h:252` — "std::uint32_t session"); the
 device ends the previous session before it echoes the value in `HelloOk`, and
 the host discards everything it read ahead of that echo. A correlation, not a
 credential — `docs/testing/WATCH_CONTROL.md`, "The trust boundary".

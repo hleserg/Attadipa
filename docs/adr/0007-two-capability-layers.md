@@ -108,6 +108,85 @@ Capabilities stay enumerated **per sensing axis** rather than per part —
 `Accelerometer` and `Gyroscope` are separate entries. That part of ADR-0001 was
 right and is carried forward unchanged.
 
+### 1a. The board composition moves a feature out of `Untouched`
+
+Added 2026-09-18 for [#592](https://github.com/hleserg/Attadipa/issues/592).
+`state()` had no writer on a device: `ProfileInventory::set_state()` was called
+from the simulator and from tests and from nowhere else, so every present
+feature stayed `Untouched`, `from_state()` published that as
+`Availability::Off` — *deliberately powered down; can be brought up* — and the
+sentence was false about every part a running watch does bring up.
+
+The intent was written down from the start; what was missing was a named
+owner. `platform/include/attadipa/platform/hardware_inventory.h:36` —
+"// This is what the simulator uses, and it is also the shape a BSP fills in:" —
+says a BSP fills it in. This is which part of a BSP, and when.
+
+**The board composition writes the state, not the driver and not a separate
+pass.** The composition — `start_waveshare_ui()`, `start_twatch_ui()`,
+`sim/main.cpp`'s `bring_up()` — is the only layer that holds both halves of the
+answer at once: which `HardwareFeature` a driver belongs to, and whether that
+driver came up. A driver does not know the first: `initialize_touch()` is
+ESP-IDF code, and making it say `Touch` would give every IDF driver a
+`platform/` type to link against, which is exactly the boundary §5 makes the
+build enforce. A separate bring-up pass does not know the second without
+re-probing parts the composition has already probed, and two probes of one part
+are two answers to one question.
+
+**`Failed` is written by the bring-up step that attempted the part.** Same
+seam, same call, opposite branch: the step already holds the `esp_err_t`.
+
+**`RailOff` is written by the power owner, and today it has no writer.**
+Cutting a rail is the one transition bring-up does not perform and cannot
+observe, so it belongs to the component that performs it —
+`firmware/main/board_power.cpp` on both boards. On the Waveshare that owner
+gates exactly one rail and is forbidden to gate it:
+`firmware/main/board_power.cpp:134` — "                  kRails[2].policy == RailPolicy::Never," — so `RailOff` is
+unreachable on a shipping image and stays unwritten. That is a recorded
+absence, not an oversight; an invented writer would be a hardware claim.
+
+**`Initialising` gets no writer either.** Every bring-up step in these
+compositions is synchronous and blocking, so the state would be set and cleared
+without any task ever being able to read it. A part whose bring-up genuinely
+spans a wait is what would earn it.
+
+**The inventory is written once, by the boot task, before the UI task can read
+it.** `states_[]` is a plain byte array with no lock, and the readers are on
+the LVGL task. Ordering the single write before the timer and the handlers that
+reach it is what keeps that array lock-free, and it is a constraint on any
+later transition rather than a detail of this one: a runtime writer — a rail
+cut, a driver that dies — needs a synchronisation decision that is not made
+here.
+
+**A present feature this build does not drive keeps `Untouched`, and that is
+the value working.** `master-prompt-final.md:1124` — "# 32. OWNERSHIP DOES NOT MEAN “INITIALIZE EVERYTHING”"
+— an owned part deliberately left alone is not a failure. On the Waveshare,
+`Buttons` is the honest case on a healthy board: the keys are fitted and no
+GPIO assignment is resolved, so nothing brings them up and nothing may claim
+they are `Ready`.
+
+**`sim/main.cpp`'s `bring_up()` is the named exception to that last rule, not
+an instance of it.** It sets every present feature `Ready` —
+`sim/main.cpp:51` — "      inventory.set_state(feature, platform::HardwareState::Ready);" — including the five parts no
+build drives. That is deliberate: the simulator has no part to leave alone,
+because there is no bus, nothing to probe and no `esp_err_t` for the loop to
+branch on, so it is a fixture rather than a claim about hardware — the comment
+above it says so. The cost is exact and belongs here rather than in a footnote:
+a simulator screenshot is evidence about layout, navigation and touch geometry,
+and it is **not** evidence about launcher gating for `MotionSensing`,
+`Haptics`, `AudioPlayback`, `AudioCapture` or `RemovableStorage`, which the
+simulator offers and a board does not.
+
+**Scope, so that its edges do not read as gaps.** Only the Waveshare composition
+builds a registry — the T-Watch composition does not construct one, so it does
+not exhibit this and gains a writer when it gains a registry. `Ble` gets no
+writer because it also has no reader: `CompanionLink` consults `present(Ble)`
+and the companion link state, never `state(Ble)`. And the five Waveshare
+capabilities that do derive from a feature state — `MotionSensing`, `Haptics`,
+`AudioPlayback`, `AudioCapture`, `RemovableStorage` — still report `Off`,
+because this firmware drives none of those five parts. That is a missing
+driver, not a missing seam, and #592 carries it.
+
 ### 2. Product capabilities — what an application can ask for
 
 ```cpp

@@ -243,7 +243,7 @@ def main() -> int:
     #
     # AND ONLY FOR AN IMAGE THAT PATH WILL LOOK AT. `--restore` refuses on SIZE
     # first, before the table is read at all --
-    # `tools/flash/flash_no_reset.py:341` -- "    if size != FACTORY_FLASH_BYTES:"
+    # `tools/flash/flash_no_reset.py:588` -- "    if size != FACTORY_FLASH_BYTES:"
     # -- and this tool's own default is the OTHER board's 32 MB part. Printed
     # unconditionally, the sentence sends the operator to edit the table that
     # admits a backup, at the one moment the loop is meant to close, to add a

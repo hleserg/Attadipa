@@ -110,10 +110,20 @@ merely motivating it:
    — one hash in 2³² — loses an upgrade it was owed. That is the direction to
    fail in: the owner is told the wire cannot prove delivery, which is true.
 3. **A local refusal is not a delivery state.** "The link is down", "a send is
-   already in flight", "the body is over budget", "the recipient does not
-   resolve" are answers to the *call*. No message exists, so no message has a
-   state. In particular `send_abandoned()` must stop writing a delivery verdict
-   for a request that never became an operation.
+   already in flight", "the body is over budget" are answers to the *call*. No
+   message exists, so no message has a state. In particular `send_abandoned()`
+   must stop writing a delivery verdict for a request that never became an
+   operation.
+
+   **3a. "The recipient does not resolve" left this list on 2026-09-18**, with
+   the second half of [#573](https://github.com/hleserg/Attadipa/issues/573).
+   It was a call refusal only because the client could not ask: a miss in the
+   sixteen-slot retained window was the end of the search. A miss is now a
+   `CMD_GET_CONTACT_BY_KEY` and the call is accepted, so a recipient the node
+   does not hold is a verdict about a message that exists — `Refused`, under
+   decision 4, since nothing reached the air. The list above is the shipping
+   one; `MeshSendRefusal` is its enumeration, and no value of it names a
+   recipient.
 4. **A verdict the node gave is `Refused`, and so is a frame this client
    could not put on the radio after it had already published `Queued`.**
    `RESP_CODE_ERR` for an accepted command, and a room login that failed, are
