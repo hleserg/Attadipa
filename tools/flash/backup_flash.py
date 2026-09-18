@@ -28,6 +28,14 @@ refuses. §2.3 is that recipe and this is it in code.
 Verification is not optional and is not this script's opinion: `esptool
 verify-flash` compares by on-chip MD5 over the range, so it costs seconds and it
 is the only evidence that counts. A successful read is not it.
+
+**`--size`, `--chunk` and `--attempts` are strictly positive, and that is a
+contract rather than a convenience.** Verification proves the range read equals
+the range on the device, so over an empty range it proves nothing and still
+succeeds — upstream MD5s no bytes on both sides. A zero-length read therefore
+assembled an empty image, verified it, and published it over the trusted backup
+under the word VERIFIED. The refusal is at the argument boundary, before a port
+is opened or anything is written next to that backup.
 """
 
 from __future__ import annotations
@@ -107,15 +115,43 @@ def read_chunk(python: str, port: str, offset: int, size: int, path: Path,
     )
 
 
+# A READ GEOMETRY IS STRICTLY POSITIVE, AND ARGPARSE IS WHERE THAT IS SAID.
+#
+# The only geometry check below is `size % chunk`, and `0 % chunk` is 0, so a
+# zero size passed it. Everything after that is then correct about nothing:
+# `range(0, 0, chunk)` reads no chunks, the assembly loop writes an empty
+# candidate, `written != args.size` compares 0 against 0 and holds, and
+# `verify-flash` proves that an empty range on the device equals an empty file
+# -- upstream computes the MD5 of no bytes on both sides and returns success.
+# #243's atomic publication then faithfully replaces the trusted backup with
+# nothing, under the line "VERIFIED -- this image restores the board".
+#
+# The refusal belongs here rather than beside the read, because by the time the
+# read runs the port has been opened, the scratch directory exists and the
+# candidate is about to be created next to the operator's authoritative image.
+# Nothing on disk is touched for a geometry that cannot describe a backup.
+def positive(value: str) -> int:
+    number = int(value, 0)
+    if number <= 0:
+        raise argparse.ArgumentTypeError(
+            f"{value} is not positive. Size, chunk and attempts are strictly "
+            "positive: a zero-length read assembles an empty image, and an "
+            "empty image verifies against an empty range")
+    return number
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("output", type=Path, help="where to write the image")
     parser.add_argument("--serial", default=DEFAULT_SERIAL)
     parser.add_argument("--port", default=None)
-    parser.add_argument("--size", type=lambda v: int(v, 0), default=FLASH_SIZE)
-    parser.add_argument("--chunk", type=lambda v: int(v, 0), default=CHUNK)
-    parser.add_argument("--attempts", type=int, default=3,
-                    help="1 = stub only; later attempts use the ROM loader")
+    parser.add_argument("--size", type=positive, default=FLASH_SIZE,
+                        help="bytes to read; strictly positive, 0x accepted")
+    parser.add_argument("--chunk", type=positive, default=CHUNK,
+                        help="bytes per read; strictly positive, 0x accepted")
+    parser.add_argument("--attempts", type=positive, default=3,
+                    help="1 = stub only; later attempts use the ROM loader. "
+                         "Strictly positive: zero attempts is no read at all")
     parser.add_argument("--python", default=sys.executable,
                         help="the interpreter that has esptool installed")
     parser.add_argument("--no-verify", action="store_true",
