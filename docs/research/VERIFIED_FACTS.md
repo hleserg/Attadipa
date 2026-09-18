@@ -1026,7 +1026,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2279`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2300`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -2075,6 +2075,27 @@ constants.
 - **Impact:** **the first flash of our own firmware is reversible.** That is the
   precondition every bench task on this unit was waiting for, and the reason the
   balance of risk between the two diagnostic routes has shifted.
+- **What makes `Verification successful` evidence is that the range is not
+  empty**, and the claim above is unaffected because its range is the whole
+  chip. `verify-flash` compares an on-chip digest against a host digest *of the
+  same bytes*, so over an empty range it compares a digest of nothing with the
+  MD5 of nothing and reads no flash content at all: `verify_flash()` in
+  esptool's `cmds.py` pads the image to four bytes, takes `image_size =
+  len(image)`, and compares `esp.flash_md5sum(address, image_size)` against
+  `hashlib.md5(image).hexdigest()`. Read in both versions this project uses —
+  v4.12.0 (ESP-IDF 5.5) and v5.3.1 (ESP-IDF 6.2, the one that took the backup
+  above); the function is renamed and restructured between them and this part is
+  identical. The device answers rather than refusing: upstream
+  `esp-flasher-stub` at `2c06d43`, `src/command_handler.c`, initialises the MD5
+  context, skips its `while (remaining > 0)` loop when the requested size is
+  zero, finalises the empty digest and returns `RESPONSE_SUCCESS`. **Traced to
+  vendor source, not measured on this unit**, and it covers the *stub* only:
+  what the ROM loader answers for a zero-length `SPI_FLASH_MD5` is `UNKNOWN`,
+  and `backup_flash.py` falls back to it for the ranges the stub refuses (§2.3).
+  Since #581 that tool refuses a zero-length read at the argument boundary, so
+  no empty image can reach a published backup by this route — but the
+  qualification is about the command, not about the tool, and anybody running
+  `verify-flash` by hand needs it.
 - **Not committed, and this is the rule not a preference** — the image is
   Waveshare's proprietary binary plus third-party all-rights-reserved audio. It
   lives on the owner's machine.
@@ -2984,7 +3005,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2894` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2915` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3041,7 +3062,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:2965` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:2986` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3082,7 +3103,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2919` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2940` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3168,7 +3189,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2842` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2863` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3363,7 +3384,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:2968` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:2989` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has

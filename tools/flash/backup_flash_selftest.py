@@ -242,7 +242,7 @@ def main() -> int:
             check([entry.name for entry in Path(raw).iterdir()] == ["factory.bin"],
                   f"{why} left a scratch directory or candidate on disk beside "
                   f"the trusted backup", failures)
-            check("positive" in said,
+            check("strictly positive" in said,
                   f"{why} was refused without saying why", failures)
 
     if failures:
