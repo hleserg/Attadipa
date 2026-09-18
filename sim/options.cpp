@@ -4,14 +4,55 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace attadipa::sim {
 namespace {
 
+// A COUNT THAT DOES NOT FIT IS NOT A COUNT, AND `strtoul` WILL NOT SAY SO.
+//
+// It reports neither of the two ways a caller's number stops being the number
+// they typed, and `parse_int64` below already guards against one of them:
+//
+//   * A LEADING SIGN IS NOT A SYNTAX ERROR TO IT. C says `strtoul` negates the
+//     unsigned result, so `-1` parses cleanly as `ULONG_MAX` -- `--frames -1`
+//     asked for 4 294 967 295 rendered frames, about 248 days on the 5 ms
+//     delay alone, with nothing anywhere reporting that a negative count had
+//     been rejected.
+//   * A VALUE TOO LARGE FOR THE DESTINATION NARROWS SILENTLY. Only `errno` says
+//     the value did not fit `unsigned long`, and nothing at all says it did not
+//     fit `std::uint32_t`: on an LP64 host `--frames 4294967296` is a perfectly
+//     representable `unsigned long` and the cast below turned it into 0.
+//
+// Zero is the amplifier. `Options::frames` uses it as the sentinel for "run
+// until the window closes", so that one wrap does not produce a wrong finite
+// count -- it produces an unbounded run, and in headless CI there is no window
+// to close (#578).
+//
+// The check is here rather than at `--frames` because this is the shared
+// helper: the next caller gets it without knowing there was anything to know.
 bool parse_uint(const char *text, std::uint32_t &out) {
+  // `strtoul` skips leading whitespace and then accepts a sign, so the sign
+  // has to be looked for past the same whitespace -- `" -1"` is `-1` to it.
+  // `+7` is left alone: it is unambiguous and it does not wrap.
+  if (text[std::strspn(text, " \t\n\v\f\r")] == '-') {
+    return false;
+  }
   char *end = nullptr;
+  errno = 0;
   const unsigned long value = std::strtoul(text, &end, 10);
-  if (end == text || *end != '\0') {
+  // ERANGE IS THE ONE GUARD HERE THAT NO TEST ON THIS HOST CAN KILL, and that
+  // is worth writing down rather than leaving as an untested line. Where
+  // `unsigned long` is 64 bits, an overflow returns `ULONG_MAX`, which the
+  // range check below refuses anyway -- removing this clause leaves every case
+  // in `tests/test_sim_options.cpp` passing, measured. Where `unsigned long`
+  // is 32 bits, `ULONG_MAX` *is* `UINT32_MAX`, the range check cannot tell an
+  // overflow from a caller who typed 4294967295, and this clause is the whole
+  // refusal. It stays for the host this does not run on.
+  if (errno == ERANGE || end == text || *end != '\0') {
+    return false;
+  }
+  if (value > std::numeric_limits<std::uint32_t>::max()) {
     return false;
   }
   out = static_cast<std::uint32_t>(value);
@@ -339,7 +380,14 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     if (std::strcmp(arg, "--frames") == 0) {
       const char *value = take_value(argc, argv, i, arg);
       if (value == nullptr || !parse_uint(value, out.frames)) {
-        std::fprintf(stderr, "--frames needs a whole number\n");
+        // The old text was "--frames needs a whole number", which is what a
+        // reader sees after typing one. `-1` and `4294967296` are both whole
+        // numbers and neither is a frame count, so the message says which
+        // property failed.
+        std::fprintf(stderr,
+                     "--frames needs a whole number from 0 to %u "
+                     "(0 = run until the window closes)\n",
+                     std::numeric_limits<std::uint32_t>::max());
         return ParseResult::Error;
       }
       continue;

@@ -612,6 +612,22 @@ target_link_libraries(test_power_owner PRIVATE attadipa_core)
 add_test(NAME power_owner COMMAND test_power_owner)
 set_tests_properties(power_owner PROPERTIES LABELS power)
 
+# The simulator's public command line, on the host and NOT in a simulator build
+# (#578).
+#
+# Every other test that touches `sim/` links `attadipa_sim_screens` and so needs
+# LVGL, which only a simulator build configures. That put the whole public CLI
+# behind a build most CI runs do not do, and `--frames 4294967296` -- which
+# narrowed to the run-until-the-window-closes sentinel and hung a headless run
+# until an external timeout -- was found by reading rather than by a check.
+# `sim/options.cpp` is argv in and `Options` out; it needs no LVGL and no SDL,
+# so it compiles straight into this test and runs in an ordinary build.
+add_executable(test_sim_options test_sim_options.cpp ${PROJECT_SOURCE_DIR}/sim/options.cpp)
+target_link_libraries(test_sim_options PRIVATE attadipa_platform attadipa_l10n attadipa_core attadipa_ui)
+target_include_directories(test_sim_options PRIVATE ${PROJECT_SOURCE_DIR}/sim)
+add_test(NAME sim_options COMMAND test_sim_options)
+set_tests_properties(sim_options PROPERTIES LABELS "simulator;cli")
+
 # What ended a sleep, which is the board's half of the same transaction and so
 # is a header in firmware/main with no ESP-IDF dependency -- the pattern
 # power_button_edges.h already uses, and for the same reason: the AXP2101 latch
