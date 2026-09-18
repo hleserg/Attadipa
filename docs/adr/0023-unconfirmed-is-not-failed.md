@@ -13,9 +13,9 @@ separate issue and **no production code changed with this ADR**.
 ## Context
 
 `MeshDelivery` has five values and `MeshStatus` has one slot to hold them:
-`core/include/attadipa/core/mesh_service.h:89` — "MeshDelivery delivery = MeshDelivery::None;".
+`core/include/attadipa/core/mesh_service.h:117` — "MeshDelivery delivery = MeshDelivery::None;".
 One of the five is `Failed`, and it is written when an acknowledgement budget
-expires: `link/src/meshcore_companion.cpp:295` — "status_.delivery = core::MeshDelivery::Failed;".
+expires: `link/src/meshcore_companion.cpp:323` — "status_.delivery = core::MeshDelivery::Failed;".
 It reaches the owner as *"failed"* in English and, in Russian, as
 *"не доставлено"* — **not delivered**, a claim about what happened on the air.
 
@@ -50,7 +50,7 @@ merely motivating it:
    everything while disconnected — the offline queue holds messages, not
    confirmations. Waiting does not recover it.
 3. **A disconnect currently erases the verdict rather than qualifying it.**
-   `link/src/meshcore_companion.cpp:167` — "status_.delivery = core::MeshDelivery::None;"
+   `link/src/meshcore_companion.cpp:180` — "status_.delivery = core::MeshDelivery::None;"
    runs in `reset_session()`, and `None` renders as *"not sent"*. A message the
    node accepted, and may have delivered, reads as one that never left.
 
