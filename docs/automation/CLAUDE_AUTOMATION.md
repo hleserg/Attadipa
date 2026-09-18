@@ -149,20 +149,22 @@ reviewer should check:
   record a verdict the rules did not anticipate means the text is left out; on
   the body it would mean the text becomes the task. So the one record that *is*
   the task is matched exactly.
-- **An issue is not a pull request.** Both exemptions below are written for an
-  issue, which is what the gate admits and what an agent is dispatched onto. A
-  pull request body is text an outside contributor can write on a fork's first
-  push, and it takes neither.
-- **Two exemptions, both narrow, both on the issue body only.** A producer the
-  owner named in `ATTADIPA_TRUSTED_PRODUCERS` may file a task — an app has no
+- **An issue is not a pull request**, and the producer exemption below knows
+  it. That one is written for `issues` events, and a pull request body is text
+  an outside contributor can write on a fork's first push, so it does not
+  reach one.
+- **Two exemptions, both narrow.** A producer the owner named in
+  `ATTADIPA_TRUSTED_PRODUCERS` may file a task **as an issue** — an app has no
   collaborator permission to look up, so the owner's list is the authorisation.
-  And this repository's own `github-actions[bot]` or `claude[bot]` may file
-  one, because the review pipeline's deferred-findings issues are authored that
-  way and holding on them made the queue's own work items undispatchable. That
+  And this repository's own `github-actions[bot]` or `claude[bot]` may write
+  the body of **an issue or a pull request**, because the review pipeline's
+  deferred-findings issues are authored that way and holding on them made the
+  queue's own work items undispatchable — and because held to issues alone,
+  every agent pull request would hold on the body the agent wrote itself. That
   is sound on the login alone: `[` is not legal in a registered GitHub login,
-  so the `[bot]` form cannot be typed by anybody, and an App opens an issue
-  *here* only with a token this repository issues. The later **comments** of
-  either identity are still not task text.
+  so the `[bot]` form cannot be typed by anybody, and an App opens an issue or
+  a pull request *here* only with a token this repository issues. The later
+  **comments** of either identity are still not task text.
 - **The bundle carries no byte a refused account chose.** A withheld record is
   counted and named by its numeric GitHub id. No login, no date, no excerpt: a
   number cannot carry an instruction — and the count does not name a reason

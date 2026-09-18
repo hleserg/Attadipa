@@ -90,15 +90,27 @@ expect exclude "$(decide comment chatgpt-codex-connector none chatgpt-codex-conn
 expect exclude "$(decide comment 'claude[bot]' none 'claude[bot]')" \
                                                        "naming ourselves a producer does nothing"
 
-# Case 10: a PULL REQUEST body is not an issue body, and neither exemption
-# written for an issue reaches it. On a fork's first push that text is an
-# outside contributor's.
+# Case 10: a PULL REQUEST body is not an issue body, and the PRODUCER
+# exemption -- which is about `issues` events -- does not reach it. On a fork's
+# first push that text is an outside contributor's.
 expect hold    "$(decide pull-body chatgpt-codex-connector none chatgpt-codex-connector)" \
                                                        "a producer's PULL body does not take the issue exemption"
-expect hold    "$(decide pull-body 'github-actions[bot]' none)" \
-                                                       "a bot's PULL body does not take the self exemption"
 expect hold    "$(decide pull-body outsider read)"     "an untrusted pull body holds the run"
 expect include "$(decide pull-body owner admin)"       "a maintainer's pull body is the task"
+
+# The SELF exemption does reach it, and must: the evidence behind it is that an
+# App identity opens one HERE only with a token this repository issues, which
+# is as true of a pull request as of an issue. Held to issues, every agent pull
+# request holds on the body the agent wrote itself.
+expect include "$(decide pull-body 'github-actions[bot]' none)" \
+                                                       "our own PULL body is the task, like our own issue body"
+expect include "$(decide pull-body 'claude[bot]' none)" \
+                                                       "and under the other reserved identity too"
+expect hold    "$(decide pull-body claude none)"       "the registrable bare login is still refused on a pull body"
+expect hold    "$(decide pull-body 'somebody-else[bot]' write)" \
+                                                       "another App's pull body is held, write access or not"
+expect exclude "$(decide comment 'github-actions[bot]' none)" \
+                                                       "our own COMMENTS are still not task text"
 
 # Case 11: the issue this repository files for itself is dispatchable. Its
 # author is `github-actions[bot]` -- #607 and #598 both are -- and `[` cannot
@@ -483,6 +495,20 @@ if mutate "no self-body" 's/^            echo "include"; return 0 ;;$/          
   then no "case 14 M2: the self-body exemption is not what admits our own issue"
   else ok "case 14 M2: without it our own filed issue is undispatchable again"
   fi
+fi
+
+# M2b: hold the pull-request body again by keying the exemption on `body`.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$is_body` and
+# `$record` there are the shell text being edited, not variables of this suite.
+if mutate "issue-only self exemption" \
+    's/^      if \[ "\$is_body" = yes \]; then$/      if [ "$record" = body ]; then/'; then
+  out="$(SCRIPT_UNDER_TEST="$work/mutant.sh" bash "$work/mutant.sh" \
+      --decide pull-body 'github-actions[bot]' none 2>/dev/null || true)"
+  case "$out" in
+    include*) no "case 14 M2b: the pull-body half of the self exemption is not \
+load-bearing" ;;
+    *)        ok "case 14 M2b: keyed on the issue body alone, our own pull request holds" ;;
+  esac
 fi
 
 # M3: drop the per-list count and the length check.

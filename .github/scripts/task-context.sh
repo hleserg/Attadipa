@@ -137,6 +137,15 @@ attadipa_context_decision() {
   #    Hence the reserved forms only. Bare `claude` and `github-actions` are
   #    ordinary logins somebody can hold, and they stay refused.
   #
+  #    THE SAME ARGUMENT COVERS A PULL REQUEST BODY, and narrowing this to
+  #    `body` was caution with no reason behind it rather than a rule. The
+  #    evidence is "an App identity opens one HERE only with a token this
+  #    repository issues", and that is as true of a pull request as of an
+  #    issue. Held to issues, every agent pull request would hold on its own
+  #    body the moment the workflow calls this on a `pull_request` event --
+  #    the body the agent wrote itself, refused for having been written by the
+  #    agent. Found in review, round 3.
+  #
   #    The decision to start work is still a person's: the gate refuses a bot
   #    ACTOR, so an issue we filed begins an agent only when a maintainer
   #    labels it or dispatches onto it. This changes what that person's
@@ -146,7 +155,7 @@ attadipa_context_decision() {
   #    review.
   case "$login" in
     *"[bot]"|claude|github-actions)
-      if [ "$record" = "body" ]; then
+      if [ "$is_body" = yes ]; then
         case "$login" in
           "claude[bot]"|"github-actions[bot]")
             echo "include"; return 0 ;;
