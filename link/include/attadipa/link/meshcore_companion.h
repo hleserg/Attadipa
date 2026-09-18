@@ -335,7 +335,12 @@ private:
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     bool end_contacts(core::MonotonicTime now);
     void settle_snapshot(core::MonotonicTime now);
-    void finish_retry(core::MonotonicTime now);
+    // `ended_by_node` is the node's RESP_CODE_END_OF_CONTACTS and nothing
+    // else. The quiet sweep is the third rung of ADR-0022 §1a -- *the node
+    // stopped sending* -- and a re-read may not be committed on it: decision 7
+    // replaces the published set on a proven snapshot or on the newest read
+    // once the budget is spent, and a swept walk is neither.
+    void finish_retry(core::MonotonicTime now, bool ended_by_node);
     bool request_next_message(core::MonotonicTime now);
     bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);
@@ -412,6 +417,19 @@ private:
     bool retry_armed_ = false;
     bool retry_unanswered_ = false;
     bool retry_open_ = false;
+    // AND A FOURTH, WHICH IS ABOUT THE FRAMES THAT COME AFTER THE END. Closing a
+    // re-read does not stop the node sending it: the quiet sweep fires on a
+    // three-second gap, and a node held off the air that long mid-iteration
+    // resumes. Those rows belong to a walk this client decided not to trust, and
+    // `accept_contact()` routes on `retry_open_` alone, so with the staging
+    // abandoned they would land in the published set -- the first walk's rows
+    // plus the tail of the re-read, which is exactly the merge that cannot be
+    // made correct because the accumulator overwrites a row and never removes
+    // one. A first walk's tail is different and still welcome: the published set
+    // *is* that walk, so its late rows heal it. This says the last walk to close
+    // was a re-read the sweep abandoned, and it holds until a `CONTACTS_START`
+    // or a new session gives the contact frames an owner again.
+    bool retry_swept_ = false;
     core::MonotonicTime retry_since_{};
     std::uint32_t contacts_seq_ = 0;
     // WHERE A RE-READ'S CONTACTS GO UNTIL IT PROVES ITSELF. Sixteen slots, the

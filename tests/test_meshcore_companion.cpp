@@ -3337,10 +3337,102 @@ void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
     CHECK(!client.next_tx(frame));
 }
 
+// ROW 20 OF ADR-0022 §9, AND THE ONE SHAPE §1a's THIRD RUNG IS NOT GOOD ENOUGH
+// FOR. A re-read swept by the quiet window has exactly the evidence the row
+// above it lacks: the published set is already complete, already proven once,
+// and only *suspected* of being stale. Committing a truncated staging over it
+// on the strength of "the node stopped sending" trades that suspicion for a
+// certainty, and decision 7 -- the last proven snapshot is what is published
+// while a re-read is pending -- forbids it.
+//
+// The name is what catches it. A swept re-read that commits shows "Renamed"
+// and calls the snapshot `Consistent`; one that discards shows "Peer" and says
+// the snapshot is still unproven. Both halves are asserted, because a fix that
+// kept the list and still published `Consistent` would end the session
+// claiming to be the node's list, with another attempt never sent.
+void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    std::uint64_t when = 8;
+    for (int attempt = 1; attempt <= 2; ++attempt) {
+        when += 10001;
+        client.tick(at(when));
+        CHECK(drain_counting_re_reads(client) == 1);
+        CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+        // The re-read opens and delivers one row under a new name, and then
+        // the node goes quiet without a boundary frame -- which is the frame
+        // a bounded transport queue systematically drops.
+        const std::uint8_t start[] = {2, 2, 0, 0, 0};
+        CHECK(client.receive(start, sizeof(start), at(++when)));
+        std::uint8_t contact[148]{};
+        contact[0] = 3;
+        for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+        contact[33] = 1;
+        std::memcpy(&contact[100], "Renamed", 7);
+        CHECK(client.receive(contact, sizeof(contact), at(++when)));
+
+        when += 3000;  // kContactsQuiet: the walk goes quiet without an END.
+        client.tick(at(when));
+
+        // The published set is the first walk's, in both attempts: nothing
+        // the sweep saw is good enough to replace it.
+        CHECK(client.status().peers_retained == 1);
+        CHECK(client.peer_count() == 1);
+        MeshPeer kept{};
+        CHECK(client.peer(0, kept));
+        CHECK(std::strcmp(kept.name.data(), "Peer") == 0);
+        CHECK(client.status().peers_complete);
+
+        // And the snapshot goes back to saying what it said before the
+        // attempt. The first sweep leaves a budget and re-arms the window;
+        // the second spends the last of it.
+        CHECK(client.status().snapshot ==
+              (attempt == 1 ? core::MeshSnapshot::Dirty : core::MeshSnapshot::Degraded));
+        while (client.next_tx(frame)) {
+        }
+    }
+
+    // AND THE TAIL OF THE WALK IT ABANDONED GOES NOWHERE. Closing a re-read
+    // does not stop the node sending it: the sweep fires on a three-second gap,
+    // which on a busy channel is an ordinary pause mid-iteration, and the node
+    // resumes afterwards. Those rows belong to a walk this client decided not to
+    // trust. Routed on `retry_open_` alone they would land in the published set
+    // -- a union of two walks that `peers_retained` counts and `peers_reported`
+    // does not, which is the pair `apps/src/mesh.cpp:282` -- "        if (status.peers_complete && retained < reported) {"
+    // -- compares. A second key, so a merge would show as a count rather than
+    // as a rename.
+    std::uint8_t third[148]{};
+    third[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) third[1 + i] = static_cast<std::uint8_t>(i + 33);
+    third[33] = 1;
+    std::memcpy(&third[100], "Third", 5);
+    CHECK(client.receive(third, sizeof(third), at(++when)));
+    CHECK(client.peer_count() == 1);
+    CHECK(client.status().peers_retained == 1);
+    MeshPeer still{};
+    CHECK(client.peer(0, still));
+    CHECK(std::strcmp(still.name.data(), "Peer") == 0);
+    CHECK(client.malformed_frames() == 0);
+
+    // NO LIVE-LOCK EITHER. `Degraded` is terminal for the session: two
+    // attempts is the whole budget whether the node answered them or not.
+    when += 10001;
+    client.tick(at(when));
+    CHECK(drain_counting_re_reads(client) == 0);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Degraded);
+    CHECK(client.malformed_frames() == 0);
+}
+
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1190` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1227` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3388,7 +3480,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:654` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:659` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -3874,6 +3966,7 @@ int main()
     test_an_ordinary_disconnect_still_reports_the_refusal();
     test_unpin_clears_the_pin_and_the_refusal_it_caused();
     test_a_short_self_info_is_refused_before_anything_reads_it();
+    test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

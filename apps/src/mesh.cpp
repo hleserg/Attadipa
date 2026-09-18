@@ -34,7 +34,7 @@ bool is_terminal(const MeshStatus& status) {
 // turned the only node in range away has no session at all, so the phase is
 // some flavour of "nothing here" and every session-scoped field is empty --
 // exactly when the operator most needs to know that the silence is deliberate.
-// `core/include/attadipa/core/mesh_service.h:98` — "    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY."
+// `core/include/attadipa/core/mesh_service.h:102` — "    // WHICH NODE THIS WATCH IS PINNED TO, AND THE LAST ONE IT TURNED AWAY."
 //
 // BUT NOT OVER A TERMINAL ONE, because there the refusal is history and the
 // fault is now. `MeshCoreCompanion::reset_session()` deliberately keeps the pin

@@ -48,9 +48,13 @@ enum class MeshDelivery : std::uint8_t {
 //
 // `None` is a session that has not finished a walk yet, not a bad snapshot.
 // `Dirty` is finished and unproven with a re-read still owed; `RetryPending`
-// is one on the wire; `Degraded` is the newest read published anyway because
-// the budget of two is spent -- a list that is probably right serves the wearer
-// better than none, provided it does not claim to be proven.
+// is one on the wire; `Degraded` is the newest read the *node ended* published
+// anyway because the budget of two is spent -- a list that is probably right
+// serves the wearer better than none, provided it does not claim to be proven.
+// "The node ended" is the whole of the qualifier: a re-read closed by the
+// three-second quiet sweep is a fragment, not a read, and is discarded, so
+// `Degraded` can be a list two attempts old. A caller may rely on its being
+// complete and on nothing else.
 //
 // NOTHING ON THE FACE READS THIS YET, and that is deliberate rather than
 // unfinished: telling the wearer a peer list is unproven is a UI state with a
