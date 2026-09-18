@@ -68,12 +68,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ramhold import resolve_port  # noqa: E402
+from firmware_elf_check import (  # noqa: E402
+    APP_DESC_ELF_SHA256, APP_DESC_MAGIC, APP_DESC_OFFSET, BOARD_SYMBOLS,
+    app_elf_sha256, board_fault, elf_sha256,
+)
 
 # The received LilyGO T-Watch S3 Plus, by the USB serial its ROM reports.
 TWATCH_SERIAL = "DC:B4:D9:18:49:40"
@@ -109,9 +114,94 @@ EXPECTED_FLASH_FILES = (
 )
 BAUD = 115200  # the S3's USB-Serial/JTAG ignores baud; not changing it keeps
                # esptool from renegotiating on a port it did not open
+# THE UNIT ON THE PORT IS NOT THE ONLY IDENTITY THAT HAS TO MATCH.
+#
+# `identity_mismatch()` below proves which watch is connected. It says nothing
+# about which watch the bytes were built for, and the two boards are
+# indistinguishable from the flash plan: both emit `bootloader.bin`,
+# `partition-table.bin` and `attadipa.bin` at the same three offsets, under the
+# same project name. So `firmware/build` -- the default, which is the Waveshare
+# -- typed where `firmware/build-twatch` was meant passed every check this
+# script had and reached `write_flash` on a correctly identified T-Watch.
+#
+# What is asked instead is the linked artefact: which board entry point this
+# ELF defines. That is decided at compile time and cannot be copied next to
+# someone else's binary the way a generated `sdkconfig` can. The ELF is then
+# bound to the `.bin` that will actually be written by the SHA-256 the
+# toolchain records in the application descriptor, so a right ELF beside a
+# wrong image is refused too.
+#
+# There is no flag that skips this, for the reason VERIFIED_BACKUPS gives: a
+# switch that restores the old behaviour is the old behaviour, one argument
+# further away.
+#
+# WHAT IT DOES NOT PROVE, WRITTEN HERE RATHER THAN LEFT TO BE FOUND OUT. Three
+# files are written and only one of them is bound to the proved ELF. The
+# partition table is not a hazard: both boards build the same `partitions.csv`
+# -- `firmware/sdkconfig.defaults:121` -- "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"".
+# The bootloader is, because it is the artefact that differs and the one that
+# acts, and **nothing in it names a board**: `esp_bootloader_desc_t` at 0x20
+# carries a magic, an IDF version and a build timestamp -- read off both
+# boards' builds on this bench, `v5.5.5-dirty` in each -- and no board field.
+# Comparing that timestamp with the application's would reject an ordinary
+# incremental rebuild, so it is not done. So a directory whose `attadipa.bin`
+# and `attadipa.elf` were copied in from the other board's build passes this
+# gate and still writes that build's bootloader at 0x0. It takes a hand-mixed
+# directory rather than a mistyped one, which is the mistake this gate is
+# about; the point of saying so is that the refusals below must not be read as
+# proving more than the application image.
+BOARD_VARIANT = "twatch"
+NM = "xtensa-esp32s3-elf-nm"
 
 
-def plan_from_build(build_dir: Path) -> tuple[dict[str, str], list[tuple[int, Path]]]:
+def read_symbols(elf: Path, nm: str) -> str:
+    # A toolchain that is not there is a missing proof, not a pass. Both the
+    # `nm` that cannot be run and the `nm` that ran and failed end here, and
+    # this script writes boot-critical flash, so both refuse.
+    try:
+        result = subprocess.run([nm, "-C", "--defined-only", str(elf)],
+                                capture_output=True, text=True)
+    except OSError as unavailable:
+        why = str(unavailable)
+    else:
+        why = (result.stderr.strip() or f"exit {result.returncode}"
+               if result.returncode != 0 else "")
+    if why:
+        raise SystemExit(
+            f"{nm} could not read {elf}: {why}.\n"
+            f"Without it there is no proof this build is the "
+            f"{BOARD_VARIANT}'s, and this script writes boot-critical flash. "
+            f"Export ESP-IDF, or point --nm at the toolchain's nm.")
+    return result.stdout
+
+
+def artifact_fault(build_dir: Path, nm: str) -> str | None:
+    """Return a message if this build is not the board's, or is not one build."""
+    elf = build_dir / "attadipa.elf"
+    app = build_dir / "attadipa.bin"
+    if not elf.is_file():
+        return (f"{elf} does not exist, so nothing in this directory says "
+                f"which board it was built for. A {BOARD_VARIANT} build "
+                f"defines {BOARD_SYMBOLS[BOARD_VARIANT]}; the flash plan is "
+                f"the same for both boards and proves nothing.")
+    recorded = app_elf_sha256(app)
+    if recorded is None:
+        return (f"{app} carries no ESP-IDF application descriptor, so it "
+                f"cannot be tied to {elf.name}. An application image assembled "
+                f"by hand, or truncated, is not a build output this script "
+                f"will write -- though the bootloader beside it is checked by "
+                f"nothing either way.")
+    linked = elf_sha256(elf)
+    if recorded != linked:
+        return (f"{app.name} was built from a different ELF than {elf.name}: "
+                f"the image records {recorded} and the ELF hashes to {linked}. "
+                f"The board this directory proves is not the board whose bytes "
+                f"would be written. Rebuild, rather than pairing them by hand.")
+    return board_fault(read_symbols(elf, nm), BOARD_VARIANT)
+
+
+def plan_from_build(build_dir: Path,
+                    nm: str = NM) -> tuple[dict[str, str], list[tuple[int, Path]]]:
     args = json.loads((build_dir / "flasher_args.json").read_text())
     settings = args["flash_settings"]
     entries = tuple(sorted(((int(offset, 16), name)
@@ -139,6 +229,11 @@ def plan_from_build(build_dir: Path) -> tuple[dict[str, str], list[tuple[int, Pa
         raise SystemExit(f"the plan writes up to 0x{end:x}, past RESTORE_SPAN "
                          f"0x{RESTORE_SPAN:x}; --restore could not undo it, so "
                          "raise RESTORE_SPAN deliberately or shrink the plan")
+    # Last, and still before the port is resolved, before `esptool` is
+    # imported and before anything is opened: is this the board's build at all.
+    wrong = artifact_fault(build_dir, nm)
+    if wrong is not None:
+        raise SystemExit(f"{wrong}\nNothing was written.")
     return settings, files
 
 
@@ -174,7 +269,64 @@ def identity_mismatch(mac: bytes, serial: str) -> str | None:
 
 
 def selftest() -> int:
+    # THE FIXTURES LIVE INSIDE THE SELF-TEST, and the restore is this function
+    # rather than one `finally` deep inside it. `write_build_artefacts()` binds
+    # a stub over `read_symbols` -- a switch that turns the board gate off,
+    # which has no business being reachable from module scope in a tool that
+    # writes boot-critical flash. Nothing imports this module today; that is
+    # not a reason to leave the switch where an import would find it. The
+    # restore here also covers the cases that run before the inner
+    # `try`/`finally`, so an exception among them cannot leave the stub behind.
+    real_read_symbols = read_symbols
+    try:
+        return _selftest_cases()
+    finally:
+        globals()["read_symbols"] = real_read_symbols
+
+
+def _selftest_cases() -> int:
     import tempfile
+
+    # Captured again here: the caller above restores it either way, and a case
+    # below puts the real one back deliberately to reach the `--nm` refusal.
+    real_read_symbols = read_symbols
+
+    # The symbol table a build of each board defines, as `nm -C --defined-only`
+    # prints it. The self-test has no cross-compiler, so it hands these to the
+    # same `board_fault()` the real path calls -- the rule is tested, the
+    # subprocess is not, and the subprocess is the part that has nothing to get
+    # wrong.
+    symbols_of = {board: f"42000000 T {symbol}"
+                  for board, symbol in BOARD_SYMBOLS.items()}
+
+
+    def write_build_artefacts(build: Path, board: str | None, *,
+                              descriptor: bool = True, bind: bool = True,
+                              app_bytes: int = 0x1000) -> None:
+        """An app image and the ELF it says it came from, as a build emits them.
+
+        `board` picks which symbol table `read_symbols` will answer with; None
+        leaves the ELF out entirely. `descriptor` and `bind` are the two ways the
+        pair can fail to be one build: no application descriptor at all, and a
+        descriptor recording somebody else's ELF.
+        """
+        app = bytearray(b"\xe9" * max(app_bytes, 0x100))
+        elf = build / "attadipa.elf"
+        if board is not None:
+            elf.write_bytes(f"ELF of the {board} build".encode())
+        elif elf.exists():
+            elf.unlink()
+        if descriptor:
+            app[APP_DESC_OFFSET:APP_DESC_OFFSET + 4] = \
+                APP_DESC_MAGIC.to_bytes(4, "little")
+            recorded = (elf_sha256(elf) if bind and board is not None
+                        else hashlib.sha256(b"a different build").hexdigest())
+            app[APP_DESC_OFFSET + APP_DESC_ELF_SHA256:
+                APP_DESC_OFFSET + APP_DESC_ELF_SHA256 + 32] = bytes.fromhex(recorded)
+        (build / "attadipa.bin").write_bytes(bytes(app[:app_bytes] if app_bytes >= 0x100
+                                                   else app))
+        globals()["read_symbols"] = (
+            lambda _elf, _nm, board=board: symbols_of.get(board, ""))
 
     with tempfile.TemporaryDirectory() as scratch:
         build = Path(scratch)
@@ -182,7 +334,7 @@ def selftest() -> int:
         (build / "partition_table").mkdir()
         (build / "bootloader/bootloader.bin").write_bytes(b"\xe9" * 0x100)
         (build / "partition_table/partition-table.bin").write_bytes(b"\x00" * 0x1000)
-        (build / "attadipa.bin").write_bytes(b"\xe9" * 0x1000)
+        write_build_artefacts(build, "twatch")
         (build / "flasher_args.json").write_text(json.dumps({
             "flash_settings": {"flash_mode": "dio", "flash_freq": "80m",
                                "flash_size": "16MB"},
@@ -199,8 +351,8 @@ def selftest() -> int:
         assert argv[6] == "write_flash" and argv[7:9] == ["--flash_mode", "dio"], argv
         assert argv[-2:] == ["0x10000", str(build / "attadipa.bin")], argv
 
-        (build / "attadipa.bin").write_bytes(
-            b"\xe9" * (RESTORE_SPAN - 0x10000 + 1))
+        write_build_artefacts(build, "twatch",
+                              app_bytes=RESTORE_SPAN - 0x10000 + 1)
         (build / "flasher_args.json").write_text(json.dumps({
             "flash_settings": settings,
             "flash_files": {"0x0": "bootloader/bootloader.bin",
@@ -215,7 +367,7 @@ def selftest() -> int:
             raise AssertionError("a plan ending at 0x410100 was not refused")
 
         (build / "bootloader/bootloader.bin").write_bytes(b"\xe9" * 0x8001)
-        (build / "attadipa.bin").write_bytes(b"\xe9" * 0x1000)
+        write_build_artefacts(build, "twatch")
         try:
             plan_from_build(build)
         except SystemExit as refused:
@@ -321,8 +473,103 @@ def selftest() -> int:
         other = bytes.fromhex("f4a4a3ecee7d")
         refused = identity_mismatch(other, TWATCH_SERIAL)
         assert refused and "nothing written" in refused, refused
-    print("flash_no_reset selftest: plan, overlap, span, backup provenance "
-          "and identity cases pass.")
+
+    # THE BOARD THE BYTES WERE BUILT FOR, WHICH THE PLAN CANNOT SAY.
+    #
+    # Each case runs the whole CLI, not `plan_from_build()` on its own, with
+    # `resolve_port` and the two write-capable imports replaced by tripwires.
+    # A refusal that reached any of them would raise from the tripwire instead
+    # of exiting with the message, so "nothing was opened" is proved by the
+    # run rather than asserted about it.
+    with tempfile.TemporaryDirectory() as scratch:
+        build = Path(scratch)
+        (build / "bootloader").mkdir()
+        (build / "partition_table").mkdir()
+        (build / "bootloader/bootloader.bin").write_bytes(b"\xe9" * 0x100)
+        (build / "partition_table/partition-table.bin").write_bytes(b"\x00" * 0x1000)
+        (build / "flasher_args.json").write_text(json.dumps({
+            "flash_settings": {"flash_mode": "dio", "flash_freq": "80m",
+                               "flash_size": "16MB"},
+            "flash_files": {"0x0": "bootloader/bootloader.bin",
+                            "0x8000": "partition_table/partition-table.bin",
+                            "0x10000": "attadipa.bin"},
+        }))
+
+        class Tripwire:
+            def __init__(self, what: str) -> None:
+                self.what = what
+
+            def __getattr__(self, name: str):
+                raise AssertionError(f"{self.what}.{name} was reached for a "
+                                     f"build this script must refuse")
+
+        def no_port(_serial):
+            raise AssertionError("resolve_port was reached for a build this "
+                                 "script must refuse")
+
+        kept_resolve = resolve_port
+        kept_modules = {name: sys.modules.get(name)
+                        for name in ("esptool", "serial")}
+        globals()["resolve_port"] = no_port
+        sys.modules["esptool"] = Tripwire("esptool")
+        sys.modules["serial"] = Tripwire("serial")
+        try:
+            def run(*argv: str) -> str | None:
+                sys.argv = [__file__, str(build), *argv]
+                try:
+                    main()
+                except SystemExit as refused:
+                    return str(refused)
+                return None
+
+            # The defect itself: the default build directory is the Waveshare's
+            # and its plan is identical to the T-Watch's in every byte this
+            # script used to read.
+            write_build_artefacts(build, "waveshare")
+            said = run()
+            assert said and "waveshare" in said and "start_twatch_ui()" in said, said
+
+            # An image with no board entry point at all -- a variant that
+            # dropped it, or an ELF from something else entirely.
+            write_build_artefacts(build, None)
+            said = run()
+            assert said and "attadipa.elf does not exist" in said, said
+
+            # A stale or copied `sdkconfig` cannot help here, because nothing
+            # reads one: the proof is the pair, and a pair that is not one
+            # build is refused even when the ELF is the right board's.
+            write_build_artefacts(build, "twatch", bind=False)
+            said = run()
+            assert said and "built from a different ELF" in said, said
+
+            write_build_artefacts(build, "twatch", descriptor=False)
+            said = run()
+            assert said and "no ESP-IDF application descriptor" in said, said
+
+            # An ELF the toolchain cannot read is not a pass by default. This
+            # is the fail-closed direction: no proof, no write.
+            write_build_artefacts(build, "twatch")
+            globals()["read_symbols"] = real_read_symbols
+            said = run("--nm", str(build / "nm-that-is-not-there"))
+            assert said and "could not read" in said, said
+
+            # And the control: the right board, bound to its own image, gets
+            # past the gate -- proved by --dry-run, which is the last thing
+            # before the port would be opened.
+            write_build_artefacts(build, "twatch")
+            sys.argv = [__file__, str(build), "--dry-run"]
+            assert main() == 0, "a genuine twatch build was refused"
+        finally:
+            globals()["resolve_port"] = kept_resolve
+            globals()["read_symbols"] = real_read_symbols
+            for name, module in kept_modules.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
+    print("flash_no_reset selftest: plan, overlap, span, backup provenance, "
+          "artefact board binding and identity cases pass.")
     return 0
 
 
@@ -412,6 +659,9 @@ def main() -> int:
                         help="print the esptool command and exit without opening the port")
     parser.add_argument("--log", type=Path, default=None,
                         help="write the console transcript here as well")
+    parser.add_argument("--nm", default=NM,
+                        help=f"the toolchain nm that reads which board this "
+                             f"build is (default {NM})")
     parser.add_argument("--selftest", action="store_true",
                         help="check the plan, the span refusal and the esptool "
                              "argv without a device, then exit")
@@ -426,7 +676,7 @@ def main() -> int:
     if args.restore is not None:
         settings, files = plan_from_backup(args.restore, scratch, args.serial)
     else:
-        settings, files = plan_from_build(args.build_dir)
+        settings, files = plan_from_build(args.build_dir, args.nm)
 
     argv = esptool_argv(settings, files, args.after)
     print("# esptool " + " ".join(argv), flush=True)
