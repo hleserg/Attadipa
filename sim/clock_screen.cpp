@@ -337,10 +337,14 @@ void enter_provisioning(apps::EntryTask task) {
   g_clock_face.clear();
   g_clock_active = false;
   g_provision_config = provision_config_for(g_clock_config);
-  // Unseeded, and deliberately: `ClockState` carries a UTC instant and no
-  // offset, so seeding from it would have to invent the offset half -- and an
-  // invented offset reads exactly like a remembered one. The board seeds from
-  // its time service, which keeps both.
+  // Unseeded, and deliberately -- for a stronger reason than the one that used
+  // to be written here. `ClockState.time.value` does not carry a UTC instant:
+  // it carries the value the face shows, with the offset already folded in and
+  // unrecoverable from it. That is true of the simulator since #553 and was
+  // always true of a board -- `firmware/main/waveshare_board.cpp:487` --
+  // "  clock.time = time.local;". So seeding from it would have to invent the
+  // offset half, and an invented offset reads exactly like a remembered one.
+  // The board seeds from its time service, which keeps both halves apart.
   g_entry.emplace(g_provisioner, task);
   l10n::set_locale_changed_handler(rebuild_provision_screen);
   set_theme_toggle(toggle_provision_theme);
