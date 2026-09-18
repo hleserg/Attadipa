@@ -763,3 +763,14 @@ add_test(NAME ak09911 COMMAND test_ak09911)
 add_executable(test_qmi8658_fifo test_qmi8658_fifo.cpp)
 target_include_directories(test_qmi8658_fifo PRIVATE ${PROJECT_SOURCE_DIR}/firmware/main)
 add_test(NAME qmi8658_fifo COMMAND test_qmi8658_fifo)
+
+# ---------------------------------------------------------------------------
+# The automation suites are shell, and this is the first of them registered
+# here rather than given a `run:` line in `ci.yml`. That is what
+# `.github/scripts/check-suite-coverage.sh` says this repository prefers,
+# "because a local ctest run then enforces the same rule" -- and the rule it
+# enforces is the one an outsider's comment would otherwise walk past. It
+# stubs `gh` and reaches no network.
+
+add_test(NAME context_trust
+         COMMAND bash ${PROJECT_SOURCE_DIR}/.github/tests/context-trust-test.sh)

@@ -29,8 +29,17 @@ state: ready
 The three research task types produce evidence, not speculative product code.
 The marker is data, not permission. Intake accepts a writer/maintainer/admin,
 an authorised dispatch, or an app login explicitly listed in
-`ATTADIPA_TRUSTED_PRODUCERS`. Issue and comment text is untrusted input. The
-tested implementation is `intake-decision.sh` and `queue-scan.jq`.
+`ATTADIPA_TRUSTED_PRODUCERS`. Issue and comment text is untrusted input.
+
+That is two rules, not one, because refusing an event does not remove what the
+event left behind. `intake-decision.sh` decides whether an event starts an
+agent. `task-context.sh` decides which stored records become that agent's
+instructions, and it asks the same question of each: does this author hold
+`write`, `maintain` or `admin` on this repository *now*? A record it cannot
+classify is left out and the run continues; a set of records it cannot read
+whole holds the run, because a shortened conversation reads exactly like a
+complete one. The tested implementation is `intake-decision.sh`,
+`queue-scan.jq` and `task-context.sh`.
 
 `reviewed_head` is compared with the default branch. When the tree moved, the
 agent verifies the finding before implementing it.

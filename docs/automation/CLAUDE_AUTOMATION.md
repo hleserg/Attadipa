@@ -117,6 +117,66 @@ ordinary checkout would fetch a fork's version of the very script that decides
 whether a write-capable agent may run. The gate's rules come from `main` or from
 nowhere.
 
+### The gate decides an event; it does not decide the text
+
+A public repository accepts comments from accounts the gate refuses. The gate
+refuses their *events* correctly and the comments stay on the issue, so when a
+maintainer later labels the task `agent:ready`, a write-capable agent that was
+told to read "the issue and every comment" reads theirs too. Refusing the actor
+is not refusing the actor's stored words ([#583](https://github.com/hleserg/Attadipa/issues/583)).
+
+[`.github/scripts/task-context.sh`](../../.github/scripts/task-context.sh) is
+the second half of the same boundary. It builds the instruction-bearing context
+itself, from default-branch-owned code, applying the gate's rule to every
+record: the issue body, every comment, and on a pull request every review body
+and inline comment. Three properties are worth stating because they are what a
+reviewer should check:
+
+- **Now, not once.** The author's *current* repository permission is the
+  question. `author_association`, the task marker, not being a bot, and
+  arriving early are none of them authorisation, and none of them is read.
+- **Two directions of failing closed.** A record that cannot be classified — an
+  unknown or deleted author, a bot, a login GitHub says is not a user — is left
+  out, and the run goes on. A set of records that cannot be read whole — a lost
+  page, an errored permission lookup, fewer records than the list says it has —
+  holds the run, because a truncated conversation is indistinguishable from a
+  complete one and the missing part may be the owner's correction. Every list
+  is counted, not only the one GitHub publishes a count for: `.comments` for
+  the issue comments, `.review_comments` for a pull request's inline comments,
+  and for reviews, which publish no count, that the array and the records
+  parsed out of it are the same length.
+- **The body is admitted by `include`, never by "not a hold".** On every other
+  record a verdict the rules did not anticipate means the text is left out; on
+  the body it would mean the text becomes the task. So the one record that *is*
+  the task is matched exactly.
+- **An issue is not a pull request**, and the producer exemption below knows
+  it. That one is written for `issues` events, and a pull request body is text
+  an outside contributor can write on a fork's first push, so it does not
+  reach one.
+- **Two exemptions, both narrow.** A producer the owner named in
+  `ATTADIPA_TRUSTED_PRODUCERS` may file a task **as an issue** — an app has no
+  collaborator permission to look up, so the owner's list is the authorisation.
+  And this repository's own `github-actions[bot]` or `claude[bot]` may write
+  the body of **an issue or a pull request**, because the review pipeline's
+  deferred-findings issues are authored that way and holding on them made the
+  queue's own work items undispatchable — and because held to issues alone,
+  every agent pull request would hold on the body the agent wrote itself. That
+  is sound on the login alone: `[` is not legal in a registered GitHub login,
+  so the `[bot]` form cannot be typed by anybody, and an App opens an issue or
+  a pull request *here* only with a token this repository issues. The later
+  **comments** of either identity are still not task text.
+- **The bundle carries no byte a refused account chose.** A withheld record is
+  counted and named by its numeric GitHub id. No login, no date, no excerpt: a
+  number cannot carry an instruction — and the count does not name a reason
+  either, because the reason is a fact about the author and three different
+  rules produce it.
+
+[`.github/tests/context-trust-test.sh`](../../.github/tests/context-trust-test.sh)
+runs the shipping file over those shapes, and its last case deletes the
+permission test from a copy and requires the outsider's instructions to come
+back. A suite that cannot fail when the check is removed is not evidence the
+check is there.
+
 Two further habits, both deliberate:
 
 - **Untrusted text never reaches a shell.** An issue body is passed through an
