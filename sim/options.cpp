@@ -70,10 +70,29 @@ bool parse_int64(const char *text, std::int64_t &out) {
   return true;
 }
 
-bool parse_float(const char *text, float &out) {
+// The window is the panel scaled by this factor, so the bounds are what a
+// window can usefully be rather than what a `float` can hold. At 1/16 the
+// 240 px T-Watch panel is 15 px across; at 64 the 502 px Waveshare one is
+// 32 128 px, past the 16 384 px maximum texture size SDL renderers commonly
+// report, so the window would not appear at all. Both figures are sanity
+// bounds, not measurements of this host.
+constexpr double kMinZoom = 1.0 / 16.0;
+constexpr double kMaxZoom = 64.0;
+
+bool parse_zoom(const char *text, float &out) {
   char *end = nullptr;
   const double value = std::strtod(text, &end);
-  if (end == text || *end != '\0' || value <= 0.0) {
+  if (end == text || *end != '\0') {
+    return false;
+  }
+  // WRITTEN AS `!(value >= kMinZoom)` AND NOT `value < kMinZoom` BECAUSE EVERY
+  // COMPARISON WITH A NaN IS FALSE. The old `value <= 0.0` was that shape, so
+  // `--zoom nan` passed it and reached `lv_sdl_window_set_zoom`. The negated
+  // form refuses NaN at both ends. `strtod` answers HUGE_VAL for a double
+  // overflow and 0 for an underflow, so `1e400` and `1e-400` are refused by
+  // these same two bounds, as is `1e300` -- a finite double that becomes
+  // infinity the moment it is narrowed to `float`.
+  if (!(value >= kMinZoom) || !(value <= kMaxZoom)) {
     return false;
   }
   out = static_cast<float>(value);
@@ -102,8 +121,9 @@ void print_usage(const char *argv0) {
       "lr1121,\n"
       "                   cc1101, si4432. Only meaningful on a board with a "
       "radio\n"
-      "  --zoom <factor>  scale the window. The panel resolution does not "
-      "change\n"
+      "  --zoom <factor>  scale the window, 0.0625 to 64. The panel "
+      "resolution\n"
+      "                   does not change\n"
       "  --frames <n>     render n frames and exit. For CI, with "
       "SDL_VIDEODRIVER=dummy\n"
       "  --screenshot <p> write the rendered screen to p as a PNG, then "
@@ -371,8 +391,11 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     }
     if (std::strcmp(arg, "--zoom") == 0) {
       const char *value = take_value(argc, argv, i, arg);
-      if (value == nullptr || !parse_float(value, out.zoom)) {
-        std::fprintf(stderr, "--zoom needs a positive number\n");
+      if (value == nullptr || !parse_zoom(value, out.zoom)) {
+        std::fprintf(stderr,
+                     "--zoom needs a number from %g to %g "
+                     "(1 = one window pixel per panel pixel)\n",
+                     kMinZoom, kMaxZoom);
         return ParseResult::Error;
       }
       continue;
