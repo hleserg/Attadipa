@@ -3458,6 +3458,43 @@ void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
 // The assertion is the attempt, not a flag: tick at exactly the ten seconds
 // after the sweep, and attempt two must be in the ring. With the stamp moved
 // it is not, and nothing else in the class says so.
+// AND THE FIRST WALK'S OWN `END` IS THE CHEAPER WAY TO DO IT -- no sweep, no
+// re-read, one repeated frame.
+//
+// The guard that answered #593 first read `retry_swept_`, which `finish_retry()`
+// alone sets, so it named the re-read's sweep and nothing else. A first walk's
+// `END` arriving twice -- a node that repeats the frame, not only a hostile one
+// -- found every flag false and reached `settle_snapshot()`, re-stamping
+// `dirty_end_at_` on a walk that had already ended. Five bytes buy ten seconds,
+// and repeated under ten seconds they buy the session: `retries_left_` never
+// decrements, the snapshot never reaches `Degraded`, and `malformed_frames_`
+// does not move, so nothing anywhere records that the re-read stopped
+// happening.
+//
+// The assertion is the attempt, exactly as the row above it: with the duplicate
+// counted, ticking ten seconds after the *first* `END` finds an empty ring.
+void test_a_duplicate_end_does_not_delay_the_first_attempt()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);   // `END` at t=8, snapshot Dirty
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    // The same frame again, one second later, with no walk open to own it.
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(9000)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+
+    // AND IT IS NOT A PARSE FAILURE. The node answered a question this client
+    // asked, twice; the counter a dropped-frame investigation reads must not
+    // fill up with it.
+    CHECK(client.malformed_frames() == 0);
+}
+
 void test_a_swept_walks_late_end_does_not_delay_the_next_attempt()
 {
     MeshCoreCompanion client;
@@ -4680,6 +4717,7 @@ int main()
     test_a_refused_send_does_not_erase_the_previous_verdict();
     test_a_room_login_keeps_the_request_id_its_caller_was_given();
     test_a_zero_tag_does_not_confirm_a_settled_unconfirmed();
+    test_a_duplicate_end_does_not_delay_the_first_attempt();
     test_a_swept_walks_late_end_does_not_delay_the_next_attempt();
     test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt();
     test_a_node_started_walk_after_the_budget_owns_its_frames();

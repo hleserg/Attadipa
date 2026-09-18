@@ -10,7 +10,7 @@ pushes describe a change to the very table being read.
 This report answers what a client may conclude when the stream ends. The short
 answer is that `RESP_CODE_END_OF_CONTACTS` proves the node finished walking its
 array and proves nothing else, and that Attadipa currently converts that syntactic
-fact into a semantic claim — `link/src/meshcore_companion.cpp:1413` —
+fact into a semantic claim — `link/src/meshcore_companion.cpp:1425` —
 "status_.peers_complete = true;" — that the evidence does not support.
 
 It is a research document. No production code changed for it, and the contract in
@@ -327,7 +327,7 @@ boolean is asked to: `core/include/attadipa/core/mesh_service.h:211` —
    `link/src/meshcore_companion.cpp:55` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
 6. Every other valid push — including all four invalidating ones — reaches the
    `default:` arm, where it is counted and refused —
-   `link/src/meshcore_companion.cpp:1774` — "// A response code this build does not know is a frame we did not".
+   `link/src/meshcore_companion.cpp:1786` — "// A response code this build does not know is a frame we did not".
    The link is deliberately left up, which is right and is why this is a
    correctness gap rather than an outage.
 7. `contacts_complete_` also gates `Availability::Ready` and the battery poll.
@@ -590,7 +590,11 @@ therefore abandons its staging and restores the dirty bit its own
 `RESP_CODE_CONTACTS_START` optimistically cleared.
 
 **And on the measured node, row 20 is not a case — it is the only outcome.**
-The frame a re-read must have before it may commit is the one the bench drops:
+The frame a re-read must have before it may commit is the one the bench dropped
+**on a first walk**, and the distinction is the evidence boundary here: the
+re-read landed on 2026-09-18 and no bench session has ever contained a second
+`CMD_GET_CONTACTS`, so that an attempt two loses the same frame is **inferred**
+from the burst being identical, not measured. The measurement is:
 `firmware/main/meshcore_ble.cpp:1017` — "            // sessions out of three -- it is the last frame of the burst, so it".
 A re-read is the same 234-frame burst, so a dirty walk there spends both
 attempts and ends `degraded` with the older list every time. Row 20's "a second

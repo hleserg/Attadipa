@@ -19,7 +19,7 @@ the same transport. The node's contact iterator is a raw index into the live
 compacted underneath the cursor while the walk runs — research report §2.
 
 Attadipa converts the end of that stream into a claim about its content:
-`link/src/meshcore_companion.cpp:1413` — "status_.peers_complete = true;" is set
+`link/src/meshcore_companion.cpp:1425` — "status_.peers_complete = true;" is set
 unconditionally on `RESP_CODE_END_OF_CONTACTS`. The stream ending is a syntactic
 fact. That the list matches the node's table is a semantic one, and the wire does
 not carry it.
@@ -169,7 +169,10 @@ that has it and on one that does not.
   the end of a burst first. A re-read is the same burst again. So on that node
   a dirty walk spends attempt one, spends attempt two, and ends `degraded` with
   the list it already had, every time, by construction: both attempts are
-  always spent and neither can ever commit. Before 1b the sweep committed and
+  always spent and neither can ever commit. **Inferred, not measured** — the
+  bench dropped that frame on a *first* walk on 2026-09-14, four days before a
+  re-read existed, and no session has yet run one. The burst is the same burst,
+  which is why the inference is worth recording; it is still an inference. Before 1b the sweep committed and
   a session usually stopped after one.
 
   The stale list is still the safe direction and this does not change it. What

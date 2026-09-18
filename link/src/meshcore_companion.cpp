@@ -1387,27 +1387,39 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             finish_retry(now, true);
             break;
         }
-        // AND THE BOUNDARY FRAME OF A SWEPT RE-READ HAS NO OWNER EITHER. The
-        // rule is the one `accept_contact()` applies at `:608` -- a frame of a
-        // walk the sweep abandoned belongs to nobody -- and it was applied to
-        // the rows and not to the frame that ends them. `retry_open_` is false
-        // by then, because the sweep cleared it, so this `END` fell through to
-        // the arm below and was read as a *first* walk's.
+        // AND A BOUNDARY FRAME BELONGS TO NOBODY WHEN NO WALK IS OPEN. The
+        // rule is the one `accept_contact()` applies --
+        // `link/src/meshcore_companion.cpp:637` -- "    if (retry_swept_ && !retry_open_) {"
+        // -- a frame of a walk that is over belongs to nobody -- and it was
+        // applied to the rows and not to the frame that ends them.
         //
-        // Both shapes of that are wrong about a walk this client has already
-        // written off. With a budget left, `settle_snapshot()` re-stamps
-        // `dirty_end_at_` and pushes the next attempt up to a full
-        // `kSnapshotRetryDelay` away. With the budget spent, it publishes
-        // `Degraded` while attempt two is still outstanding and may yet
-        // succeed -- and nothing puts `RetryPending` back, because that is
+        // `contacts_open_` is the whole test, and the two flags that look like
+        // candidates are both narrower than the defect. `retry_open_` is false
+        // by the time control reaches here, because the arm above returns on
+        // it. `retry_swept_` is set by `finish_retry()` alone, so it names the
+        // *re-read's* sweep and not the first walk's: a first walk's `END`
+        // arriving after its own quiet sweep closed the walk -- or a second
+        // `END` after an ordinary one, which needs no sweep at all -- left
+        // every flag false and fell through. Both are the same mistake, and
+        // `!contacts_open_` is the form that covers all three walks. A walk the
+        // node opens afterwards sets it again, including the node's own --
+        // `link/src/meshcore_companion.cpp:1371` -- "        contacts_open_ = true;"
+        // -- so a later walk owns its frames.
+        //
+        // Every shape of it is wrong about a walk that is already over. With a
+        // budget left, `settle_snapshot()` re-stamps `dirty_end_at_` and pushes
+        // the next attempt up to a full `kSnapshotRetryDelay` away -- and a
+        // node repeating the frame faster than that pushes it forever, so
+        // `retries_left_` never decrements, the snapshot never reaches
+        // `Degraded`, and no counter records why. With the budget spent, it
+        // publishes `Degraded` while attempt two is still outstanding and may
+        // yet succeed -- and nothing puts `RetryPending` back, because that is
         // assigned only where an attempt is armed.
         //
         // NOT COUNTED MALFORMED, for the same reason the dropped rows are not:
         // the node is answering a question this client asked and then stopped
-        // trusting. Any `START` clears `retry_swept_` -- `:1323` -- so a walk
-        // that begins after this one, including the node's own, owns its
-        // frames again.
-        if (retry_swept_) {
+        // trusting, or answering it twice.
+        if (!contacts_open_) {
             break;
         }
         status_.peers_complete = true;
