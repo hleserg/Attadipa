@@ -9,7 +9,7 @@ fail a build; and a fourth that proves the three can fail.
 | [`catalogue.py`](catalogue.py) | reads and validates the catalogue. The only parser — the generator and the glyph check share it so they cannot drift |
 | [`gen_strings.py`](gen_strings.py) | writes `l10n/include/attadipa/l10n/string_id.h` and `l10n/src/catalogues.cpp`. `--check` fails if the committed copies are stale |
 | [`check_glyphs.py`](check_glyphs.py) | fails if a catalogue string needs a character outside [`tools/font/charset.py`](../font/charset.py) |
-| [`selftest.py`](selftest.py) | runs the checks over twelve deliberate mistakes and requires each to be rejected **for its own reason**, and over one correct catalogue that must still be accepted |
+| [`selftest.py`](selftest.py) | runs the checks over a catalogue of deliberate mistakes and requires each to be rejected **for its own reason**, and over correct catalogues that must still be accepted. It prints both counts as it finishes, so this line does not carry them: it said twelve and one for a run that had grown to twenty-three and three |
 
 ```bash
 python3 tools/l10n/gen_strings.py          # after editing strings.toml

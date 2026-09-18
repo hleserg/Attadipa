@@ -62,9 +62,13 @@ SPELLING_CASES = [
     ("%q message",    "not a conversion this catalogue understands"),
     ("%*u message",   "not a conversion this catalogue understands"),
     ("%u message %",  "not a conversion this catalogue understands"),
-    # Its own closing `%` used to be reported as the unrecognised one. It is
-    # refused either way, and only one of the two reasons is true.
-    ("%-100% items",  "has 0 count conversion"),
+    # NOT A LITERAL PERCENT, whatever it looks like. Both of these parse as the
+    # conversion `%-100%` / `%-60%`, which C leaves undefined at snprintf, and
+    # the second is the one that reads as ordinary prose and slipped through:
+    # skip percent-terminated matches and it has exactly one count conversion
+    # and nothing to object to. Refusing the spelling itself catches both.
+    ("%-100% items",  "not a literal percent sign"),
+    ("50%-60%: %u",   "not a literal percent sign"),
     ("%+u message",   "flag(s) ['+']"),
     ("%d message",    "reads a signed int"),
     ("%i message",    "reads a signed int"),
@@ -80,12 +84,18 @@ SPELLING_CASES = [
     ("%u of 100%%",   None),
 ]
 
-# The singular half, which is not this branch's subject and is the one thing it
-# can break: `_format_signature` is the only check a singular pair has, and a
-# filter that dropped every percent-terminated spelling would let this pair
-# through as two empty signatures.
+# The singular half, which the count contract does not reach at all.
 SINGULAR_CASES = [
-    (("0%-100%", "0-100 %"), "same placeholders"),
+    # `%-100%` is refused for being what it is, before anything compares the two
+    # locales. It used to be caught one step later, as a placeholder mismatch
+    # against a Russian line that spells the percent as text -- a real
+    # disagreement, but the wrong thing to tell the translator, and it depended
+    # on the other locale happening to disagree. Two locales that spelled it
+    # the same way were accepted.
+    (("0%-100%", "0-100 %"), "not a literal percent sign"),
+    # And the comparison itself, which is the only check a singular pair gets
+    # and must keep working: both formats here are valid on their own.
+    (("%u km", "%s км"),     "same placeholders"),
 ]
 
 _PLURAL_TEMPLATE = """[count_spelling]

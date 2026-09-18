@@ -101,14 +101,13 @@ def _format_signature(text):
     that agree on `%s` agree, and still hand an integer to snprintf as a
     pointer. For plural entries `_check_count_format` asks the other question.
     """
-    # `!= "%%"` and not `conv != "%"`: `FORMAT_RE` matches flags and a width
-    # between the two percent signs, so `"0%-100%"` is one match whose
-    # conversion is `%`. Dropping every percent-terminated spelling would take
-    # that match out of the signature as well, and `en = "0%-100%"` against
-    # `ru = "0-100 %"` would compare `()` with `()` and be accepted -- a
-    # singular pair this comparison is the only check on. The named groups are
-    # for `_check_count_format`, which asks a different question of the same
-    # matches.
+    # `!= "%%"` and not `conv != "%"`. The difference used to matter on its own:
+    # `FORMAT_RE` matches flags and a width between the two percent signs, so
+    # `"0%-100%"` is one match whose conversion is `%`, and dropping every
+    # percent-terminated spelling would take it out of the signature as well.
+    # `_reject_malformed_percent` now refuses that spelling before this runs, so
+    # what is left here is the narrow claim it reads as: `%%` is text and every
+    # other match is an argument.
     return tuple(m.group(0) for m in FORMAT_RE.finditer(text) if m.group(0) != "%%")
 
 
@@ -204,12 +203,9 @@ def _unrecognised_percent(text):
     for match in FORMAT_RE.finditer(text):
         covered.add(match.start())
         if match.group("conv") == "%":
-            # The closing percent, which is `start + 1` only when nothing sits
-            # between the two. `FORMAT_RE` accepts flags, a width and a
-            # precision there, so `"%-100% items"` left its own closing `%`
-            # uncovered and was reported as an unrecognised one -- a rejection
-            # with the wrong reason printed and the wrong eight characters
-            # quoted. It is 0 count conversions, and that is what it says now.
+            # The closing percent of `%%`, which is the only percent-terminated
+            # spelling that gets this far: `_reject_malformed_percent` refuses
+            # every other one before the count contract is asked anything.
             covered.add(match.end() - 1)
     for index, char in enumerate(text):
         if char == "%" and index not in covered:
@@ -285,11 +281,36 @@ def _check_count_format(ident, locale, form, text):
         )
 
 
+# A `%` conversion is a literal percent only when it is spelled `%%`. Anything
+# between the two signs makes it an invalid conversion specification, and C says
+# the behaviour of snprintf on one is undefined -- there is no "it prints a
+# percent anyway" to fall back on. `"50%-60%: %u"` is the spelling that gets
+# here: it reads as prose, it parses as the conversion `%-60%` followed by one
+# `%u`, and a count check that skips percent-terminated matches sees exactly one
+# count conversion and accepts it.
+#
+# So it is rejected here, for every entry, rather than inside the plural check
+# that found it. The singular strings reach snprintf through their own call
+# sites with their own arguments and are just as undefined, and this is the one
+# function every string in the catalogue passes through.
+def _reject_malformed_percent(where, text):
+    for match in FORMAT_RE.finditer(text):
+        if match.group("conv") == "%" and match.group(0) != "%%":
+            raise CatalogueError(
+                f"{where} has {match.group(0)!r}, which is not a literal percent sign. "
+                f"Flags, a width or a precision between the two signs make it an invalid "
+                f"conversion specification, and snprintf's behaviour on one is undefined. "
+                f"Write a literal percent as `%%`: `50%%-60%%`, not `50%-60%`."
+            )
+
+
 def _check_formats(entry):
     signatures = {}
     for locale, value in entry.texts.items():
         items = value.items() if isinstance(value, dict) else [("", value)]
         for form, text in items:
+            where = f"'{entry.ident}'.{locale}{'.' + form if form else ''}"
+            _reject_malformed_percent(where, text)
             signatures[f"{locale}{'.' + form if form else ''}"] = _format_signature(text)
     distinct = set(signatures.values())
     if len(distinct) > 1:
