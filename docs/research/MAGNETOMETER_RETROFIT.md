@@ -1550,7 +1550,7 @@ than reasoned about.**
    receiver, and a `Ready` node still wins); that is luck, not structure. **This
    fix belongs with the ADR, not after it.**
 3. **The simulator cannot reach the new states, and the `--radio` precedent does
-   not transfer.** `sim/options.cpp` line 210 writes `out.board.radio = ...` — a field
+   not transfer.** `sim/options.cpp:442` — "    out.board.radio = platform::radio_info_for(radio);" — writes a field
    **inside** `BoardProfile`. A fitment record is deliberately **outside** it,
    which is the load-bearing premise of the whole design. `ProfileInventory`'s
    only constructor is `explicit ProfileInventory(const BoardProfile&)`, and

@@ -4,14 +4,55 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace attadipa::sim {
 namespace {
 
+// A COUNT THAT DOES NOT FIT IS NOT A COUNT, AND `strtoul` WILL NOT SAY SO.
+//
+// It reports neither of the two ways a caller's number stops being the number
+// they typed, and `parse_int64` below already guards against one of them:
+//
+//   * A LEADING SIGN IS NOT A SYNTAX ERROR TO IT. C says `strtoul` negates the
+//     unsigned result, so `-1` parses cleanly as `ULONG_MAX` -- `--frames -1`
+//     asked for 4 294 967 295 rendered frames, about 248 days on the 5 ms
+//     delay alone, with nothing anywhere reporting that a negative count had
+//     been rejected.
+//   * A VALUE TOO LARGE FOR THE DESTINATION NARROWS SILENTLY. Only `errno` says
+//     the value did not fit `unsigned long`, and nothing at all says it did not
+//     fit `std::uint32_t`: on an LP64 host `--frames 4294967296` is a perfectly
+//     representable `unsigned long` and the cast below turned it into 0.
+//
+// Zero is the amplifier. `Options::frames` uses it as the sentinel for "run
+// until the window closes", so that one wrap does not produce a wrong finite
+// count -- it produces an unbounded run, and in headless CI there is no window
+// to close (#578).
+//
+// The check is here rather than at `--frames` because this is the shared
+// helper: the next caller gets it without knowing there was anything to know.
 bool parse_uint(const char *text, std::uint32_t &out) {
+  // `strtoul` skips leading whitespace and then accepts a sign, so the sign
+  // has to be looked for past the same whitespace -- `" -1"` is `-1` to it.
+  // `+7` is left alone: it is unambiguous and it does not wrap.
+  if (text[std::strspn(text, " \t\n\v\f\r")] == '-') {
+    return false;
+  }
   char *end = nullptr;
+  errno = 0;
   const unsigned long value = std::strtoul(text, &end, 10);
-  if (end == text || *end != '\0') {
+  // ERANGE IS THE ONE GUARD HERE THAT NO TEST ON THIS HOST CAN KILL, and that
+  // is worth writing down rather than leaving as an untested line. Where
+  // `unsigned long` is 64 bits, an overflow returns `ULONG_MAX`, which the
+  // range check below refuses anyway -- removing this clause leaves every case
+  // in `tests/test_sim_options.cpp` passing, measured. Where `unsigned long`
+  // is 32 bits, `ULONG_MAX` *is* `UINT32_MAX`, the range check cannot tell an
+  // overflow from a caller who typed 4294967295, and this clause is the whole
+  // refusal. It stays for the host this does not run on.
+  if (errno == ERANGE || end == text || *end != '\0') {
+    return false;
+  }
+  if (value > std::numeric_limits<std::uint32_t>::max()) {
     return false;
   }
   out = static_cast<std::uint32_t>(value);
@@ -29,10 +70,38 @@ bool parse_int64(const char *text, std::int64_t &out) {
   return true;
 }
 
-bool parse_float(const char *text, float &out) {
+// The window is the panel scaled by this factor, so the bounds are what a
+// window can usefully be rather than what a `float` can hold, and each one is
+// the last factor that still works rather than the first that does not --
+// review round 2 caught the earlier pair justifying 64 by describing what 64
+// itself breaks, and then accepting it.
+//
+// Upper: 502 px is the larger panel, and 16 384 px is the maximum texture size
+// SDL renderers commonly report, so 32 is the largest power of two that fits
+// (32 x 502 = 16 064). Lower: 1/16 leaves the 240 px panel 15 px across, which
+// is small and still a window; 1/32 would be 7 px.
+//
+// Both figures are sanity bounds on what a window can be, NOT measurements of
+// this host: nothing here queries the renderer, and a host with a smaller
+// limit will fail inside SDL as it did before. The bound is there to refuse
+// the arithmetic that cannot work anywhere, not to promise the rest will.
+constexpr double kMinZoom = 1.0 / 16.0;
+constexpr double kMaxZoom = 32.0;
+
+bool parse_zoom(const char *text, float &out) {
   char *end = nullptr;
   const double value = std::strtod(text, &end);
-  if (end == text || *end != '\0' || value <= 0.0) {
+  if (end == text || *end != '\0') {
+    return false;
+  }
+  // WRITTEN AS `!(value >= kMinZoom)` AND NOT `value < kMinZoom` BECAUSE EVERY
+  // COMPARISON WITH A NaN IS FALSE. The old `value <= 0.0` was that shape, so
+  // `--zoom nan` passed it and reached `lv_sdl_window_set_zoom`. The negated
+  // form refuses NaN at both ends. `strtod` answers HUGE_VAL for a double
+  // overflow and 0 for an underflow, so `1e400` and `1e-400` are refused by
+  // these same two bounds, as is `1e300` -- a finite double that becomes
+  // infinity the moment it is narrowed to `float`.
+  if (!(value >= kMinZoom) || !(value <= kMaxZoom)) {
     return false;
   }
   out = static_cast<float>(value);
@@ -61,8 +130,9 @@ void print_usage(const char *argv0) {
       "lr1121,\n"
       "                   cc1101, si4432. Only meaningful on a board with a "
       "radio\n"
-      "  --zoom <factor>  scale the window. The panel resolution does not "
-      "change\n"
+      "  --zoom <factor>  scale the window, 0.0625 to 32. The panel "
+      "resolution\n"
+      "                   does not change\n"
       "  --frames <n>     render n frames and exit. For CI, with "
       "SDL_VIDEODRIVER=dummy\n"
       "  --screenshot <p> write the rendered screen to p as a PNG, then "
@@ -330,8 +400,11 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     }
     if (std::strcmp(arg, "--zoom") == 0) {
       const char *value = take_value(argc, argv, i, arg);
-      if (value == nullptr || !parse_float(value, out.zoom)) {
-        std::fprintf(stderr, "--zoom needs a positive number\n");
+      if (value == nullptr || !parse_zoom(value, out.zoom)) {
+        std::fprintf(stderr,
+                     "--zoom needs a number from %g to %g "
+                     "(1 = one window pixel per panel pixel)\n",
+                     kMinZoom, kMaxZoom);
         return ParseResult::Error;
       }
       continue;
@@ -339,7 +412,14 @@ ParseResult parse_options(int argc, char **argv, Options &out) {
     if (std::strcmp(arg, "--frames") == 0) {
       const char *value = take_value(argc, argv, i, arg);
       if (value == nullptr || !parse_uint(value, out.frames)) {
-        std::fprintf(stderr, "--frames needs a whole number\n");
+        // The old text was "--frames needs a whole number", which is what a
+        // reader sees after typing one. `-1` and `4294967296` are both whole
+        // numbers and neither is a frame count, so the message says which
+        // property failed.
+        std::fprintf(stderr,
+                     "--frames needs a whole number from 0 to %u "
+                     "(0 = run until the window closes)\n",
+                     std::numeric_limits<std::uint32_t>::max());
         return ParseResult::Error;
       }
       continue;
