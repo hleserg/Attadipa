@@ -1,0 +1,11 @@
+# Two conversions, one argument. The first reads the count; the second reads
+# whatever the calling convention left where a second argument would have been.
+# Consistent across every locale and every form, so the equality check agrees
+# with it completely.
+[message_count]
+plural = true
+en.one = "%u of %u message"
+en.other = "%u of %u messages"
+ru.one = "%u из %u сообщения"
+ru.few = "%u из %u сообщений"
+ru.many = "%u из %u сообщений"

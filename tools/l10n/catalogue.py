@@ -35,7 +35,33 @@ ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 # printf conversions, deliberately without `%n` -- nothing in a catalogue has
 # any business writing through a pointer.
-FORMAT_RE = re.compile(r"%[-+ #0]*[0-9]*(?:\.[0-9]+)?(?:hh|h|ll|l|j|z|t|L)?[diouxXeEfgGaAcsp%]")
+#
+# In parts, because two different questions are asked of the same match. The
+# cross-locale check only needs the whole spelling; the plural check needs to
+# know that `%llu` carries a length modifier and `%s` a conversion that is not
+# an integer, and a tuple of strings cannot say that without parsing twice.
+FORMAT_RE = re.compile(
+    r"%(?P<flags>[-+ #0]*)(?P<width>[0-9]*)(?P<precision>\.[0-9]+)?"
+    r"(?P<length>hh|h|ll|l|j|z|t|L)?(?P<conv>[diouxXeEfgGaAcsp%])"
+)
+
+# What `format_plural` passes is one `std::uint32_t`, which reaches the variadic
+# call as an `unsigned int`. These are the conversions that read exactly that.
+#
+# `d` and `i` are not here. They read the same bits as an `int`, which is only
+# defined while the value fits in one, and a count is a `std::uint32_t` whose
+# top bit nothing forbids -- so "works for every count we have shipped so far"
+# is the claim it would let through, and that is the claim this check exists to
+# stop making. `c` takes an int too, and prints a byte rather than a number.
+PLURAL_COUNT_CONVERSIONS = ("u", "o", "x", "X")
+
+# `#` is defined for o, x and X only; for u the standard says the behaviour is
+# undefined. `+` and a leading space are for signed conversions, so a plural
+# form carrying one is either a signed conversion that slipped past or -- far
+# more often -- a literal percent somebody forgot to double, as in "100% done",
+# which snprintf reads as the conversion `% d`.
+PLURAL_COUNT_FLAGS = "-0"
+PLURAL_COUNT_HASH_CONVERSIONS = ("o", "x", "X")
 
 
 class CatalogueError(Exception):
@@ -70,7 +96,19 @@ def _format_signature(text):
     Compared across locales. `%u` becoming `%s` in translation is undefined
     behaviour at the snprintf call and nothing in the toolchain warns about it,
     because by then the format string is a runtime value.
+
+    Equality is not safety, and this function is not the whole check: five forms
+    that agree on `%s` agree, and still hand an integer to snprintf as a
+    pointer. For plural entries `_check_count_format` asks the other question.
     """
+    # `!= "%%"` and not `conv != "%"`: `FORMAT_RE` matches flags and a width
+    # between the two percent signs, so `"0%-100%"` is one match whose
+    # conversion is `%`. Dropping every percent-terminated spelling would take
+    # that match out of the signature as well, and `en = "0%-100%"` against
+    # `ru = "0-100 %"` would compare `()` with `()` and be accepted -- a
+    # singular pair this comparison is the only check on. The named groups are
+    # for `_check_count_format`, which asks a different question of the same
+    # matches.
     return tuple(m.group(0) for m in FORMAT_RE.finditer(text) if m.group(0) != "%%")
 
 
@@ -102,6 +140,14 @@ def _check_plain(ident, table):
 
 
 def _check_plural(ident, table):
+    # The same rule `_check_plain` applies one function up, and it belongs here
+    # rather than as a second isinstance guard downstream: the loop below reads
+    # `LOCALES`, so a third locale was carried, untouched, as far as
+    # `_check_formats`, where `.items()` on a plain string raised AttributeError
+    # -- a traceback where `gen_strings.py` promises a message naming the id.
+    unknown = set(table) - set(LOCALES)
+    if unknown:
+        raise CatalogueError(f"plural '{ident}' has unknown locale(s): {sorted(unknown)}")
     for locale in LOCALES:
         if locale not in table:
             raise CatalogueError(f"plural '{ident}' has no '{locale}' forms")
@@ -132,6 +178,113 @@ def _check_plural(ident, table):
                 raise CatalogueError(f"plural '{ident}'.{locale}.{form} must be a non-empty string")
 
 
+_COUNT_CONTRACT = (
+    "  A plural form is a *runtime* format string handed to\n"
+    "  `int format_plural(char*, std::size_t, PluralId, std::uint32_t count)`, which\n"
+    "  passes exactly one argument: the count, as an unsigned int. So every form has\n"
+    "  to contain exactly one conversion, and it has to be that argument -- "
+    f"{', '.join('%' + c for c in PLURAL_COUNT_CONVERSIONS)},\n"
+    "  with an optional width, precision and `-`/`0` flag -- and `#` with `%o`, `%x`\n"
+    "  or `%X`, which changes how the number is spelled and not what is read --, and\n"
+    "  no length modifier.\n"
+    "  A literal percent is `%%` and does not count. Nothing checks this later: the\n"
+    "  compiler cannot see a format it reads out of a table at run time."
+)
+
+
+def _unrecognised_percent(text):
+    """The first `%` that is not part of a conversion this parser understands.
+
+    snprintf does not skip one. "If a conversion specification is invalid, the
+    behavior is undefined" -- so `%q` and `%*u` are as unsafe as `%s` here, and
+    a check that only inspected the conversions it *did* recognise would report
+    a format containing one as clean.
+    """
+    covered = set()
+    for match in FORMAT_RE.finditer(text):
+        covered.add(match.start())
+        if match.group("conv") == "%":
+            # The closing percent, which is `start + 1` only when nothing sits
+            # between the two. `FORMAT_RE` accepts flags, a width and a
+            # precision there, so `"%-100% items"` left its own closing `%`
+            # uncovered and was reported as an unrecognised one -- a rejection
+            # with the wrong reason printed and the wrong eight characters
+            # quoted. It is 0 count conversions, and that is what it says now.
+            covered.add(match.end() - 1)
+    for index, char in enumerate(text):
+        if char == "%" and index not in covered:
+            return index
+    return None
+
+
+def _check_count_format(ident, locale, form, text):
+    """One plural form against the one argument `format_plural` passes.
+
+    Separate from the singular strings on purpose. They are formatted by their
+    own call sites with their own arguments -- `"%u.%u km"` and `"heard %s ago"`
+    both ship today -- and forcing them through this one-unsigned-int contract
+    would reject correct strings to make a sentence shorter.
+    """
+    where = f"plural '{ident}'.{locale}.{form}"
+
+    index = _unrecognised_percent(text)
+    if index is not None:
+        raise CatalogueError(
+            f"{where} has a '%' that is not a conversion this catalogue understands: "
+            f"{text[index:index + 8]!r}.\n{_COUNT_CONTRACT}"
+        )
+
+    specs = [m for m in FORMAT_RE.finditer(text) if m.group("conv") != "%"]
+    # A percent somebody meant literally does not read as text: snprintf takes
+    # the space in "100% done" as the space flag and prints a signed int. It
+    # arrives here as one conversion too many, so the hint belongs on both the
+    # count and the flag message rather than only on the one it is named for.
+    literal = (" A literal percent sign is written `%%`; `100% done` is read by snprintf "
+               "as the conversion `% d`." if any(" " in m.group("flags") for m in specs) else "")
+    if len(specs) != 1:
+        seen = ", ".join(m.group(0) for m in specs) or "none"
+        raise CatalogueError(
+            f"{where} has {len(specs)} count conversion(s) ({seen}), and must have exactly "
+            f"one.{literal}\n{_COUNT_CONTRACT}"
+        )
+
+    spec = specs[0]
+    length = spec.group("length")
+    if length:
+        # `h` and `hh` are not the same mistake as `ll`. The argument is still
+        # promoted to an int either way, so nothing is read out of bounds --
+        # the count is simply cut down before it is printed, which is a wrong
+        # number on the screen and no crash anywhere to find it by.
+        if length in ("h", "hh"):
+            why = (f"the length modifier '{length}' truncates the count before printing it, so "
+                   f"a count of 70000 appears as 4464")
+        else:
+            why = (f"the length modifier '{length}' reads an argument of whatever width that "
+                   f"type has on the target, and on any target where that is wider than the "
+                   f"count the rest of the number is whatever happened to sit next to it")
+        raise CatalogueError(f"{where} uses '{spec.group(0)}': {why}.\n{_COUNT_CONTRACT}")
+    conversion = spec.group("conv")
+    if conversion not in PLURAL_COUNT_CONVERSIONS:
+        if conversion in "sp":
+            why = ("the count is read as a pointer and dereferenced. A count of 1 is the "
+                   "address 1, and the process faults before the screen is drawn")
+        elif conversion in "di":
+            why = ("it reads a signed int, which is the same value only while the count fits "
+                   "in one. A `std::uint32_t` above INT_MAX does not, and nothing bounds it")
+        else:
+            why = "it does not read an unsigned int"
+        raise CatalogueError(
+            f"{where} uses '{spec.group(0)}': {why}.{literal}\n{_COUNT_CONTRACT}"
+        )
+    bad_flags = [f for f in spec.group("flags") if f not in PLURAL_COUNT_FLAGS
+                 and not (f == "#" and conversion in PLURAL_COUNT_HASH_CONVERSIONS)]
+    if bad_flags:
+        raise CatalogueError(
+            f"{where} uses '{spec.group(0)}', whose flag(s) {sorted(set(bad_flags))} are not "
+            f"defined for that conversion.{literal}\n{_COUNT_CONTRACT}"
+        )
+
+
 def _check_formats(entry):
     signatures = {}
     for locale, value in entry.texts.items():
@@ -146,6 +299,14 @@ def _check_formats(entry):
             f"  The catalogue string reaches snprintf as a *runtime* format, so a mismatch is "
             f"undefined behaviour that no compiler warning will catch."
         )
+
+    # Second, and only for plurals: agreeing is not the same as being right.
+    # This runs after the comparison so that a locale that disagrees is reported
+    # as a disagreement, which is what the translator who caused it can act on.
+    if entry.is_plural:
+        for locale, forms in entry.texts.items():
+            for form, text in forms.items():
+                _check_count_format(entry.ident, locale, form, text)
 
 
 def load(path=STRINGS_TOML):

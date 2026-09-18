@@ -1,0 +1,11 @@
+# Every locale and every form agrees -- on the wrong conversion. This is the
+# fixture the equality check cannot see: nothing here differs from anything
+# else, so "all locales use the same placeholders" is satisfied while the count
+# is handed to snprintf as a pointer and read at address 1.
+[message_count]
+plural = true
+en.one = "%s message"
+en.other = "%s messages"
+ru.one = "%s сообщение"
+ru.few = "%s сообщения"
+ru.many = "%s сообщений"
