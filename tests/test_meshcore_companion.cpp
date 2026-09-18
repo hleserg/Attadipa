@@ -3044,6 +3044,119 @@ void test_an_error_older_than_the_re_read_still_fails_the_send()
     CHECK(std::strcmp(committed.name.data(), "Renamed") == 0);
 }
 
+// ROUND 1 OF #564's REVIEW, FINDING 1. `kMaxAckWait` bounds the re-read's
+// claim on an untagged RESP_CODE_ERR; it does not bound the re-read. The
+// fifteen seconds cover the tx ring and the air as well as the node -- one
+// frame leaves per completed GATT write, and a waiting battery poll holds the
+// next one for its whole reply budget -- so a CONTACTS_START after the
+// deadline is an ordinary slow answer. Read as a first walk it would do every
+// one of the four things decision 7a exists to forbid, and this test names
+// them one by one: the published list, the pair, `peers_complete` and
+// `Availability::Ready` all stand until the re-read has proved itself.
+void test_a_start_later_than_the_ack_budget_is_still_the_re_reads()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().peers_retained == 1);
+
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    // Fifteen seconds and no answer of any kind. The claim goes down -- from
+    // here a stray error belongs to whatever else is outstanding -- and the
+    // snapshot settles as though the attempt were over.
+    client.tick(at(8 + 10001 + 15001));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    // And then the node answers. This is the second CONTACTS_START of the
+    // session, and it says the table now holds one contact.
+    const std::uint8_t start[] = {2, 1, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(8 + 10001 + 15002)));
+    CHECK(client.peer_count() == 1);
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.status().peers_reported == 2);
+    CHECK(client.status().availability == Availability::Ready);
+
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Late", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(8 + 10001 + 15003)));
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(8 + 10001 + 15004)));
+
+    // Only now is the published set replaced, and by a walk no push touched.
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.status().peers_reported == 1);
+    CHECK(client.peer_count() == 1);
+    MeshPeer committed{};
+    CHECK(client.peer(0, committed));
+    CHECK(std::strcmp(committed.name.data(), "Late") == 0);
+}
+
+// ROUND 1 OF #564's REVIEW, FINDING 2, and the other half of finding 1. The
+// deadline releases exactly one thing: the claim on an untagged error. While
+// that claim stands no battery poll may go out, for the reason
+// `awaiting_custom_vars_` is already in the same gate -- the re-read is the one
+// command in this client whose error is *expected*, and the battery arm of the
+// error ladder short-circuits before the re-read's, so a poll issued inside the
+// window turns the node's correct ERR_CODE_BAD_STATE into a battery fault the
+// wearer sees until the next period. After the deadline the poll is free and
+// the command is not: a re-read the node has not answered is still outstanding,
+// so no second one is armed behind it.
+void test_an_expired_claim_frees_the_battery_poll_and_not_the_command()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    // TWO ANSWERS THE FIXTURE OWES THE GATE BEFORE IT CAN TEST IT, and both
+    // were found by mutation: with either missing, the poll is withheld by
+    // something other than the re-read and the test passes for the wrong
+    // reason. `{10}` ends the drain the first walk's END armed -- `!draining_`
+    // is in the same condition -- and `{21}` answers the receiver hint, whose
+    // claim on an untagged error is the one the re-read's is modelled on.
+    const std::uint8_t drained[] = {10};
+    CHECK(client.receive(drained, sizeof(drained), at(8 + 1)));
+    const std::uint8_t vars[] = {21};
+    CHECK(client.receive(vars, sizeof(vars), at(8 + 2)));
+
+    auto drain = [&client, &frame](int& asked, int& polled) {
+        asked = 0;
+        polled = 0;
+        while (client.next_tx(frame)) {
+            if (frame.size == 1 && frame.bytes[0] == 4) ++asked;
+            if (frame.size == 1 && frame.bytes[0] == 20) ++polled;
+        }
+    };
+
+    int asked = 0;
+    int polled = 0;
+    client.tick(at(8 + 10001));
+    drain(asked, polled);
+    CHECK(asked == 1);
+    CHECK(polled == 0);
+
+    client.tick(at(8 + 10001 + 15001));
+    drain(asked, polled);
+    CHECK(asked == 0);
+    CHECK(polled == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    // A second delay's worth later it is still not asked again: the budget was
+    // spent when the command went out, and the command has not come back.
+    client.tick(at(8 + 10001 + 15001 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+}
+
 // ROW 17 OF ADR-0022 §9. The re-read's own `CONTACTS_START` is the second one
 // of the session, and everything the first one does to the published state is
 // what decision 7a forbids the second one from doing. The assertion that makes
@@ -3227,7 +3340,7 @@ void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1170` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1190` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3275,7 +3388,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:634` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:654` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -3710,6 +3823,8 @@ int main()
     test_which_pushes_dirty_a_walk_and_which_only_look_it();
     test_an_error_owed_to_a_re_read_does_not_fail_a_send();
     test_an_error_older_than_the_re_read_still_fails_the_send();
+    test_a_start_later_than_the_ack_budget_is_still_the_re_reads();
+    test_an_expired_claim_frees_the_battery_poll_and_not_the_command();
     test_a_re_read_does_not_unname_a_sender_mid_walk();
     test_a_re_reads_end_spends_no_drain_on_a_full_ring();
     test_a_message_carries_a_coordinate_or_nothing();

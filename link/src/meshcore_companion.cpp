@@ -206,6 +206,7 @@ void MeshCoreCompanion::reset_session()
     dirty_end_at_ = {};
     retries_left_ = kSnapshotRetries;
     retry_armed_ = false;
+    retry_unanswered_ = false;
     retry_open_ = false;
     retry_since_ = {};
     contacts_seq_ = 0;
@@ -339,6 +340,14 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // untagged error would be charged to a request that is never going to be
     // answered -- a real send's failure absorbed by a re-read nobody is waiting
     // on. Giving up costs the attempt, which the budget already spent.
+    // What expires here is the claim on an untagged error, and only that.
+    // `retry_unanswered_` stays up, because the command is still outstanding:
+    // the node may yet answer it, and a START that arrives after this deadline
+    // is a slow answer to the re-read rather than the start of a first walk.
+    // Clearing both was round 1 of #564's first finding -- fifteen seconds
+    // covers the tx ring and the air as well as the node, and a late START read
+    // as a first walk empties the published peer list that decision 7a exists
+    // to hold.
     if (retry_armed_ && core::elapsed(retry_since_, now) >= kMaxAckWait) {
         retry_armed_ = false;
         settle_snapshot(now);
@@ -360,13 +369,14 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // Nothing is retried until a first walk has finished, because `dirty_end_at_`
     // is stamped by `settle_snapshot()` and `snapshot_dirty_` only survives a
     // walk that ended.
-    if (snapshot_dirty_ && !contacts_open_ && !retry_open_ && !retry_armed_ &&
-        !wrong_node_ && retries_left_ > 0 &&
+    if (snapshot_dirty_ && !contacts_open_ && !retry_open_ &&
+        !retry_unanswered_ && !wrong_node_ && retries_left_ > 0 &&
         core::elapsed(dirty_end_at_, now) >= kSnapshotRetryDelay) {
         const std::uint8_t contacts[] = {kGetContacts};
         if (enqueue(contacts, sizeof(contacts))) {
             --retries_left_;
             retry_armed_ = true;
+            retry_unanswered_ = true;
             retry_since_ = now;
             contacts_seq_ = tx_seq_;
             status_.snapshot = core::MeshSnapshot::RetryPending;
@@ -467,7 +477,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1213` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1233` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -531,10 +541,20 @@ bool MeshCoreCompanion::next_tx(MeshCoreFrame& out)
     if (battery_request_ == BatteryRequest::Waiting) return false;
     const bool drain_queued = tx_size_ == 1 &&
                              tx_[tx_head_].bytes[0] == kSyncNextMessage;
+    // `!awaiting_custom_vars_` and `!retry_armed_` are one rule counted twice:
+    // a poll is not put on the wire while a command whose untagged
+    // RESP_CODE_ERR this client is still claiming is outstanding. The re-read
+    // is the command whose error is *expected* -- ERR_CODE_BAD_STATE is why the
+    // delay before it exists at all -- and the battery arm of the error ladder
+    // short-circuits before the re-read's claim, so a poll issued inside that
+    // window turns the node's correct refusal of the re-read into a battery
+    // fault the wearer sees for a minute. Round 1 of #564 measured it. The
+    // claim is bounded by `kMaxAckWait`, so this holds a poll for fifteen
+    // seconds at most and never for a session.
     if (battery_request_ == BatteryRequest::Idle && battery_due_ &&
         !battery_identity_blocked_ && !wrong_node_ && link_.ready() &&
         self_info_seen_ && device_info_seen_ && contacts_complete_ &&
-        !send_busy() && !awaiting_custom_vars_ &&
+        !send_busy() && !awaiting_custom_vars_ && !retry_armed_ &&
         (tx_size_ == 0 || drain_queued) && (!draining_ || drain_queued)) {
         // A continuing backlog already queued its next sync. Appending one
         // poll behind it prevents the backlog from starving telemetry; both
@@ -1267,8 +1287,9 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // published set, the pair, `peers_complete` and `contacts_complete_`
         // all hold; the re-read streams into `incoming_peers_` and replaces
         // them wholesale only once it has proved itself.
-        if (retry_armed_) {
+        if (retry_unanswered_) {
             retry_armed_ = false;
+            retry_unanswered_ = false;
             retry_open_ = true;
             incoming_count_ = 0;
             incoming_reported_ = reported;
@@ -1562,8 +1583,11 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         if (retry_armed_ && (!op_owed || contacts_seq_ < op_seq_)) {
             // The attempt is spent -- `retries_left_` was decremented when the
             // command went out -- so a node that refuses every re-read costs a
-            // bounded two errors and then stops being asked.
+            // bounded two errors and then stops being asked. An error is the
+            // node saying it will not walk, so the command stops being
+            // outstanding here, unlike at the deadline above.
             retry_armed_ = false;
+            retry_unanswered_ = false;
             settle_snapshot(now);
             break;
         }

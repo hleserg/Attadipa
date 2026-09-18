@@ -390,14 +390,27 @@ private:
     bool snapshot_dirty_ = false;
     core::MonotonicTime dirty_end_at_{};
     std::uint8_t retries_left_ = kSnapshotRetries;
-    // A re-read has been put on the wire and its RESP_CODE_CONTACTS_START has
-    // not arrived; then, once it has, its walk is the one running. The pair is
-    // what tells the second CONTACTS_START of a session apart from the first,
-    // and that distinction is the whole of decision 7a: without it the retry's
-    // own START wipes `peer_count_`, drops `Availability::Ready`, restarts the
+    // THREE BITS, BECAUSE A RE-READ IS THREE THINGS AT ONCE and the three end
+    // at different moments.
+    //
+    // `retry_unanswered_` says a CMD_GET_CONTACTS this client sent has not been
+    // answered by a RESP_CODE_CONTACTS_START yet, and it is what tells the
+    // second CONTACTS_START of a session apart from the first. That distinction
+    // is the whole of decision 7a: without it the retry's own START wipes
+    // `peer_count_`, drops `Availability::Ready`, restarts the
     // `retained/reported` pair at zero, and leaves an incoming message with no
-    // sender to name.
+    // sender to name. `retry_open_` is that walk, once it has started.
+    //
+    // `retry_armed_` is the narrower claim on an untagged RESP_CODE_ERR, and it
+    // is the only one of the three with a deadline. It must expire, or a
+    // re-read the node never answers would absorb a real send's error for the
+    // rest of the session -- and the round-1 review of #564 is why it may not
+    // take the identification with it when it goes. `kMaxAckWait` covers the
+    // ring and the air as well as the node, so a START later than the deadline
+    // is an ordinary slow answer, not a first walk, and reading it as one is
+    // the very wipe decision 7a forbids.
     bool retry_armed_ = false;
+    bool retry_unanswered_ = false;
     bool retry_open_ = false;
     core::MonotonicTime retry_since_{};
     std::uint32_t contacts_seq_ = 0;

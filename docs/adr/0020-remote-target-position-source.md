@@ -52,7 +52,7 @@ whichever path fetched it, the coordinate is the last one the receiver solved.
 
 **2. Path C's bytes are already in a frame this repository parses and
 discards.** `RESP_CODE_CONTACT` is 148 bytes and the session already demands all
-148 — `link/src/meshcore_companion.cpp:1286` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+148 — `link/src/meshcore_companion.cpp:1307` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 then reads the key and the name and drops bytes 132–147, which are the advert
 timestamp, the coordinate at ×10⁶, and a modification stamp.
 
@@ -188,13 +188,16 @@ button, and nothing on this path says whether a receiver is on.
 
 **Easier.** The slice is small and adds no parser: one `0x80` handler, one
 command, and sixteen bytes of a frame whose `RESP_CODE_CONTACT` arm already
-length-checks it. **The four arms it adds — `0x80`, `0x8A`, `0x8F` and `0x90` —
-each carry their own guard**, because the
-dispatcher owns no shared one — `link/src/meshcore_companion.cpp:1157` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
+length-checks it. **The four arms it widens — `0x80`, `0x8A`, `0x8F` and `0x90` —
+each carry their own guard**. All four exist at head, where ADR-0022 decision 4
+put them so that a push this build understands is not counted as a parse
+failure, and all four read nothing past the opcode; a guard is what each needs
+the moment it starts reading a payload, because the
+dispatcher owns no shared one — `link/src/meshcore_companion.cpp:1177` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
 only an empty or over-long frame, and nothing after it inherits a bound: an arm
 that reads a fixed-size field checks its own length, the one arm with no
 fixed-size field at all passes the length through instead —
-`link/src/meshcore_companion.cpp:1335` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
+`link/src/meshcore_companion.cpp:1356` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
 that reads nothing past the opcode checks nothing.
 `REMOTE_TARGET_POSITION_FROM_MESHCORE.md` §9.1 states all four bounds and §12.1
 tests them. It costs no
@@ -226,7 +229,7 @@ sixteen peers —
 against a contact table that is 350 on the T114 build. It does **not** gate the
 read: `accept_contact` parses the whole 148-byte frame and copies key and name
 out before the cap is consulted at all, and the cap then decides storage alone —
-`link/src/meshcore_companion.cpp:596` — "    if (count < table.size()) {". The primary read is
+`link/src/meshcore_companion.cpp:616` — "    if (count < table.size()) {". The primary read is
 `CMD_GET_CONTACT_BY_KEY`, which answers with its own frame and never consults
 `peers_`. So a target beyond the sixteenth is readable; what the ceiling limits
 is which targets can be *offered* to choose from, and target selection is the
