@@ -1809,12 +1809,6 @@ core::MeshSendResult MeshCoreCompanion::send_private(const core::MeshPeerId& pee
     return enqueue_private(peer, text, timestamp);
 }
 
-// Monotonic within a session, never zero. Wraparound skips zero rather than
-// wrapping onto it, because zero is what `MeshSendResult` uses to mean "no
-// request" and a request that answered zero would read as a refusal with no
-// reason. There is one in-flight slot, so a counter this wide cannot alias a
-// live id: it would have to wrap onto the one request the session is tracking,
-// which needs 2^32 accepted sends inside the ack budget.
 // WHAT MAKES A BODY UNSENDABLE, in one place, because `send_private()` and
 // `send_room()` have to agree about it: the room path checks the text at the
 // call and then again when the login succeeds, and two copies of this cascade
@@ -1850,6 +1844,12 @@ core::MeshSendRefusal MeshCoreCompanion::refuse_text(std::string_view text,
     return core::MeshSendRefusal::None;
 }
 
+// Monotonic within a session, never zero. Wraparound skips zero rather than
+// wrapping onto it, because zero is what `MeshSendResult` uses to mean "no
+// request" and a request that answered zero would read as a refusal with no
+// reason. There is one in-flight slot, so a counter this wide cannot alias a
+// live id: it would have to wrap onto the one request the session is tracking,
+// which needs 2^32 accepted sends inside the ack budget.
 std::uint32_t MeshCoreCompanion::next_request_id()
 {
     ++request_seq_;
