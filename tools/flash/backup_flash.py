@@ -32,10 +32,16 @@ is the only evidence that counts. A successful read is not it.
 **`--size`, `--chunk` and `--attempts` are strictly positive, and that is a
 contract rather than a convenience.** Verification proves the range read equals
 the range on the device, so over an empty range it proves nothing and still
-succeeds — upstream MD5s no bytes on both sides. A zero-length read therefore
-assembled an empty image, verified it, and published it over the trusted backup
-under the word VERIFIED. The refusal is at the argument boundary, before a port
-is opened or anything is written next to that backup.
+succeeds: the digests of no bytes match on both sides, and the stub answers
+`RESPONSE_SUCCESS` rather than refusing. That qualification belongs to the
+command rather than to this tool and its provenance is in the evidence index —
+`docs/research/VERIFIED_FACTS.md:2078` — "- **What makes `Verification
+successful` evidence is that the range is not" — which names both esptool
+versions, the stub commit, and the one half that is still `UNKNOWN`. A
+zero-length read therefore assembled an empty image, verified it, and published
+it over the trusted backup under the word VERIFIED. The refusal is at the
+argument boundary, before a port is opened or anything is written next to that
+backup.
 """
 
 from __future__ import annotations
