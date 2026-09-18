@@ -1477,15 +1477,25 @@ esp_err_t abandon_board_after(esp_err_t err, const char *step) {
 // so, and a second bring-up pass would re-probe parts this function already
 // probed and become a second answer to the same question.
 //
-// WRITTEN ONCE, BY THE BOOT TASK, BEFORE THE UI TASK EXISTS -- and that is the
-// invariant, not an implementation detail. `states_[]` is a plain byte array
-// with no lock; the only readers are `refresh_node_link()` and
-// `page_is_offered()`, both on the LVGL task, and both are reachable only
-// through the timer and the handlers `create_ui()` arms under the lock below.
-// Recording here is therefore ordered before every read without costing a
-// mutex. A later transition -- a rail cut, a driver that dies at runtime --
-// needs a synchronisation decision this issue does not make, and #592's
-// scope stops at bring-up for that reason.
+// WRITTEN ONCE, BY THE BOOT TASK, BEFORE ANY READER IS ARMED -- and that is
+// the invariant, not an implementation detail. The LVGL task already exists
+// on this line: `initialize_display()` ends by calling `lvgl_port_init()`,
+// which creates it, so what orders this write is not the absence of that
+// task. `states_[]` is a plain byte array with no lock; the only readers are
+// `refresh_node_link()` and `page_is_offered()`, and neither is reachable
+// until `create_ui()` arms the timer and the handlers that call them, under
+// the LVGL lock taken on the line after this call. Recording before that lock
+// is therefore ordered before every read without costing a mutex. A later
+// transition -- a rail cut, a driver that dies at runtime -- needs a
+// synchronisation decision this issue does not make, and #592's scope stops
+// at bring-up for that reason.
+//
+// Both rollback exits are downstream of this write and neither leaves a
+// reader behind: a boot that cannot take the lock never runs `create_ui()` at
+// all, and a boot that loses physical input disarms everything `create_ui()`
+// armed before it returns. The states written here for handles
+// `abandon_board()` then deletes are stale and unread, which is why this
+// function does not try to correct them.
 //
 // `Display` is judged by `esp_lcd_panel_init()`'s handle and not by
 // `esp_lcd_panel_disp_on_off()` further down, which is the honest cost of the
@@ -1504,7 +1514,7 @@ esp_err_t abandon_board_after(esp_err_t err, const char *step) {
 // from them still report `Off` on this board. That is #592's remaining half,
 // and it is recorded in the issue rather than papered over with a `Ready`
 // nothing could honour.
-void record_bring_up() {
+void record_bring_up(bool rtc_up) {
   attadipa::platform::ProfileInventory *inventory = board_inventory();
   if (inventory == nullptr) {
     return;
@@ -1518,8 +1528,15 @@ void record_bring_up() {
   // display are required steps, so a boot that got here has them. `record()`
   // stays uniform because which steps are required is `start_waveshare_ui()`'s
   // decision to change, not this function's to hard-code twice.
+  //
+  // `rtc_up` is a parameter and not `state.rtc != nullptr` because that handle
+  // is what `i2c_master_bus_add_device()` returns -- an address and a speed
+  // recorded against an already-open bus, which no PCF85063 has to answer for.
+  // It is a precondition, never a probe. The caller has already performed the
+  // one transaction this boot makes against the part and passes what it found,
+  // so the boot log and this column cannot disagree about the same chip.
   record(HF::Pmu, state.pmu != nullptr);
-  record(HF::Rtc, state.rtc != nullptr);
+  record(HF::Rtc, rtc_up);
   record(HF::Display, state.panel != nullptr);
   record(HF::Touch, state.touch != nullptr);
 
@@ -1566,11 +1583,33 @@ esp_err_t start_waveshare_ui() {
   // metadata either way.
   (void)restore_time_metadata();
   brightness.load();
-  const attadipa::apps::ClockState clock = read_clock_state();
-  ESP_LOGI(kTag, "PCF85063: %s",
-           clock.availability == attadipa::core::Availability::Ready
-               ? "ready"
-               : "unavailable");
+  // ONE READ, ONE ANSWER, AND BOTH THE LOG AND THE INVENTORY SAY IT.
+  // `read_clock_state()` is called for its effect here: it performs the only
+  // transaction this boot makes against the PCF85063 and reports the result to
+  // the time service. The line below and `record_bring_up()` are then told what
+  // it found rather than each deciding separately -- the alternative is a log
+  // that calls the part unavailable and reports `Rtc ready` three lines later.
+  //
+  // The time service rather than `ClockState::availability` because that field
+  // is the aggregate over every source and the inventory is asking about one
+  // part. Only the RTC has reported by this point -- `restore_time_metadata()`
+  // above reports nothing -- and reading `.source` says so in the code, so a
+  // second source added here later stops silently answering for the PCF85063.
+  //
+  // `Unreachable` is the part not answering and `Failed` is an answer that did
+  // not decode. Everything else is a part that answered holding a time this
+  // service will not use yet, which is the service's question rather than the
+  // inventory's: a backup rail that dipped is not a chip that is missing.
+  (void)read_clock_state();
+  const attadipa::core::TimeState rtc_report = state.time_service.state(
+      attadipa::core::MonotonicTime{
+          static_cast<std::uint64_t>(esp_timer_get_time() / 1000)});
+  const bool rtc_up =
+      rtc_report.source == attadipa::core::TimeSource::Rtc &&
+      rtc_report.availability != attadipa::core::Availability::Unreachable &&
+      rtc_report.availability != attadipa::core::Availability::Failed;
+  ESP_LOGI(kTag, "PCF85063: %s (%s)", rtc_up ? "answered" : "unavailable",
+           attadipa::core::to_string(rtc_report.availability));
   err = initialize_display();
   if (err != ESP_OK) {
     return abandon_board_after(err, "initialize display");
@@ -1587,7 +1626,7 @@ esp_err_t start_waveshare_ui() {
              esp_err_to_name(err));
   }
 
-  record_bring_up();
+  record_bring_up(rtc_up);
 
   if (!lvgl_port_lock(1000)) {
     return abandon_board_after(ESP_ERR_TIMEOUT, "lock LVGL");

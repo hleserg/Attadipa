@@ -165,6 +165,18 @@ the value working.** `master-prompt-final.md:1124` — "# 32. OWNERSHIP DOES NOT
 GPIO assignment is resolved, so nothing brings them up and nothing may claim
 they are `Ready`.
 
+**`sim/main.cpp`'s `bring_up()` is the named exception to that last rule, not
+an instance of it.** It sets every present feature `Ready` —
+`sim/main.cpp:51` — "      inventory.set_state(feature, platform::HardwareState::Ready);" — including the five parts no
+build drives. That is deliberate: the simulator has no part to leave alone,
+because there is no bus, nothing to probe and no `esp_err_t` for the loop to
+branch on, so it is a fixture rather than a claim about hardware — the comment
+above it says so. The cost is exact and belongs here rather than in a footnote:
+a simulator screenshot is evidence about layout, navigation and touch geometry,
+and it is **not** evidence about launcher gating for `MotionSensing`,
+`Haptics`, `AudioPlayback`, `AudioCapture` or `RemovableStorage`, which the
+simulator offers and a board does not.
+
 **Scope, so that its edges do not read as gaps.** Only the Waveshare composition
 builds a registry — the T-Watch composition does not construct one, so it does
 not exhibit this and gains a writer when it gains a registry. `Ble` gets no

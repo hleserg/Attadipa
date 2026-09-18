@@ -299,21 +299,21 @@ service owns its own `lv_indev_t` and deletes it on its own failure
 so nothing LVGL keeps points at the touch controller and only the display stack
 is retained.
 That path is reached both when boot's LVGL lock times out
-([`firmware/main/waveshare_board.cpp:1589`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1632`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(ESP_ERR_TIMEOUT,") and when
 physical-input startup fails after `create_ui()` may have queued the first frame
-([`firmware/main/waveshare_board.cpp:1656`](../../firmware/main/waveshare_board.cpp) —
+([`firmware/main/waveshare_board.cpp:1699`](../../firmware/main/waveshare_board.cpp) —
 "return abandon_board_after(physical_result,").
 Freeing the panel or host while its DMA callback is pending would be a
 use-after-free. On the physical-input failure, everything `create_ui()` armed
 is disarmed while the caller still owns the LVGL lock — five things, not two:
-[`firmware/main/waveshare_board.cpp:1640`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1683`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), long_press);" — removes the path
 into provisioning/RTC,
-[`firmware/main/waveshare_board.cpp:1643`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1686`](../../firmware/main/waveshare_board.cpp) —
 "lv_obj_remove_event_cb(lv_screen_active(), node_page_turn);" — removes the
 node page turn, the adjacent timer deletion removes `refresh_ui()`, and
-[`firmware/main/waveshare_board.cpp:1649`](../../firmware/main/waveshare_board.cpp) —
+[`firmware/main/waveshare_board.cpp:1692`](../../firmware/main/waveshare_board.cpp) —
 "state.clock_face.clear();" — takes the two the clock face installs on the same
 screen. The second of those is the one that matters, and it is a power defect
 rather than a tidiness one: the retain branch skips `lvgl_port_deinit()`, so a
