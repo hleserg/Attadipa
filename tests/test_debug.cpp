@@ -343,14 +343,17 @@ void the_wire_bytes_are_pinned_to_a_literal()
 // `struct` formats. Every field is a distinct value on purpose, so a transposed
 // pair cannot survive -- `x` is negative, `width` and `height` differ, and the
 // session `HelloOk` echoes is `0xA5B6C7D8`. All three begin with the version
-// byte, so a version bump re-pins all three: v2 added the session to Hello.
+// byte, so a version bump re-pins all three: v2 added the session to Hello, and v3
+// widened `MeshSend` to a whole public key without touching any of these three
+// bodies -- which is the case this pinning is for: nothing about these messages
+// moved and all three still had to change.
 const char* const kHelloOkHex =
-    "020234120180350016bb027761766573686172652d616d6f6c65642d3230360000"
-    "000073696d20302e302e31000000000000000000000000000000d8c7b6a5";
+    "03023412018035005a6d037761766573686172652d616d6f6c65642d32303600"
+    "00000073696d20302e302e31000000000000000000000000000000d8c7b6a5";
 const char* const kScreenInfoHex =
-    "0202785610801600af50443322119a01f6010201144b06002639f4cb4e61bc00";
+    "0302785610801600b059443322119a01f6010201144b06002639f4cb4e61bc00";
 const char* const kInputEventHex =
-    "0202bc9a20000b00a1d20301feff2c0107feff0000";
+    "0302bc9a20000b00be0c0301feff2c0107feff0000";
 
 std::vector<std::uint8_t> from_hex(const char* hex)
 {

@@ -74,14 +74,17 @@ CRC32_CHECK = 0xCBF43926
 # survive: `x` is negative so the sign crosses the wire, `width` and `height`
 # differ, `frame_id` is `0x11223344` and the session `HelloOk` echoes is
 # `0xA5B6C7D8`. All three begin with the version byte, so a version bump
-# re-pins all three: v2 added the session to Hello.
+# re-pins all three: v2 added the session to Hello, and v3
+# widened `MeshSend` to a whole public key without touching any of these three
+# bodies -- which is the case this pinning is for: nothing about these messages
+# moved and all three still had to change.
 MSG_HELLO_OK = bytes.fromhex(
-    "020234120180350016bb027761766573686172652d616d6f6c65642d3230360000"
-    "000073696d20302e302e31000000000000000000000000000000d8c7b6a5")
+    "03023412018035005a6d037761766573686172652d616d6f6c65642d32303600"
+    "00000073696d20302e302e31000000000000000000000000000000d8c7b6a5")
 MSG_SCREEN_INFO = bytes.fromhex(
-    "0202785610801600af50443322119a01f6010201144b06002639f4cb4e61bc00")
+    "0302785610801600b059443322119a01f6010201144b06002639f4cb4e61bc00")
 MSG_INPUT_EVENT = bytes.fromhex(
-    "0202bc9a20000b00a1d20301feff2c0107feff0000")
+    "0302bc9a20000b00be0c0301feff2c0107feff0000")
 
 # The two numbering tables, spelled out rather than read from the enums, so a
 # renumber fails here instead of silently mistranslating an operator's error

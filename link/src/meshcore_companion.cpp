@@ -338,15 +338,30 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // operation that already ended. Fail-closed and observable: a verdict, not
     // a silent release.
     //
-    // ONE BUDGET, THREE PHASES, AND ONLY THE LAST HAS AN ACCEPTANCE TO BE
-    // UNSURE ABOUT. `send_busy()` covers a room login outstanding, a text
-    // awaiting RESP_CODE_SENT, and a text awaiting its acknowledgement.
-    // `Unconfirmed` is a claim about the third and only the third: *the node
+    // ONE BUDGET, FOUR PHASES, AND EACH OF THE THREE ANSWERS IS A DIFFERENT
+    // FACT. `send_busy()` covers a contact fetch outstanding, a room login
+    // outstanding, a text awaiting RESP_CODE_SENT, and a text awaiting its
+    // acknowledgement.
+    //
+    // `Unconfirmed` is a claim about the last and only the last: *the node
     // accepted this message and this product cannot tell whether it arrived.*
-    // In the first two the node answered nothing at all, and calling that
-    // "accepted, unconfirmed" would invent an acceptance the wire never gave --
-    // and point the owner away from the resend that is safe there. Those expire
-    // to `Unknown`. ADR-0023 decision 2.
+    //
+    // `Unknown` is for the two in the middle. The node answered nothing, so
+    // calling that "accepted, unconfirmed" would invent an acceptance the wire
+    // never gave -- but a `CMD_SEND_TXT_MSG` or a `CMD_SEND_LOGIN` did leave
+    // this client's ring and may already be on the characteristic, so a resend
+    // may duplicate. That is what `Unknown` says and `Refused` would not.
+    //
+    // `Refused` is the fetch, and it is the one this arm got wrong until #599
+    // round 1. With `awaiting_contact_` up and nothing else, no
+    // `CMD_SEND_TXT_MSG` was ever *built*: `take_fetched_contact()` clears the
+    // flag before `enqueue_private()` runs, so the two are never outstanding
+    // together. Nothing reached the air, a resend cannot duplicate anything,
+    // and that is `Refused` verbatim --
+    // `core/include/attadipa/core/mesh_service.h:55` -- "//                radio after it had already published `Queued`. Nothing reached"
+    // -- which is also what the same fetch answered `ERR_CODE_NOT_FOUND`
+    // already produced. One ground truth, one verdict, whether or not the node
+    // troubled itself to reply. ADR-0023 decision 2 and decision 5.
     if (!send_busy()) {
         op_budget_ = core::Millis{};
     } else if (op_budget_.value == 0 &&
@@ -355,8 +370,9 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
         op_budget_ = kMaxAckWait;
     } else if (op_budget_.value != 0 &&
                core::elapsed(op_since_, now) >= op_budget_) {
-        status_.delivery = awaiting_confirm_ ? core::MeshDelivery::Unconfirmed
-                                             : core::MeshDelivery::Unknown;
+        status_.delivery = awaiting_confirm_  ? core::MeshDelivery::Unconfirmed
+                           : awaiting_contact_ ? core::MeshDelivery::Refused
+                                               : core::MeshDelivery::Unknown;
         end_operation();
     }
     // The receiver hint gets a bound of its own, and it is not the operation's:
@@ -405,8 +421,28 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // Nothing is retried until a first walk has finished, because `dirty_end_at_`
     // is stamped by `settle_snapshot()` and `snapshot_dirty_` only survives a
     // walk that ended.
+    //
+    // AND `!awaiting_contact_` IS PART OF IT. `send_private()` refuses a fetch
+    // while a walk runs, but that is checked once, at the call; this ask
+    // leaves from `tick()` and would otherwise open a walk *after* a fetch is
+    // already outstanding, which is the same exclusion from the other side.
+    // The fetch's reply would then belong to the walk -- see the
+    // `RESP_CODE_CONTACT` arm, which now says so itself -- and the message
+    // would expire `Refused` for no reason the owner did anything about.
+    // Nothing is lost by deferring: the delay is a `>=` re-tested every tick,
+    // and `retries_left_` is spent where the attempt is armed, not here.
+    //
+    // NOT `!send_busy()`, which the battery poll below carries. That would
+    // also stand the re-read down behind a text or a room login, and those
+    // share no frame with it: a `RESP_CODE_SENT` is nobody's contact. It would
+    // additionally make the ordering
+    // `test_an_error_older_than_the_re_read_still_fails_the_send` exists for
+    // unreachable, deleting the only row that proves the untagged-error ladder
+    // ranks a send above a younger re-read. The fetch is the whole overlap, so
+    // the fetch is the whole term.
     if (snapshot_dirty_ && !contacts_open_ && !retry_open_ &&
-        !retry_unanswered_ && !wrong_node_ && retries_left_ > 0 &&
+        !retry_unanswered_ && !wrong_node_ && !awaiting_contact_ &&
+        retries_left_ > 0 &&
         core::elapsed(dirty_end_at_, now) >= kSnapshotRetryDelay) {
         const std::uint8_t contacts[] = {kGetContacts};
         if (enqueue(contacts, sizeof(contacts))) {
@@ -512,7 +548,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1305` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1341` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -1380,9 +1416,23 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     case kResponseContact:
         if (size < 148) { ++malformed_frames_; return false; }
         // A fetch this client asked for by full key, taken before the stream
-        // sees it. The key is what tells them apart, and a walk cannot be
-        // running here: `send_private()` refuses a fetch while one is.
-        if (awaiting_contact_ &&
+        // sees it. The key is what tells them apart -- and the walk terms are
+        // what make that true here rather than two call sites away.
+        //
+        // Both senders of `CMD_GET_CONTACTS` are excluded from overlapping a
+        // fetch: `send_private()` refuses one while a walk runs, and the
+        // re-read in `tick()` stands down while one is outstanding. The
+        // comment that used to sit here asserted the first half and called the
+        // invariant proved; it is an invariant this arm can simply hold, at
+        // the cost of two loads, and an arm that holds its own precondition
+        // does not decay when somebody adds a third sender.
+        //
+        // A WALK WINS THE TIE, and that is the safe direction. A frame arriving
+        // inside one is the walk's by construction, so the snapshot stays whole
+        // and the quiet window keeps being stamped; the fetch waits for its own
+        // reply, or expires, and an expired fetch is `Refused` -- nothing
+        // reached the air and a resend duplicates nothing.
+        if (awaiting_contact_ && !contacts_open_ && !retry_open_ &&
             std::memcmp(&data[1], contact_peer_.public_key.data(),
                         contact_peer_.public_key.size()) == 0) {
             take_fetched_contact(data, size);

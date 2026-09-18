@@ -155,7 +155,11 @@ class FrameDecoder:
 ENVELOPE_BYTES = 10
 CLASS_NODE = 0x01
 CLASS_DEBUG = 0x02
-PROTOCOL_VERSION = 2
+# v3: MeshSend carries the recipient's whole 32-byte public key (#573). The
+# body layout of an existing opcode changed, so a host and a device on either
+# side of it must refuse each other rather than misparse -- see
+# `debug/include/attadipa/debug/protocol.h:79` -- "inline constexpr std::uint8_t kDebugProtocolVersion = 3;".
+PROTOCOL_VERSION = 3
 MAX_BODY = MAX_PAYLOAD - ENVELOPE_BYTES
 
 
