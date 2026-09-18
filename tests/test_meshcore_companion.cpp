@@ -2383,6 +2383,98 @@ int drain_counting_re_reads(MeshCoreCompanion& client)
     return asked;
 }
 
+// ROW 6 OF ADR-0022 §9. `0x83` is not one of the four, and the row exists to
+// say what it *is*: a message waiting behind a contact burst. The snapshot
+// stays consistent and -- the half that matters on the wire -- the drain still
+// happens, because a push folded into a sync that nothing asks for is a
+// message lost to the contact walk.
+void test_a_message_waiting_mid_walk_neither_dirties_nor_is_swallowed()
+{
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(7)));
+
+    // The second contact still arrives and is still stored: the push changed
+    // nothing about the walk it landed in.
+    std::uint8_t second[148]{};
+    second[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i)
+        second[1 + i] = static_cast<std::uint8_t>(0x80 + i);
+    second[33] = 1;
+    std::memcpy(&second[100], "Other", 5);
+    CHECK(client.receive(second, sizeof(second), at(8)));
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(9)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.peer_count() == 2);
+
+    // AND THE MESSAGE IS ASKED FOR, which is the half of this row that is
+    // about the wire. Two CMD_SYNC_NEXT_MESSAGE go out, and the count is
+    // pinned rather than reduced to "at least one" so that a change is
+    // visible: the push found no drain outstanding mid-walk and spent itself
+    // at once, and `end_contacts()` then starts the walk's own drain
+    // unconditionally. The second ask is answered with "no more messages" and
+    // costs one frame; what the row forbids is zero, a message folded into a
+    // sync nothing asked for.
+    MeshCoreFrame frame{};
+    int asks = 0;
+    while (client.next_tx(frame)) {
+        if (frame.size == 1 && frame.bytes[0] == 10) ++asks;
+    }
+    CHECK(asks == 2);
+}
+
+// ROW 13 OF ADR-0022 §9, which is #3403's delivery order read as a rule: a
+// `0x8F` that arrives *after* `END_OF_CONTACTS` did not invalidate the read
+// that already ended. What it makes the published list is stale, and staleness
+// is not inconsistency -- a snapshot that re-read on it would re-read on every
+// contact the node ever deletes.
+void test_a_deletion_after_the_end_is_staleness_not_inconsistency()
+{
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(7)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+
+    const std::uint8_t deleted[] = {0x8F};
+    CHECK(client.receive(deleted, sizeof(deleted), at(8)));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+}
+
+// ROW 19 OF ADR-0022 §9, and the seam with #567. A stream that simply fell
+// quiet is ended by the sweep rather than by a frame, and a lost boundary
+// frame is not evidence the table moved: the sweep's `end_contacts()` is the
+// only end that arrived, and with no invalidating push the snapshot it
+// publishes is consistent.
+void test_a_swept_stream_with_no_push_is_consistent()
+{
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+
+    // Three seconds of silence, and the walk ends without its END_OF_CONTACTS.
+    client.tick(at(6 + 3001));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.peer_count() == 1);
+
+    while (drain_counting_re_reads(client) >= 0) break;
+    client.tick(at(6 + 3001 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+}
+
 // ROW 9 OF ADR-0022 §9: the ordinary recovery, and the cheapest thing the
 // design has to promise -- one extra `CMD_GET_CONTACTS` on the wire, not a
 // poll. The count is the assertion: a re-read that fired twice for one dirty
@@ -3010,6 +3102,9 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_a_message_waiting_mid_walk_neither_dirties_nor_is_swallowed();
+    test_a_deletion_after_the_end_is_staleness_not_inconsistency();
+    test_a_swept_stream_with_no_push_is_consistent();
     test_one_dirty_walk_costs_exactly_one_re_read();
     test_a_table_that_moves_under_every_re_read_ends_degraded();
     test_which_pushes_dirty_a_walk_and_which_only_look_it();
