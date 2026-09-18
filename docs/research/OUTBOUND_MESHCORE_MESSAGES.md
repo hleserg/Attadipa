@@ -128,9 +128,14 @@ direct:  500 + (6.0 × airtime_ms + 250) × (path_hash_count + 1)
 with `SEND_TIMEOUT_BASE_MILLIS 500`, `FLOOD_SEND_TIMEOUT_FACTOR 16.0f`,
 `DIRECT_SEND_PERHOP_FACTOR 6.0f`, `DIRECT_SEND_PERHOP_EXTRA_MILLIS 250`.
 
-So the estimate **grows with the payload and with the hop count**, and the one
-Attadipa observed is at the short, single-hop end of its range. That matters in
-§3, defect 2.
+So the estimate **grows with the payload and with the hop count**, and **neither
+input is known for the one Attadipa observed**. The frame carries the product and
+not its terms: the text's airtime is not in it and `path_hash_count` is not in
+it. 2406 ms is consistent with a short text over several hops and equally with a
+longer one over a single hop — two unknowns, one number, and nothing in the
+capture to separate them. Both are `UNKNOWN`. That matters in §3, defect 2,
+which is argued from the formulas and the product's own 128-byte maximum rather
+than from this observation.
 
 ### 2.3 `PUSH_CODE_SEND_CONFIRMED` (0x82) — nine bytes, and the last four are the node's own round trip
 
@@ -313,9 +318,9 @@ send(recipient: full 32-byte identity,
 | `Queued` | the frame is in this client's transmit ring | the node has it |
 | `Accepted` | `RESP_CODE_SENT` arrived for this request | it was transmitted, or received |
 | `Confirmed` | `PUSH_CODE_SEND_CONFIRMED` matched this request's ack tag | anybody read it |
-| `Unconfirmed` | the ACK budget expired with no match | it failed. **This is the change.** |
-| `Refused` | the node answered `RESP_CODE_ERR`, a login for a room failed, or this client could not put the frame on the radio **after** it had already published `Queued` | anything about the radio |
-| `Unknown` | the session ended after the request was made and before a verdict | it was not sent |
+| `Unconfirmed` | the ACK budget expired with no match, **after** `Accepted` | it failed. **This is the change.** |
+| `Refused` | the node answered `RESP_CODE_ERR`, a login for a room failed, or this client could not put the frame on the radio **after** it had already published `Queued` | that the node declined *this text*, in the third case |
+| `Unknown` | the request was made and no verdict followed: the session ended, or the budget expired **before** `Accepted` — the node having answered neither the text nor the room login | it was not sent |
 
 `Failed` leaves the vocabulary. Nothing that can be observed on this protocol
 licenses it: the only two frames that could are `RESP_CODE_ERR` before the send
@@ -337,6 +342,29 @@ without naming this would leave the path with **no** terminal state at all —
 `awaiting_login_` is already false and `awaiting_send_` was never set, so
 `send_busy()` is false and `tick()`'s expiry arm never runs, and the screen
 would hold `Queued` for the rest of the session.
+
+**One budget, three phases, and only the last of them has an acceptance to be
+unsure about.** `op_budget_` is armed for anything `send_busy()` covers —
+`link/src/meshcore_companion.cpp:287` — "    if (!send_busy()) {" — which is a
+room login outstanding, a text awaiting `RESP_CODE_SENT`, and a text awaiting
+its acknowledgement. `Unconfirmed` is a claim about the third: *the node
+accepted this message and this product cannot tell whether it arrived.* In the
+first two the node answered nothing at all, and saying "accepted, unconfirmed"
+there would invent an acceptance the wire never gave. Those expire to `Unknown`,
+which is the same epistemic position §4.3 describes with a different boundary —
+a timeout rather than a disconnect — and it is the state that leaves an owner
+free to send again, which is right when nothing is known to have reached the
+radio.
+
+**And `Refused` has two producers, which the owner reads the same way and an
+implementer must not.** A verdict the node gave is one. A frame this client
+could not put on the radio after publishing `Queued` is the other, and on the
+room path it lands **after** `Accepted` — which is the defect underneath it:
+`RESP_CODE_SENT` on that path answers `CMD_SEND_LOGIN`, and publishing
+`Accepted` from it claims the node accepted a text it has not been sent yet.
+Only the text's own `RESP_CODE_SENT` means `Accepted`. With that corrected the
+second producer lands on `Queued`, where `Refused` says what it is from the
+owner's side: nothing reached the radio, and a resend cannot duplicate anything.
 
 **A confirmation that arrives after the budget expired upgrades `Unconfirmed`
 to `Confirmed`, while the request is still this session's current one.** §2.4
@@ -373,8 +401,13 @@ for everything except the vocabulary. **No chat database, no history, no durable
 queue, no stored phrases.** Two consequences worth naming so that a later
 implementer does not quietly reintroduce them:
 
-- A result that outlives its session is not retained; it becomes `Unknown` (§4.2)
-  because that is what the session boundary actually establishes.
+- A request **still in flight** when the session ends yields `Unknown` (§4.2,
+  decision 5): that is what the boundary establishes about it. A request the
+  session already settled keeps what it settled on — a `Confirmed` is a verdict
+  the wire gave, and a disconnect afterwards is not evidence against it — and is
+  then simply not retained past the session, like everything else here.
+  `Unknown` is the state of an unfinished request, not a solvent poured over
+  finished ones.
 - Nothing is versioned, so nothing needs migrating. The first slice adds no
   field to any stored structure.
 

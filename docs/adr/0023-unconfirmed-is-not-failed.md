@@ -60,12 +60,17 @@ merely motivating it:
    licenses it. The two frames that could carry a negative outcome are
    `RESP_CODE_ERR` *before* a send is accepted, which is a refusal, and nothing
    at all, which is not evidence of failure.
-2. **An expired acknowledgement budget is `Unconfirmed`.** It means: the node
-   accepted this message, and this product cannot tell whether it arrived. It is
-   not a softer `Failed`; it is a different claim, and it is the strongest one
-   the wire supports.
-2a. **And a confirmation that arrives after the budget expired upgrades it to
-   `Confirmed`**, for as long as the request it matches is still the session's
+2. **An expired acknowledgement budget is `Unconfirmed` — once, and only once,
+   the node has accepted the message.** It means: the node accepted this, and
+   this product cannot tell whether it arrived. It is not a softer `Failed`; it
+   is a different claim, and it is the strongest one the wire supports. The same
+   budget covers two earlier phases — a room login outstanding, and a text
+   awaiting `RESP_CODE_SENT` — where the node has answered nothing. Those expire
+   to `Unknown` by decision 5's reasoning rather than to `Unconfirmed`: there is
+   no acceptance there to be unsure about, and inventing one points the owner
+   away from the resend that is safe.
+   **2a. And a confirmation that arrives after the budget expired upgrades it
+   to `Confirmed`**, for as long as the request it matches is still the session's
    current one. The node has no notion of this client's budget and pushes the
    confirmation whenever its own acknowledgement arrives, so a late match is
    ordinary traffic. A positive proof outranks the absence of one, and
