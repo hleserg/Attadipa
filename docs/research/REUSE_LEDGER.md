@@ -104,6 +104,7 @@ do not close the finding they were written for.
 | [MeshCore #3271](https://github.com/meshcore-dev/MeshCore/pull/3271) | `f80d805e` | **closed, unmerged** | — | the *same commit* as #3270, not merely equivalent |
 | `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22; `12998cba` on 2026-08-24 | — | checked for equivalent guards arriving by another route: **none.** `readFrom` on `dev` is byte-identical to the pin |
 | [MeshCore #3403](https://github.com/meshcore-dev/MeshCore/pull/3403) | `fefc1500` | open, unmerged, base `dev`, opened 2026-09-13; read 2026-09-14 | a `MyMesh::writePushFrame()` in `examples/companion_radio/MyMesh.cpp` and an 8 × `MAX_FRAME_SIZE` FIFO in `MyMesh.h`: async pushes are held while a `CMD_GET_CONTACTS` response is streaming and flushed one per `loop()` pass afterwards. +1,416 bytes RAM on both environments the author built | **ADAPT the failure model, MONITOR the patch, take no code.** It makes the stream contiguous and **not** the snapshot consistent — the table still mutates under the iterator, a full FIFO drops the push a client detects that with, and a deferred push is byte-identical to a fresh one. Command responses are deliberately not deferred, so a client that sends a command mid-read still sees an interleave. Compile-only by the author's own statement. [MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md) §8 is the compatibility matrix and [ADR-0022](../adr/0022-contact-snapshot-consistency.md) decision 9 the decision |
+| [MeshCore #2974](https://github.com/meshcore-dev/MeshCore/pull/2974) | `3ae67848` | open, unmerged, base `dev`, opened 2026-07-17, last updated 2026-08-09; read 2026-09-14. **`mergeable: false`, `mergeable_state: dirty`** | a protocol-v14 push `PACKET_SEND_TX_STATUS` (`0x91`): `[0x91][ack tag:4][status]`, status 0 transmitted, 1 rejected before transmission, 2 completion unknown. A fixed-size correlation table in the companion layer. No LoRa wire change, no ACK or retry change | **MONITOR as compatibility input; take nothing, and plan against nothing.** It adds a *local radio* signal, not delivery evidence: status 2 is explicitly unknown, so it makes "unconfirmed" narrower and can never make it "failed" — which is why [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md) is unchanged either way. Its 20/20 native tests and three representative builds are the author's own statement about somebody else's tree, and none is Attadipa hardware. No maintainer has answered the design proposal on [#1834](https://github.com/meshcore-dev/MeshCore/issues/1834) in the two months since; the last two comments there are both the proposer's. The fleet is pinned on `v1.17.1-d929643` by owner decision, so **no node here would receive it if it merged today** — [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §5 |
 | [Meshtastic firmware#11573](https://github.com/meshtastic/firmware/pull/11573) | `6094d148`, merged as `ac330e6a` | **MERGED 2026-08-23** into `develop`; **not in any release** — `master` does not contain it, and `v2.7.26.54e0d8d` predates it | an `assert()` on a wire-supplied payload length becomes an executable rejection that releases the packet and unwinds the TX state, plus a unit test asserting the rejection | **ADAPT the invariant, IGNORE the code.** GPL-3.0, and a radio stack we do not have. Read-only evidence. What is taken is a sentence and a test *shape*, both restated in our own words on T-013 and T-050 — [MESHCORE_PARSER_BOUNDS §8](MESHCORE_PARSER_BOUNDS.md) |
 
 **Reusable as test material, not as code.** The guards in `05da523e`
@@ -3057,3 +3058,121 @@ of the report, driven through the existing frame-by-frame harness in
 own reasoning being encoded wrongly: a `0x90` inside a stream must leave the
 snapshot **consistent**, and a `0x8F` arriving after `END` — the shape #3403
 produces — must not trigger a re-read of a stream that already ended.
+
+### Sending a message and finding out what became of it
+
+**Problem:** [#552](https://github.com/hleserg/Attadipa/issues/552). This product
+can put a private text message on the air and cannot honestly say what happened
+to it: a budget that expires becomes `Failed`, a word the companion protocol
+cannot support. The recipient must also be addressable beyond the sixteen
+contacts this client happens to have cached, and a coordinate must either travel
+in a shape stock clients understand or not travel at all. The full reading is
+[OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md); this record is the
+reuse half only.
+
+**Projects investigated:**
+
+- `meshcore-dev/MeshCore` at the pin `d92964352441e53b93e8667b802e04f6e072b39e`
+  — `examples/companion_radio/MyMesh.cpp` and `MyMesh.h`,
+  `src/helpers/BaseChatMesh.cpp` and `.h`, `src/helpers/TxtDataHelpers.h`,
+  `src/helpers/UTF8Helpers.h`, `src/MeshCore.h`, and
+  `variants/heltec_t114/platformio.ini`. Not cloned; the eight files were
+  downloaded at that exact SHA and read, 2026-09-14.
+- `meshcore-dev/meshcore_py` at **`1bfd8385`**,
+  `src/meshcore/commands/messaging.py`. **A different revision from the one the
+  table above pins** (`664ba0c9`, 2.3.9.1) and deliberately so: it is the commit
+  #552 named, read on a different date for a different question, and the two
+  agree where they overlap.
+- `meshcore-dev/meshcore.js` at `9e76c514`, `src/connection/connection.js` — the
+  revision already pinned above.
+- [MeshCore PR #2974](https://github.com/meshcore-dev/MeshCore/pull/2974) at
+  `3ae67848`, and [issue #1834](https://github.com/meshcore-dev/MeshCore/issues/1834),
+  both read over the API 2026-09-14. They are in the monitored-deltas table
+  above, not here.
+
+**Useful implementation:** four things, and only one of them is code.
+
+1. **`mesh::validUtf8PrefixLength`** in `src/helpers/UTF8Helpers.h` — forty lines
+   that walk a UTF-8 string and return the length of the longest complete prefix
+   within a byte budget, with the overlong, surrogate and `F4` exclusions
+   handled. It is the exact algorithm §6.3 of the report needs.
+2. **`meshcore_py`'s matching-ACK oracle** — `wait_for_event(EventType.ACK,
+   attribute_filters={"code": exp_ack}, timeout=…)`, where the timeout is the
+   node's own `suggested_timeout / 1000 * 1.2`. The *shape* of that wait, and
+   the fact that a reference client allows **more** than the node's estimate
+   rather than less, is the useful part.
+3. **`meshcore.js`'s frame readers** — `onSentResponse` and
+   `onSendConfirmedPush`, which parse `RESP_CODE_SENT` and
+   `PUSH_CODE_SEND_CONFIRMED` field for field. Written independently of the
+   Python client, which is what makes both layouts corroborated rather than read
+   twice.
+4. **`CMD_GET_CONTACT_BY_KEY` (30)** — eight lines of firmware that resolve a
+   full 32-byte key against the node's whole contact table. Not code to take;
+   a command to start sending.
+
+**License:** MIT for all four sources — the same grant as every other MeshCore
+row above. `validUtf8PrefixLength` is the only one where the licence is doing any
+work, because it is the only one whose *text* would enter this tree if taken
+verbatim, and it will not be: see the decision.
+
+**Strengths:** the firmware is the wire, so it settles every layout question by
+construction. The two clients are independent of each other and of us. The UTF-8
+helper is small, correct on the cases that matter, and already written by people
+who know this protocol.
+
+**Weaknesses:**
+
+1. **`meshcore_py`'s retry policy is the duplicate hazard, shipped.**
+   `send_msg_with_retry` re-sends up to three times on no acknowledgement, and
+   because an acknowledgement can be lost on the return path, each retry may
+   deliver a second copy of a message that arrived. It also re-sends with the
+   **same timestamp**, so the ack tags of successive attempts differ only
+   through `attempt & 3` — and attempt 4 aliases attempt 0 exactly.
+2. **Neither client checks the payload budget.** `send_msg` encodes
+   `msg.encode("utf-8")` with no length test; `sendTextMessage` has none either.
+   Both will hand the node 200 bytes and receive `ERR_CODE_TABLE_FULL`, which
+   says nothing about what went wrong.
+3. **`meshcore.js` resolves a recipient by prefix over a full contact fetch**,
+   returning the *first* match. With a full key available there is no reason to
+   be in that position.
+4. **`validUtf8PrefixLength` has no caller at the pinned revision.** It is dead
+   code upstream, so it carries no evidence of use and no regression cover; the
+   inbound path a few lines away still reads `// TODO: UTF-8 ??`.
+
+**Decision:** `EXTRACT ALGORITHM` for the UTF-8 boundary · `ADAPT` the
+matching-ACK oracle as a **test** shape · **corroboration only** from
+`meshcore.js` · `MONITOR` PR #2974 · **take no code from any of them**, and
+explicitly `REJECT` the retry policy.
+
+**Reason:** the three things this product needs are a vocabulary, a boundary rule
+and a recipient path, and none of them is a body of code. The vocabulary is
+[ADR-0023](../adr/0023-unconfirmed-is-not-failed.md) and is this project's own
+decision. The boundary rule is forty lines whose *behaviour* is worth inheriting
+and whose text is not: it is written for `const char*` C strings inside a
+firmware this product does not link, while this tree's own text handling is
+`std::string_view` over a bounded buffer, and a verbatim copy would import the
+NUL-termination assumption along with the scanner. The recipient path is one
+command, already in the protocol, that this client does not send. What is
+genuinely reusable is the **failure knowledge**: upstream's eight-month-old
+#1834, its own author's analysis in #2974, and `meshcore_py`'s retry loop are
+together the clearest available statement of what goes wrong when a client calls
+an unacknowledged message failed — which is why the retry policy is recorded as
+a rejected candidate rather than simply not copied.
+
+**Source revision:** MeshCore `d92964352441e53b93e8667b802e04f6e072b39e`;
+`meshcore_py` `1bfd8385`; `meshcore.js` `9e76c514`; MeshCore PR #2974 at
+`3ae67848`. Nothing cloned — the named files were read at those exact revisions
+on 2026-09-14.
+
+**Attadipa integration:** none in this issue, which is research-only. The
+contract is [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md) and the
+implementation is a separate executable issue, scoped in §13 of the report.
+
+**Tests required:** when that issue opens — the eighteen host rows in §11.1 of
+the report, driven through the existing frame-by-frame harness in
+`tests/test_meshcore_companion.cpp`. Three of them exist to stop this record's
+own reasoning being encoded wrongly: a budget that expires must not produce
+`Failed`; a late matching acknowledgement must be handled deliberately rather
+than by accident; and the same body sent twice in the same second must be
+asserted to produce the **same** ack tag, so that no correlator is ever written
+as if the tag were unique.
