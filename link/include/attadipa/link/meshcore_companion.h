@@ -138,6 +138,52 @@ public:
     // accordingly.
     bool node_position(core::Position& out, core::MonotonicTime& arrived) const;
 
+    // A COORDINATE A CONTACT PUT IN THE TEXT OF A MESSAGE, and whose it is.
+    // ADR-0021 decision 1 makes this the primary wire for a remote target's
+    // position -- `docs/adr/0021-remote-target-from-a-message.md:60` — "companion already accepts."
+    // The grammar it accepts is §14.2 of the research report and nothing else
+    // is read as a coordinate.
+    //
+    // IT HANDS BACK THE SENDER'S FULL KEY, and that is the whole of how this
+    // stays inside ADR-0021 decision 2, which refuses to let an arriving
+    // coordinate steer the arrow:
+    // `docs/adr/0021-remote-target-from-a-message.md:100` — "would hand the arrow to whoever spoke last"
+    // There is one slot, so the last contact to send a coordinate does
+    // overwrite it -- but a caller that wants contact A's position compares
+    // `who` against A's key and gets `false` when B spoke last, which is the em
+    // dash the navigation readout already draws. What is refused is a caller
+    // that takes the coordinate without looking at `who`; nothing in this tree
+    // does, and the accessor is shaped so that doing it is a visible choice
+    // rather than a default.
+    // One slot is the known ceiling, not an oversight: it becomes a table
+    // keyed by full public key when #304 lets a wearer pick a contact and more
+    // than one of them can matter at the same time.
+    //
+    // The time is when these *bytes* first arrived, not when the message did --
+    // ADR-0021 decision 5 carries ADR-0020 decision 6, and a coordinate that
+    // has not moved has not been re-observed. Nor is it an age at the source:
+    // there is none, and `PositionValidity` stays `NoFix` whatever this says.
+    //
+    // ONE SLOT CANNOT KEEP THAT RULE UNCONDITIONALLY, and this header will not
+    // claim it does. What the single slot implements is the first arrival
+    // since the slot last held these bytes for this sender: with one contact
+    // that is decision 5 exactly, and with two it is not, because B's
+    // coordinate evicts A's and A's identical re-send is then stamped fresh.
+    // `tests/test_meshcore_companion.cpp` walks that denial path in
+    // `test_a_second_peer_restarts_the_first_peers_arrival()`, which passes
+    // against the code as written on purpose: it records the ceiling rather
+    // than a fix, and the fix is the keyed table above -- #304, not this file.
+    //
+    // NOTHING READS THIS YET, AND THAT IS THE STATE THE ISSUE ASKS FOR. #450
+    // gap 5 is the wire and gap 6 is which slot a coordinate fills; the second
+    // is an owner decision and is open. A caller written before it is answered
+    // would be the very thing ADR-0021 decision 2 refuses -- code that picks
+    // the wearer's target on the wearer's behalf -- so the wire is built, the
+    // tests hold it, and the consumer waits for the answer rather than
+    // guessing it.
+    bool remote_position(core::MeshPeerId& who, core::Position& out,
+                         core::MonotonicTime& arrived) const;
+
     // What RESP_CODE_CUSTOM_VARS said about the node's receiver, which is a
     // different question from whether the coordinate is any good. `Unknown`
     // until an answer arrives, and `Unknown` for good on a node that does not
@@ -282,7 +328,10 @@ private:
     void accept_contact(const std::uint8_t* data, std::size_t size);
     void accept_self_position(const std::uint8_t* data, core::MonotonicTime now);
     void accept_custom_vars(const std::uint8_t* data, std::size_t size);
-    bool accept_message(const std::uint8_t* data, std::size_t size, bool v3);
+    bool accept_message(const std::uint8_t* data, std::size_t size, bool v3,
+                        core::MonotonicTime now);
+    void adopt_remote_position(const core::MeshPeer* sender,
+                               core::MonotonicTime now);
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     bool end_contacts(core::MonotonicTime now);
     void settle_snapshot(core::MonotonicTime now);
@@ -420,6 +469,14 @@ private:
     core::Position node_position_{};
     core::MonotonicTime node_position_at_{};
     bool has_node_position_ = false;
+    // The one slot behind `remote_position()`. Session state for the same
+    // reason `node_position_` is: the sender's key came out of this session's
+    // contact table, so it means nothing once that table is rebuilt from
+    // another node.
+    core::MeshPeerId remote_position_id_{};
+    core::Position remote_position_{};
+    core::MonotonicTime remote_position_at_{};
+    bool has_remote_position_ = false;
     core::ReceiverPresence node_receiver_ = core::ReceiverPresence::Unknown;
     // Asked once per session, and tracked only so that the error a node too old
     // for opcode 40 answers with can be told apart from a send's error. All

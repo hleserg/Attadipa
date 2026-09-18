@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "attadipa/apps/mesh.h"
 #include "attadipa/core/mesh_service.h"
@@ -3226,7 +3227,7 @@ void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:776` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1033` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3274,7 +3275,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:536` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:543` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -3356,6 +3357,339 @@ void test_a_misfired_sweep_publishes_a_partial_pair()
     CHECK(client.status().peers_complete);
 }
 
+// A COORDINATE IN A MESSAGE, THROUGH THE FRAME THAT CARRIES IT.
+//
+// Every case here goes in as bytes and comes out of `remote_position()`,
+// because a parser tested on its own proves nothing about the caller: the
+// refusals that matter most in ADR-0021 -- an unresolved sender and a message
+// this receiver truncated -- live in `accept_message`, not in the grammar.
+void deliver_message(MeshCoreCompanion& client, const MeshPeer& peer,
+                     const char* text, std::uint64_t when)
+{
+    std::uint8_t frame[16 + core::kMeshTextBytes + 64]{};
+    frame[0] = 16;  // RESP_CODE_CONTACT_MSG_RECV_V3
+    std::memcpy(&frame[4], peer.id.public_key.data(), 6);
+    const std::size_t length = std::strlen(text);
+    CHECK(16 + length <= sizeof(frame));
+    std::memcpy(&frame[16], text, length);
+    CHECK(client.receive(frame, 16 + length, at(when)));
+}
+
+// A SECOND RESOLVABLE CONTACT, delivered outside a walk on purpose:
+// `RESP_CODE_CONTACT` is routed to `accept_contact()` whatever the stream state,
+// which is how a node announces a contact it learned after the sync finished.
+void add_a_second_contact(MeshCoreCompanion& client, std::uint64_t when)
+{
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i)
+        contact[1 + i] = static_cast<std::uint8_t>(0x80 + i);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Other", 5);
+    CHECK(client.receive(contact, sizeof(contact), at(when)));
+}
+
+// The same frame from a prefix no contact in the table matches.
+void deliver_from_a_stranger(MeshCoreCompanion& client, const char* text,
+                             std::uint64_t when)
+{
+    std::uint8_t frame[16 + core::kMeshTextBytes]{};
+    frame[0] = 16;
+    for (std::size_t i = 0; i < 6; ++i) frame[4 + i] = 0xEE;
+    const std::size_t length = std::strlen(text);
+    std::memcpy(&frame[16], text, length);
+    CHECK(client.receive(frame, 16 + length, at(when)));
+}
+
+bool parsed_to(MeshCoreCompanion& client, const MeshPeer& peer, const char* text,
+               std::uint64_t when, std::int32_t latitude, std::int32_t longitude)
+{
+    deliver_message(client, peer, text, when);
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    if (!client.remote_position(who, position, arrived)) return false;
+    return who == peer.id && position.latitude_e7 == latitude &&
+           position.longitude_e7 == longitude;
+}
+
+void test_a_message_carries_a_coordinate_or_nothing()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(!client.remote_position(who, position, arrived));
+
+    // THE SHAPE §14.2 OBSERVED, in both spacings, and with the sign it never
+    // saw. A parser built only to what was captured drops every southern
+    // coordinate or mirrors it, and does so silently.
+    CHECK(parsed_to(client, peer, "On my way @12.3456,65.4321", 30, 123456000, 654321000));
+    CHECK(parsed_to(client, peer, "Preset @ 55.9821,37.2104", 31, 559821000, 372104000));
+    CHECK(parsed_to(client, peer, "South @-33.8688,-151.2093", 32, -338688000, -1512093000));
+    CHECK(parsed_to(client, peer, "@0.0000,0.0001", 33, 0, 1000));
+    // One to seven decimals, kept as given rather than rounded to the four that
+    // were observed.
+    CHECK(parsed_to(client, peer, "@1.5,2.25", 34, 15000000, 22500000));
+    CHECK(parsed_to(client, peer, "@1.1234567,2.0", 35, 11234567, 20000000));
+
+    // THE LAST MATCH WINS, so a quoted older message cannot steer the arrow.
+    CHECK(parsed_to(client, peer, "was @10.0000,10.0000 now @20.0000,20.0000", 36,
+                    200000000, 200000000));
+
+    // AND A LAST MATCH THAT FAILS A BOUND TAKES NOTHING WITH IT. The earlier,
+    // well-formed coordinate is not promoted: a fallback would reach for a
+    // stale place exactly when the fresh one is malformed.
+    deliver_message(client, peer, "was @10.0000,10.0000 now @91.0000,20.0000", 37);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(position.latitude_e7 == 200000000);  // still #36's, not #37's earlier one
+    CHECK(arrived == at(36));
+
+    // AND NEITHER DOES A LAST MATCH THAT FAILS THE *GRAMMAR*. This is the same
+    // refusal paid for the other way a match can go wrong, and the shape that
+    // arrives in the wild is the sender's own truncation: a cut on or before
+    // the decimal point fails the grammar rather than a bound, so before this
+    // was paid the quoted `10.0000` was published with message #38's fresh
+    // stamp -- a place nobody sent, at a time nobody sent it.
+    deliver_message(client, peer, "was @10.0000,10.0000 now @20.0000,2", 38);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(position.latitude_e7 == 200000000);  // still #36's
+    CHECK(arrived == at(36));
+
+    // A FULL STOP ENDS A SENTENCE, not a number's claim to be one. §14.2 does
+    // not require the coordinate to come last, and a coordinate that is not
+    // last is the one likeliest to carry punctuation.
+    CHECK(parsed_to(client, peer, "@12.3456,65.4321. Буду через час", 39,
+                    123456000, 654321000));
+    CHECK(parsed_to(client, peer, "was @10.0000,10.0000 now @20.0000,20.0000.", 40,
+                    200000000, 200000000));
+
+    // AND AN ANCHORED `@` THAT NEVER BEGAN A NUMBER TAKES NOTHING WITH IT: a
+    // mention is not a coordinate that failed, and the coordinate before it
+    // still stands.
+    CHECK(parsed_to(client, peer, "@12.3456,65.4321 cc @alice", 41,
+                    123456000, 654321000));
+}
+
+void test_a_coordinate_that_is_not_one_is_refused()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+
+    const char* refused[] = {
+        "mail me at hleserg@12.3456,65.4321",  // the sigil must start or follow space
+        "@name is not a place",
+        "@12,65",                    // no decimal point
+        "@12.,65.0",                 // no decimals
+        "@1234.5678,65.4321",        // four integer digits
+        "@12.12345678,65.4321",      // eight decimals
+        "@100000000.0,0.5",          // the overflow §14.2 names by hand
+        "@91.0000,20.0000",          // outside +-90, dropped and never clamped
+        "@20.0000,181.0000",         // outside +-180
+        // THE TWO THAT ONLY A 64-BIT RANGE TEST REFUSES. Both are inside the
+        // grammar -- three integer digits, seven decimals -- and both are out
+        // of range by four and five significant figures. Narrow them to the
+        // `int32` the slot is made of first and they wrap back inside it:
+        // 500.0000000 becomes 70.5032704 degrees of latitude and 999.9999999
+        // becomes 141.0065407 of longitude, each a real place on the globe and
+        // neither one anybody sent. This pair is the whole reason the bounds
+        // are checked before the cast rather than after.
+        "@500.0000000,1.0000000",
+        "@1.0000000,999.9999999",
+        "@0.0000,0.0000",            // exactly the null island
+        "@12.3456;65.4321",          // the separator is a comma
+        "@12.3456,",                 // no second number
+        "@1.2,3.4.5",                // a further digit group still is not one
+    };
+    std::uint64_t when = 40;
+    for (const char* text : refused) {
+        deliver_message(client, peer, text, when++);
+        CHECK(!client.remote_position(who, position, arrived));
+        CHECK(std::strcmp(client.status().last_message.data(), text) == 0);
+    }
+}
+
+// AN UNRESOLVED SENDER MEANS NO TARGET, NOT AN UNNAMED ONE -- ADR-0021
+// decision 2. The text still reaches the screen; what it cannot do is name a
+// place on behalf of nobody.
+void test_a_coordinate_from_nobody_is_dropped()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+
+    deliver_from_a_stranger(client, "@12.3456,65.4321", 50);
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(std::strcmp(client.status().last_message.data(), "@12.3456,65.4321") == 0);
+    CHECK(client.status().last_sender[0] == '\0');
+}
+
+// A MESSAGE OUR OWN RECEIVER CUT YIELDS NOTHING, whatever the remainder parses
+// to. The tail is where the coordinate goes and the tail is what is lost, so
+// what survives is a shorter number that passes every bound -- and is, in the
+// report's worked case, about six hundred and fifty metres wrong.
+void test_a_truncated_message_yields_no_coordinate()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+
+    // 131 bytes into a buffer that keeps 128, so the coordinate loses its last
+    // three characters and nothing else does. `copy_text` keeps `N - 1` where
+    // `N` is `kMeshTextBytes + 1`, which is 128 -- an earlier revision of this
+    // test said 127 and inherited the same error from the report, so the
+    // surviving length is asserted below rather than described.
+    //
+    // 131 is chosen rather than round because it is the *longest* text whose
+    // remainder still parses: at 132 the survivor is `@55.9821,37.` and at 133
+    // it is `@55.9821,37`, and the grammar refuses both for carrying no decimal
+    // place, so either would prove nothing about this guard.
+    std::string text(114, 'x');
+    text += " @55.9821,37.2104";
+    CHECK(text.size() == 131);
+    deliver_message(client, peer, text.c_str(), 60);
+    CHECK(client.status().message_truncated);
+    CHECK(std::strlen(client.status().last_message.data()) == core::kMeshTextBytes);
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(!client.remote_position(who, position, arrived));
+
+    // The mutation this is really guarding: what survived the cut is
+    // `@55.9821,37.2`, which parses, is inside every bound, and is about 650 m
+    // from where the sender is at this latitude.
+    CHECK(std::strstr(client.status().last_message.data(), "@55.9821,37.2") != nullptr);
+    CHECK(std::strstr(client.status().last_message.data(), "37.21") == nullptr);
+}
+
+// A SECOND PEER'S COORDINATE EVICTS THE FIRST, AND THE FIRST IS THEN STAMPED
+// AFRESH. This is the half of ADR-0021 decision 5 that one slot cannot keep:
+// A's third message is identical bytes from an unchanged sender, which the
+// decision calls one observation, and it is stamped 300 anyway because B's
+// coordinate erased the memory of A's. Pinned rather than fixed -- a coordinate
+// per key is #304's stored table, not this branch -- and pinned rather than
+// left implicit, because the comment above the guard used to promise the
+// unconditional rule and this is the case that falsifies it.
+void test_a_second_peer_restarts_the_first_peers_arrival()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer first{};
+    CHECK(client.peer(0, first));
+    add_a_second_contact(client, 90);
+    MeshPeer second{};
+    CHECK(client.peer(1, second));
+    CHECK(!(first.id == second.id));
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+
+    deliver_message(client, first, "@12.3456,65.4321", 100);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == first.id);
+    CHECK(arrived == at(100));
+
+    deliver_message(client, second, "@30.0000,40.0000", 200);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == second.id);
+    CHECK(arrived == at(200));
+
+    // Byte for byte what arrived at 100, from the same sender -- and stamped
+    // 300, because nothing remembers that it was ever here.
+    deliver_message(client, first, "@12.3456,65.4321", 300);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == first.id);
+    CHECK(arrived == at(300));
+}
+
+// THE SAME COORDINATE TWICE IS ONE OBSERVATION. ADR-0021 decision 5 carries
+// ADR-0020 decision 6: arrival is not an age, and re-stamping would make a
+// place look fresher every time its owner said anything about it.
+void test_an_unchanged_coordinate_is_not_re_stamped()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+
+    deliver_message(client, peer, "@12.3456,65.4321", 70);
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(arrived == at(70));
+
+    deliver_message(client, peer, "Still here @12.3456,65.4321", 80);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(arrived == at(70));
+
+    // A coordinate that moved is a new observation and is stamped.
+    deliver_message(client, peer, "@12.3457,65.4321", 90);
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(position.latitude_e7 == 123457000);
+    CHECK(arrived == at(90));
+}
+
+// A DISCONNECT TAKES IT, because the key it is filed under was resolved through
+// a contact table that the next session rebuilds.
+void test_a_reconnect_does_not_inherit_a_contact_coordinate()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    deliver_message(client, peer, "@12.3456,65.4321", 100);
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(client.remote_position(who, position, arrived));
+
+    client.disconnected(at(110));
+    CHECK(!client.remote_position(who, position, arrived));
+}
+
+// AND SO DOES A FORGET, which is the half the session teardown does not cover.
+// `unpin()` clears `wrong_node_` on its way past, so after a forget the other
+// half of the accessor's guard is already open and this flag is the whole of
+// what stops the watch publishing a place it read out of the contact table of a
+// node the owner has just repudiated. The node's own coordinate has been held
+// against exactly this since it once was not; the contact's had nothing.
+void test_forgetting_the_node_withdraws_a_contact_coordinate()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    deliver_message(client, peer, "@12.3456,65.4321", 100);
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(client.remote_position(who, position, arrived));
+
+    // Bound first, so the forget is the one the owner performs rather than a
+    // no-op on an unpinned session: `unpin()` returns true only when there was
+    // a pin to clear, and the coordinate must go either way.
+    client.pin(client.status().node_id);
+    CHECK(client.unpin());
+    CHECK(!client.remote_position(who, position, arrived));
+}
+
 int main()
 {
     test_typed_battery_failure_does_not_create_err_ambiguity();
@@ -3378,6 +3712,14 @@ int main()
     test_an_error_older_than_the_re_read_still_fails_the_send();
     test_a_re_read_does_not_unname_a_sender_mid_walk();
     test_a_re_reads_end_spends_no_drain_on_a_full_ring();
+    test_a_message_carries_a_coordinate_or_nothing();
+    test_a_coordinate_that_is_not_one_is_refused();
+    test_a_coordinate_from_nobody_is_dropped();
+    test_a_truncated_message_yields_no_coordinate();
+    test_a_second_peer_restarts_the_first_peers_arrival();
+    test_an_unchanged_coordinate_is_not_re_stamped();
+    test_a_reconnect_does_not_inherit_a_contact_coordinate();
+    test_forgetting_the_node_withdraws_a_contact_coordinate();
     test_a_misfired_sweep_publishes_a_partial_pair();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();
