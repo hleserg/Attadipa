@@ -161,6 +161,24 @@ that has it and on one that does not.
 - The client gains a bounded retry, and therefore a new way to spend commands and
   radio time. The cost in latency and power is unmeasured and stays `UNKNOWN`
   until someone measures it.
+- **On the one node this project has measured, the upper bound of that cost is
+  the normal case, not the worst one.** Decision 1b lets a re-read commit only
+  on the node's own `RESP_CODE_END_OF_CONTACTS`, and that is the frame the
+  measured bench drops — `firmware/main/meshcore_ble.cpp:1017` — "            // sessions out of three -- it is the last frame of the burst, so it"
+  — because it is the last frame of a 234-frame burst and the overrun reaches
+  the end of a burst first. A re-read is the same burst again. So on that node
+  a dirty walk spends attempt one, spends attempt two, and ends `degraded` with
+  the list it already had, every time, by construction: both attempts are
+  always spent and neither can ever commit. Before 1b the sweep committed and
+  a session usually stopped after one.
+
+  The stale list is still the safe direction and this does not change it. What
+  is recorded here is the price, so that the next reader finds it written down
+  rather than derives it: decision 6's second `CMD_GET_CONTACTS` always goes
+  out and always re-streams ~234 frames through the queue that is dropping
+  them. It is a reason to raise `kSnapshotRetries` toward zero rather than away
+  from it, and a reason the airtime above is `UNKNOWN` about a case that is
+  routine rather than rare.
 - Detection remains incomplete on purpose: a second client's
   `CMD_REMOVE_CONTACT` or `CMD_ADD_UPDATE_CONTACT` mutates the table silently, and
   no client-side contract can see it. What is promised is that nothing is ever

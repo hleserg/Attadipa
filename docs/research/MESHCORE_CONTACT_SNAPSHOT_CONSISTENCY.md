@@ -565,7 +565,10 @@ asserts that unrelated events survived.
 | 17 | dirty → retry `START` → `RESP_CODE_CONTACT_MSG_RECV` from A → retry `END` | **`last_sender` still names A**, from the shadow copy; `Availability::Ready` never drops; the `retained/reported` pair never counts up from zero |
 | 18 | dirty → retry `START` → retry `END`, with the TX ring full | **no second `CMD_SYNC_NEXT_MESSAGE`**; `malformed_frames` unchanged; `draining_since_` not reset |
 | 19 | a stream ended by the #567 quiet sweep, with no invalidating push | consistent, no retry — the sweep's `end_contacts()` is the only end that arrived, and a lost boundary frame is not evidence the table moved |
-| 20 | dirty → retry `START` → one contact → **no `END`**, swept quiet | **the first walk's list still published**, `peers_retained` unchanged, snapshot back to dirty and a second attempt ten seconds later; the second sweep ends the session degraded with that same older list |
+| 20 | dirty → retry `START` → one contact → **no `END`**, swept quiet | **the first walk's list still published**, `peers_retained` unchanged, snapshot back to dirty and a second attempt ten seconds later; the second sweep ends the session degraded with that same older list. On the measured node this is the only outcome a dirty walk has — see below the table |
+| 21 | the swept walk's `END` arriving late, with a budget left | the next attempt is still ten seconds from the **sweep**, not from the stale frame: a walk this client wrote off may not move the clock the walk that replaces it is measured from |
+| 22 | the swept walk's `END` arriving after the last attempt is armed and before the node answers it | the snapshot stays `retry pending`; `degraded` is the right end for the session and not the right end *yet*, and the attempt still in the air may still commit |
+| 23 | the node volunteers a `START` after the budget is spent | that walk owns its own frames: the swept bit is cleared by any `START`, so its rows and its `END` are a first walk's in every sense |
 
 Case 14 is the regression risk the whole design has to be checked against: the
 retry adds a command to a queue whose error attribution is order-based, and
@@ -585,6 +588,16 @@ truncated staging committed over it converts a suspicion of staleness into a
 certainty of loss, and publishes the result as `consistent`. The swept re-read
 therefore abandons its staging and restores the dirty bit its own
 `RESP_CODE_CONTACTS_START` optimistically cleared.
+
+**And on the measured node, row 20 is not a case — it is the only outcome.**
+The frame a re-read must have before it may commit is the one the bench drops:
+`firmware/main/meshcore_ble.cpp:1017` — "            // sessions out of three -- it is the last frame of the burst, so it".
+A re-read is the same 234-frame burst, so a dirty walk there spends both
+attempts and ends `degraded` with the older list every time. Row 20's "a second
+attempt ten seconds later" is therefore not the unlucky branch on that node; it
+is the branch, and the full two-attempt budget is always spent. The safe
+direction is unchanged, and the cost — two full bursts through a queue already
+overrunning — is what row 20 did not say and now does.
 
 ---
 

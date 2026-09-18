@@ -1387,6 +1387,29 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             finish_retry(now, true);
             break;
         }
+        // AND THE BOUNDARY FRAME OF A SWEPT RE-READ HAS NO OWNER EITHER. The
+        // rule is the one `accept_contact()` applies at `:608` -- a frame of a
+        // walk the sweep abandoned belongs to nobody -- and it was applied to
+        // the rows and not to the frame that ends them. `retry_open_` is false
+        // by then, because the sweep cleared it, so this `END` fell through to
+        // the arm below and was read as a *first* walk's.
+        //
+        // Both shapes of that are wrong about a walk this client has already
+        // written off. With a budget left, `settle_snapshot()` re-stamps
+        // `dirty_end_at_` and pushes the next attempt up to a full
+        // `kSnapshotRetryDelay` away. With the budget spent, it publishes
+        // `Degraded` while attempt two is still outstanding and may yet
+        // succeed -- and nothing puts `RetryPending` back, because that is
+        // assigned only where an attempt is armed.
+        //
+        // NOT COUNTED MALFORMED, for the same reason the dropped rows are not:
+        // the node is answering a question this client asked and then stopped
+        // trusting. Any `START` clears `retry_swept_` -- `:1323` -- so a walk
+        // that begins after this one, including the node's own, owns its
+        // frames again.
+        if (retry_swept_) {
+            break;
+        }
         status_.peers_complete = true;
         if (!end_contacts(now)) {
             ++malformed_frames_;

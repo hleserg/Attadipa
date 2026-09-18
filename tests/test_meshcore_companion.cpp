@@ -3448,6 +3448,187 @@ void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
     CHECK(client.malformed_frames() == 0);
 }
 
+// THE OTHER HALF OF THE SWEPT WALK: ITS `END`, WITH A BUDGET STILL LEFT. The
+// abandoned walk's rows were already unowned; its boundary frame was not, and
+// fell through to the first-walk arm. `settle_snapshot()` there re-stamps
+// `dirty_end_at_`, which is the clock the next attempt is measured from -- so
+// a walk this client had written off could push the attempt that replaces it
+// up to a full ten seconds further away, once per late `END`.
+//
+// The assertion is the attempt, not a flag: tick at exactly the ten seconds
+// after the sweep, and attempt two must be in the ring. With the stamp moved
+// it is not, and nothing else in the class says so.
+void test_a_swept_walks_late_end_does_not_delay_the_next_attempt()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    std::uint64_t when = 8 + 10001;
+    client.tick(at(when));
+    CHECK(drain_counting_re_reads(client) == 1);
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(++when)));
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Renamed", 7);
+    CHECK(client.receive(contact, sizeof(contact), at(++when)));
+
+    when += 3000;  // kContactsQuiet: attempt one is swept, one attempt left.
+    client.tick(at(when));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    const std::uint64_t swept_at = when;
+    while (client.next_tx(frame)) {
+    }
+
+    // The node was not quiet, only slow. Its `END` for the walk that was
+    // abandoned arrives a second later and is worth nothing: the staging it
+    // would end is already discarded and the published set belongs to the walk
+    // before it.
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(swept_at + 1000)));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    CHECK(client.status().peers_retained == 1);
+    MeshPeer kept{};
+    CHECK(client.peer(0, kept));
+    CHECK(std::strcmp(kept.name.data(), "Peer") == 0);
+
+    // Ten seconds from the sweep, not from the stale frame.
+    client.tick(at(swept_at + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+}
+
+// AND IN THE WINDOW WHERE ATTEMPT TWO IS ASKED FOR BUT NOT YET ANSWERED, THE
+// SAME FRAME PUBLISHED A VERDICT OVER A REQUEST STILL IN THE AIR. Arming
+// attempt two spends the last of the budget and publishes `RetryPending`;
+// until the node's `START` comes back, `retry_open_` is false and
+// `retry_swept_` is still set, so attempt one's late `END` fell through to the
+// first-walk arm. `settle_snapshot()` with `retries_left_` at zero writes
+// `Degraded` there -- a terminal verdict about a session whose last attempt
+// had not been answered -- and nothing puts `RetryPending` back, because that
+// is assigned only where an attempt is armed.
+//
+// `Degraded` is the right end for this session; it is not the right end *yet*,
+// and the difference is a whole re-read the wearer's list could have come from.
+void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    std::uint64_t when = 8 + 10001;
+    client.tick(at(when));
+    CHECK(drain_counting_re_reads(client) == 1);
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(++when)));
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Renamed", 7);
+    CHECK(client.receive(contact, sizeof(contact), at(++when)));
+    when += 3000;  // attempt one is swept; one attempt left.
+    client.tick(at(when));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    while (client.next_tx(frame)) {
+    }
+
+    // Attempt two is asked for. The budget is now spent, and the node has said
+    // nothing yet: this is the window the finding is about.
+    when += 10001;
+    client.tick(at(when));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    // Attempt one's `END`, thirteen seconds late -- which is what a bounded
+    // transport queue stalling mid-iteration looks like from here.
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(++when)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+    CHECK(client.malformed_frames() == 0);
+
+    // And attempt two then succeeds, which it could not have been credited for
+    // from a session already published as terminal. The name is the proof that
+    // the commit happened rather than the state merely being repaired.
+    CHECK(client.receive(start, sizeof(start), at(++when)));
+    CHECK(client.receive(contact, sizeof(contact), at(++when)));
+    CHECK(client.receive(end, sizeof(end), at(++when)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    MeshPeer committed{};
+    CHECK(client.peer(0, committed));
+    CHECK(std::strcmp(committed.name.data(), "Renamed") == 0);
+}
+
+// `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
+// line that does it -- `link/src/meshcore_companion.cpp:1323` -- "        retry_swept_ = false;"
+// -- was uncovered: every `START` after a sweep in the suite was attempt two's,
+// where `retry_open_` is set three lines later and makes the guard inert either
+// way. The shape that needs it is a walk the node starts on its own, after the
+// budget is spent and no attempt will ever be armed again. Without the clear,
+// this client would drop that walk's rows and its `END` for the rest of the
+// session -- which is the failure the guard added for the swept tail could
+// create, so it is asserted rather than assumed.
+void test_a_node_started_walk_after_the_budget_owns_its_frames()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    std::uint64_t when = 8;
+    for (int attempt = 1; attempt <= 2; ++attempt) {
+        when += 10001;
+        client.tick(at(when));
+        CHECK(drain_counting_re_reads(client) == 1);
+        const std::uint8_t start[] = {2, 2, 0, 0, 0};
+        CHECK(client.receive(start, sizeof(start), at(++when)));
+        std::uint8_t contact[148]{};
+        contact[0] = 3;
+        for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+        contact[33] = 1;
+        std::memcpy(&contact[100], "Renamed", 7);
+        CHECK(client.receive(contact, sizeof(contact), at(++when)));
+        when += 3000;
+        client.tick(at(when));
+        while (client.next_tx(frame)) {
+        }
+    }
+    CHECK(client.status().snapshot == core::MeshSnapshot::Degraded);
+    CHECK(client.status().peers_retained == 1);
+
+    // The node volunteers a fresh walk. Nothing armed it, so `retry_unanswered_`
+    // is false and this is a first walk in every sense the class has: it
+    // replaces the published set as it streams.
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(++when)));
+    std::uint8_t fresh[148]{};
+    fresh[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) fresh[1 + i] = static_cast<std::uint8_t>(i + 65);
+    fresh[33] = 1;
+    std::memcpy(&fresh[100], "Volunteered", 11);
+    CHECK(client.receive(fresh, sizeof(fresh), at(++when)));
+    CHECK(client.peer_count() == 1);
+    MeshPeer seen{};
+    CHECK(client.peer(0, seen));
+    CHECK(std::strcmp(seen.name.data(), "Volunteered") == 0);
+
+    // And its `END` is its own: it completes, and it is not counted malformed.
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(++when)));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.malformed_frames() == 0);
+}
+
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
@@ -4499,6 +4680,9 @@ int main()
     test_a_refused_send_does_not_erase_the_previous_verdict();
     test_a_room_login_keeps_the_request_id_its_caller_was_given();
     test_a_zero_tag_does_not_confirm_a_settled_unconfirmed();
+    test_a_swept_walks_late_end_does_not_delay_the_next_attempt();
+    test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt();
+    test_a_node_started_walk_after_the_budget_owns_its_frames();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
