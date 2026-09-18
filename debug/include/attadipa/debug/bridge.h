@@ -229,7 +229,13 @@ public:
     // returned would be either a spurious success or a spurious failure for
     // whichever sink forgot to override it.
     virtual MeshSinkResult forget_bond_outcome() = 0;
-    virtual MeshSinkResult send(const std::uint8_t peer_prefix[6],
+    // THE WHOLE KEY, LIKE `send_room` BESIDE IT. A six-byte prefix used to come
+    // through here and be resolved against the sixteen contacts this watch
+    // retains, which made a retention policy into an address-book limit and
+    // resolved a prefix by first match. Both are refused by #573: the node is
+    // asked by full key, and a prefix is what the MeshCore frame carries and
+    // nothing above it.
+    virtual MeshSinkResult send(const std::uint8_t peer_key[32],
                                 const char* text, std::size_t text_length,
                                 std::int64_t utc_seconds) = 0;
     virtual MeshSinkResult send_room(const std::uint8_t room[32],

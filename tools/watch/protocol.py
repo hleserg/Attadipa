@@ -460,15 +460,23 @@ def mesh_configure_encode(passkey: int) -> bytes:
     return struct.pack("<I", passkey)
 
 
-def mesh_send_encode(peer_prefix: bytes, text: str, utc_seconds: int) -> bytes:
+def mesh_send_encode(peer_key: bytes, text: str, utc_seconds: int) -> bytes:
+    """The whole recipient key, as `mesh_room_send_encode` has always taken.
+
+    It was a six-byte prefix until #573, and the watch resolved that prefix
+    against the sixteen contacts it retains -- so a recipient the node knew and
+    the watch had not cached could not be addressed at all, and a prefix
+    collision was resolved by first match. Both are refused now: the watch asks
+    the node by full key.
+    """
     encoded = text.encode("utf-8")
-    if len(peer_prefix) != 6:
-        raise ValueError("MeshCore peer prefix must be exactly 6 bytes")
+    if len(peer_key) != 32:
+        raise ValueError("MeshCore peer public key must be exactly 32 bytes")
     if not encoded or len(encoded) > 160:
         raise ValueError("MeshCore message must be 1..160 UTF-8 bytes")
     if not -(1 << 63) <= utc_seconds < (1 << 63):
         raise ValueError("utc_seconds must fit in a signed 64-bit integer")
-    return peer_prefix + struct.pack("<q", utc_seconds) + encoded
+    return peer_key + struct.pack("<q", utc_seconds) + encoded
 
 
 def mesh_room_send_encode(room: bytes, password: str, text: str,

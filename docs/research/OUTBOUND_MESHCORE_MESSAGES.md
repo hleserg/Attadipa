@@ -65,7 +65,7 @@ two of them touched this file. All five claims hold.
 | `send_private()` returns only `bool` | held — `core/include/attadipa/core/mesh_service.h` at `40271f5` — "virtual bool send_private(const MeshPeerId& peer". Since [#573](https://github.com/hleserg/Attadipa/issues/573) it returns `MeshSendResult` |
 | one global `delivery`, no message ID, no recipient | holds — `core/include/attadipa/core/mesh_service.h:198` — "MeshDelivery delivery = MeshDelivery::None;" |
 | an expired ACK budget becomes `Failed` | held — `link/src/meshcore_companion.cpp` at `40271f5` — "status_.delivery = core::MeshDelivery::Failed;". Since [#573](https://github.com/hleserg/Attadipa/issues/573) it is `Unconfirmed`, or `Unknown` before `Accepted` |
-| send resolves by 6-byte prefix in the retained window only | holds — `firmware/main/meshcore_ble.cpp:1371` — "requested contact prefix is not in retained chat contacts" |
+| send resolves by 6-byte prefix in the retained window only | held — `firmware/main/meshcore_ble.cpp` at `40271f5` — "requested contact prefix is not in retained chat contacts". Since [#573](https://github.com/hleserg/Attadipa/issues/573) the whole key crosses the boundary and the provider asks the node, so §8.1's ceiling is gone |
 
 What the nine commits did change nearby: [#478](https://github.com/hleserg/Attadipa/issues/478)
 put a length floor on the `PUSH_CODE_SEND_CONFIRMED` arm, and
@@ -150,7 +150,7 @@ than from this observation.
 
 This repository already holds one of these frames, captured on the bench and
 committed. The four bytes it deliberately declined to interpret —
-`link/src/meshcore_companion.cpp:1527` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
+`link/src/meshcore_companion.cpp:1542` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
 reads the ack and stops — are a millisecond count:
 
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298` — "82 38 66 6c b8 1b 03 00 00"
@@ -159,7 +159,7 @@ reads the ack and stops — are a millisecond count:
 two frames earlier,
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:296` — "06 00 38 66 6c b8 66 09 00 00",
 carries `66 09 00 00` = **2406 ms** of estimate, which
-`link/include/attadipa/link/meshcore_companion.h:254` — "static constexpr core::Millis kMaxAckWait{15000};"
+`link/include/attadipa/link/meshcore_companion.h:255` — "static constexpr core::Millis kMaxAckWait{15000};"
 already records in its own comment.
 
 **What decoding them adds, and what it does not.** The bytes were `MEASURED`
@@ -311,16 +311,26 @@ send(recipient: full 32-byte identity,
 
 - **Full 32-byte identity at the app/core boundary.** The six-byte prefix is
   what the adapter writes into `CMD_SEND_TXT_MSG` and must not be what an
-  application holds — `link/src/meshcore_companion.cpp:1913` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
+  application holds — `link/src/meshcore_companion.cpp:2022` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
   is where the narrowing belongs and is already where it happens.
 - **A local request id, and the word "local" is the contract.** Non-zero so
   that zero means "no request"; monotonic within a session; explicitly **not**
   the node's ack tag, which §2.5 shows is a hash that can repeat. The id is what
   a result is delivered against.
 - **A refusal is not a delivery state.** "The link is down", "a send is already
-  in flight", "the body is over budget", "the recipient is not resolvable" are
-  answers to the *call*, and none of them is a statement about a message,
-  because no message exists. All four arrived as `false`, and one of them
+  in flight", "the body is over budget" are answers to the *call*, and none of
+  them is a statement about a message, because no message exists.
+
+  **"The recipient is not resolvable" was in that list and does not belong in
+  it.** It is knowable at the call only where resolution is local, and §8 is the
+  argument that it must not be: the watch caches sixteen contacts and the node
+  holds hundreds, so the honest answer to a key the cache does not have is a
+  question for the node, which takes a round trip. A request has been made by
+  then. `Refused` is what the node's `ERR_CODE_NOT_FOUND` produces, and it is
+  the same shape a wrong room password already had — knowable only on the wire,
+  so a delivery state and not a refusal. What *is* a call refusal is
+  `ContactsBusy`: a contacts walk owns the response code the lookup's reply
+  would arrive on, and the remedy is to wait. All four arrived as `false`, and one of them
   additionally as a `Failed` written by
   `link/include/attadipa/link/meshcore_companion.h` at `40271f5` — "void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }".
   [#573](https://github.com/hleserg/Attadipa/issues/573) made each refusal a
@@ -351,7 +361,7 @@ of `Failed` an earlier draft of this report did not enumerate.** A room send is
 one call in two phases: `send_room()` publishes `Queued` and returns `true`
 while `CMD_SEND_LOGIN` is outstanding, and the text frame is enqueued later,
 from the `PUSH_CODE_LOGIN_SUCCESS` arm —
-`link/src/meshcore_companion.cpp:1593` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
+`link/src/meshcore_companion.cpp:1608` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
 If the four-deep ring is full at that moment the enqueue fails, and the call
 that would have reported it returned `true` a second ago. So decision 3's rule
 — a local refusal is not a delivery state, because no message exists — does not
@@ -631,7 +641,7 @@ blocker.
 
 ### 8.1 The window is a cache, and the node is the address book
 
-`link/include/attadipa/link/meshcore_companion.h:233` — "static constexpr std::size_t kRetainedPeers = 16;"
+`link/include/attadipa/link/meshcore_companion.h:234` — "static constexpr std::size_t kRetainedPeers = 16;"
 is what the watch keeps. What the node holds, at the pin, on the T114 companion
 environment, is **350 slots** — `variants/heltec_t114/platformio.ini` sets
 `-D MAX_CONTACTS=350` for all four `Heltec_t114*_companion_radio_*` envs,
@@ -640,12 +650,16 @@ hypothetically full:
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:637` — "7b, its contact list grown to 233. 20 `RESP_CODE_CONTACTS_START`, 19 complete".
 
 **Sixteen of two hundred and thirty-three.** The retained window is not an
-address book with a small limit; it is a seven-per-cent sample of one, and
-today it is also the only thing a send can address:
-`firmware/main/meshcore_ble.cpp:1371` — "requested contact prefix is not in retained chat contacts".
+address book with a small limit; it is a seven-per-cent sample of one, and it
+used to be the only thing a send could address — the worker walked the sixteen
+for a six-byte prefix and refused anything it did not find, in a first-match
+loop that is both of §8.3's refusals at once.
 
 This resolves the #552 requirement directly: **a runtime retention policy must
-not become a product address-book limit**, and at present it is one.
+not become a product address-book limit.** It was one until
+[#573](https://github.com/hleserg/Attadipa/issues/573), which deleted the
+lookup from the worker and made the provider ask the node — `firmware/main/meshcore_ble.cpp:1355` — "    const auto result = service.send_private("
+— with the whole key the debug boundary now carries.
 
 ### 8.2 `CMD_GET_CONTACT_BY_KEY` (30) is the right instrument and is not free
 
@@ -673,9 +687,28 @@ reasons the command is a design task and not a one-line addition:
    decides a stream has ended is refreshed by any `RESP_CODE_CONTACT`.
 
 So the resolution path is: a full identity from wherever the UI got it →
-`CMD_GET_CONTACT_BY_KEY` → the six-byte prefix for the send → refuse if the node
-says `ERR_CODE_NOT_FOUND`. The correlation the fetch needs is a *pending-fetch
-flag* the `RESP_CODE_CONTACT` arm consults, which does not exist yet.
+`CMD_GET_CONTACT_BY_KEY` → the send → refuse if the node says
+`ERR_CODE_NOT_FOUND`. The correlation the fetch needs is a *pending-fetch flag*
+the `RESP_CODE_CONTACT` arm consults, which does not exist yet.
+
+**Built by [#573](https://github.com/hleserg/Attadipa/issues/573), and each
+hazard answered by a different mechanism** — which is why the paragraph above
+was right that it is not a one-line addition. The flag is `awaiting_contact_`,
+and the arm consults it *and the key* before deciding which of the two meanings
+the frame has:
+`link/src/meshcore_companion.cpp:1385` — "        if (awaiting_contact_ &&". Hazard 1
+is answered by that branch taking the frame out before `accept_contact()` sees
+it, so a fetched contact never enters the window and never competes for its
+sixteen slots. Hazard 2 is answered by giving the fetch its own copy of the
+type test: the walk's guard still drops a non-chat advert in silence, which is
+right for a cache, and the fetch reports it as `Refused` —
+`link/src/meshcore_companion.cpp:1924` — "    if (data[33] != kAdvertTypeChat) {". Hazard
+3 is answered by *exclusion* rather than by a mechanism: a fetch cannot begin
+while a walk or a re-read is outstanding, because `ContactsBusy` refuses the
+call, so no reply can arrive mid-walk to refresh its quiet window. That is worth
+naming, because a test written against hazard 3 directly passes with the fetch
+branch removed — the situation it describes is unreachable — and a test that
+passes without exercising anything is worse than no test.
 
 ### 8.3 Three refusals
 
@@ -755,8 +788,16 @@ harness, which delivers bytes to `receive()` rather than calling internals.
 | 17 | `RESP_CODE_ERR` with `ERR_CODE_TABLE_FULL` | not reported to the owner as "the node is full" — §2.1 point 4 |
 | 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1478` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
 
+| 19 | a send to a key the retained window does not hold | `CMD_GET_CONTACT_BY_KEY` goes out with the whole key, and the call publishes `Queued` rather than refusing — §8.1 |
+| 20 | the node answers that fetch with `RESP_CODE_CONTACT` | the text is sent, and the contact is **not** appended to the retained window — §8.2 hazard 1 |
+| 21 | the node answers with an advert type that is not chat | `Refused`, reported rather than absorbed — §8.2 hazard 2 |
+| 22 | the node answers `ERR_CODE_NOT_FOUND`, or never answers | `Refused` for the first, `Unknown` on the budget for the second — §4.1's fourth refusal is a delivery state, not a call refusal |
+| 23 | a send to an unheld key while a contacts walk or a re-read is outstanding | `ContactsBusy`, a *call* refusal, and the walk is untouched — §8.2 hazard 3 |
+
 Rows 11, 12 and 18 are the ones this research exists to produce. A test suite
-without them can pass while the product lies.
+without them can pass while the product lies. Rows 19 to 23 were added when §8
+was implemented; row 23 is the one that makes hazard 3 unreachable rather than
+handled, so it is the test that has to exist *instead* of a direct one.
 
 ### 11.2 Simulator and replay
 

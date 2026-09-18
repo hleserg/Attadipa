@@ -43,9 +43,9 @@ attadipa::firmware::PasskeyOutcome
 meshcore_ble_passkey_outcome(std::uint32_t ticket);
 
 bool stop_meshcore_ble();
-bool meshcore_ble_send(const std::array<std::uint8_t, 6>& peer_prefix,
-                       std::string_view text,
-                       attadipa::core::WallTime timestamp);
+bool meshcore_ble_send(
+    const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& peer_key,
+    std::string_view text, attadipa::core::WallTime timestamp);
 bool meshcore_ble_send_room(
     const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& room,
     std::string_view password, std::string_view text,

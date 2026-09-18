@@ -674,14 +674,15 @@ def mesh_commands_are_validated_and_a_send_is_not_retried() -> None:
     watch.mesh_configure(123456)
     watch.mesh_disconnect()
     watch.mesh_forget_bond()
-    watch.mesh_send(bytes.fromhex("010203040506"), "Hello", 1234567890)
+    watch.mesh_send(bytes.fromhex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"), "Hello", 1234567890)
     watch.mesh_room_send(bytes.fromhex("00" * 32), "pass", "Hello", 1234567890)
     check(device.asked == [
         (p.Op.MESH_CONFIGURE, bytes.fromhex("40e20100")),
         (p.Op.MESH_DISCONNECT, b""),
         (p.Op.MESH_FORGET_BOND, b""),
         (p.Op.MESH_SEND,
-         bytes.fromhex("010203040506d202964900000000") + b"Hello"),
+         bytes.fromhex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20") +
+         bytes.fromhex("d202964900000000") + b"Hello"),
         (p.Op.MESH_ROOM_SEND,
          bytes.fromhex("00" * 32) + b"\x04pass" +
          bytes.fromhex("d202964900000000") + b"Hello"),
@@ -690,12 +691,16 @@ def mesh_commands_are_validated_and_a_send_is_not_retried() -> None:
     silent_device = ScriptedDevice(lambda e: [])
     silent = Watch(silent_device, timeout=0.0)
     check_raises(WatchError, "a lost send acknowledgement is reported",
-                 lambda: silent.mesh_send(bytes.fromhex("010203040506"),
+                 lambda: silent.mesh_send(bytes.fromhex("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
                                           "Hello", 1234567890))
     check(len(silent_device.asked) == 1,
           "and the non-idempotent MeshCore send is not retried")
-    check_raises(WatchError, "a short peer prefix is refused before the wire",
-                 lambda: watch.mesh_send(b"short", "Hello", 1234567890))
+    # A six-byte prefix is exactly what this opcode used to take, so it is the
+    # short key worth naming: a caller that did not follow #573 fails here
+    # rather than addressing whichever contact shares those six bytes.
+    check_raises(WatchError, "a peer prefix where a whole key belongs is refused before the wire",
+                 lambda: watch.mesh_send(bytes.fromhex("010203040506"),
+                                         "Hello", 1234567890))
     check_raises(WatchError, "a Room Server password over 15 bytes is refused before the wire",
                  lambda: watch.mesh_room_send(bytes(32), "0123456789abcdef",
                                                "Hello", 1234567890))
@@ -1128,7 +1133,7 @@ def a_gesture_longer_than_the_device_will_hold_is_refused() -> None:
     # host declining to enforce a bound it was not given: a check that fired
     # on it would refuse every gesture against a device that had not answered
     # the question. It is NOT the device promising an unbounded hold -- the
-    # bridge reads 0 as expire-immediately -- `debug/src/bridge.cpp:877` --
+    # bridge reads 0 as expire-immediately -- `debug/src/bridge.cpp:880` --
     # "now_ms - pointer_down_at_ > limits_.max_hold_ms) {" -- so the
     # assertion below is about this tool and says so.
     events, _ = _gesture_schedule([(10, 10), (60, 80)], 2.0, max_hold_ms=2000)

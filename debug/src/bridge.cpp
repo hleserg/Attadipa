@@ -298,7 +298,10 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         return;
     }
     case Opcode::MeshSend: {
-        constexpr std::size_t kHeader = 6 + 8;
+        // 32-byte recipient, then the timestamp. It was six bytes until #573;
+        // `MeshRoomSend` below has always carried a whole key and these two are
+        // the same shape now.
+        constexpr std::size_t kHeader = 32 + 8;
         if (mesh_sink_ == nullptr) {
             send_error(envelope.req_id, ErrorCode::Unsupported, emit, ctx);
             return;
@@ -309,7 +312,7 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         }
         std::uint64_t raw_timestamp = 0;
         for (std::size_t i = 0; i < 8; ++i) {
-            raw_timestamp |= static_cast<std::uint64_t>(body[6 + i]) << (8 * i);
+            raw_timestamp |= static_cast<std::uint64_t>(body[32 + i]) << (8 * i);
         }
         const MeshSinkResult result = mesh_sink_->send(
             body, reinterpret_cast<const char*>(body + kHeader),
