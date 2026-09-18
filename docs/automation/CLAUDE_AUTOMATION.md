@@ -161,10 +161,26 @@ reviewer should check:
   deferred-findings issues are authored that way and holding on them made the
   queue's own work items undispatchable — and because held to issues alone,
   every agent pull request would hold on the body the agent wrote itself. That
-  is sound on the login alone: `[` is not legal in a registered GitHub login,
-  so the `[bot]` form cannot be typed by anybody, and an App opens an issue or
-  a pull request *here* only with a token this repository issues. The later
+  rests on two facts and not one: `[` is not legal in a registered GitHub
+  login, so the `[bot]` form cannot be typed by anybody and an App opens an
+  issue or a pull request *here* only with a token this repository issues —
+  and `user.type` attests independently that the account is an App. Since
+  #616 the exemption needs both; the bullet below says why. The later
   **comments** of either identity are still not task text.
+- **The bundle is in time order, not list order.** A pull request has three
+  record lists — issue comments, reviews, inline comments — and appending them
+  one after another put a maintainer's correction above the instruction it
+  reverses, because the agent reads the bundle top to bottom. Every record is
+  sorted on the timestamp GitHub gave it, with the id breaking a tie.
+- **A record says what it was about.** A review carries the `state` a
+  maintainer left it in, so one that was **dismissed** cannot read as a live
+  instruction; an inline comment carries the file and line, without which it
+  says nothing. Both were dropped until #616.
+- **A bot is decided by attestation, not by spelling.** `user.type` is what
+  GitHub says about the account and the account does not choose it. The
+  self-body exemption needs **both**: the attestation to say it is an App, the
+  reserved login to say *which* App. The refusal needs **either**, so a record
+  whose type did not arrive is still refused for looking like a bot.
 - **The bundle carries no byte a refused account chose.** A withheld record is
   counted and named by its numeric GitHub id. No login, no date, no excerpt: a
   number cannot carry an instruction — and the count does not name a reason
