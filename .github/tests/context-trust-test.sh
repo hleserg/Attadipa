@@ -439,6 +439,8 @@ mutate() {  # NAME SED_EXPRESSION
 }
 
 # M1: give a pull request body an issue body's exemptions again.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$record` there
+# is the shell text being edited, not a variable of this suite.
 if mutate "pull-body is body" 's/^  case "\$record" in body|pull-body) is_body=yes ;; esac$/  case "$record" in body|pull-body) is_body=yes ;; esac\n  record=body/'; then
   rm -f "$work/out"
   if SCRIPT_UNDER_TEST="$work/mutant.sh" PRODUCERS=chatgpt-codex-connector run_bundle 12
@@ -457,6 +459,8 @@ if mutate "no self-body" 's/^            echo "include"; return 0 ;;$/          
 fi
 
 # M3: drop the per-list count and the length check.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$read_count` there
+# is the shell text being edited, not a variable of this suite.
 if mutate "no enumeration guard" \
     's/^    if \[ "\$read_count" -lt "\$want" \]; then$/    if false; then/'; then
   pull_json 14 3
@@ -483,7 +487,7 @@ if ! run_bundle 16 && grep -q "hold" "$work/err"; then
 else
   no "case 14 M4: an outsider's issue body did not hold the run"
 fi
-python3 - "$SCRIPT" "$work/mutant.sh" <<'PY'
+if python3 - "$SCRIPT" "$work/mutant.sh" <<'PY'
 import sys
 s = open(sys.argv[1]).read()
 before = s
@@ -500,14 +504,14 @@ s = s.replace('''  if [ "$verdict" != "include" ]; then''',
 open(sys.argv[2], "w").write(s)
 sys.exit(0 if s != before else 1)
 PY
-if [ $? -ne 0 ]; then
-  no "case 14 M4: the mutation changed nothing -- the lines it edits have moved"
-else
+then
   rm -f "$work/out"
   if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 16
   then ok "case 14 M4: matching only 'hold:' lets an excluded body become the task"
   else no "case 14 M4: the exact-include match is not what closes that path"
   fi
+else
+  no "case 14 M4: the mutation changed nothing -- the lines it edits have moved"
 fi
 
 printf '\ncontext trust: %d passed, %d failed\n' "$pass" "$fail"
