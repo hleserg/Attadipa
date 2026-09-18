@@ -930,9 +930,33 @@ ru = "принято"
 en = "delivered"
 ru = "доставлено"
 
-[mesh_delivery_failed]
-en = "failed"
-ru = "не доставлено"
+# `mesh_delivery_failed` was here, and it is gone rather than reworded: it said
+# *"failed"* in English and **"не доставлено"** -- not delivered -- in Russian,
+# and the companion protocol cannot carry that claim. ADR-0023 is the argument.
+# The three below replace it, and they are written so that no two of them read
+# as each other: "no confirmation" is about what this product does not know,
+# "refused" is a verdict the node gave, and "outcome unknown" is what a session
+# that ended mid-flight establishes.
+
+[mesh_delivery_unconfirmed]
+# What is missing is the evidence, not the message. It says what this product
+# does not know rather than apologising for it -- and specifically does not say
+# "не доставлено", which would be the very claim the wire cannot support.
+en = "no confirmation"
+ru = "нет подтверждения"
+
+[mesh_delivery_refused]
+# The node declined, or the frame never reached the radio. Nothing went out, so
+# a resend cannot duplicate anything -- which is the opposite of the line above.
+en = "refused"
+ru = "отклонено"
+
+[mesh_delivery_unknown]
+# The session ended while the request was in flight, or the node answered
+# nothing at all. Not "not sent": the frame may already have been written to the
+# characteristic.
+en = "outcome unknown"
+ru = "исход неизвестен"
 
 
 # Shared status: no inferred percentage or charging state from node voltage.

@@ -1,6 +1,6 @@
 # 0023 — A message nobody acknowledged is unconfirmed, and this product will not call it failed
 
-Status: **accepted**
+Status: **accepted**, implemented by [#573](https://github.com/hleserg/Attadipa/issues/573)
 Date: 2026-09-14
 
 Rests on [OUTBOUND_MESHCORE_MESSAGES](../research/OUTBOUND_MESHCORE_MESSAGES.md),
@@ -12,11 +12,18 @@ separate issue and **no production code changed with this ADR**.
 
 ## Context
 
-`MeshDelivery` has five values and `MeshStatus` has one slot to hold them:
-`core/include/attadipa/core/mesh_service.h:121` — "MeshDelivery delivery = MeshDelivery::None;".
-One of the five is `Failed`, and it is written when an acknowledgement budget
-expires: `link/src/meshcore_companion.cpp:324` — "status_.delivery = core::MeshDelivery::Failed;".
-It reaches the owner as *"failed"* in English and, in Russian, as
+**This section describes the tree as it was when the decision was made, which
+is `eb7460a9` — the commit that merged this ADR. Its citations are pinned to
+that revision and carry no line number, because the lines they name are the ones
+the decision deleted: #573 carried it out.** A citation into HEAD would either
+rot or, worse, quietly land on the code that replaced what is being described
+and assert the opposite of the sentence around it.
+
+`MeshDelivery` had five values and `MeshStatus` one slot to hold them —
+`core/include/attadipa/core/mesh_service.h` at `eb7460a9` — "MeshDelivery delivery = MeshDelivery::None;".
+One of the five was `Failed`, and it was written when an acknowledgement budget
+expired — `link/src/meshcore_companion.cpp` at `eb7460a9` — "status_.delivery = core::MeshDelivery::Failed;".
+It reached the owner as *"failed"* in English and, in Russian, as
 *"не доставлено"* — **not delivered**, a claim about what happened on the air.
 
 The wire cannot carry that claim. At the pinned MeshCore revision a companion
@@ -49,10 +56,10 @@ merely motivating it:
    push is written with no connection guard, and the BLE transport drops
    everything while disconnected — the offline queue holds messages, not
    confirmations. Waiting does not recover it.
-3. **A disconnect currently erases the verdict rather than qualifying it.**
-   `link/src/meshcore_companion.cpp:180` — "status_.delivery = core::MeshDelivery::None;"
-   runs in `reset_session()`, and `None` renders as *"not sent"*. A message the
-   node accepted, and may have delivered, reads as one that never left.
+3. **A disconnect erased the verdict rather than qualifying it.**
+   `link/src/meshcore_companion.cpp` at `eb7460a9` — "status_.delivery = core::MeshDelivery::None;"
+   ran in `reset_session()`, and `None` renders as *"not sent"*. A message the
+   node accepted, and may have delivered, read as one that never left.
 
 ## Decision
 
@@ -69,6 +76,19 @@ merely motivating it:
    to `Unknown` by decision 5's reasoning rather than to `Unconfirmed`: there is
    no acceptance there to be unsure about, and inventing one points the owner
    away from the resend that is safe.
+   **2b. A second producer, found in implementation and recorded here rather
+   than left to the code: an untagged `RESP_CODE_ERR` that arrives while this
+   client is awaiting a confirmation.** `RESP_CODE_ERR` carries no opcode, so
+   who it belongs to is decided by order, and the arm that decides it has
+   already established such an error is *not* the send's answer — the send's
+   answer has been and gone, which is why the client is awaiting a
+   confirmation at all. It is the error that could be charged to no older
+   outstanding command. Writing `Refused` there would tell the owner that
+   nothing reached the radio, about a text the node had accepted, and invite
+   exactly the duplicate decision 7 exists to prevent. The claim that is true
+   of it is decision 2's: the node accepted this, and this product cannot tell
+   whether it arrived. And because the tag survives, a confirmation still on
+   its way can still upgrade it under 2a.
    **2a. And a confirmation that arrives after the budget expired upgrades it
    to `Confirmed`**, for as long as the request it matches is still the session's
    current one. The node has no notion of this client's budget and pushes the
@@ -80,6 +100,15 @@ merely motivating it:
    request has been replaced or the session has ended there is nothing for the
    match to attach to, and the tag of decision 8 can repeat, so a late ack is
    discarded there instead.
+   **2c. And the absence of a tag is not a tag, which is the half implementation
+   got wrong and review caught.** The session reset clears the stored tag to
+   zeros and deliberately leaves a settled `Unconfirmed` alone — a disconnect is
+   not evidence against a verdict the budget already reached. Those two are
+   safe apart and not together: a confirmation carrying four zero bytes then
+   matches the cleared store, and 2a upgrades a message nothing ever
+   acknowledged. So a cleared store matches nothing, and a genuine all-zero tag
+   — one hash in 2³² — loses an upgrade it was owed. That is the direction to
+   fail in: the owner is told the wire cannot prove delivery, which is true.
 3. **A local refusal is not a delivery state.** "The link is down", "a send is
    already in flight", "the body is over budget", "the recipient does not
    resolve" are answers to the *call*. No message exists, so no message has a
@@ -120,6 +149,13 @@ merely motivating it:
    is a keyed hash of timestamp, attempt and text; identical messages in the
    same second produce identical tags, and the recipient's key is not an input.
    It is a correlation hint that can repeat, and it is never a message id.
+   **8a. A continuation keeps the identifier its caller was given; only a new
+   request mints one.** The room path is one call in two phases — an id is
+   published and returned while the login is on the wire, and the text is
+   enqueued from the login's answer — and minting a second id there leaves the
+   caller holding a number that names nothing for the whole of `Accepted`,
+   `Confirmed`, `Unconfirmed` and `Unknown`. Any later two-phase send inherits
+   this rule rather than re-deciding it.
 
 ## Consequences
 

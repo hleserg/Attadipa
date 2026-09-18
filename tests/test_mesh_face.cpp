@@ -543,7 +543,7 @@ void a_long_heading_stays_on_its_line(const platform::BoardProfile &board,
 }
 
 // The note row of the screen that draws a note, and the first key row under it.
-// `ui/lvgl/mesh_face.cpp:458` -- "    const std::int32_t note_y = (big ? 304 : 162) - inset;" --
+// `ui/lvgl/mesh_face.cpp:461` -- "    const std::int32_t note_y = (big ? 304 : 162) - inset;" --
 // is the first; the second is one small-font line and one `Space::Xs` below it
 // on 240 px (17 + 6, so 185) and a fixed row on 410 px. Neither is derived from
 // the face here on purpose: a helper that asked the face where it put the keys
@@ -646,7 +646,7 @@ void a_terminal_fault_keeps_both_keys_on_the_panel(
 }
 
 // The rows between the last key and the way out, and the row the way out is on.
-// `ui/lvgl/mesh_face.cpp:535` -- "    lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, (big ? 444 : 210) - inset);" --
+// `ui/lvgl/mesh_face.cpp:538` -- "    lv_obj_align(way_out_, LV_ALIGN_TOP_LEFT, 0, (big ? 444 : 210) - inset);" --
 // is the way out; the band below stops one row short of it and starts one row
 // past the second key, which on 240 px is 184 + one 17 px line.
 std::uint32_t way_out_row(bool big) { return big ? 444 : 210; }

@@ -50,13 +50,15 @@ public:
     core::MeshStatus status() const override { return status_; }
     std::size_t peer_count() const override { return peer_count_; }
     bool peer(std::size_t index, core::MeshPeer& out) const override;
-    bool send_private(const core::MeshPeerId& peer, std::string_view text,
-                      core::WallTime timestamp) override;
+    core::MeshSendResult send_private(const core::MeshPeerId& peer,
+                                      std::string_view text,
+                                      core::WallTime timestamp) override;
     // Debug-only Room Server seam: the password is serialized directly into
     // CMD_SEND_LOGIN and never retained in provider state.
-    bool send_room(const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
-                   std::string_view password, std::string_view text,
-                   core::WallTime timestamp);
+    core::MeshSendResult send_room(
+        const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
+        std::string_view password, std::string_view text,
+        core::WallTime timestamp);
 
     // A notification longer than kMeshCoreFrameBytes has no buffer to arrive
     // in, so the transport drops it before a copy and records it here instead
@@ -211,12 +213,21 @@ public:
         return awaiting_send_ || awaiting_confirm_ || awaiting_login_;
     }
 
-    // The transport claimed the slot and then could not hand the request to the
-    // node -- a contact prefix that is not in the retained chat contacts is the
-    // shipping case, and it is decided by the worker, outside this object.
-    // Nothing here is waiting on that operation, but a caller that was told
-    // MeshOk must not then read the *previous* send's verdict as this one's.
-    void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }
+    // THERE IS NO `send_abandoned()`, AND THE ABSENCE IS THE DECISION. It
+    // existed so that a worker whose send never became an operation could stop
+    // the *previous* message's verdict being read as this one's, and it did
+    // that by clearing `delivery` and `request_id`. Both halves are wrong now
+    // that the previous verdict can be `Unconfirmed`: clearing it tells the
+    // owner **не отправлено** about a message the node accepted and may have
+    // delivered, and a resend on that reading is the duplicate ADR-0023
+    // decision 7 exists to prevent. Clearing the id is worse on `Busy`, where
+    // the id it zeroes belongs to a request still in flight -- the verdict
+    // recovers on the next `RESP_CODE_SENT`, the id never does.
+    //
+    // What the function was for is answered by `MeshSendResult`: the caller is
+    // handed its own refusal, synchronously, and a refusal is not a delivery
+    // state -- decision 3. Nothing that failed to become an operation may
+    // write to `status_` at all.
 
 private:
     static constexpr std::size_t kRetainedPeers = 16;
@@ -320,8 +331,20 @@ private:
     }
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
-    bool enqueue_private(const core::MeshPeerId& peer, std::string_view text,
-                         core::WallTime timestamp);
+    // `request_id` non-zero continues an operation the caller was already given
+    // an id for -- today that is a room login that succeeded -- instead of
+    // minting a second one. A caller holding id N cannot match a verdict
+    // published against N+1, and `core::MeshSendResult`'s contract is that the
+    // id it returns is the one every later verdict is about.
+    core::MeshSendResult enqueue_private(const core::MeshPeerId& peer,
+                                         std::string_view text,
+                                         core::WallTime timestamp,
+                                         std::uint32_t request_id = 0);
+    // The one place a request id is minted. Non-zero, distinct from the live
+    // one, and never the node's ack tag -- see `core::MeshSendResult`.
+    std::uint32_t next_request_id();
+    core::MeshSendRefusal refuse_text(std::string_view text,
+                                      core::WallTime timestamp) const;
     void end_operation();
     void reset_session();
     void update_availability();
@@ -368,7 +391,17 @@ private:
     std::array<MeshCoreFrame, kTxDepth> tx_{};
     std::size_t tx_head_ = 0;
     std::size_t tx_size_ = 0;
+    // THE NODE'S CORRELATION HINT, AND IT OUTLIVES THE OPERATION ON PURPOSE.
+    // `end_operation()` deliberately does not clear it, so an acknowledgement
+    // that arrives after the budget expired can still be matched against the
+    // request it belongs to and upgrade `Unconfirmed` to `Confirmed`
+    // (ADR-0023 decision 2a). `reset_session()` does clear it, which is what
+    // stops a match from reaching across a reconnect into a request the wire
+    // can no longer be talking about -- the tag is a keyed hash that repeats.
     std::array<std::uint8_t, 4> expected_ack_{};
+    // Monotonic within a session, never zero, never reused while the request it
+    // names is the one `status_.request_id` reports.
+    std::uint32_t request_seq_ = 0;
     std::uint32_t malformed_frames_ = 0;
     std::uint8_t firmware_version_code_ = 0;
     bool device_info_seen_ = false;

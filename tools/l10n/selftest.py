@@ -102,7 +102,7 @@ SINGULAR_CASES = [
     # THE HOLE THE COMPARISON LEAVES, and it is the reason the percent rule is
     # not a plural rule. `FORMAT_RE` does not match a trailing bare `%`, so both
     # of these have the signature `("%s",)`, they agree, and the string reached
-    # `apps/src/mesh.cpp:207` -- "                      l10n::tr(StringId::MeshPinned, locale), want);"
+    # `apps/src/mesh.cpp:209` -- "                      l10n::tr(StringId::MeshPinned, locale), want);"
     # -- as a format whose last conversion specification is incomplete. Two
     # locales that agree about a mistake still make it.
     (("pinned %s%", "закреплён %s%"), "begins no conversion"),

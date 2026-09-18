@@ -157,12 +157,33 @@ bool stage_mesh_scenario(const char *name) {
     g_status.peers_reported = 40;
     g_status.peers_retained = 16;
     g_status.peers_complete = true;
+  } else if (std::strcmp(name, "unconfirmed") == 0 ||
+             std::strcmp(name, "send-refused") == 0 ||
+             std::strcmp(name, "send-unknown") == 0) {
+    // THE THREE VERDICTS THAT REPLACED `Failed`, ON THE LINK THAT PRODUCES
+    // THEM. Staged because they are the widest words the message meta row has
+    // been asked to draw: it is one line shared with the sender name --
+    // `ui/lvgl/mesh_face.cpp:388` -- "%s  ·  %s" -- and in Russian
+    // "нет подтверждения" is seventeen characters where "доставлено" was ten.
+    // A 240 px panel is where that lands, so it is drawn there before it ships.
+    //
+    // `refused` above is a refused *node*; this one is a refused *send*, which
+    // is why neither name may be the bare word.
+    g_status.availability = core::Availability::Ready;
+    g_status.transport = core::TransportPhase::Ready;
+    with_session(g_status);
+    g_status.delivery = std::strcmp(name, "unconfirmed") == 0
+                            ? core::MeshDelivery::Unconfirmed
+                        : std::strcmp(name, "send-refused") == 0
+                            ? core::MeshDelivery::Refused
+                            : core::MeshDelivery::Unknown;
+    g_status.request_id = 7;
   } else {
     std::fprintf(stderr,
                  "unknown --mesh-state '%s'\n"
                  "known: unprovisioned absent attached connecting ready "
                  "suspended faulted refused refused-faulted refused-unnamed "
-                 "truncated "
+                 "truncated unconfirmed send-refused send-unknown "
                  "battery-unknown battery-stale battery-low integrated\n",
                  name);
     return false;
