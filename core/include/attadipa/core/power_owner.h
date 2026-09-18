@@ -319,8 +319,11 @@ struct SleepReport {
     // what a log has to print, because there is nothing else to say about it.
     std::uint32_t unmapped_causes = 0;
 
-    // False once an unwind step failed. The board is then in a state nobody
-    // read back, and ADR-0016 §4 is what happens next: `Failed`, never `Ready`.
+    // False once a step left the board in a state nobody read back. Two ways
+    // in, not one: an unwind step that would not go back, and -- since this
+    // enum existed to say so -- a `suspend()` or `arm_wake()` that answered
+    // `Unknown`, where no unwind ran at all. ADR-0016 §4 is what happens next
+    // either way: `Failed`, never `Ready`.
     bool hardware_known = true;
 
     constexpr bool slept() const { return outcome == SleepOutcome::Woken; }
@@ -409,8 +412,10 @@ private:
     std::uint32_t  cycles_         = 0;
     bool           hardware_known_ = true;
 
-    // What an unwind left un-done, and what `recover()` retries. Domains for
-    // the first two, `WakeSource` bits for the third.
+    // What an unwind left un-done -- or what a step answered `Unknown` about,
+    // which needs the same retry and has no unwind behind it -- and what
+    // `recover()` re-issues. Domains for the first two, `WakeSource` bits for
+    // the third.
     std::uint16_t failed_resume_  = 0;
     std::uint16_t failed_rail_    = 0;
     std::uint16_t failed_disarm_  = 0;

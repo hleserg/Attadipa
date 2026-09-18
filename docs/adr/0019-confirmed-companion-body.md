@@ -231,7 +231,7 @@ watch's own sleep is not a special kind of absence.
 
 Sleep on this board is an unbounded loop of
 `esp_light_sleep_start()` —
-`firmware/main/board_power.cpp:457` — "    for (;;) {" —
+`firmware/main/board_power.cpp:467` — "    for (;;) {" —
 entered on the power key with NimBLE up, and whether the link survives it is
 already written down here as unmeasured:
 `docs/adr/0016-one-power-owner.md:23` — "   because nothing tells it not to; whether NimBLE survives that on this board".

@@ -255,33 +255,43 @@ public:
                attadipa::core::to_string(domain));
       return attadipa::core::StepResult::Unchanged;
     }
+    // A DRIVER ERROR OVER A BUS IS NOT A PROMISE THAT THE PANEL DID NOTHING,
+    // AND THIS PANEL CANNOT BE ASKED. Both calls below are writes to the
+    // CO5300 over its own link; `esp_lcd_panel_disp_on_off` has no getter and
+    // neither does the brightness register, so an `ESP_FAIL` here separates
+    // "the command never left the host" from "the command landed and the
+    // acknowledgement did not come back" nowhere at all. `Unchanged` asserts
+    // the first. The touch-wake path below may say `Unchanged` for the
+    // opposite reason: a wake enable is SoC-side state that
+    // `gpio_wakeup_disable` genuinely puts back, and the disable's own return
+    // says whether it did.
+    //
+    // Reported as `Unchanged` this read like a display nothing had touched, on
+    // exactly the failure where the screen is most likely to be black: the
+    // owner does not call `resume()` for a suspend that never succeeded, so a
+    // brightness that did reach zero stays there with the panel on. That is
+    // this pull request's own defect, one path further along than the one it
+    // set out to fix. Found in review.
     esp_err_t result = esp_lcd_panel_co5300_set_brightness(panel_, 0);
-    if (result == ESP_OK) {
-      result = esp_lcd_panel_disp_on_off(panel_, false);
-      if (result != ESP_OK) {
-        // Half-done is not done. The brightness went to zero and the panel is
-        // still on, so put the brightness back before reporting the failure:
-        // the owner will not call resume() for a suspend that never succeeded.
-        //
-        // AND WHETHER IT WENT BACK IS THE ONLY PART THE OWNER CANNOT FIND OUT
-        // FOR ITSELF. Discarded, this return turned a display left at an
-        // unnameable brightness into the same word as a display nothing
-        // touched, and the owner published Ready over it.
-        const esp_err_t restored =
-            esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
-        if (restored != ESP_OK) {
-          ESP_LOGE(kTag,
-                   "suspend display: %s, and the brightness did not go back: %s",
-                   esp_err_to_name(result), esp_err_to_name(restored));
-          return attadipa::core::StepResult::Unknown;
-        }
-      }
-    }
     if (result != ESP_OK) {
-      ESP_LOGE(kTag, "suspend display: %s", esp_err_to_name(result));
-      return attadipa::core::StepResult::Unchanged;
+      ESP_LOGE(kTag, "suspend display: brightness to zero: %s",
+               esp_err_to_name(result));
+      return attadipa::core::StepResult::Unknown;
     }
-    return attadipa::core::StepResult::Done;
+    result = esp_lcd_panel_disp_on_off(panel_, false);
+    if (result == ESP_OK) {
+      return attadipa::core::StepResult::Done;
+    }
+    // Half-done is not done. The brightness went to zero, so put it back before
+    // reporting the failure -- best effort on the one value we know we wrote,
+    // not evidence about the one we could not read. Its own return is logged
+    // because an owner reading `Unknown` still needs to know whether the screen
+    // is dark by our hand or by the panel's.
+    const esp_err_t restored =
+        esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+    ESP_LOGE(kTag, "suspend display: %s; brightness back: %s",
+             esp_err_to_name(result), esp_err_to_name(restored));
+    return attadipa::core::StepResult::Unknown;
   }
 
   bool resume(attadipa::core::PowerDomain domain) override {
