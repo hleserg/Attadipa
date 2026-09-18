@@ -3227,7 +3227,7 @@ void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1033` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1170` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3275,7 +3275,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:543` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:634` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
