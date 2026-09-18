@@ -138,12 +138,36 @@ reviewer should check:
 - **Two directions of failing closed.** A record that cannot be classified — an
   unknown or deleted author, a bot, a login GitHub says is not a user — is left
   out, and the run goes on. A set of records that cannot be read whole — a lost
-  page, an errored permission lookup, fewer comments than the issue says it has
-  — holds the run, because a truncated conversation is indistinguishable from a
-  complete one and the missing part may be the owner's correction.
+  page, an errored permission lookup, fewer records than the list says it has —
+  holds the run, because a truncated conversation is indistinguishable from a
+  complete one and the missing part may be the owner's correction. Every list
+  is counted, not only the one GitHub publishes a count for: `.comments` for
+  the issue comments, `.review_comments` for a pull request's inline comments,
+  and for reviews, which publish no count, that the array and the records
+  parsed out of it are the same length.
+- **The body is admitted by `include`, never by "not a hold".** On every other
+  record a verdict the rules did not anticipate means the text is left out; on
+  the body it would mean the text becomes the task. So the one record that *is*
+  the task is matched exactly.
+- **An issue is not a pull request.** Both exemptions below are written for an
+  issue, which is what the gate admits and what an agent is dispatched onto. A
+  pull request body is text an outside contributor can write on a fork's first
+  push, and it takes neither.
+- **Two exemptions, both narrow, both on the issue body only.** A producer the
+  owner named in `ATTADIPA_TRUSTED_PRODUCERS` may file a task — an app has no
+  collaborator permission to look up, so the owner's list is the authorisation.
+  And this repository's own `github-actions[bot]` or `claude[bot]` may file
+  one, because the review pipeline's deferred-findings issues are authored that
+  way and holding on them made the queue's own work items undispatchable. That
+  is sound on the login alone: `[` is not legal in a registered GitHub login,
+  so the `[bot]` form cannot be typed by anybody, and an App opens an issue
+  *here* only with a token this repository issues. The later **comments** of
+  either identity are still not task text.
 - **The bundle carries no byte a refused account chose.** A withheld record is
   counted and named by its numeric GitHub id. No login, no date, no excerpt: a
-  number cannot carry an instruction.
+  number cannot carry an instruction — and the count does not name a reason
+  either, because the reason is a fact about the author and three different
+  rules produce it.
 
 [`.github/tests/context-trust-test.sh`](../../.github/tests/context-trust-test.sh)
 runs the shipping file over those shapes, and its last case deletes the
