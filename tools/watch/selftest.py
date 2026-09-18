@@ -744,9 +744,14 @@ def a_private_message_is_bounded_by_one_number_and_it_is_the_watchs() -> None:
         body = p.mesh_send_encode(key, "a" * size, 1234567890)
         check(body == key + bytes.fromhex("d202964900000000") + b"a" * size,
               f"a {size}-byte private message encodes to the v3 layout")
-        # The biggest message the product allows still fits one frame, so no
-        # legal message can meet the envelope's ceiling and the text limit at
-        # once -- which is the 143..160 half of #609, where it did.
+        # The biggest private message the product allows still fits one frame,
+        # so no legal one can meet the envelope's ceiling and the text limit at
+        # once -- which is the 143..160 half of #609, where it did. Said of
+        # this opcode and not of `mesh_room_send`, where the two ceilings do
+        # still collide: 32 + 1 + 15 + 8 + 128 is 184 against a 182-byte body,
+        # so a full-length password and a full-length text do not fit together.
+        # #609 fences the Room Server off as a non-goal, so that is recorded
+        # rather than fixed here.
         frame = p.envelope_encode(p.Envelope(op=p.Op.MESH_SEND, req_id=1, body=body))
         check(len(body) <= p.MAX_BODY and len(frame) <= p.MAX_PAYLOAD,
               f"a {size}-byte private message stays inside the generic envelope")

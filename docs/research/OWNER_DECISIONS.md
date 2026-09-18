@@ -1652,7 +1652,7 @@ second LVGL face beside `ui/lvgl/clock_face.cpp`, with its application half in
 storage is two different things and neither is the largest item. The passkey's
 storage is one entry in the `attadipa_mesh` namespace #304 already created; what
 it has no part of is a seam a product image compiles. The shape is already
-written — `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" —
+written — `debug/include/attadipa/debug/bridge.h:202` — "class MeshSink {" —
 but the layer it lives in is added only under
 `firmware/main/CMakeLists.txt:49` — "if(CONFIG_ATTADIPA_WATCH_CONTROL)", the
 same symbol that keeps the debug bridge out. So the passkey half is a `core::`
