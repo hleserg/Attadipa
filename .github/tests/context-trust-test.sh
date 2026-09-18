@@ -465,6 +465,45 @@ JSON
   fi
 fi
 
+# Case 19. THE PAGE FRAMING IS A MEASURED CONTRACT, AND THIS IS WHAT HAPPENS IF
+# IT EVER CHANGES. `gh api --paginate` merges a REST collection's pages into one
+# array; `gh api --help` says it does not, and #616 was filed on the strength of
+# that sentence, as a P2 saying any list past 31 records holds the run for good.
+# It does not -- issue #488, 189 comments over seven default pages, builds a
+# complete bundle -- and the measurement now sits at `attadipa_fetch`. What the
+# script does with the shape #616 described is a decision rather than an
+# accident, so it is tested: a response split into separate documents HOLDS.
+issue_json 20 owner 31 > "$work/state/read/repos_o_r_issues_20"
+python3 - "$work/state/read/repos_o_r_issues_20_comments" <<'PY'
+import json, sys
+# TWO top-level arrays, concatenated with nothing between them: thirty records
+# and then one. This is what `gh api --paginate` would write for a 31-comment
+# list if it did not merge, and writing it any other way -- one flat array, or
+# an outer array of two -- would model a shape `gh` does not produce either.
+rec = lambda i: {"id": 900 + i, "user": {"login": "maintainer", "type": "User"},
+                 "created_at": "2026-09-02T00:00:00Z", "body": f"note {i}"}
+with open(sys.argv[1], "w") as f:
+    json.dump([rec(i) for i in range(1, 31)], f)
+    json.dump([rec(31)], f)
+PY
+rm -f "$work/out"
+if run_bundle 20; then
+  no "case 19: a response split into two documents passed as one enumerated list"
+else
+  # The count is two lines when the response is two documents, so the message
+  # is matched with the newlines taken out.
+  case "$(tr -d '\n' < "$work/err")" in
+    *"records and 31 parsed"*)
+      ok "case 19: pages arriving as separate documents hold the run" ;;
+    *) no "case 19: held for the wrong reason: $(cat "$work/err")" ;;
+  esac
+fi
+if [ -e "$work/out" ]; then
+  no "case 19: the held run still wrote a bundle"
+else
+  ok "case 19: and it leaves no bundle behind"
+fi
+
 # Case 14. One mutation per repair, because a repair nothing can break is not
 # evidence of anything. Each deletes exactly the line the fix added and
 # requires the defect back; a mutation that changes nothing is itself a FAIL,
@@ -577,6 +616,29 @@ if mutate "cache in a subshell" \
      [ "$(grep -c '^maintainer$' "$work/state/perm-calls" 2>/dev/null || echo 0)" = 3 ]
   then ok "case 15 M5: through a subshell the same author is looked up three times"
   else no "case 15 M5: the subshell is not what loses the cache"
+  fi
+fi
+
+# M11: the other half of case 19, and the sharpest correction to #616. Take the
+# length check out and the split response is accepted -- with all thirty-one
+# records present in the bundle. The projection is `.[]` over a JSON stream,
+# which reads every record of every page whether or not they arrived as one
+# array, so the shape #616 described could never have shortened a conversation.
+# It could only have held a complete one. Availability, not admission, and that
+# is the only half of the finding that survives the measurement.
+#
+# Numbered M11 and not M6 so that the five mutations #619 is adding keep the
+# names its own review round has already argued about.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$fetched` and
+# `$read_count` there are the shell text being edited, not variables of this suite.
+if mutate "no length check" \
+    's/^    if \[ "\$fetched" != "\$read_count" \]; then$/    if false; then/'; then
+  rm -f "$work/out"
+  if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 20 &&
+     [ "$(grep -c '^=== comment ' "$work/out")" = 31 ]; then
+    ok "case 14 M11: the length check is what holds a split response, and what it holds is complete"
+  else
+    no "case 14 M11: something other than the length check refused it: $(cat "$work/err")"
   fi
 fi
 

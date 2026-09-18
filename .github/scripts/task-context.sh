@@ -228,6 +228,33 @@ attadipa_permission_of() {
 # One paginated read, whole or not at all. `gh api --paginate` writes the pages
 # it already has before a later one fails, so the exit status of `gh` itself --
 # not of anything downstream of a pipe -- is what says the answer is complete.
+#
+# A COLLECTION COMES BACK AS ONE JSON ARRAY, NOT AS ONE ARRAY PER PAGE, AND
+# EVERY READER BELOW RESTS ON THAT. Written down because `gh api --help` says
+# the opposite in so many words -- "Each page is a separate JSON array or
+# object. Pass `--slurp` to wrap all pages of JSON arrays or objects into an
+# outer JSON array" -- and that sentence is about GraphQL and object-shaped
+# pages. For a REST body that starts with `[`, `gh` strips the brackets
+# between pages and joins them on a comma, which is the whole reason `--slurp`
+# has to exist to get the nested array back.
+#
+# MEASURED, `gh 2.100.0`, 2026-09-18. `issues/N/comments?per_page=1` on a
+# three-comment issue makes three HTTP requests -- `GH_DEBUG=api` shows
+# `page=2` and `page=3` -- and returns ONE array of three: `jq -s length` is 1,
+# `jq length` is 3, and there is no `][` anywhere in the output. The same for
+# `pulls/N/reviews` and `pulls/N/comments`. End to end, this script unmodified
+# built a complete bundle from issue #488 -- 189 comments, seven pages at the
+# documented `per_page=30` default -- in 5.4 seconds.
+#
+# IF A LATER `gh` EVER DOES EMIT ONE DOCUMENT PER PAGE, NOTHING HERE READS
+# SHORT. `jq -r '.[]'` takes a stream of arrays and parses every record of
+# every page, so the projection stays whole; the only thing that breaks is the
+# arithmetic of the length check below, which would emit one number per page
+# and hold. A spurious hold on a complete conversation, never a quiet short
+# read -- the enumeration direction this file's header argues for, and
+# `.github/tests/context-trust-test.sh` pins it, so the day it changes is loud.
+# Filed as a live defect against the `--help` sentence and measured not to be
+# one (#616).
 attadipa_fetch() {
   local path="$1" out="$2"
   gh api --paginate "$path" > "$out" 2>/dev/null
@@ -346,6 +373,11 @@ attadipa_context_bundle() {
     # The fetched array and the parsed lines must be the same length. This is
     # the only enumeration check `pulls/N/reviews` can have, and it is a real
     # one: it catches a record `jq` dropped rather than a page that never came.
+    # It is also the check that would notice a `gh` that stopped merging pages:
+    # `length` over a stream of page arrays emits one number per page, so a
+    # 30-then-1 read reports `30` and `1` against 31 parsed and holds. The
+    # two-line count in the message below is what that looks like; see
+    # `attadipa_fetch` for the measurement saying it does not happen today.
     fetched="$(jq -r 'if type == "array" then length else "notarray" end' \
         < "$work/records" 2>/dev/null || echo notarray)"
     if [ "$fetched" != "$read_count" ]; then
