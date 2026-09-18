@@ -75,6 +75,11 @@ set -uo pipefail
 # Prints `include`, `exclude: <reason>` or `hold: <reason>`. Never exits.
 attadipa_context_decision() {
   local record="$1" login="$2" permission="$3" producers="${4:-}"
+  # The attested account type, read beside the login from the same record and
+  # passed in the same way `attadipa_permission_of` passes a permission. A
+  # variable rather than a fifth argument so the `--decide` command line, and
+  # every case of the test suite written against it, keep their shape.
+  local type="${ATTADIPA_USER_TYPE-}"
   local is_body=no
   case "$record" in body|pull-body) is_body=yes ;; esac
 
@@ -153,19 +158,37 @@ attadipa_context_decision() {
   #    same identity stay excluded -- a comment list is where an exemption
   #    becomes a hole, and the header says why nothing needs them. Found in
   #    review.
-  case "$login" in
-    *"[bot]"|claude|github-actions)
-      if [ "$is_body" = yes ]; then
-        case "$login" in
-          "claude[bot]"|"github-actions[bot]")
-            echo "include"; return 0 ;;
-        esac
-      fi
-      if [ "$is_body" = yes ]; then
-        echo "hold: the $record was written by the bot $login"; return 0
-      fi
-      echo "exclude: $login is a bot"; return 0 ;;
-  esac
+  #    A LOGIN SUFFIX IS A STRING; `user.type` IS AN ATTESTATION. GitHub sets
+  #    `.user.type` to `Bot` for an App identity and the account cannot choose
+  #    it, and `.github/scripts/pr-merge-sweep.sh:96` --
+  #    "                 bot: (.user.type == " -- already decides exactly this
+  #    question with it (the rest of that line is `"Bot"), thread: ...`; the
+  #    quote stops short because a citation cannot carry a double quote).
+  #    It arrives in the same
+  #    response as the login and cost nothing extra to read. So the exemption
+  #    now needs BOTH: the attestation says it is an App, the reserved login
+  #    says WHICH App. Either alone is weaker -- `user.type` cannot tell our
+  #    App from anybody's, and the suffix argument, sound as it is, is still
+  #    reasoning about a string. Found in review on #611, filed as #616.
+  #
+  #    The refusal keeps the login shape as well, and deliberately: a record
+  #    whose `type` did not arrive must still be refused for looking like a
+  #    bot. The attestation is required to ADMIT and sufficient to REFUSE,
+  #    which is the direction that fails safe.
+  if [ "$type" = "Bot" ] ||
+      case "$login" in *"[bot]"|claude|github-actions) true ;; *) false ;; esac
+  then
+    if [ "$is_body" = yes ] && [ "$type" = "Bot" ]; then
+      case "$login" in
+        "claude[bot]"|"github-actions[bot]")
+          echo "include"; return 0 ;;
+      esac
+    fi
+    if [ "$is_body" = yes ]; then
+      echo "hold: the $record was written by the bot $login"; return 0
+    fi
+    echo "exclude: $login is a bot"; return 0
+  fi
 
   # 4. Write access is what cannot be typed.
   case "$permission" in
@@ -241,8 +264,8 @@ attadipa_fetch() {
 attadipa_context_bundle() {
   local repo="$1" number="$2" output="$3"
   local producers="${ATTADIPA_TRUSTED_PRODUCERS-}"
-  local work login title created expected kind path
-  local line id at verdict decided withheld_ids withheld
+  local work login title created expected kind path record
+  local line id at state where verdict decided withheld_ids withheld
   local inline want read_count fetched
 
   ATTADIPA_CONTEXT_REPO="$repo"
@@ -269,6 +292,7 @@ attadipa_context_bundle() {
   # The comment loop below already matches `include` exactly; this now does too,
   # and a body that is neither is a hold rather than a silent admission. Found
   # in review.
+  ATTADIPA_USER_TYPE="$(jq -r '.user.type // ""' < "$work/issue")"
   attadipa_permission_of "$login"
   verdict="$(attadipa_context_decision "$(
       [ "$kind" = pull ] && echo pull-body || echo body)" "$login" \
@@ -329,15 +353,26 @@ attadipa_context_bundle() {
   fi
   for path in "$@"; do
     case "$path" in
-      "issues/$number/comments") want="$expected" ;;
-      "pulls/$number/comments")  want="$inline" ;;
-      *)                         want=0 ;;
+      "issues/$number/comments") want="$expected"; record=comment ;;
+      "pulls/$number/comments")  want="$inline";   record=inline ;;
+      *)                         want=0;           record=review ;;
     esac
     if ! attadipa_fetch "repos/$repo/$path" "$work/records"; then
       echo "task-context: hold: $path could not be read in full" >&2; return 1
     fi
-    if ! jq -r '.[] | {id: .id, login: (.user.login // ""),
+    # WHAT A RECORD KEEPS IS WHAT THE AGENT CAN SEE, AND IT USED TO KEEP FOUR
+    # FIELDS. A review arrived stripped of its `state`, so a review a
+    # maintainer DISMISSED read as a live instruction -- the gate's whole
+    # subject, arriving through the gate. An inline comment arrived stripped of
+    # its `path` and `line`, which is most of what an inline comment means:
+    # "this is wrong" about nothing. Both are carried now. `type` is carried
+    # for rule 3; see `attadipa_context_decision`.
+    if ! jq -r --arg kind "$record" '.[] | {kind: $kind, id: .id,
+                       login: (.user.login // ""),
+                       type: (.user.type // ""),
                        at: (.submitted_at // .created_at // ""),
+                       state: (.state // ""),
+                       path: (.path // ""), line: (.line // .original_line // 0),
                        body: (.body // "")} | @json' \
         < "$work/records" > "$work/lines"; then
       echo "task-context: hold: $path did not parse" >&2; return 1
@@ -358,29 +393,67 @@ attadipa_context_bundle() {
       echo "task-context: hold: $want records exist under $path and $read_count were read" >&2
       return 1
     fi
+    # Accumulated, not emitted. See the sort below.
+    cat "$work/lines" >> "$work/all"
+  done
+
+  # A BUNDLE ORDERED BY LIST IS NOT ORDERED BY TIME, AND THE AGENT READS IT TOP
+  # TO BOTTOM. Three lists were appended one after another -- issue comments,
+  # then reviews, then inline comments -- so a maintainer's "no, revert that"
+  # posted as an issue comment landed ABOVE the review instruction it reverses,
+  # and the last word in the bundle was whichever list happened to be read
+  # last. Sorted on the timestamp GitHub gave each record, with the id breaking
+  # a tie so the order is total and stable rather than merely sorted.
+  #
+  # The key is safe to build by cutting on tabs: every line is one `@json`
+  # object, and `@json` escapes a tab inside a body as `\t` rather than
+  # emitting one. `at` is ISO-8601 UTC throughout, so it sorts lexically.
+  if [ -s "$work/all" ]; then
     while IFS= read -r line; do
       [ -n "$line" ] || continue
-      id="$(jq -r .id <<<"$line")"
-      login="$(jq -r .login <<<"$line")"
-      at="$(jq -r .at <<<"$line")"
-      attadipa_permission_of "$login"
-      decided="$(attadipa_context_decision comment "$login" \
-          "$ATTADIPA_PERMISSION" "$producers")"
-      case "$decided" in
-        hold:*) echo "task-context: ${decided}" >&2; return 1 ;;
-        include)
-          {
-            echo
-            echo "=== comment $id, author $login, $at"
-            echo
-            jq -r .body <<<"$line"
-          } >> "$work/bundle" ;;
-        *)
-          withheld=$((withheld + 1))
-          withheld_ids="$withheld_ids $id" ;;
-      esac
-    done < "$work/lines"
-  done
+      printf '%s\t%s\t%s\n' "$(jq -r .at <<<"$line")" \
+          "$(jq -r .id <<<"$line")" "$line"
+    done < "$work/all" | sort -t"$(printf '\t')" -k1,1 -k2,2n \
+        | cut -f3- > "$work/ordered"
+  else
+    : > "$work/ordered"
+  fi
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    record="$(jq -r .kind <<<"$line")"
+    id="$(jq -r .id <<<"$line")"
+    login="$(jq -r .login <<<"$line")"
+    at="$(jq -r .at <<<"$line")"
+    state="$(jq -r .state <<<"$line")"
+    ATTADIPA_USER_TYPE="$(jq -r .type <<<"$line")"
+    attadipa_permission_of "$login"
+    decided="$(attadipa_context_decision "$record" "$login" \
+        "$ATTADIPA_PERMISSION" "$producers")"
+    case "$decided" in
+      hold:*) echo "task-context: ${decided}" >&2; return 1 ;;
+      include)
+        # What the record was about, when that is not the pull request as a
+        # whole. A review carries the state a maintainer left it in; an inline
+        # comment carries the file and line, without which it says nothing.
+        where=""
+        case "$record" in
+          review) [ -z "$state" ] || where=", state $state" ;;
+          inline)
+            where="$(jq -r 'if .path == "" then "" else
+                ", on \(.path):\(.line)" end' <<<"$line")" ;;
+        esac
+        {
+          echo
+          echo "=== $record $id, author $login, $at$where"
+          echo
+          jq -r .body <<<"$line"
+        } >> "$work/bundle" ;;
+      *)
+        withheld=$((withheld + 1))
+        withheld_ids="$withheld_ids $id" ;;
+    esac
+  done < "$work/ordered"
 
   # What was withheld is counted, and named only by the numeric id GitHub gave
   # it. No login, no date, no excerpt: a number cannot carry an instruction,

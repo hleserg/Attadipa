@@ -50,8 +50,22 @@ chmod +x "$work/bin/gh"
 
 # ---------------------------------------------------------------- the policy
 
-# decide RECORD LOGIN PERMISSION [PRODUCERS] -> what the shipping script says
-decide() { bash "$SCRIPT" --decide "$@"; }
+# GitHub sets `.user.type` to `Bot` for an App identity and `User` otherwise,
+# and the account does not choose it. The fixtures and the policy helper derive
+# it from the login the same way, so a case that wants the two to DISAGREE has
+# to say so -- which is what the mismatch rows below do, and what the real API
+# cannot produce. Expanded with `${TYPE-...}` and not `${TYPE:-...}`: the
+# colon form treats `TYPE=` as unset and re-derives, which made "the
+# attestation did not arrive at all" impossible to write. That row failed
+# first time for exactly that reason.
+user_type() { case "$1" in *"[bot]") echo Bot ;; *) echo User ;; esac; }
+
+# decide RECORD LOGIN PERMISSION [PRODUCERS] -> what the shipping script says.
+# `ATTADIPA_USER_TYPE` is how the attested account type reaches the policy, and
+# it is derived from the login here for the same reason the fixtures derive it:
+# that is the only pairing the API can produce. Set `TYPE=` around a call to
+# force a disagreement the API cannot.
+decide() { ATTADIPA_USER_TYPE="${TYPE-$(user_type "$2")}" bash "$SCRIPT" --decide "$@"; }
 
 expect() {
   local want="$1" got="$2" what="$3"
@@ -136,12 +150,19 @@ perm chatgpt-codex-connector none
 
 issue_json() {  # NUMBER AUTHOR COMMENT_COUNT [pull]
   jq -n --arg a "$2" --argjson n "$3" --arg pull "${4:-}" \
+    --arg t "${TYPE-$(user_type "$2")}" \
     '{title: "A task", body: "Implement the thing.", created_at: "2026-09-01T00:00:00Z",
-      user: {login: $a}, comments: $n} + (if $pull == "" then {} else {pull_request: {}} end)'
+      user: {login: $a, type: $t}, comments: $n} + (if $pull == "" then {} else {pull_request: {}} end)'
+}
+record_x() {  # ID AUTHOR AT BODY [EXTRA_JQ_OBJECT]
+  jq -n --argjson i "$1" --arg a "$2" --arg at "$3" --arg b "$4" \
+    --arg t "${TYPE-$(user_type "$2")}" --argjson x "${5:-{\}}" \
+    '{id: $i, user: {login: $a, type: $t}, created_at: $at, body: $b} + $x'
 }
 record() {  # ID AUTHOR BODY
   jq -n --argjson i "$1" --arg a "$2" --arg b "$3" \
-    '{id: $i, user: {login: $a}, created_at: "2026-09-02T00:00:00Z", body: $b}'
+    --arg t "${TYPE-$(user_type "$2")}" \
+    '{id: $i, user: {login: $a, type: $t}, created_at: "2026-09-02T00:00:00Z", body: $b}'
 }
 
 run_bundle() {  # NUMBER -> bundle on stdout, reason on stderr, status
@@ -465,6 +486,72 @@ JSON
   fi
 fi
 
+# Case 16. THE BUNDLE IS READ TOP TO BOTTOM, SO ITS ORDER IS ITS MEANING. The
+# three lists were appended one after another, so a maintainer's correction
+# posted as an issue comment landed above the review instruction it reverses,
+# and the last word belonged to whichever list was read last rather than to
+# whoever spoke last. Every record is sorted on the time GitHub gave it now.
+issue_json 18 owner 1 pull > "$work/state/read/repos_o_r_issues_18"
+pull_json 18 1
+record_x 701 maintainer "2026-09-02T03:00:00Z" "CORRECTION: do not do that." |
+  jq -s . > "$work/state/read/repos_o_r_issues_18_comments"
+record_x 702 maintainer "2026-09-02T01:00:00Z" "FIRST: do the thing." |
+  jq -s . > "$work/state/read/repos_o_r_pulls_18_reviews"
+record_x 703 maintainer "2026-09-02T02:00:00Z" "MIDDLE: here is where." |
+  jq -s . > "$work/state/read/repos_o_r_pulls_18_comments"
+if run_bundle 18; then
+  order="$(grep -o 'FIRST\|MIDDLE\|CORRECTION' "$work/out" | tr '\n' ' ')"
+  if [ "$order" = "FIRST MIDDLE CORRECTION " ]; then
+    ok "case 16: records are ordered by time, not by the list they came from"
+  else
+    no "case 16: bundle order was '$order', wanted 'FIRST MIDDLE CORRECTION '"
+  fi
+else
+  no "case 16: the bundle was held: $(cat "$work/err")"
+fi
+
+# Case 17. A record stripped of what it was about is a record that says
+# something else. A review kept no `state`, so one a maintainer DISMISSED
+# reached the agent reading exactly like a live instruction -- the gate's own
+# subject, arriving through the gate. An inline comment kept no `path` or
+# `line`, which is most of what an inline comment means.
+issue_json 19 owner 0 pull > "$work/state/read/repos_o_r_issues_19"
+pull_json 19 1
+echo '[]' > "$work/state/read/repos_o_r_issues_19_comments"
+record_x 704 maintainer "2026-09-02T01:00:00Z" "Withdrawn instruction." \
+    '{"state": "DISMISSED"}' |
+  jq -s . > "$work/state/read/repos_o_r_pulls_19_reviews"
+record_x 705 maintainer "2026-09-02T02:00:00Z" "This line is wrong." \
+    '{"path": "core/src/power_owner.cpp", "line": 42}' |
+  jq -s . > "$work/state/read/repos_o_r_pulls_19_comments"
+if run_bundle 19; then
+  case "$(cat "$work/out")" in
+    *"state DISMISSED"*) ok "case 17: a dismissed review says so in the bundle" ;;
+    *) no "case 17: a dismissed review reads as a live instruction" ;;
+  esac
+  case "$(cat "$work/out")" in
+    *"on core/src/power_owner.cpp:42"*)
+      ok "case 17: an inline comment keeps the file and line it was about" ;;
+    *) no "case 17: an inline comment lost where it pointed" ;;
+  esac
+else
+  no "case 17: the bundle was held: $(cat "$work/err")"
+fi
+
+# Case 18. The attestation, in both directions. `user.type` is what GitHub says
+# about the account and the account does not choose it; the reserved login is
+# what says WHICH App. The exemption needs both; the refusal needs either.
+expect hold    "$(TYPE=User decide body 'github-actions[bot]' none)" \
+                                                       "a reserved login without the Bot attestation is not admitted"
+expect exclude "$(TYPE=Bot decide comment somebody write)" \
+                                                       "an attested Bot is machine output whatever its login looks like"
+expect hold    "$(TYPE=Bot decide body 'somebody[bot]' write)" \
+                                                       "the attestation alone does not say WHICH App"
+expect hold    "$(TYPE='' decide body 'github-actions[bot]' none)" \
+                                                       "an absent attestation refuses rather than falls open"
+expect include "$(TYPE=Bot decide body 'claude[bot]' none)" \
+                                                       "both together are what admit our own filed issue"
+
 # Case 14. One mutation per repair, because a repair nothing can break is not
 # evidence of anything. Each deletes exactly the line the fix added and
 # requires the defect back; a mutation that changes nothing is itself a FAIL,
@@ -489,7 +576,7 @@ if mutate "pull-body is body" 's/^  case "\$record" in body|pull-body) is_body=y
 fi
 
 # M2: hold on our own issue body again.
-if mutate "no self-body" 's/^            echo "include"; return 0 ;;$/            : ;;/'; then
+if mutate "no self-body" 's/^          echo "include"; return 0 ;;$/          : ;;/'; then
   rm -f "$work/out"
   if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 13
   then no "case 14 M2: the self-body exemption is not what admits our own issue"
@@ -501,7 +588,7 @@ fi
 # shellcheck disable=SC2016  # The sed script must NOT expand: `$is_body` and
 # `$record` there are the shell text being edited, not variables of this suite.
 if mutate "issue-only self exemption" \
-    's/^      if \[ "\$is_body" = yes \]; then$/      if [ "$record" = body ]; then/'; then
+    's/^    if \[ "\$is_body" = yes \] \&\& \[ "\$type" = "Bot" \]; then$/    if [ "$record" = body ] \&\& [ "$type" = "Bot" ]; then/'; then
   out="$(SCRIPT_UNDER_TEST="$work/mutant.sh" bash "$work/mutant.sh" \
       --decide pull-body 'github-actions[bot]' none 2>/dev/null || true)"
   case "$out" in
@@ -571,12 +658,66 @@ fi
 # shellcheck disable=SC2016  # The sed script must NOT expand: `$login` there
 # is the shell text being edited, not a variable of this suite.
 if mutate "cache in a subshell" \
-    's|^      attadipa_permission_of "\$login"$|      :|; s|^          "\$ATTADIPA_PERMISSION" "\$producers")"$|          "$(attadipa_permission_of "$login")" "$producers")"|'; then
+    's|^    attadipa_permission_of "\$login"$|    :|; s|^        "\$ATTADIPA_PERMISSION" "\$producers")"$|        "$(attadipa_permission_of "$login")" "$producers")"|'; then
   rm -f "$work/state/perm-calls" "$work/out"
   if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 17 &&
      [ "$(grep -c '^maintainer$' "$work/state/perm-calls" 2>/dev/null || echo 0)" = 3 ]
   then ok "case 15 M5: through a subshell the same author is looked up three times"
   else no "case 15 M5: the subshell is not what loses the cache"
+  fi
+fi
+
+# M6: admit on the reserved login alone, the way it decided before #616.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$is_body` and
+# `$type` there are the shell text being edited, not variables of this suite.
+if mutate "login without attestation" \
+    's/^    if \[ "\$is_body" = yes \] \&\& \[ "\$type" = "Bot" \]; then$/    if [ "$is_body" = yes ]; then/'; then
+  out="$(ATTADIPA_USER_TYPE=User bash "$work/mutant.sh" \
+      --decide body 'github-actions[bot]' none 2>/dev/null || true)"
+  case "$out" in
+    include*) ok "case 14 M6: without the attestation a bare login shape admits again" ;;
+    *)        no "case 14 M6: the attestation is not what the admission rests on" ;;
+  esac
+fi
+
+# M7: put the bundle back in list order. Sorting on the RECORD ID instead of
+# the timestamp is the mutation that matters: it still produces a bundle, and
+# it still produces one in a defensible-looking order -- just the order the
+# three lists were read in, which is the defect. A mutation that merely breaks
+# the pipeline would be killed by the bundle being empty and would prove
+# nothing about the sort key.
+if mutate "sorted by id, not by time" 's/-k1,1 -k2,2n/-k2,2n/'; then
+  rm -f "$work/out"
+  if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 18; then
+    order="$(grep -o 'FIRST\|MIDDLE\|CORRECTION' "$work/out" | tr '\n' ' ')"
+    case "$order" in
+      "FIRST MIDDLE CORRECTION ")
+        no "case 14 M7: the timestamp is not what orders the bundle" ;;
+      "")
+        no "case 14 M7: the mutant produced no records, so it proves nothing" ;;
+      *)
+        ok "case 14 M7: sorted by id the correction comes first again ($order)" ;;
+    esac
+  else
+    no "case 14 M7: the mutant held the bundle instead of misordering it"
+  fi
+fi
+
+# M8: drop what a review and an inline comment were about.
+# shellcheck disable=SC2016  # The sed script must NOT expand: these are the
+# jq program text being edited, not variables of this suite.
+if mutate "no state or location" \
+    's/^                       state: (.state \/\/ ""),$/                       state: "",/;
+     s/^                       path: (.path \/\/ ""), line: (.line \/\/ .original_line \/\/ 0),$/                       path: "", line: 0,/'; then
+  rm -f "$work/out"
+  if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 19; then
+    case "$(cat "$work/out")" in
+      *"state DISMISSED"*|*"power_owner.cpp:42"*)
+        no "case 14 M8: the projection is not what carries state and location" ;;
+      *) ok "case 14 M8: without them a dismissed review reads as a live instruction again" ;;
+    esac
+  else
+    no "case 14 M8: the mutant held the bundle instead of stripping it"
   fi
 fi
 
