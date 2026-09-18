@@ -117,6 +117,40 @@ ordinary checkout would fetch a fork's version of the very script that decides
 whether a write-capable agent may run. The gate's rules come from `main` or from
 nowhere.
 
+### The gate decides an event; it does not decide the text
+
+A public repository accepts comments from accounts the gate refuses. The gate
+refuses their *events* correctly and the comments stay on the issue, so when a
+maintainer later labels the task `agent:ready`, a write-capable agent that was
+told to read "the issue and every comment" reads theirs too. Refusing the actor
+is not refusing the actor's stored words ([#583](https://github.com/hleserg/Attadipa/issues/583)).
+
+[`.github/scripts/task-context.sh`](../../.github/scripts/task-context.sh) is
+the second half of the same boundary. It builds the instruction-bearing context
+itself, from default-branch-owned code, applying the gate's rule to every
+record: the issue body, every comment, and on a pull request every review body
+and inline comment. Three properties are worth stating because they are what a
+reviewer should check:
+
+- **Now, not once.** The author's *current* repository permission is the
+  question. `author_association`, the task marker, not being a bot, and
+  arriving early are none of them authorisation, and none of them is read.
+- **Two directions of failing closed.** A record that cannot be classified — an
+  unknown or deleted author, a bot, a login GitHub says is not a user — is left
+  out, and the run goes on. A set of records that cannot be read whole — a lost
+  page, an errored permission lookup, fewer comments than the issue says it has
+  — holds the run, because a truncated conversation is indistinguishable from a
+  complete one and the missing part may be the owner's correction.
+- **The bundle carries no byte a refused account chose.** A withheld record is
+  counted and named by its numeric GitHub id. No login, no date, no excerpt: a
+  number cannot carry an instruction.
+
+[`.github/tests/context-trust-test.sh`](../../.github/tests/context-trust-test.sh)
+runs the shipping file over those shapes, and its last case deletes the
+permission test from a copy and requires the outsider's instructions to come
+back. A suite that cannot fail when the check is removed is not evidence the
+check is there.
+
 Two further habits, both deliberate:
 
 - **Untrusted text never reaches a shell.** An issue body is passed through an
