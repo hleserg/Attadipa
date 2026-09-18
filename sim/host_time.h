@@ -28,13 +28,26 @@ namespace attadipa::sim {
 // point: the application layer sees the same presentation-ready value here that
 // it sees on the board, and `apps::format_clock` stays free of process-global
 // state it could not have on a device.
+//
+// "THE SAME VALUE IT SEES ON THE BOARD" IS TRUE PER INSTANT AND NOT ACROSS A
+// SEASON, and the difference is the host's zone database rather than anything
+// this file decides. A board adds one signed integer --
+// `core/src/time_service.cpp:208` -- "add_offset(result.utc.value, timezone_.minutes_east_of_utc);"
+// -- because ADR-0014 deliberately stores an effective offset and no zone rules
+// -- `docs/adr/0014-time-source-and-synchronization.md:65` -- "This slice stores an effective offset, not an IANA zone database or a DST"
+// -- so a device provisioned at `+120` goes on showing `+120` after the
+// changeover and eventually says its offset is stale rather than correcting
+// itself. `std::localtime` below reads the host's database and does correct
+// itself. For `--clock` that is what #553 asked for and it is right; it is
+// simply not a behaviour a screenshot may be used as evidence *of*.
 core::WallTime host_local_wall_time(core::WallTime utc);
 
 // The same conversion, applied to now.
 //
 // Live mode calls this on every refresh and not once at startup, so a window
-// left open across a DST change follows the host instead of holding the offset
-// that happened to be in force when it opened. It costs one `localtime` call a
+// left open across a DST change follows the host's rule -- the host's, not a
+// device's; see above -- instead of holding the offset that happened to be in
+// force when it opened. It costs one `localtime` call a
 // second, which is what the refresh already spends redrawing a minute that did
 // not change.
 core::WallTime host_local_wall_time();
