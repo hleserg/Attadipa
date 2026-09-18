@@ -2383,6 +2383,114 @@ int drain_counting_re_reads(MeshCoreCompanion& client)
     return asked;
 }
 
+// ROW 7 OF ADR-0022 §9. `0x82` is the other push that arrives mid-walk without
+// being about the walk, and the row asks for both halves at once: the snapshot
+// stays consistent, and the send it *is* about still reaches `Confirmed`
+// through a contact burst. The mismatched ack is the same frame aimed at some
+// other operation -- it must not release the slot, which is #315's rule and
+// the reason the four bytes are compared at all.
+void test_a_confirmation_mid_walk_confirms_without_dirtying()
+{
+    MeshCoreCompanion client;
+    open_a_contact_stream(client, true);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}));
+
+    std::uint8_t sent[10]{};
+    sent[0] = 6;  // RESP_CODE_SENT
+    sent[2] = 0xAA;
+    sent[3] = 0xBB;
+    sent[4] = 0xCC;
+    sent[5] = 0xDD;
+    CHECK(client.receive(sent, sizeof(sent), at(7)));
+    CHECK(client.status().delivery == core::MeshDelivery::Accepted);
+
+    // A confirmation for somebody else's send, arriving inside the walk.
+    const std::uint8_t other[] = {0x82, 0x11, 0x22, 0x33, 0x44};
+    CHECK(client.receive(other, sizeof(other), at(8)));
+    CHECK(client.status().delivery == core::MeshDelivery::Accepted);
+    CHECK(client.send_busy());
+
+    // And then the one that matches.
+    const std::uint8_t mine[] = {0x82, 0xAA, 0xBB, 0xCC, 0xDD};
+    CHECK(client.receive(mine, sizeof(mine), at(9)));
+    CHECK(client.status().delivery == core::MeshDelivery::Confirmed);
+    CHECK(!client.send_busy());
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(10)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.peer_count() == 1);
+}
+
+// ROW 8 OF ADR-0022 §9: the same invalidating push at each of the four
+// boundaries. Decision 3 conditions on the code and on *where* it landed, and
+// this is the row that reads the second half back: inside the stream it is
+// dirt, outside it is staleness. The two boundary cases are the interesting
+// ones -- a push in the same millisecond as `START` or `END` is on one side or
+// the other of a line the frames themselves draw, not of a clock.
+void test_where_a_push_lands_decides_whether_it_is_dirt()
+{
+    struct Case {
+        int position;  // 0 before START, 1 after START, 2 before END, 3 after END
+        bool dirties;
+        const char* where;
+    };
+    const Case cases[] = {
+        {0, false, "before CONTACTS_START -- no read is in flight"},
+        {1, true, "immediately after CONTACTS_START"},
+        {2, true, "immediately before END_OF_CONTACTS"},
+        {3, false, "immediately after END_OF_CONTACTS -- the read had ended"},
+    };
+
+    for (const Case& c : cases) {
+        MeshCoreCompanion client;
+        client.begin(at(0));
+        client.peer_arriving(at(1));
+        client.connected(at(2));
+        std::uint8_t self[62]{};
+        self[0] = 5;
+        std::memcpy(&self[58], "Node", 4);
+        CHECK(client.receive(self, sizeof(self), at(3)));
+        std::uint8_t device[82]{};
+        device[0] = 13;
+        device[1] = 13;
+        CHECK(client.receive(device, sizeof(device), at(4)));
+        MeshCoreFrame frame{};
+        while (client.next_tx(frame)) {
+        }
+
+        const std::uint8_t deleted[] = {0x8F};
+        if (c.position == 0) CHECK(client.receive(deleted, sizeof(deleted), at(5)));
+
+        const std::uint8_t start[] = {2, 2, 0, 0, 0};
+        CHECK(client.receive(start, sizeof(start), at(6)));
+        if (c.position == 1) CHECK(client.receive(deleted, sizeof(deleted), at(6)));
+
+        std::uint8_t contact[148]{};
+        contact[0] = 3;
+        for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+        contact[33] = 1;
+        std::memcpy(&contact[100], "Peer", 4);
+        CHECK(client.receive(contact, sizeof(contact), at(7)));
+        if (c.position == 2) CHECK(client.receive(deleted, sizeof(deleted), at(8)));
+
+        const std::uint8_t end[] = {4, 0, 0, 0, 0};
+        CHECK(client.receive(end, sizeof(end), at(8)));
+        if (c.position == 3) CHECK(client.receive(deleted, sizeof(deleted), at(8)));
+
+        CHECK(client.malformed_frames() == 0);
+        CHECK(client.status().snapshot ==
+              (c.dirties ? core::MeshSnapshot::Dirty : core::MeshSnapshot::Consistent));
+        while (client.next_tx(frame)) {
+        }
+        client.tick(at(8 + 10001));
+        CHECK(drain_counting_re_reads(client) == (c.dirties ? 1 : 0));
+    }
+}
+
 // ROW 11 OF ADR-0022 §9, twice over: a disconnect mid-stream and a disconnect
 // mid-retry. Neither may leave a false completion behind, and the reconnect's
 // sync must be a fresh one rather than the resumption of a walk whose node is
@@ -3256,6 +3364,8 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_a_confirmation_mid_walk_confirms_without_dirtying();
+    test_where_a_push_lands_decides_whether_it_is_dirt();
     test_a_disconnect_leaves_no_half_finished_snapshot();
     test_a_truncated_list_is_still_a_consistent_snapshot();
     test_a_message_waiting_mid_walk_neither_dirties_nor_is_swallowed();
