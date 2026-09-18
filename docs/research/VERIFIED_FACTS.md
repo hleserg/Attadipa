@@ -2645,7 +2645,13 @@ constants.
   constant, and the one value this project has observed — `MEASURED` 2406 ms,
   decoded from `66 09 00 00` in a frame already committed in
   [MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) §6a — is a short
-  text over a single hop, which is the small end of the formula's range.
+  text sent by node `044e2de8…`, a **Heltec V4.3 OLED** and not the T114 that
+  document is named for — [MESHCORE_T114_FIRST_CONTACT](MESHCORE_T114_FIRST_CONTACT.md) §6a
+  names the unit. **Its hop count is `UNKNOWN`**: byte 1 of the frame is `00`,
+  which by §2.2's layout means the direct formula applied, and that formula is
+  one equation in two unknowns — 2406 ms fits zero hops at about 276 ms of
+  airtime and one hop at about 117 ms, and nothing in the frame says which. So
+  it is a small observed value and not a measured small end of the range.
 - **Also decoded from that same capture:** the four bytes after the ack in
   `PUSH_CODE_SEND_CONFIRMED` are the node's own round-trip measurement in
   milliseconds. `1b 03 00 00` is **795 ms**, against the 720 ms the host observed
@@ -2978,7 +2984,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2888` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2894` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3035,7 +3041,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:2959` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:2965` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3076,7 +3082,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:2913` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:2919` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3162,7 +3168,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2836` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2842` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3357,7 +3363,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:2962` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:2968` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has

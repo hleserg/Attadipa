@@ -15,7 +15,7 @@ separate issue and **no production code changed with this ADR**.
 `MeshDelivery` has five values and `MeshStatus` has one slot to hold them:
 `core/include/attadipa/core/mesh_service.h:89` — "MeshDelivery delivery = MeshDelivery::None;".
 One of the five is `Failed`, and it is written when an acknowledgement budget
-expires: `link/src/meshcore_companion.cpp:288` — "status_.delivery = core::MeshDelivery::Failed;".
+expires: `link/src/meshcore_companion.cpp:295` — "status_.delivery = core::MeshDelivery::Failed;".
 It reaches the owner as *"failed"* in English and, in Russian, as
 *"не доставлено"* — **not delivered**, a claim about what happened on the air.
 
@@ -64,17 +64,40 @@ merely motivating it:
    accepted this message, and this product cannot tell whether it arrived. It is
    not a softer `Failed`; it is a different claim, and it is the strongest one
    the wire supports.
+2a. **And a confirmation that arrives after the budget expired upgrades it to
+   `Confirmed`**, for as long as the request it matches is still the session's
+   current one. The node has no notion of this client's budget and pushes the
+   confirmation whenever its own acknowledgement arrives, so a late match is
+   ordinary traffic. A positive proof outranks the absence of one, and
+   discarding it would leave the owner deciding whether to risk the duplicate
+   decision 7 exists to prevent, about a message this client had since learned
+   was delivered. The bound is the request rather than the clock: once the
+   request has been replaced or the session has ended there is nothing for the
+   match to attach to, and the tag of decision 8 can repeat, so a late ack is
+   discarded there instead.
 3. **A local refusal is not a delivery state.** "The link is down", "a send is
    already in flight", "the body is over budget", "the recipient does not
    resolve" are answers to the *call*. No message exists, so no message has a
    state. In particular `send_abandoned()` must stop writing a delivery verdict
    for a request that never became an operation.
-4. **A verdict the node gave is `Refused`.** `RESP_CODE_ERR` for an accepted
-   command, and a room login that failed, are the node declining — and are not
-   statements about the radio. `ERR_CODE_TABLE_FULL` in particular must not be
-   shown to an owner as "the node is full": it is also what a too-long text
-   returns.
-5. **A session that ends mid-flight yields `Unknown`, not `None`.** The
+4. **A verdict the node gave is `Refused`, and so is a frame this client
+   could not put on the radio after it had already published `Queued`.**
+   `RESP_CODE_ERR` for an accepted command, and a room login that failed, are
+   the node declining — and are not statements about the radio.
+   `ERR_CODE_TABLE_FULL` in particular must not be shown to an owner as "the
+   node is full": it is also what a too-long text returns. The second half is
+   the room path, which is one call in two phases: `send_room()` publishes
+   `Queued` and returns `true` while the login is outstanding, and the text is
+   enqueued from the login's answer, where a full transmit ring can still
+   refuse it. Decision 3 does not reach that case — a message *was* published
+   and an owner is looking at it — and without this clause removing `Failed`
+   leaves the path with no terminal state at all, holding `Queued` for the rest
+   of the session. From the owner's side `Refused` is exactly right: nothing
+   reached the radio, and a resend cannot duplicate anything.
+5. **A session that ends mid-flight yields `Unknown`, not `None`** — from the
+   moment the request is made, not from `Accepted`. A frame that has left this
+   client's ring may already have been written to the characteristic, and
+   nothing distinguishes that from one still queued behind it. The
    difference between "never sent" and "sent, outcome unknowable" is the
    difference between an owner who will send again and one who must decide
    whether to risk a duplicate.

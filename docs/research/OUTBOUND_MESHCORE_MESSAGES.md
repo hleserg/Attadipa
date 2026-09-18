@@ -64,7 +64,7 @@ two of them touched this file. All five claims hold.
 | `kMeshTextBytes = 128` | holds — `core/include/attadipa/core/mesh_service.h:16` — "inline constexpr std::size_t kMeshTextBytes = 128;" |
 | `send_private()` returns only `bool` | holds — `core/include/attadipa/core/mesh_service.h:113` — "virtual bool send_private(const MeshPeerId& peer" |
 | one global `delivery`, no message ID, no recipient | holds — `core/include/attadipa/core/mesh_service.h:89` — "MeshDelivery delivery = MeshDelivery::None;" |
-| an expired ACK budget becomes `Failed` | holds — `link/src/meshcore_companion.cpp:288` — "status_.delivery = core::MeshDelivery::Failed;" |
+| an expired ACK budget becomes `Failed` | holds — `link/src/meshcore_companion.cpp:295` — "status_.delivery = core::MeshDelivery::Failed;" |
 | send resolves by 6-byte prefix in the retained window only | holds — `firmware/main/meshcore_ble.cpp:1366` — "requested contact prefix is not in retained chat contacts" |
 
 What the nine commits did change nearby: [#478](https://github.com/hleserg/Attadipa/issues/478)
@@ -145,7 +145,7 @@ Attadipa observed is at the short, single-hop end of its range. That matters in
 
 This repository already holds one of these frames, captured on the bench and
 committed. The four bytes it deliberately declined to interpret —
-`link/src/meshcore_companion.cpp:978` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) == 0) {"
+`link/src/meshcore_companion.cpp:1235` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) == 0) {"
 reads the ack and stops — are a millisecond count:
 
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298` — "82 38 66 6c b8 1b 03 00 00"
@@ -154,7 +154,7 @@ reads the ack and stops — are a millisecond count:
 two frames earlier,
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:296` — "06 00 38 66 6c b8 66 09 00 00",
 carries `66 09 00 00` = **2406 ms** of estimate, which
-`link/include/attadipa/link/meshcore_companion.h:197` — "static constexpr core::Millis kMaxAckWait{15000};"
+`link/include/attadipa/link/meshcore_companion.h:243` — "static constexpr core::Millis kMaxAckWait{15000};"
 already records in its own comment.
 
 **What decoding them adds, and what it does not.** The bytes were `MEASURED`
@@ -251,8 +251,10 @@ unconfirmed'"*.
 **Defect 2 — the budget can expire before the node's own estimate does.**
 `kMaxAckWait` is 15 s and the node's estimate is clamped to it. Against the
 bench's 2406 ms there is a factor of six in hand, and the bench is the *easy*
-case: a short text, one hop. Putting §2.2's own formulas against the 128-byte
-maximum this product allows, on a three-hop direct path, produces estimates
+case: a short text, over a path whose hop count the frame does not carry and
+which is therefore `UNKNOWN` (§2.2). Putting those same formulas against the
+128-byte maximum this product allows, on a three-hop direct path, produces
+estimates
 **above 15 s** — `500 + (6 × airtime + 250) × 4` passes 15 000 at an airtime of
 about 563 ms. Whether a 128-byte MeshCore packet takes 563 ms of air is an
 `ESTIMATED` arithmetic question this document does not answer, and it does not
@@ -291,7 +293,7 @@ send(recipient: full 32-byte identity,
 
 - **Full 32-byte identity at the app/core boundary.** The six-byte prefix is
   what the adapter writes into `CMD_SEND_TXT_MSG` and must not be what an
-  application holds — `link/src/meshcore_companion.cpp:1225` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
+  application holds — `link/src/meshcore_companion.cpp:1483` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
   is where the narrowing belongs and is already where it happens.
 - **A local request id, and the word "local" is the contract.** Non-zero so
   that zero means "no request"; monotonic within a session; explicitly **not**
@@ -302,7 +304,7 @@ send(recipient: full 32-byte identity,
   answers to the *call*, and none of them is a statement about a message,
   because no message exists. Today all four arrive as `false` and, for one of
   them, as a `Failed` written by
-  `link/include/attadipa/link/meshcore_companion.h:173` — "void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }".
+  `link/include/attadipa/link/meshcore_companion.h:219` — "void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }".
 
 ### 4.2 The result states
 
@@ -312,12 +314,42 @@ send(recipient: full 32-byte identity,
 | `Accepted` | `RESP_CODE_SENT` arrived for this request | it was transmitted, or received |
 | `Confirmed` | `PUSH_CODE_SEND_CONFIRMED` matched this request's ack tag | anybody read it |
 | `Unconfirmed` | the ACK budget expired with no match | it failed. **This is the change.** |
-| `Refused` | the node answered `RESP_CODE_ERR`, or a login for a room failed | anything about the radio |
-| `Unknown` | the session ended between `Accepted` and a verdict | it was not sent |
+| `Refused` | the node answered `RESP_CODE_ERR`, a login for a room failed, or this client could not put the frame on the radio **after** it had already published `Queued` | anything about the radio |
+| `Unknown` | the session ended after the request was made and before a verdict | it was not sent |
 
 `Failed` leaves the vocabulary. Nothing that can be observed on this protocol
 licenses it: the only two frames that could are `RESP_CODE_ERR` before the send
 is accepted, which is `Refused`, and nothing at all, which is `Unconfirmed`.
+
+**`Refused` covers the room path's second phase, and this is the one producer
+of `Failed` an earlier draft of this report did not enumerate.** A room send is
+one call in two phases: `send_room()` publishes `Queued` and returns `true`
+while `CMD_SEND_LOGIN` is outstanding, and the text frame is enqueued later,
+from the `PUSH_CODE_LOGIN_SUCCESS` arm —
+`link/src/meshcore_companion.cpp:1259` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
+If the four-deep ring is full at that moment the enqueue fails, and the call
+that would have reported it returned `true` a second ago. So decision 3's rule
+— a local refusal is not a delivery state, because no message exists — does not
+reach this case: a message was published as `Queued` and an owner is looking at
+it. It is `Refused`, which is exactly what it is from the owner's side: nothing
+went to the radio, and a resend cannot duplicate anything. Removing `Failed`
+without naming this would leave the path with **no** terminal state at all —
+`awaiting_login_` is already false and `awaiting_send_` was never set, so
+`send_busy()` is false and `tick()`'s expiry arm never runs, and the screen
+would hold `Queued` for the rest of the session.
+
+**A confirmation that arrives after the budget expired upgrades `Unconfirmed`
+to `Confirmed`, while the request is still this session's current one.** §2.4
+is why the case is real rather than theoretical: the node pushes the
+confirmation whenever `processAck` runs, with no notion of our budget, so a
+late match is ordinary traffic and not a protocol violation. The ack is
+positive evidence and the budget's expiry is the absence of it, so the later
+frame is the stronger claim and discarding it would make the watch say less
+than it knows — and say it in the direction that invites the duplicate
+decision 7 exists to prevent. The bound is the request, not the clock: once the
+request has been replaced or the session has ended, a late ack has nothing to
+attach to and is discarded, because §2.5's tag can repeat and an unattached
+match would be evidence about some other message.
 
 **`Confirmed` means a delivery ACK and never a read.** The ACK is generated by
 the recipient *node*, not by a person and not by an application: nothing in
@@ -434,9 +466,11 @@ The reason is not radio efficiency and not frame capacity; at 160 both are fine.
 It is that **128 is the buffer this product already sizes every inbound message
 against**, and the inbound side has a documented failure that a smaller number
 does not fix and a larger number makes worse:
-`docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:811` — "the cut lands on the coordinate: 132 bytes of text ending"
-is the paragraph that shows a 132-byte message arriving into 128 and losing
-five characters of longitude, thirteen kilometres' worth. Raising the outbound
+`docs/research/REMOTE_TARGET_POSITION_FROM_MESHCORE.md:811` — "told to put it, and the cut lands on the coordinate: 131 bytes of text ending"
+is the paragraph that shows a 131-byte message arriving into 128 and losing
+three characters of longitude, about 650 m worth. (The figures here were 132
+and five characters until #570 corrected the arithmetic by one; the citation
+moved with it.) Raising the outbound
 cap to 160 while the inbound buffer stays 128 would mean **this product emits
 messages its own receiver truncates**, which is a worse property than a smaller
 cap. Raising both is a second change with its own memory cost on a watch, and
@@ -534,7 +568,7 @@ blocker.
 
 ### 8.1 The window is a cache, and the node is the address book
 
-`link/include/attadipa/link/meshcore_companion.h:176` — "static constexpr std::size_t kRetainedPeers = 16;"
+`link/include/attadipa/link/meshcore_companion.h:222` — "static constexpr std::size_t kRetainedPeers = 16;"
 is what the watch keeps. What the node holds, at the pin, on the T114 companion
 environment, is **350 slots** — `variants/heltec_t114/platformio.ini` sets
 `-D MAX_CONTACTS=350` for all four `Heltec_t114*_companion_radio_*` envs,
@@ -568,7 +602,7 @@ reasons the command is a design task and not a one-line addition:
    in silence**, which is the case that matters, because the whole point of the
    fetch is that the contact is not in the cache.
 2. **The chat-type filter drops it too.**
-   `link/src/meshcore_companion.cpp:484` — "if (size < 148 || data[33] != kAdvertTypeChat) {"
+   `link/src/meshcore_companion.cpp:491` — "if (size < 148 || data[33] != kAdvertTypeChat) {"
    refuses any advert type that is not chat, correctly for a contact list and
    incorrectly for a targeted fetch, where the refusal must be *reported* rather
    than absorbed.
@@ -649,14 +683,14 @@ harness, which delivers bytes to `receive()` rather than calling internals.
 | 8 | `RESP_CODE_SENT` → `Accepted`, then a matching ack → `Confirmed` | the happy path, by frame |
 | 9 | a mismatched ack | no state change, not counted malformed |
 | 10 | a duplicate of a matching ack | idempotent; the second changes nothing |
-| 11 | an ack arriving **after** the budget expired | `Unconfirmed` is not overwritten by a late match **or** it is upgraded to `Confirmed` — whichever §4.2 finally says, asserted rather than left to fall out of the code |
+| 11 | an ack arriving **after** the budget expired | `Unconfirmed` is **upgraded to `Confirmed`** while the request is still the current one (§4.2); and a match arriving after the request was replaced changes nothing |
 | 12 | budget expiry | `Unconfirmed`, and specifically **not** `Failed` |
 | 13 | a second send while one is in flight | refused as a *call*, and the first request's state is untouched |
-| 14 | disconnect after `Queued`, before `RESP_CODE_SENT` | `Unknown`, not `None` |
+| 14 | disconnect after `Queued`, before `RESP_CODE_SENT` | `Unknown`, not `None` — the frame may have been written to the characteristic before the link went, and this client cannot tell that from one still in its ring |
 | 15 | disconnect after `Accepted` | `Unknown`; and a reconnect does not resurrect the request |
 | 16 | `RESP_CODE_ERR` with `ERR_CODE_NOT_FOUND` after a send | `Refused`, distinguishable from a timeout |
 | 17 | `RESP_CODE_ERR` with `ERR_CODE_TABLE_FULL` | not reported to the owner as "the node is full" — §2.1 point 4 |
-| 18 | the same body, same second, same recipient, twice in sequence | the aliasing of §2.5 is *asserted*, so that a later correlator cannot be written as if tags were unique |
+| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1188` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
 
 Rows 11, 12 and 18 are the ones this research exists to produce. A test suite
 without them can pass while the product lies.
@@ -696,11 +730,26 @@ and the raw serial capture — under OD-27's redaction rules.
 | coordinate off and on | **only after §7 is decided.** Not before |
 | duplicate detection with an intentionally delayed return ACK | only if it can be provoked safely and reproducibly; otherwise it stays modelled |
 
-**The existing Room send does not count.** It is `MEASURED` and it is a debug
-path: `docs/research/MESHCORE_T114_FIRST_CONTACT.md:11` — "Handshake, Receive and the send path to `Accepted` are on the Heltec T114; the"
-says which halves ran on which unit, and the T114's own private send reached
-`Accepted` and no confirmation in 120 s with the cause `UNKNOWN`. That unexplained
-case is itself a reason the vocabulary must not say `Failed`.
+**The existing Room send does not count, and it was a Room send on both
+units.** It is `MEASURED` and it is a debug path:
+`docs/research/MESHCORE_T114_FIRST_CONTACT.md:11` — "Handshake, Receive and the send path to `Accepted` are on the Heltec T114; the"
+says which halves ran on which unit, and every attempt in §6 went to the same
+Room Server behind a login —
+`docs/research/MESHCORE_T114_FIRST_CONTACT.md:275` — "Target in every attempt: the "Beta Room" Room Server, public key".
+A room send is a different path with a different first phase, so nothing in §6
+is evidence about a private one.
+
+**And that case does not carry the argument an earlier draft of this section
+made with it.** The T114's attempt reached `Accepted` and no confirmation in
+120 s, and the receiving end says why that was not a lost return ACK:
+`docs/research/MESHCORE_T114_FIRST_CONTACT.md:367` — "**And the message is absent from the room.** The operator's screenshot above"
+— `MEASURED` by a person on the recipient, which is a stronger negative than
+the watch could produce. **On that evidence the message really did not arrive,
+and a screen that had said `Failed` would have been right.** What the case
+shows is narrower and is what this report actually rests on: the *client* had
+no way to know either way, and a label is a claim about what was observed, not
+about what happened. The cause of the non-delivery is `UNKNOWN` and is filed as
+M36.
 
 ---
 
@@ -708,7 +757,7 @@ case is itself a reason the vocabulary must not say `Failed`.
 
 | Question | Why this document does not answer it |
 |---|---|
-| Why the T114's private send never confirmed in 120 s | one occurrence, no air capture, and §2.4 means the node had nothing to say about it either. Filed as M36 |
+| Why the T114's room send never confirmed, and never reached the room, in 120 s | the outcome is not what is unknown — the message's absence from the room is `MEASURED` on the recipient (§6b). The *cause* is: one occurrence, no air capture, and §2.4 means the node had nothing to say about it either. Filed as M36 |
 | Whether a 128-byte MeshCore packet's airtime can push `est_timeout` past `kMaxAckWait` on a multi-hop path | §3 defect 2 is arithmetic over source formulas; the airtime term needs a radio configuration and a measurement. Filed as M37 |
 | Whether `PUSH_CODE_SEND_CONFIRMED` is really dropped while the app is disconnected | read from source (§2.4). Nobody has disconnected a watch mid-flight and reconnected to see. Filed as M38 |
 | Whether any upstream maintainer intends to take v14 | unanswered on #1834 for two months; not ours to predict |
