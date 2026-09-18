@@ -13,9 +13,9 @@ separate issue and **no production code changed with this ADR**.
 ## Context
 
 `MeshDelivery` has five values and `MeshStatus` has one slot to hold them:
-`core/include/attadipa/core/mesh_service.h:117` — "MeshDelivery delivery = MeshDelivery::None;".
+`core/include/attadipa/core/mesh_service.h:121` — "MeshDelivery delivery = MeshDelivery::None;".
 One of the five is `Failed`, and it is written when an acknowledgement budget
-expires: `link/src/meshcore_companion.cpp:323` — "status_.delivery = core::MeshDelivery::Failed;".
+expires: `link/src/meshcore_companion.cpp:324` — "status_.delivery = core::MeshDelivery::Failed;".
 It reaches the owner as *"failed"* in English and, in Russian, as
 *"не доставлено"* — **not delivered**, a claim about what happened on the air.
 
