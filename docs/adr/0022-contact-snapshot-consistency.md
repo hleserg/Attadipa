@@ -19,7 +19,7 @@ the same transport. The node's contact iterator is a raw index into the live
 compacted underneath the cursor while the walk runs — research report §2.
 
 Attadipa converts the end of that stream into a claim about its content:
-`link/src/meshcore_companion.cpp:1322` — "status_.peers_complete = true;" is set
+`link/src/meshcore_companion.cpp:1349` — "status_.peers_complete = true;" is set
 unconditionally on `RESP_CODE_END_OF_CONTACTS`. The stream ending is a syntactic
 fact. That the list matches the node's table is a semantic one, and the wire does
 not carry it.
@@ -56,6 +56,16 @@ it: *the node stopped sending* is weaker than *the node said it was done*, which
 is weaker than *this is the node's list*. A walk closed by the sweep with no
 invalidating push inside it is **consistent** — a lost boundary frame is not
 evidence the table moved.
+
+**1b. That last sentence is about a first walk, and a re-read is not one.** A
+first walk the sweep closes publishes whatever it staged, because that is the
+only list there is. A re-read has decision 7's proven list standing behind it,
+and needs the node's own `RESP_CODE_END_OF_CONTACTS` before it may replace it:
+swept, it abandons what it staged and the snapshot goes back to being dirty —
+another attempt, then `degraded` with the older list. That is not a second
+rule. It is decision 7 read on the one end the sweep can produce, and the
+implementation that read it the other way is
+[#586](https://github.com/hleserg/Attadipa/issues/586).
 
 **2. Snapshot consistency is a separate observation**, carried alongside it:
 consistent, dirty, retry pending, or degraded. A snapshot is *consistent* when the
@@ -94,7 +104,7 @@ be proven and is not does not.
 **7a. Publishing it costs a shadow copy and a latch, and that is part of this
 decision, not an implementation detail.** A re-read opens with a second
 `RESP_CODE_CONTACTS_START`, whose handler empties the retained set and clears
-both completion flags — `link/src/meshcore_companion.cpp:1299` — "        peer_count_ = 0;".
+both completion flags — `link/src/meshcore_companion.cpp:1326` — "        peer_count_ = 0;".
 Left alone, a retry therefore drops `Availability::Ready`, closes the battery
 poll gate, restarts the `retained/reported` pair at zero, and — the one that
 matters — leaves an incoming message with no sender name, because

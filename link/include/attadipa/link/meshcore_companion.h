@@ -335,7 +335,12 @@ private:
     bool accept_channel_message_v3(const std::uint8_t* data, std::size_t size);
     bool end_contacts(core::MonotonicTime now);
     void settle_snapshot(core::MonotonicTime now);
-    void finish_retry(core::MonotonicTime now);
+    // `ended_by_node` is the node's RESP_CODE_END_OF_CONTACTS and nothing
+    // else. The quiet sweep is the third rung of ADR-0022 §1a -- *the node
+    // stopped sending* -- and a re-read may not be committed on it: decision 7
+    // replaces the published set on a proven snapshot or on the newest read
+    // once the budget is spent, and a swept walk is neither.
+    void finish_retry(core::MonotonicTime now, bool ended_by_node);
     bool request_next_message(core::MonotonicTime now);
     bool spend_pending_push(core::MonotonicTime now);
     void drain_after(bool accepted, core::MonotonicTime now);

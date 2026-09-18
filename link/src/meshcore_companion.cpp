@@ -451,11 +451,10 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // re-read whose END is dropped would otherwise hold `retry_open_` for the
     // life of the session -- staging every later contact into a set nothing
     // commits, and leaving the published snapshot claiming a re-read is still
-    // in flight. A swept re-read commits exactly as the first walk publishes a
-    // partial pair, and heals the same way: contacts that keep arriving after
-    // it go straight into the published set again.
+    // in flight. What it may *not* do is commit what it swept: `false` here is
+    // the whole of #586, and `finish_retry()` says why.
     if (retry_open_ && core::elapsed(last_contact_at_, now) >= kContactsQuiet) {
-        finish_retry(now);
+        finish_retry(now, false);
     }
     if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {
         draining_ = false;
@@ -477,7 +476,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1233` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1260` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -729,11 +728,39 @@ void MeshCoreCompanion::settle_snapshot(core::MonotonicTime now)
 // discarded rather than merged: the accumulator overwrites a row and never
 // removes one, so merging cannot repair the case a re-read exists for.
 //
+// AND THE NODE HAS TO HAVE SAID SO. The quiet sweep ends a walk too, and it
+// ends it on the weakest evidence the three rungs of ADR-0022 §1a carry --
+// *the node stopped sending*, which for a first walk is the best that can be
+// had and for a re-read is not. A first walk swept early has nothing better to
+// publish; a re-read has the published set already standing, already complete,
+// and only suspected of being stale, so committing three staged rows over
+// eight proven ones trades a suspicion for a certainty. It cost the
+// consequences decision 7a is written to prevent -- a message from any of the
+// five dropped contacts delivered with no sender name, and `retained/reported`
+// counting up from three while the face's own gate said the pair was
+// comparable -- and it published the result as `Consistent`, which is the one
+// state that means *this is the node's list*. A swept re-read therefore
+// discards its staging and says the snapshot is still unproven, which is what
+// it was before the attempt: the published list stands, another attempt goes
+// out ten seconds later, and a boundary frame genuinely lost ends the session
+// at `Degraded` with the older list rather than at `Consistent` with a
+// truncated one.
+//
 // It deliberately does not call `end_contacts()`. Nothing about a re-read is
 // session state: the drain was armed by the first walk and stays armed.
-void MeshCoreCompanion::finish_retry(core::MonotonicTime now)
+void MeshCoreCompanion::finish_retry(core::MonotonicTime now, bool ended_by_node)
 {
     retry_open_ = false;
+    if (!ended_by_node) {
+        // The bit the re-read's own START cleared, put back: the dirt this
+        // attempt was sent to clear has not been cleared, and `settle_snapshot`
+        // reads exactly that to choose between another attempt and `Degraded`.
+        // The staging needs no clearing -- `accept_contact()` reaches it only
+        // while `retry_open_` is set, and the next START zeroes it.
+        snapshot_dirty_ = true;
+        settle_snapshot(now);
+        return;
+    }
     if (!snapshot_dirty_ || retries_left_ == 0) {
         peers_ = incoming_peers_;
         peer_count_ = incoming_count_;
@@ -1316,7 +1343,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // thing while the retry is a contacts-level one. They were tied
         // together by nothing more than sharing this arm.
         if (retry_open_) {
-            finish_retry(now);
+            finish_retry(now, true);
             break;
         }
         status_.peers_complete = true;
