@@ -1506,6 +1506,24 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // the only things that release the slot: a well-formed ack for another
         // message is a correlation outcome, and a malformed frame is not even
         // that.
+        // AN ALL-ZERO `expected_ack_` IS "NO TAG", NOT A TAG OF ZEROS.
+        // `reset_session()` fills it with zeros -- `:215` -- and so does the
+        // constructor, so the four bytes below are also what the member holds
+        // when nothing has ever been sent. A five-byte frame `82 00 00 00 00`
+        // would otherwise match it, and the arm further down would read that
+        // match as decision 2a's late confirmation of whatever verdict survived
+        // the reset. The comment that used to sit there argued the zeroing was
+        // the protection; zeroing is what creates the match, and it is
+        // `Unconfirmed` rather than `Unknown` that crosses a reset intact.
+        //
+        // A genuine tag of four zero bytes is refused here too. The tag is a
+        // keyed hash, so that costs one message in 2^32 an upgrade it was owed
+        // -- and the message stays `Unconfirmed`, which is the direction to
+        // fail in: the owner is told the wire cannot prove delivery, which is
+        // exactly what this client can no longer prove.
+        if (expected_ack_ == std::array<std::uint8_t, 4>{}) {
+            break;
+        }
         if (std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0) {
             break;
         }
@@ -1534,8 +1552,9 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // the same second.
         //
         // `Unknown` is deliberately NOT upgraded. It is where a disconnect
-        // leaves a request, and `reset_session()` zeroes `expected_ack_`, so a
-        // match cannot reach across a reconnect to resurrect one.
+        // leaves a request, and a request that ended unknowable is not one a
+        // later session may finish; the guard above is what stops the zeroed
+        // tag reaching across the reconnect at all.
         if (status_.delivery == core::MeshDelivery::Unconfirmed) {
             status_.delivery = core::MeshDelivery::Confirmed;
         }
@@ -1572,7 +1591,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // `Refused` is exactly right from the owner's side: nothing reached the
         // radio, and a resend cannot duplicate anything. ADR-0023 decision 4.
         if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),
-                             room_timestamp_)
+                             room_timestamp_, status_.request_id)
                  .accepted()) {
             status_.delivery = core::MeshDelivery::Refused;
         }
@@ -1859,7 +1878,8 @@ std::uint32_t MeshCoreCompanion::next_request_id()
 
 core::MeshSendResult MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
                                                         std::string_view text,
-                                                        core::WallTime timestamp)
+                                                        core::WallTime timestamp,
+                                                        std::uint32_t request_id)
 {
     // MeshCore private-message frames address the destination by its six-byte
     // public-key prefix; the full key is only used by commands such as login.
@@ -1900,7 +1920,14 @@ core::MeshSendResult MeshCoreCompanion::enqueue_private(const core::MeshPeerId& 
     op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
-    status_.request_id = next_request_id();
+    // A CONTINUATION KEEPS ITS CALLER'S ID; A NEW SEND MINTS ONE. The room path
+    // is one call in two phases -- `send_room()` publishes an id and returns it
+    // while the login is on the wire, and this runs from the login's answer. A
+    // second id there would leave the caller holding a number that names
+    // nothing, for the whole of `Accepted`, `Confirmed`, `Unconfirmed` and
+    // `Unknown`. ADR-0023 decision 8: the id is what a result is carried
+    // against.
+    status_.request_id = request_id != 0 ? request_id : next_request_id();
     return {status_.request_id, core::MeshSendRefusal::None};
 }
 

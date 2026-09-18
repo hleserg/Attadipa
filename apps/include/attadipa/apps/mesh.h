@@ -73,8 +73,13 @@ struct MeshText {
     // 40 rather than 32, and 32 rather than 24 before that, both times for the
     // same reason and both times found by the same sweep below rather than by
     // reading the strings. 24 cut `не отправлено` and `не доставлено`, 25 bytes
-    // each; 32 cuts `нет подтверждения`, which is 34, and `исход неизвестен`,
-    // which is 31 and needs a thirty-second byte for its terminator.
+    // each. 32 cuts `нет подтверждения`, which is 33 and needs a thirty-fourth
+    // byte for its terminator. It is the only one of #573's three new strings
+    // that 32 cut: `исход неизвестен` is 31 and fitted exactly, with the
+    // thirty-second byte its terminator, and `отклонено` is 18. One
+    // string over the edge by a byte is the whole reason for the widening, so
+    // the arithmetic is written out rather than rounded -- a margin that is one
+    // string wide reads like a comfortable one until somebody trusts it.
     //
     // Cyrillic is two bytes a letter here, so a Russian word costs twice what
     // its length suggests and a buffer sized by eye in English is short by half

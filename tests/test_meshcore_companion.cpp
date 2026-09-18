@@ -4308,12 +4308,16 @@ void test_the_recipient_narrows_to_six_bytes_in_the_frame_and_nowhere_else()
     CHECK(frame.size == 13 + 2);
 }
 
-// `send_abandoned()` CLEARS RATHER THAN CONDEMNS. The worker claimed the slot,
-// could not resolve the recipient, and handed this object nothing. ADR-0023
-// decision 3: no message exists, so no message has a state -- and the previous
-// send's verdict must not be read as this one's, which is what the function is
-// for and what `None` still does.
-void test_an_abandoned_request_clears_the_previous_verdict()
+// A REFUSED SEND LEAVES THE PREVIOUS MESSAGE'S VERDICT ALONE. This is the test
+// that replaced the one for `send_abandoned()`, and it asserts the opposite of
+// what that function did. The previous send is `Unconfirmed`: the node accepted
+// it, nothing acknowledged it, and the owner has been told a resend may
+// duplicate. A *second* send is then refused locally -- over the byte budget,
+// which never reaches the provider's wire path at all. ADR-0023 decision 3 says
+// that refusal is not a delivery state; it must therefore not overwrite one,
+// and clearing the id would be worse still, because on `Busy` the id it clears
+// belongs to the request still in flight.
+void test_a_refused_send_does_not_erase_the_previous_verdict()
 {
     MeshCoreCompanion client;
     connect_and_handshake(client);
@@ -4322,18 +4326,95 @@ void test_an_abandoned_request_clears_the_previous_verdict()
     CHECK(service.peer(0, peer));
 
     const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
-    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4, 0, 0, 0, 0};
-    const auto first = service.send_private(peer.id, "delivered", WallTime{1000});
+    const auto first = service.send_private(peer.id, "unacknowledged", WallTime{1000});
     CHECK(first.accepted());
     CHECK(client.receive(sent, sizeof(sent), at(8)));
-    CHECK(client.receive(ack, sizeof(ack), at(9)));
-    CHECK(service.status().delivery == MeshDelivery::Confirmed);
-
-    client.send_abandoned();
-    CHECK(service.status().delivery == MeshDelivery::None);
-    CHECK(service.status().request_id == 0);
-    // It ends nothing, because there was nothing to end.
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    client.tick(at(8 + 3000));
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
     CHECK(!client.send_busy());
+
+    const std::string too_long(core::kMeshTextBytes + 1, 'x');
+    const auto second = service.send_private(peer.id, too_long, WallTime{2000});
+    CHECK(!second.accepted());
+    CHECK(second.refusal == core::MeshSendRefusal::BodyTooLong);
+    CHECK(second.request_id == 0);
+    // The refusal is the caller's answer, and the panel still says what the
+    // wire last supported about the message that exists.
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+    CHECK(service.status().request_id == first.request_id);
+}
+
+// THE ROOM PATH IS ONE CALL IN TWO PHASES AND MUST PUBLISH AGAINST ONE ID.
+// `send_room()` returns an id while the login is on the wire; the text is
+// enqueued from the login's answer, and used to mint a second one there. A
+// caller holding the first would then watch every verdict -- `Accepted`,
+// `Confirmed`, `Unconfirmed`, `Unknown` -- go past under a number it does not
+// hold, which is ADR-0023 decision 8 read backwards. Nothing misbehaves today
+// only because the one caller reads `accepted()` and throws the id away.
+void test_a_room_login_keeps_the_request_id_its_caller_was_given()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    std::array<std::uint8_t, core::kMeshPublicKeyBytes> room{};
+    room.fill(0x44);
+    const auto result = client.send_room(room, "secret", "hi", WallTime{1000});
+    CHECK(result.accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 26);
+
+    // The login's own RESP_CODE_SENT, then the node's success push carrying the
+    // room key's first six bytes -- both are what `kPushLoginSuccess` demands
+    // before it will enqueue the text.
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(9)));
+    std::uint8_t success[] = {0x85, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(&success[2], room.data(), 6);
+    CHECK(client.receive(success, sizeof(success), at(10)));
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+    CHECK(client.status().request_id == result.request_id);
+}
+
+// A ZEROED `expected_ack_` IS NOT A TAG, AND `82 00 00 00 00` MUST NOT MATCH IT.
+// `reset_session()` zeroes the tag but leaves a settled `Unconfirmed` alone --
+// deliberately: a disconnect is not evidence against a verdict the budget
+// already reached. Before the guard, those two facts combined into a false
+// `Confirmed`: five bytes of zeros memcmp'd equal, and decision 2a's late-ack
+// arm upgraded a message nothing had ever acknowledged to "доставлено". That is
+// the one claim ADR-0023 decision 6 forbids outright, and it turns decision 7's
+// "a resend may duplicate" into "it arrived".
+void test_a_zero_tag_does_not_confirm_a_settled_unconfirmed()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(service.send_private(peer.id, "unacknowledged", WallTime{1000}).accepted());
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    client.tick(at(8 + 3000));
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+
+    // The reconnect. `reset_session()` runs three times over this sequence and
+    // each one zeroes the tag; none of them touches the settled verdict,
+    // because `send_busy()` is already false.
+    client.disconnected(at(70));
+    client.begin(at(71));
+    client.connected(at(72));
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+
+    const std::uint8_t zero_ack[] = {0x82, 0, 0, 0, 0};
+    CHECK(client.receive(zero_ack, sizeof(zero_ack), at(73)));
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+
+    // And the guard is about the *absence* of a tag, not about this frame: a
+    // non-zero tag nothing is waiting for is still simply a mismatch.
+    const std::uint8_t other_ack[] = {0x82, 9, 9, 9, 9};
+    CHECK(client.receive(other_ack, sizeof(other_ack), at(74)));
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
 }
 
 int main()
@@ -4415,7 +4496,9 @@ int main()
     test_an_identical_ack_tag_does_not_confirm_the_earlier_request();
     test_an_error_code_is_not_shown_to_the_owner_as_a_reason();
     test_the_recipient_narrows_to_six_bytes_in_the_frame_and_nowhere_else();
-    test_an_abandoned_request_clears_the_previous_verdict();
+    test_a_refused_send_does_not_erase_the_previous_verdict();
+    test_a_room_login_keeps_the_request_id_its_caller_was_given();
+    test_a_zero_tag_does_not_confirm_a_settled_unconfirmed();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

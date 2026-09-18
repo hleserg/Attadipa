@@ -100,6 +100,15 @@ merely motivating it:
    request has been replaced or the session has ended there is nothing for the
    match to attach to, and the tag of decision 8 can repeat, so a late ack is
    discarded there instead.
+   **2c. And the absence of a tag is not a tag, which is the half implementation
+   got wrong and review caught.** The session reset clears the stored tag to
+   zeros and deliberately leaves a settled `Unconfirmed` alone — a disconnect is
+   not evidence against a verdict the budget already reached. Those two are
+   safe apart and not together: a confirmation carrying four zero bytes then
+   matches the cleared store, and 2a upgrades a message nothing ever
+   acknowledged. So a cleared store matches nothing, and a genuine all-zero tag
+   — one hash in 2³² — loses an upgrade it was owed. That is the direction to
+   fail in: the owner is told the wire cannot prove delivery, which is true.
 3. **A local refusal is not a delivery state.** "The link is down", "a send is
    already in flight", "the body is over budget", "the recipient does not
    resolve" are answers to the *call*. No message exists, so no message has a
@@ -140,6 +149,13 @@ merely motivating it:
    is a keyed hash of timestamp, attempt and text; identical messages in the
    same second produce identical tags, and the recipient's key is not an input.
    It is a correlation hint that can repeat, and it is never a message id.
+   **8a. A continuation keeps the identifier its caller was given; only a new
+   request mints one.** The room path is one call in two phases — an id is
+   published and returned while the login is on the wire, and the text is
+   enqueued from the login's answer — and minting a second id there leaves the
+   caller holding a number that names nothing for the whole of `Accepted`,
+   `Confirmed`, `Unconfirmed` and `Unknown`. Any later two-phase send inherits
+   this rule rather than re-deciding it.
 
 ## Consequences
 

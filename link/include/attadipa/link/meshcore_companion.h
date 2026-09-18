@@ -213,27 +213,21 @@ public:
         return awaiting_send_ || awaiting_confirm_ || awaiting_login_;
     }
 
-    // The transport claimed the slot and then could not hand the request to the
-    // node -- a contact prefix that is not in the retained chat contacts is the
-    // shipping case, and it is decided by the worker, outside this object.
-    // Nothing here is waiting on that operation, but a caller that was told
-    // MeshOk must not then read the *previous* send's verdict as this one's.
-    // It CLEARS the verdict rather than writing one, and that is ADR-0023
-    // decision 3 rather than a smaller version of what was here. Nothing was
-    // built: the worker never handed this object a request, so there is no
-    // message and no message has a state. What the function is for survives
-    // intact -- a caller told MeshOk must not read the *previous* send's
-    // verdict as this one's -- because `None` is the absence of a verdict and
-    // the previous one is what has to go.
+    // THERE IS NO `send_abandoned()`, AND THE ABSENCE IS THE DECISION. It
+    // existed so that a worker whose send never became an operation could stop
+    // the *previous* message's verdict being read as this one's, and it did
+    // that by clearing `delivery` and `request_id`. Both halves are wrong now
+    // that the previous verdict can be `Unconfirmed`: clearing it tells the
+    // owner **не отправлено** about a message the node accepted and may have
+    // delivered, and a resend on that reading is the duplicate ADR-0023
+    // decision 7 exists to prevent. Clearing the id is worse on `Busy`, where
+    // the id it zeroes belongs to a request still in flight -- the verdict
+    // recovers on the next `RESP_CODE_SENT`, the id never does.
     //
-    // It used to write `MeshDelivery::Failed`, which said on a Russian panel
-    // that a message was **не доставлено** -- not delivered -- about a message
-    // that was never assembled, let alone transmitted.
-    void send_abandoned()
-    {
-        status_.delivery = core::MeshDelivery::None;
-        status_.request_id = 0;
-    }
+    // What the function was for is answered by `MeshSendResult`: the caller is
+    // handed its own refusal, synchronously, and a refusal is not a delivery
+    // state -- decision 3. Nothing that failed to become an operation may
+    // write to `status_` at all.
 
 private:
     static constexpr std::size_t kRetainedPeers = 16;
@@ -337,9 +331,15 @@ private:
     }
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
+    // `request_id` non-zero continues an operation the caller was already given
+    // an id for -- today that is a room login that succeeded -- instead of
+    // minting a second one. A caller holding id N cannot match a verdict
+    // published against N+1, and `core::MeshSendResult`'s contract is that the
+    // id it returns is the one every later verdict is about.
     core::MeshSendResult enqueue_private(const core::MeshPeerId& peer,
                                          std::string_view text,
-                                         core::WallTime timestamp);
+                                         core::WallTime timestamp,
+                                         std::uint32_t request_id = 0);
     // The one place a request id is minted. Non-zero, distinct from the live
     // one, and never the node's ack tag -- see `core::MeshSendResult`.
     std::uint32_t next_request_id();

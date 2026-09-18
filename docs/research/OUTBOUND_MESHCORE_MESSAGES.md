@@ -65,7 +65,7 @@ two of them touched this file. All five claims hold.
 | `send_private()` returns only `bool` | held — `core/include/attadipa/core/mesh_service.h` at `40271f5` — "virtual bool send_private(const MeshPeerId& peer". Since [#573](https://github.com/hleserg/Attadipa/issues/573) it returns `MeshSendResult` |
 | one global `delivery`, no message ID, no recipient | holds — `core/include/attadipa/core/mesh_service.h:193` — "MeshDelivery delivery = MeshDelivery::None;" |
 | an expired ACK budget becomes `Failed` | held — `link/src/meshcore_companion.cpp` at `40271f5` — "status_.delivery = core::MeshDelivery::Failed;". Since [#573](https://github.com/hleserg/Attadipa/issues/573) it is `Unconfirmed`, or `Unknown` before `Accepted` |
-| send resolves by 6-byte prefix in the retained window only | holds — `firmware/main/meshcore_ble.cpp:1372` — "requested contact prefix is not in retained chat contacts" |
+| send resolves by 6-byte prefix in the retained window only | holds — `firmware/main/meshcore_ble.cpp:1371` — "requested contact prefix is not in retained chat contacts" |
 
 What the nine commits did change nearby: [#478](https://github.com/hleserg/Attadipa/issues/478)
 put a length floor on the `PUSH_CODE_SEND_CONFIRMED` arm, and
@@ -150,7 +150,7 @@ than from this observation.
 
 This repository already holds one of these frames, captured on the bench and
 committed. The four bytes it deliberately declined to interpret —
-`link/src/meshcore_companion.cpp:1509` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
+`link/src/meshcore_companion.cpp:1527` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
 reads the ack and stops — are a millisecond count:
 
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298` — "82 38 66 6c b8 1b 03 00 00"
@@ -159,7 +159,7 @@ reads the ack and stops — are a millisecond count:
 two frames earlier,
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:296` — "06 00 38 66 6c b8 66 09 00 00",
 carries `66 09 00 00` = **2406 ms** of estimate, which
-`link/include/attadipa/link/meshcore_companion.h:260` — "static constexpr core::Millis kMaxAckWait{15000};"
+`link/include/attadipa/link/meshcore_companion.h:254` — "static constexpr core::Millis kMaxAckWait{15000};"
 already records in its own comment.
 
 **What decoding them adds, and what it does not.** The bytes were `MEASURED`
@@ -311,7 +311,7 @@ send(recipient: full 32-byte identity,
 
 - **Full 32-byte identity at the app/core boundary.** The six-byte prefix is
   what the adapter writes into `CMD_SEND_TXT_MSG` and must not be what an
-  application holds — `link/src/meshcore_companion.cpp:1893` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
+  application holds — `link/src/meshcore_companion.cpp:1913` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
   is where the narrowing belongs and is already where it happens.
 - **A local request id, and the word "local" is the contract.** Non-zero so
   that zero means "no request"; monotonic within a session; explicitly **not**
@@ -324,8 +324,12 @@ send(recipient: full 32-byte identity,
   additionally as a `Failed` written by
   `link/include/attadipa/link/meshcore_companion.h` at `40271f5` — "void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }".
   [#573](https://github.com/hleserg/Attadipa/issues/573) made each refusal a
-  named `MeshSendRefusal` and left `send_abandoned()` clearing the verdict
-  rather than writing one.
+  named `MeshSendRefusal` and **deleted `send_abandoned()`** rather than
+  softening it. Clearing the verdict is no better than condemning it once the
+  previous one can be `Unconfirmed`: an owner correctly warned that a resend may
+  duplicate would read `None` as "не отправлено" and resend. The caller's answer
+  is the refusal it is handed, and nothing that failed to become an operation
+  writes to `status_` at all.
 
 ### 4.2 The result states
 
@@ -347,7 +351,7 @@ of `Failed` an earlier draft of this report did not enumerate.** A room send is
 one call in two phases: `send_room()` publishes `Queued` and returns `true`
 while `CMD_SEND_LOGIN` is outstanding, and the text frame is enqueued later,
 from the `PUSH_CODE_LOGIN_SUCCESS` arm —
-`link/src/meshcore_companion.cpp:1574` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
+`link/src/meshcore_companion.cpp:1593` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
 If the four-deep ring is full at that moment the enqueue fails, and the call
 that would have reported it returned `true` a second ago. So decision 3's rule
 — a local refusal is not a delivery state, because no message exists — does not
@@ -627,7 +631,7 @@ blocker.
 
 ### 8.1 The window is a cache, and the node is the address book
 
-`link/include/attadipa/link/meshcore_companion.h:239` — "static constexpr std::size_t kRetainedPeers = 16;"
+`link/include/attadipa/link/meshcore_companion.h:233` — "static constexpr std::size_t kRetainedPeers = 16;"
 is what the watch keeps. What the node holds, at the pin, on the T114 companion
 environment, is **350 slots** — `variants/heltec_t114/platformio.ini` sets
 `-D MAX_CONTACTS=350` for all four `Heltec_t114*_companion_radio_*` envs,
@@ -638,7 +642,7 @@ hypothetically full:
 **Sixteen of two hundred and thirty-three.** The retained window is not an
 address book with a small limit; it is a seven-per-cent sample of one, and
 today it is also the only thing a send can address:
-`firmware/main/meshcore_ble.cpp:1372` — "requested contact prefix is not in retained chat contacts".
+`firmware/main/meshcore_ble.cpp:1371` — "requested contact prefix is not in retained chat contacts".
 
 This resolves the #552 requirement directly: **a runtime retention policy must
 not become a product address-book limit**, and at present it is one.

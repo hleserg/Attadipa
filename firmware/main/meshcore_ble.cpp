@@ -1365,12 +1365,10 @@ bool handle_send(const Event& event)
             // first. The text itself never does; only its length.
             ESP_LOGW(kTag, "the provider refused the send (%s); it is not in flight",
                      attadipa::core::to_string(result.refusal));
-            provider.send_abandoned();
             return false;
         }
     }
     ESP_LOGW(kTag, "requested contact prefix is not in retained chat contacts");
-    provider.send_abandoned();
     return false;
 }
 
@@ -1385,7 +1383,6 @@ bool handle_send_room(Event& event)
     if (!result.accepted()) {
         ESP_LOGW(kTag, "Room Server message rejected by provider (%s)",
                  attadipa::core::to_string(result.refusal));
-        provider.send_abandoned();
     }
     return result.accepted();
 }
@@ -1662,7 +1659,7 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:196` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1717` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1714` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
         // `firmware/main/meshcore_ble.cpp:938` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
