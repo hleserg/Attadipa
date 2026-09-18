@@ -134,6 +134,22 @@ BAUD = 115200  # the S3's USB-Serial/JTAG ignores baud; not changing it keeps
 # There is no flag that skips this, for the reason VERIFIED_BACKUPS gives: a
 # switch that restores the old behaviour is the old behaviour, one argument
 # further away.
+#
+# WHAT IT DOES NOT PROVE, WRITTEN HERE RATHER THAN LEFT TO BE FOUND OUT. Three
+# files are written and only one of them is bound to the proved ELF. The
+# partition table is not a hazard: both boards build the same `partitions.csv`
+# -- `firmware/sdkconfig.defaults:121` -- "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"".
+# The bootloader is, because it is the artefact that differs and the one that
+# acts, and **nothing in it names a board**: `esp_bootloader_desc_t` at 0x20
+# carries a magic, an IDF version and a build timestamp -- read off both
+# boards' builds on this bench, `v5.5.5-dirty` in each -- and no board field.
+# Comparing that timestamp with the application's would reject an ordinary
+# incremental rebuild, so it is not done. So a directory whose `attadipa.bin`
+# and `attadipa.elf` were copied in from the other board's build passes this
+# gate and still writes that build's bootloader at 0x0. It takes a hand-mixed
+# directory rather than a mistyped one, which is the mistake this gate is
+# about; the point of saying so is that the refusals below must not be read as
+# proving more than the application image.
 BOARD_VARIANT = "twatch"
 NM = "xtensa-esp32s3-elf-nm"
 
@@ -171,8 +187,10 @@ def artifact_fault(build_dir: Path, nm: str) -> str | None:
     recorded = app_elf_sha256(app)
     if recorded is None:
         return (f"{app} carries no ESP-IDF application descriptor, so it "
-                f"cannot be tied to {elf.name}. An image assembled by hand, or "
-                f"truncated, is not a build output this script will write.")
+                f"cannot be tied to {elf.name}. An application image assembled "
+                f"by hand, or truncated, is not a build output this script "
+                f"will write -- though the bootloader beside it is checked by "
+                f"nothing either way.")
     linked = elf_sha256(elf)
     if recorded != linked:
         return (f"{app.name} was built from a different ELF than {elf.name}: "
@@ -250,50 +268,65 @@ def identity_mismatch(mac: bytes, serial: str) -> str | None:
     return f"the chip on this port is {seen}, not {want}: nothing written"
 
 
-# The symbol table a build of each board defines, as `nm -C --defined-only`
-# prints it. The self-test has no cross-compiler, so it hands these to the
-# same `board_fault()` the real path calls -- the rule is tested, the
-# subprocess is not, and the subprocess is the part that has nothing to get
-# wrong.
-SYMBOLS_OF = {board: f"42000000 T {symbol}"
-              for board, symbol in BOARD_SYMBOLS.items()}
-
-
-def write_build_artefacts(build: Path, board: str | None, *,
-                          descriptor: bool = True, bind: bool = True,
-                          app_bytes: int = 0x1000) -> None:
-    """An app image and the ELF it says it came from, as a build emits them.
-
-    `board` picks which symbol table `read_symbols` will answer with; None
-    leaves the ELF out entirely. `descriptor` and `bind` are the two ways the
-    pair can fail to be one build: no application descriptor at all, and a
-    descriptor recording somebody else's ELF.
-    """
-    app = bytearray(b"\xe9" * max(app_bytes, 0x100))
-    elf = build / "attadipa.elf"
-    if board is not None:
-        elf.write_bytes(f"ELF of the {board} build".encode())
-    elif elf.exists():
-        elf.unlink()
-    if descriptor:
-        app[APP_DESC_OFFSET:APP_DESC_OFFSET + 4] = \
-            APP_DESC_MAGIC.to_bytes(4, "little")
-        recorded = (elf_sha256(elf) if bind and board is not None
-                    else hashlib.sha256(b"a different build").hexdigest())
-        app[APP_DESC_OFFSET + APP_DESC_ELF_SHA256:
-            APP_DESC_OFFSET + APP_DESC_ELF_SHA256 + 32] = bytes.fromhex(recorded)
-    (build / "attadipa.bin").write_bytes(bytes(app[:app_bytes] if app_bytes >= 0x100
-                                               else app))
-    globals()["read_symbols"] = (
-        lambda _elf, _nm, board=board: SYMBOLS_OF.get(board, ""))
-
-
 def selftest() -> int:
+    # THE FIXTURES LIVE INSIDE THE SELF-TEST, and the restore is this function
+    # rather than one `finally` deep inside it. `write_build_artefacts()` binds
+    # a stub over `read_symbols` -- a switch that turns the board gate off,
+    # which has no business being reachable from module scope in a tool that
+    # writes boot-critical flash. Nothing imports this module today; that is
+    # not a reason to leave the switch where an import would find it. The
+    # restore here also covers the cases that run before the inner
+    # `try`/`finally`, so an exception among them cannot leave the stub behind.
+    real_read_symbols = read_symbols
+    try:
+        return _selftest_cases()
+    finally:
+        globals()["read_symbols"] = real_read_symbols
+
+
+def _selftest_cases() -> int:
     import tempfile
 
-    # Captured before any fixture replaces it: `write_build_artefacts()` binds
-    # a stub over this name, and restoring the stub is not restoring anything.
+    # Captured again here: the caller above restores it either way, and a case
+    # below puts the real one back deliberately to reach the `--nm` refusal.
     real_read_symbols = read_symbols
+
+    # The symbol table a build of each board defines, as `nm -C --defined-only`
+    # prints it. The self-test has no cross-compiler, so it hands these to the
+    # same `board_fault()` the real path calls -- the rule is tested, the
+    # subprocess is not, and the subprocess is the part that has nothing to get
+    # wrong.
+    symbols_of = {board: f"42000000 T {symbol}"
+                  for board, symbol in BOARD_SYMBOLS.items()}
+
+
+    def write_build_artefacts(build: Path, board: str | None, *,
+                              descriptor: bool = True, bind: bool = True,
+                              app_bytes: int = 0x1000) -> None:
+        """An app image and the ELF it says it came from, as a build emits them.
+
+        `board` picks which symbol table `read_symbols` will answer with; None
+        leaves the ELF out entirely. `descriptor` and `bind` are the two ways the
+        pair can fail to be one build: no application descriptor at all, and a
+        descriptor recording somebody else's ELF.
+        """
+        app = bytearray(b"\xe9" * max(app_bytes, 0x100))
+        elf = build / "attadipa.elf"
+        if board is not None:
+            elf.write_bytes(f"ELF of the {board} build".encode())
+        elif elf.exists():
+            elf.unlink()
+        if descriptor:
+            app[APP_DESC_OFFSET:APP_DESC_OFFSET + 4] = \
+                APP_DESC_MAGIC.to_bytes(4, "little")
+            recorded = (elf_sha256(elf) if bind and board is not None
+                        else hashlib.sha256(b"a different build").hexdigest())
+            app[APP_DESC_OFFSET + APP_DESC_ELF_SHA256:
+                APP_DESC_OFFSET + APP_DESC_ELF_SHA256 + 32] = bytes.fromhex(recorded)
+        (build / "attadipa.bin").write_bytes(bytes(app[:app_bytes] if app_bytes >= 0x100
+                                                   else app))
+        globals()["read_symbols"] = (
+            lambda _elf, _nm, board=board: symbols_of.get(board, ""))
 
     with tempfile.TemporaryDirectory() as scratch:
         build = Path(scratch)
