@@ -59,9 +59,12 @@ ACCEPT_CASES = {
 # to object. A fragment is the reason the spelling must be refused; `None` says
 # it must be accepted.
 SPELLING_CASES = [
-    ("%q message",    "not a conversion this catalogue understands"),
-    ("%*u message",   "not a conversion this catalogue understands"),
-    ("%u message %",  "not a conversion this catalogue understands"),
+    # These three are refused by the rule that covers every string, not by the
+    # count contract -- which is why they are worth keeping here as well as in
+    # `SINGULAR_CASES`: a plural form is a string like any other first.
+    ("%q message",    "begins no conversion this catalogue understands"),
+    ("%*u message",   "begins no conversion this catalogue understands"),
+    ("%u message %",  "begins no conversion this catalogue understands"),
     # NOT A LITERAL PERCENT, whatever it looks like. Both of these parse as the
     # conversion `%-100%` / `%-60%`, which C leaves undefined at snprintf, and
     # the second is the one that reads as ordinary prose and slipped through:
@@ -93,9 +96,21 @@ SINGULAR_CASES = [
     # on the other locale happening to disagree. Two locales that spelled it
     # the same way were accepted.
     (("0%-100%", "0-100 %"), "not a literal percent sign"),
-    # And the comparison itself, which is the only check a singular pair gets
-    # and must keep working: both formats here are valid on their own.
+    # And the comparison itself, which used to be the only check a singular pair
+    # got and must keep working: both formats here are valid on their own.
     (("%u km", "%s км"),     "same placeholders"),
+    # THE HOLE THE COMPARISON LEAVES, and it is the reason the percent rule is
+    # not a plural rule. `FORMAT_RE` does not match a trailing bare `%`, so both
+    # of these have the signature `("%s",)`, they agree, and the string reached
+    # `apps/src/mesh.cpp:207` -- "                      l10n::tr(StringId::MeshPinned, locale), want);"
+    # -- as a format whose last conversion specification is incomplete. Two
+    # locales that agree about a mistake still make it.
+    (("pinned %s%", "закреплён %s%"), "begins no conversion"),
+    # The same hole with a conversion character that does not exist, and with a
+    # width snprintf reads an argument for. Neither is a match, so neither is in
+    # a signature, so agreeing hid both.
+    (("%q here", "%q здесь"),         "begins no conversion"),
+    (("%*u m", "%*u м"),              "begins no conversion"),
 ]
 
 _PLURAL_TEMPLATE = """[count_spelling]
@@ -204,8 +219,8 @@ def run():
             else:
                 print(f"  ok  {en!r} vs {ru!r} rejected: {expected}")
         else:
-            failures.append(f"singular {en!r} vs {ru!r}: ACCEPTED, and it must not be -- "
-                            f"the two do not carry the same placeholders.")
+            failures.append(f"singular {en!r} vs {ru!r}: ACCEPTED, and it must not be. "
+                            f"Expected {expected!r}.")
 
     for name, expected_fragments in GLYPH_CASES.items():
         path = FIXTURES / name

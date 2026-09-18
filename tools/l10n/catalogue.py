@@ -223,13 +223,6 @@ def _check_count_format(ident, locale, form, text):
     """
     where = f"plural '{ident}'.{locale}.{form}"
 
-    index = _unrecognised_percent(text)
-    if index is not None:
-        raise CatalogueError(
-            f"{where} has a '%' that is not a conversion this catalogue understands: "
-            f"{text[index:index + 8]!r}.\n{_COUNT_CONTRACT}"
-        )
-
     specs = [m for m in FORMAT_RE.finditer(text) if m.group("conv") != "%"]
     # A percent somebody meant literally does not read as text: snprintf takes
     # the space in "100% done" as the space flag and prints a signed int. It
@@ -281,6 +274,22 @@ def _check_count_format(ident, locale, form, text):
         )
 
 
+_PERCENT_BOUNDARY = (
+    "  A catalogue string reaches the screen one of two ways and this file cannot\n"
+    "  see which: `std::snprintf(out, size, tr(id, locale), ...)`, where it is a\n"
+    "  *runtime format string*, or `put(out, size, tr(id, locale))`, which copies it\n"
+    "  verbatim. `put` has to stay a copy -- it is also given contact names and\n"
+    "  message bodies a node sent, and formatting those would hand whoever sent them\n"
+    "  the format string. So the rule is written for the branch where being wrong is\n"
+    "  undefined behaviour rather than a wrong glyph: every `%` in every string has\n"
+    "  to be a complete conversion, and a literal percent is `%%`.\n"
+    "  If a string that is only ever copied one day needs a literal percent, `%%`\n"
+    "  would print two signs and this catalogue would need a way to say which\n"
+    "  strings are formats. No shipping string is in that position, and the marker\n"
+    "  is not built until one is."
+)
+
+
 # A `%` conversion is a literal percent only when it is spelled `%%`. Anything
 # between the two signs makes it an invalid conversion specification, and C says
 # the behaviour of snprintf on one is undefined -- there is no "it prints a
@@ -301,6 +310,7 @@ def _reject_malformed_percent(where, text):
                 f"Flags, a width or a precision between the two signs make it an invalid "
                 f"conversion specification, and snprintf's behaviour on one is undefined. "
                 f"Write a literal percent as `%%`: `50%%-60%%`, not `50%-60%`."
+                f"\n{_PERCENT_BOUNDARY}"
             )
 
 
@@ -311,6 +321,18 @@ def _check_formats(entry):
         for form, text in items:
             where = f"'{entry.ident}'.{locale}{'.' + form if form else ''}"
             _reject_malformed_percent(where, text)
+            # And a `%` that begins no conversion at all -- a trailing bare one,
+            # `%q`, `%*u`. snprintf does not skip those either, and until now
+            # only a plural form was looked at: a singular pair that agreed
+            # carried `"pinned %s%"` through to `apps/src/mesh.cpp` untouched,
+            # because `FORMAT_RE` does not match a trailing `%` and both
+            # signatures were `("%s",)`.
+            index = _unrecognised_percent(text)
+            if index is not None:
+                raise CatalogueError(
+                    f"{where} has a '%' that begins no conversion this catalogue "
+                    f"understands: {text[index:index + 8]!r}.\n{_PERCENT_BOUNDARY}"
+                )
             signatures[f"{locale}{'.' + form if form else ''}"] = _format_signature(text)
     distinct = set(signatures.values())
     if len(distinct) > 1:

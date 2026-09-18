@@ -24,8 +24,12 @@
 #     `50%-60%` parses as the conversion `%-60%`, which snprintf leaves
 #     undefined. `format_plural` passes
 #     one number and nothing else, so `%s` in *every* form is as broken as `%s`
-#     in one — it just agrees with itself. Singular strings are not held to
-#     this: their callers pass their own arguments.
+#     in one — it just agrees with itself. Singular strings are not held to the
+#     *count* part: their callers pass their own arguments. They are held to the
+#     percent part, and to one more — every `%` in every string has to begin a
+#     conversion this catalogue understands. `%q`, `%*u` and a trailing bare `%`
+#     are refused, because snprintf does not skip them and two locales agreeing
+#     about a mistake still make it.
 #   * every character must be in the font subset — tools/font/charset.py. A
 #     glyph the embedded font cannot draw is a blank on the screen and nothing
 #     else in the build will see it.
