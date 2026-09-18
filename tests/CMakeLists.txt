@@ -374,6 +374,19 @@ if(ATTADIPA_BUILD_SIMULATOR)
     add_test(NAME sim_review_keys COMMAND test_sim_review_keys)
     set_tests_properties(sim_review_keys PROPERTIES LABELS "simulator;design")
 
+    # The clock the simulator shows is the clock on the wall behind it (#553).
+    #
+    # A simulator test rather than a host one, because the seam is the
+    # simulator's: on a board the offset comes from `TimeService`, and only here
+    # does it come from the process environment. It sets `TZ` and puts it back,
+    # so it must not share a process with anything that reads a timezone --
+    # which is another way of saying it is its own executable, like every test
+    # beside it.
+    add_executable(test_sim_host_time test_sim_host_time.cpp)
+    target_link_libraries(test_sim_host_time PRIVATE attadipa_sim_screens)
+    add_test(NAME sim_host_time COMMAND test_sim_host_time)
+    set_tests_properties(sim_host_time PROPERTIES LABELS "simulator;clock")
+
     # The provisioning console, driven with a finger and read off the file
     # descriptor (#316).
     #

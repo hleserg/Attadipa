@@ -52,8 +52,11 @@ struct Options {
   // broken screenshot visible; `boot` is the capability screen.
   bool diagnostic_screen = false;
 
-  // The first product screen. A fixed instant makes screenshots repeatable;
-  // without one, the simulator follows the host clock.
+  // The first product screen. A fixed instant makes screenshots repeatable —
+  // it is drawn as written, so two reviewers in two timezones compare the same
+  // picture. Without one, the simulator follows the host's **local** wall time,
+  // which is the presentation-local value a board's `TimeService` hands the
+  // Clock and not the UTC instant underneath it (`sim/host_time.h`).
   bool clock_screen = false;
   bool clock_time_set = false;
   core::WallTime clock_time{};

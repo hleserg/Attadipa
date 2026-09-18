@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
 #include <optional>
 
 #include "lvgl.h"
@@ -18,6 +17,7 @@
 #include "attadipa/ui/provision_face.h"
 #include "attadipa/ui/tokens.h"
 
+#include "host_time.h"
 #include "review_keys.h"
 #include "attadipa/ui/status_frame.h"
 #include "attadipa/ui/settings_face.h"
@@ -273,8 +273,10 @@ constexpr core::Millis kSimBoardPeriod{1000};
 
 void refresh_clock(lv_timer_t *timer) {
   if (g_clock_live) {
-    g_clock_state.time.value.unix_seconds =
-        static_cast<std::int64_t>(std::time(nullptr));
+    // The host's local wall time, not its UTC one, and asked again rather than
+    // offset from what startup got: `sim/host_time.h` says why both halves of
+    // that matter.
+    g_clock_state.time.value = host_local_wall_time();
   }
   g_clock_state.locale = l10n::locale();
   g_clock_face.update(
