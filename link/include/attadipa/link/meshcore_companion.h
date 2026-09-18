@@ -225,10 +225,25 @@ public:
     // the id it zeroes belongs to a request still in flight -- the verdict
     // recovers on the next `RESP_CODE_SENT`, the id never does.
     //
-    // What the function was for is answered by `MeshSendResult`: the caller is
-    // handed its own refusal, synchronously, and a refusal is not a delivery
-    // state -- decision 3. Nothing that failed to become an operation may
-    // write to `status_` at all.
+    // What the function was for is answered by `MeshSendResult` *for this
+    // object's own caller*: it is handed its refusal synchronously, and a
+    // refusal is not a delivery state -- decision 3. Nothing that failed to
+    // become an operation may write to `status_` at all.
+    //
+    // AND THAT IS NOT THE CALLER WHO ASKED. The one send path the product has
+    // crosses a queue: the debug bridge is answered `Accepted` one call before
+    // the worker ever reaches this object, so the worker holds the refusal and
+    // the operator holds a promise made without it. The row on the panel then
+    // keeps the *previous* message's verdict, which can be `Confirmed` --
+    // **доставлено** about a message that never left the watch. That is
+    // [#598](https://github.com/hleserg/Attadipa/issues/598), and it is not
+    // fixed here: this change removes the refusal the deleted function's own
+    // comment called the shipping one -- a recipient outside the retained
+    // sixteen, which is now a question for the node rather than a refusal --
+    // and leaves `BodyNotUtf8`, `RingFull` and `ContactsBusy` reachable with
+    // the link up. Restoring `send_abandoned()` is not the answer to it;
+    // `status_.request_id` is the field that already knows which message a
+    // verdict is about, and nothing carries it across the queue yet.
 
 private:
     static constexpr std::size_t kRetainedPeers = 16;
