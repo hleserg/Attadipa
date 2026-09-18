@@ -39,6 +39,7 @@ if [ "${2:-}" = "--paginate" ]; then
 fi
 login="${2#*/collaborators/}"
 login="${login%/permission}"
+printf '%s\n' "$login" >> "$state/perm-calls"
 answer="$(cat "$state/perm/$login" 2>/dev/null || echo none)"
 case "$answer" in
   FAIL:*) echo "${answer#FAIL:}" >&2; exit 1 ;;
@@ -403,6 +404,32 @@ else
   no "case 13: the bundle was held: $(cat "$work/err")"
 fi
 
+# Case 15. THE PERMISSION CACHE IS OBSERVABLE OR IT IS NOT THERE. Both callers
+# used to ask through `$(...)`, so every write to the cache happened in a
+# subshell that exited immediately and every read missed. Nothing above noticed,
+# because the answer was right either way -- which is exactly why this counts
+# the lookups instead. The cost was one API call per record; the promise it
+# broke is in the file, that a repeated author is looked up once, so a flaky
+# endpoint cannot answer `write` for one of a maintainer's comments and
+# `unavailable` for the next and hold the run on a coin toss.
+issue_json 17 owner 3 > "$work/state/read/repos_o_r_issues_17"
+jq -s . > "$work/state/read/repos_o_r_issues_17_comments" <<JSON
+$(record 1001 maintainer "One.")
+$(record 1002 maintainer "Two.")
+$(record 1003 maintainer "Three.")
+JSON
+rm -f "$work/state/perm-calls"
+if run_bundle 17; then
+  asked="$(grep -c '^maintainer$' "$work/state/perm-calls" 2>/dev/null || echo 0)"
+  if [ "$asked" = 1 ]; then
+    ok "case 15: three comments by one author cost one permission lookup"
+  else
+    no "case 15: the cache did not survive -- maintainer was looked up $asked times"
+  fi
+else
+  no "case 15: the bundle was held: $(cat "$work/err")"
+fi
+
 # Case 9. The mutation. Delete the permission test from a copy of the script
 # and the outsider's instructions must come back -- otherwise nothing above
 # proves the check is what keeps them out.
@@ -512,6 +539,19 @@ then
   fi
 else
   no "case 14 M4: the mutation changed nothing -- the lines it edits have moved"
+fi
+
+# M5: put the lookup back inside a command substitution.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$login` there
+# is the shell text being edited, not a variable of this suite.
+if mutate "cache in a subshell" \
+    's|^      attadipa_permission_of "\$login"$|      :|; s|^          "\$ATTADIPA_PERMISSION" "\$producers")"$|          "$(attadipa_permission_of "$login")" "$producers")"|'; then
+  rm -f "$work/state/perm-calls" "$work/out"
+  if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 17 &&
+     [ "$(grep -c '^maintainer$' "$work/state/perm-calls" 2>/dev/null || echo 0)" = 3 ]
+  then ok "case 15 M5: through a subshell the same author is looked up three times"
+  else no "case 15 M5: the subshell is not what loses the cache"
+  fi
 fi
 
 printf '\ncontext trust: %d passed, %d failed\n' "$pass" "$fail"
