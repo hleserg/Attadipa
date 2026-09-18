@@ -2370,6 +2370,128 @@ void open_a_dirty_walk(MeshCoreCompanion& client, bool drain)
     CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
 }
 
+// ROW 14 OF ADR-0022 §9, and the report calls it the regression risk the whole
+// design has to be checked against. `RESP_CODE_ERR` carries nothing to
+// correlate it by, so it is attributed by order: the oldest command still owed
+// an answer takes it. A re-read is a third claimant in that order and it is
+// the one command here whose error is *expected* -- a node still iterating
+// answers `CMD_GET_CONTACTS` with `ERR_CODE_BAD_STATE`, which is the whole
+// reason the re-read waits ten seconds before asking. Without the claim, that
+// error falls through to `send_busy()` and fails a message the node accepted,
+// which is #315's fail-closed rule turned against an innocent send by a
+// command the wearer never asked for.
+void test_an_error_owed_to_a_re_read_does_not_fail_a_send()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    const std::uint8_t drained[] = {10};
+    CHECK(client.receive(drained, sizeof(drained), at(9)));
+
+    // The one question the handshake leaves outstanding is answered here, so
+    // the error below has two claimants rather than three: an unanswered
+    // CMD_GET_CUSTOM_VARS is older than both and takes it first, by this same
+    // order rule and correctly.
+    const std::uint8_t vars[] = {21};
+    CHECK(client.receive(vars, sizeof(vars), at(10)));
+
+    // The re-read is asked first, so it is the older claimant.
+    client.tick(at(9 + 10000));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 4);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    // The wearer's message is queued after it and goes out.
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}));
+    CHECK(client.status().delivery == core::MeshDelivery::Queued);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.bytes[0] == 2);  // CMD_SEND_TXT_MSG
+
+    // ERR_CODE_BAD_STATE, untagged and ambiguous on its face. It is the
+    // re-read's: the re-read was asked first and is still owed an answer, and
+    // the send's answer has not been and gone.
+    const std::uint8_t err[] = {1, 4};
+    CHECK(client.receive(err, sizeof(err), at(9 + 10002)));
+    CHECK(client.malformed_frames() == 0);
+
+    // THE SEND IS UNTOUCHED. This is the assertion the row exists for.
+    CHECK(client.status().delivery == core::MeshDelivery::Queued);
+
+    // And the re-read is spent rather than retried instantly: the attempt was
+    // decremented when the command went out, one is left, and the snapshot
+    // goes back to saying the table moved under the last walk. A node that
+    // refuses every re-read therefore costs a bounded two errors.
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    // #315'S DIRECTION IS KEPT, NOT TRADED AWAY. The send whose error the
+    // re-read took is not cleared by it; it never receives RESP_CODE_SENT
+    // either, so the ack budget fails it. Later, not softer.
+    // The budget is armed on the first pass that sees a send outstanding and
+    // spent one ack-wait after that, so it takes two ticks to read it.
+    client.tick(at(9 + 10003));
+    CHECK(client.status().delivery == core::MeshDelivery::Queued);
+    client.tick(at(9 + 10003 + 15000));
+    CHECK(client.status().delivery == core::MeshDelivery::Failed);
+}
+
+// AND THE SAME ROW READ THE OTHER WAY, because "attributed by the existing
+// order rule" is a claim about an order and a claimant that always wins is not
+// obeying one. Here the wearer's message is the older command: it went out
+// before the re-read was even armed, so the error is the send's and the
+// re-read is still owed its own answer -- which arrives next and commits.
+void test_an_error_older_than_the_re_read_still_fails_the_send()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    const std::uint8_t drained[] = {10};
+    CHECK(client.receive(drained, sizeof(drained), at(9)));
+    const std::uint8_t vars[] = {21};
+    CHECK(client.receive(vars, sizeof(vars), at(10)));
+
+    // The message goes out while the quiet window is still counting down.
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.bytes[0] == 2);
+
+    // Only then does the re-read go out, so it is the younger claimant.
+    client.tick(at(9 + 10000));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 4);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    const std::uint8_t err[] = {1, 4};
+    CHECK(client.receive(err, sizeof(err), at(9 + 10002)));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.status().delivery == core::MeshDelivery::Failed);
+
+    // The re-read kept its claim on an answer it has not had, and that answer
+    // still commits the staged set.
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(9 + 10003)));
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Renamed", 7);
+    CHECK(client.receive(contact, sizeof(contact), at(9 + 10004)));
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(9 + 10005)));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    MeshPeer committed{};
+    CHECK(client.peer(0, committed));
+    CHECK(std::strcmp(committed.name.data(), "Renamed") == 0);
+}
+
 // ROW 17 OF ADR-0022 §9. The re-read's own `CONTACTS_START` is the second one
 // of the session, and everything the first one does to the published state is
 // what decision 7a forbids the second one from doing. The assertion that makes
@@ -2691,6 +2813,8 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_an_error_owed_to_a_re_read_does_not_fail_a_send();
+    test_an_error_older_than_the_re_read_still_fails_the_send();
     test_a_re_read_does_not_unname_a_sender_mid_walk();
     test_a_re_reads_end_spends_no_drain_on_a_full_ring();
     test_a_misfired_sweep_publishes_a_partial_pair();
