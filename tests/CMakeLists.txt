@@ -626,7 +626,12 @@ add_executable(test_sim_options test_sim_options.cpp ${PROJECT_SOURCE_DIR}/sim/o
 target_link_libraries(test_sim_options PRIVATE attadipa_platform attadipa_l10n attadipa_core attadipa_ui)
 target_include_directories(test_sim_options PRIVATE ${PROJECT_SOURCE_DIR}/sim)
 add_test(NAME sim_options COMMAND test_sim_options)
-set_tests_properties(sim_options PROPERTIES LABELS "simulator;cli")
+# Labelled `cli` and deliberately NOT `simulator`: `-L simulator` selects the
+# tests that need a simulator build, and the point of this one is that it does
+# not. Nothing in CI filters by label today -- every job runs the whole set --
+# so the label is documentation, and documentation that contradicts the test is
+# worse than none.
+set_tests_properties(sim_options PROPERTIES LABELS "cli")
 
 # What ended a sleep, which is the board's half of the same transaction and so
 # is a header in firmware/main with no ESP-IDF dependency -- the pattern
