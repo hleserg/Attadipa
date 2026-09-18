@@ -9,7 +9,7 @@ fail a build; and a fourth that proves the three can fail.
 | [`catalogue.py`](catalogue.py) | reads and validates the catalogue. The only parser — the generator and the glyph check share it so they cannot drift |
 | [`gen_strings.py`](gen_strings.py) | writes `l10n/include/attadipa/l10n/string_id.h` and `l10n/src/catalogues.cpp`. `--check` fails if the committed copies are stale |
 | [`check_glyphs.py`](check_glyphs.py) | fails if a catalogue string needs a character outside [`tools/font/charset.py`](../font/charset.py) |
-| [`selftest.py`](selftest.py) | runs the checks over twelve deliberate mistakes and requires each to be rejected **for its own reason**, and over one correct catalogue that must still be accepted |
+| [`selftest.py`](selftest.py) | runs the checks over a catalogue of deliberate mistakes and requires each to be rejected **for its own reason**, and over correct catalogues that must still be accepted. It prints both counts as it finishes, so this line does not carry them |
 
 ```bash
 python3 tools/l10n/gen_strings.py          # after editing strings.toml
@@ -50,7 +50,7 @@ half on the day there is a font to guard.
 The simulator has a runtime sibling of this check, which asks the font that is
 actually linked in. Today the two disagree on purpose — see below.
 
-## Three things the generator refuses that look fine
+## Four things the generator refuses that look fine
 
 **`ru.other`.** Russian's CLDR cardinal rule selects `one`, `few` or `many` for
 every whole number; `other` is unreachable for an integer. An entry there is a
@@ -71,13 +71,30 @@ So a plural form is checked against the one argument that call actually passes
 with an optional width, precision and `-`/`0` flag — plus `#` with `%o`, `%x`
 or `%X`, which changes how the number is spelled and not what is read — and no
 length modifier.
-`%%` is a literal and does not count; a `%` this parser does not recognise at
-all, like `%q` or `%*u`, is refused rather than ignored, because `snprintf`
-does not ignore it either.
+`%%` is a literal and does not count.
 
 Singular strings keep their own placeholders and their own typed call sites —
-`"%u.%u km"` and `"heard %s ago"` both ship — so this contract is the plural
-API's alone, and the check says so in the message when it fails.
+`"%u.%u km"` and `"heard %s ago"` both ship — so the *count* contract is the
+plural API's alone, and the check says so in the message when it fails.
+
+**A `%` that is not a complete conversion, in any string at all.** This one is
+not a plural rule and was one until #590. `%q`, `%*u` and a trailing bare `%`
+are refused everywhere, because `snprintf` does not skip them either and two
+locales agreeing about a mistake still make it: `"pinned %s%"` on both sides has
+the signature `("%s",)` twice, agrees, and reaches the call site as a format
+whose last conversion specification is incomplete.
+
+The reason the rule has to be this wide is a boundary this directory cannot see.
+A catalogue string reaches the screen either as `std::snprintf(out, size, tr(id,
+locale), …)`, where it is a runtime format, or through `put(out, size, tr(id,
+locale))`, which copies it verbatim. `put` has to stay a copy: it is also given
+contact names and message bodies that arrived from a node, and formatting those
+would hand whoever sent them the format string. So the rule is written for the
+branch where being wrong is undefined behaviour rather than a wrong glyph —
+every `%` is a conversion, and a literal percent is `%%`. The cost is named
+rather than hidden: in a string that is only ever copied, `%%` would print two
+signs. No shipping string is in that position, and the marker that would let the
+catalogue say which strings are formats is not built until one is.
 
 ## What does not work yet, and why it is not hidden
 

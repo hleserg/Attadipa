@@ -101,14 +101,13 @@ def _format_signature(text):
     that agree on `%s` agree, and still hand an integer to snprintf as a
     pointer. For plural entries `_check_count_format` asks the other question.
     """
-    # `!= "%%"` and not `conv != "%"`: `FORMAT_RE` matches flags and a width
-    # between the two percent signs, so `"0%-100%"` is one match whose
-    # conversion is `%`. Dropping every percent-terminated spelling would take
-    # that match out of the signature as well, and `en = "0%-100%"` against
-    # `ru = "0-100 %"` would compare `()` with `()` and be accepted -- a
-    # singular pair this comparison is the only check on. The named groups are
-    # for `_check_count_format`, which asks a different question of the same
-    # matches.
+    # `!= "%%"` and not `conv != "%"`. The difference used to matter on its own:
+    # `FORMAT_RE` matches flags and a width between the two percent signs, so
+    # `"0%-100%"` is one match whose conversion is `%`, and dropping every
+    # percent-terminated spelling would take it out of the signature as well.
+    # `_reject_malformed_percent` now refuses that spelling before this runs, so
+    # what is left here is the narrow claim it reads as: `%%` is text and every
+    # other match is an argument.
     return tuple(m.group(0) for m in FORMAT_RE.finditer(text) if m.group(0) != "%%")
 
 
@@ -204,12 +203,9 @@ def _unrecognised_percent(text):
     for match in FORMAT_RE.finditer(text):
         covered.add(match.start())
         if match.group("conv") == "%":
-            # The closing percent, which is `start + 1` only when nothing sits
-            # between the two. `FORMAT_RE` accepts flags, a width and a
-            # precision there, so `"%-100% items"` left its own closing `%`
-            # uncovered and was reported as an unrecognised one -- a rejection
-            # with the wrong reason printed and the wrong eight characters
-            # quoted. It is 0 count conversions, and that is what it says now.
+            # The closing percent of `%%`, which is the only percent-terminated
+            # spelling that gets this far: `_reject_malformed_percent` refuses
+            # every other one before the count contract is asked anything.
             covered.add(match.end() - 1)
     for index, char in enumerate(text):
         if char == "%" and index not in covered:
@@ -226,13 +222,6 @@ def _check_count_format(ident, locale, form, text):
     would reject correct strings to make a sentence shorter.
     """
     where = f"plural '{ident}'.{locale}.{form}"
-
-    index = _unrecognised_percent(text)
-    if index is not None:
-        raise CatalogueError(
-            f"{where} has a '%' that is not a conversion this catalogue understands: "
-            f"{text[index:index + 8]!r}.\n{_COUNT_CONTRACT}"
-        )
 
     specs = [m for m in FORMAT_RE.finditer(text) if m.group("conv") != "%"]
     # A percent somebody meant literally does not read as text: snprintf takes
@@ -285,11 +274,65 @@ def _check_count_format(ident, locale, form, text):
         )
 
 
+_PERCENT_BOUNDARY = (
+    "  A catalogue string reaches the screen one of two ways and this file cannot\n"
+    "  see which: `std::snprintf(out, size, tr(id, locale), ...)`, where it is a\n"
+    "  *runtime format string*, or `put(out, size, tr(id, locale))`, which copies it\n"
+    "  verbatim. `put` has to stay a copy -- it is also given contact names and\n"
+    "  message bodies a node sent, and formatting those would hand whoever sent them\n"
+    "  the format string. So the rule is written for the branch where being wrong is\n"
+    "  undefined behaviour rather than a wrong glyph: every `%` in every string has\n"
+    "  to be a complete conversion, and a literal percent is `%%`.\n"
+    "  If a string that is only ever copied one day needs a literal percent, `%%`\n"
+    "  would print two signs and this catalogue would need a way to say which\n"
+    "  strings are formats. No shipping string is in that position, and the marker\n"
+    "  is not built until one is."
+)
+
+
+# A `%` conversion is a literal percent only when it is spelled `%%`. Anything
+# between the two signs makes it an invalid conversion specification, and C says
+# the behaviour of snprintf on one is undefined -- there is no "it prints a
+# percent anyway" to fall back on. `"50%-60%: %u"` is the spelling that gets
+# here: it reads as prose, it parses as the conversion `%-60%` followed by one
+# `%u`, and a count check that skips percent-terminated matches sees exactly one
+# count conversion and accepts it.
+#
+# So it is rejected here, for every entry, rather than inside the plural check
+# that found it. The singular strings reach snprintf through their own call
+# sites with their own arguments and are just as undefined, and this is the one
+# function every string in the catalogue passes through.
+def _reject_malformed_percent(where, text):
+    for match in FORMAT_RE.finditer(text):
+        if match.group("conv") == "%" and match.group(0) != "%%":
+            raise CatalogueError(
+                f"{where} has {match.group(0)!r}, which is not a literal percent sign. "
+                f"Flags, a width or a precision between the two signs make it an invalid "
+                f"conversion specification, and snprintf's behaviour on one is undefined. "
+                f"Write a literal percent as `%%`: `50%%-60%%`, not `50%-60%`."
+                f"\n{_PERCENT_BOUNDARY}"
+            )
+
+
 def _check_formats(entry):
     signatures = {}
     for locale, value in entry.texts.items():
         items = value.items() if isinstance(value, dict) else [("", value)]
         for form, text in items:
+            where = f"'{entry.ident}'.{locale}{'.' + form if form else ''}"
+            _reject_malformed_percent(where, text)
+            # And a `%` that begins no conversion at all -- a trailing bare one,
+            # `%q`, `%*u`. snprintf does not skip those either, and until now
+            # only a plural form was looked at: a singular pair that agreed
+            # carried `"pinned %s%"` through to `apps/src/mesh.cpp` untouched,
+            # because `FORMAT_RE` does not match a trailing `%` and both
+            # signatures were `("%s",)`.
+            index = _unrecognised_percent(text)
+            if index is not None:
+                raise CatalogueError(
+                    f"{where} has a '%' that begins no conversion this catalogue "
+                    f"understands: {text[index:index + 8]!r}.\n{_PERCENT_BOUNDARY}"
+                )
             signatures[f"{locale}{'.' + form if form else ''}"] = _format_signature(text)
     distinct = set(signatures.values())
     if len(distinct) > 1:
