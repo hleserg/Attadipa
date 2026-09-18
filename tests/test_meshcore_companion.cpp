@@ -2624,7 +2624,7 @@ void test_a_truncated_list_is_still_a_consistent_snapshot()
             contact[1 + i] = static_cast<std::uint8_t>(i + 1);
         contact[1] = static_cast<std::uint8_t>(n + 1);
         contact[33] = 1;
-        contact[100] = static_cast<char>('A' + n);
+        contact[100] = static_cast<std::uint8_t>('A' + n);
         CHECK(client.receive(contact, sizeof(contact), at(6 + n)));
     }
     const std::uint8_t end[] = {4, 0, 0, 0, 0};
