@@ -2370,6 +2370,122 @@ void open_a_dirty_walk(MeshCoreCompanion& client, bool drain)
     CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
 }
 
+// Drains the ring and counts the `CMD_GET_CONTACTS` in it. Counting rather
+// than asserting the ring is empty is deliberate: a long tick also arms the
+// battery poll, which is ordinary traffic and not what these rows are about.
+int drain_counting_re_reads(MeshCoreCompanion& client)
+{
+    MeshCoreFrame frame{};
+    int asked = 0;
+    while (client.next_tx(frame)) {
+        if (frame.size == 1 && frame.bytes[0] == 4) ++asked;
+    }
+    return asked;
+}
+
+// ROW 9 OF ADR-0022 §9: the ordinary recovery, and the cheapest thing the
+// design has to promise -- one extra `CMD_GET_CONTACTS` on the wire, not a
+// poll. The count is the assertion: a re-read that fired twice for one dirty
+// walk would be invisible in the published snapshot and obvious on the radio.
+void test_one_dirty_walk_costs_exactly_one_re_read()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    // Nothing goes out before the quiet window is up, which is what keeps the
+    // re-read off a node that is still iterating.
+    client.tick(at(8 + 9000));
+    CHECK(drain_counting_re_reads(client) == 0);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(8 + 10002)));
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(8 + 10003)));
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(8 + 10004)));
+
+    CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.malformed_frames() == 0);
+
+    // AND EVERY LATER WINDOW PASSES WITHOUT ONE. A clean re-read ends the
+    // episode; nothing re-arms on the timer it was armed by. Other traffic --
+    // the battery poll -- is not what this counts.
+    while (client.next_tx(frame)) {
+    }
+    client.tick(at(8 + 10004 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+    client.tick(at(8 + 10004 + 60000));
+    CHECK(drain_counting_re_reads(client) == 0);
+}
+
+// ROW 10 OF ADR-0022 §9, and the row the budget exists for: a node whose table
+// moves under every read. The snapshot must end up saying so rather than
+// asking forever, and "bounded" is a number -- two re-reads, because
+// `kSnapshotRetries` is 2 and each attempt is spent when the command goes out
+// rather than when it is answered.
+void test_a_table_that_moves_under_every_re_read_ends_degraded()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    std::uint64_t when = 8;
+    int re_reads = 0;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        when += 10001;
+        client.tick(at(when));
+        const int asked = drain_counting_re_reads(client);
+        CHECK(asked <= 1);
+        if (asked == 0) continue;
+        ++re_reads;
+
+        // Every re-read is invalidated exactly as the first walk was.
+        const std::uint8_t start[] = {2, 2, 0, 0, 0};
+        CHECK(client.receive(start, sizeof(start), at(++when)));
+        std::uint8_t contact[148]{};
+        contact[0] = 3;
+        for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+        contact[33] = 1;
+        std::memcpy(&contact[100], "Peer", 4);
+        CHECK(client.receive(contact, sizeof(contact), at(++when)));
+        const std::uint8_t deleted[] = {0x8F};
+        CHECK(client.receive(deleted, sizeof(deleted), at(++when)));
+        const std::uint8_t end[] = {4, 0, 0, 0, 0};
+        CHECK(client.receive(end, sizeof(end), at(++when)));
+        while (client.next_tx(frame)) {
+        }
+    }
+
+    // NO LIVE-LOCK. Six windows, two re-reads.
+    CHECK(re_reads == 2);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Degraded);
+    CHECK(client.malformed_frames() == 0);
+
+    // Degraded publishes the newest read rather than withholding it: §7.4
+    // would leave the wearer an empty list where a probably-right one serves
+    // better, provided it does not claim to be proven.
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().peers_retained == 1);
+    MeshPeer kept{};
+    CHECK(client.peer(0, kept));
+    CHECK(std::strcmp(kept.name.data(), "Peer") == 0);
+}
+
 // ROWS 1-5, 15 AND 16 OF ADR-0022 §9 IN ONE TABLE, because the rows differ
 // only in the code byte and the claim they make together is exactly that: the
 // four invalidating pushes are told from the two that merely look it by §3's
@@ -2894,6 +3010,8 @@ int main()
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
+    test_one_dirty_walk_costs_exactly_one_re_read();
+    test_a_table_that_moves_under_every_re_read_ends_degraded();
     test_which_pushes_dirty_a_walk_and_which_only_look_it();
     test_an_error_owed_to_a_re_read_does_not_fail_a_send();
     test_an_error_older_than_the_re_read_still_fails_the_send();
