@@ -79,7 +79,7 @@ namespace attadipa::core {
 // does hold the fact and the fact says the radio can still be on. The phase is
 // "it failed, and needs a reset rather than a retry", and the fault taken when
 // the stack refuses the passkey cancels nothing —
-// `firmware/main/meshcore_ble.cpp:1721` — "                    provider.fault(now());"
+// `firmware/main/meshcore_ble.cpp:1728` — "                    provider.fault(now());"
 // — nor does the lifecycle's fault step,
 // `firmware/main/meshcore_ble.cpp:1311` — "        case SessionStep::Fault:".
 // Every `ble_gap_disc_cancel()` in that file sits on a path that is not a fault

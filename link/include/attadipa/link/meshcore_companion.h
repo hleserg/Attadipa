@@ -50,13 +50,15 @@ public:
     core::MeshStatus status() const override { return status_; }
     std::size_t peer_count() const override { return peer_count_; }
     bool peer(std::size_t index, core::MeshPeer& out) const override;
-    bool send_private(const core::MeshPeerId& peer, std::string_view text,
-                      core::WallTime timestamp) override;
+    core::MeshSendResult send_private(const core::MeshPeerId& peer,
+                                      std::string_view text,
+                                      core::WallTime timestamp) override;
     // Debug-only Room Server seam: the password is serialized directly into
     // CMD_SEND_LOGIN and never retained in provider state.
-    bool send_room(const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
-                   std::string_view password, std::string_view text,
-                   core::WallTime timestamp);
+    core::MeshSendResult send_room(
+        const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
+        std::string_view password, std::string_view text,
+        core::WallTime timestamp);
 
     // A notification longer than kMeshCoreFrameBytes has no buffer to arrive
     // in, so the transport drops it before a copy and records it here instead
@@ -216,7 +218,22 @@ public:
     // shipping case, and it is decided by the worker, outside this object.
     // Nothing here is waiting on that operation, but a caller that was told
     // MeshOk must not then read the *previous* send's verdict as this one's.
-    void send_abandoned() { status_.delivery = core::MeshDelivery::Failed; }
+    // It CLEARS the verdict rather than writing one, and that is ADR-0023
+    // decision 3 rather than a smaller version of what was here. Nothing was
+    // built: the worker never handed this object a request, so there is no
+    // message and no message has a state. What the function is for survives
+    // intact -- a caller told MeshOk must not read the *previous* send's
+    // verdict as this one's -- because `None` is the absence of a verdict and
+    // the previous one is what has to go.
+    //
+    // It used to write `MeshDelivery::Failed`, which said on a Russian panel
+    // that a message was **не доставлено** -- not delivered -- about a message
+    // that was never assembled, let alone transmitted.
+    void send_abandoned()
+    {
+        status_.delivery = core::MeshDelivery::None;
+        status_.request_id = 0;
+    }
 
 private:
     static constexpr std::size_t kRetainedPeers = 16;
@@ -320,8 +337,14 @@ private:
     }
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
-    bool enqueue_private(const core::MeshPeerId& peer, std::string_view text,
-                         core::WallTime timestamp);
+    core::MeshSendResult enqueue_private(const core::MeshPeerId& peer,
+                                         std::string_view text,
+                                         core::WallTime timestamp);
+    // The one place a request id is minted. Non-zero, distinct from the live
+    // one, and never the node's ack tag -- see `core::MeshSendResult`.
+    std::uint32_t next_request_id();
+    core::MeshSendRefusal refuse_text(std::string_view text,
+                                      core::WallTime timestamp) const;
     void end_operation();
     void reset_session();
     void update_availability();
@@ -368,7 +391,17 @@ private:
     std::array<MeshCoreFrame, kTxDepth> tx_{};
     std::size_t tx_head_ = 0;
     std::size_t tx_size_ = 0;
+    // THE NODE'S CORRELATION HINT, AND IT OUTLIVES THE OPERATION ON PURPOSE.
+    // `end_operation()` deliberately does not clear it, so an acknowledgement
+    // that arrives after the budget expired can still be matched against the
+    // request it belongs to and upgrade `Unconfirmed` to `Confirmed`
+    // (ADR-0023 decision 2a). `reset_session()` does clear it, which is what
+    // stops a match from reaching across a reconnect into a request the wire
+    // can no longer be talking about -- the tag is a keyed hash that repeats.
     std::array<std::uint8_t, 4> expected_ack_{};
+    // Monotonic within a session, never zero, never reused while the request it
+    // names is the one `status_.request_id` reports.
+    std::uint32_t request_seq_ = 0;
     std::uint32_t malformed_frames_ = 0;
     std::uint8_t firmware_version_code_ = 0;
     bool device_info_seen_ = false;

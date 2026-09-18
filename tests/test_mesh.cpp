@@ -178,7 +178,7 @@ void a_terminal_verdict_outranks_a_refusal() {
     // And the two keys, which are the point of this screen carrying them: the
     // reset the note asks for clears the fault and leaves the refusal, so the
     // pointer to the entry screen's node field has to survive here. Narrowing
-    // `apps/src/mesh.cpp:201` -- "if (status.has_refused &&
+    // `apps/src/mesh.cpp:203` -- "if (status.has_refused &&
     // status.has_pinned)" -- back to the screen that usually reports a refusal
     // empties both of these and changes nothing else asserted above.
     CHECK(std::strstr(text.pinned, "4c9a2f7b") != nullptr);
@@ -330,7 +330,7 @@ void no_field_is_ever_cut_short() {
   int swept = 0;
   for (int a = 0; a <= static_cast<int>(core::Availability::Ready); ++a) {
     for (int t = 0; t <= static_cast<int>(core::TransportPhase::Faulted); ++t) {
-      for (int d = 0; d <= static_cast<int>(core::MeshDelivery::Failed); ++d) {
+      for (int d = 0; d <= static_cast<int>(core::MeshDelivery::Unknown); ++d) {
         for (int refused = 0; refused < 2; ++refused) {
          // Both completeness flags, because the widest string either can put
          // on the screen is a translated one and the buffers they land in are
@@ -374,7 +374,11 @@ void no_field_is_ever_cut_short() {
       }
     }
   }
-  CHECK(swept == 7 * 6 * 5 * 2 * 2 * 2);
+  // Seven deliveries, not five: ADR-0023 dropped `Failed` and added
+  // `Unconfirmed`, `Refused` and `Unknown`. The literal is written out rather
+  // than derived so that growing the enum has to be a deliberate edit here --
+  // which is what caught the `delivery` buffer being 32 bytes wide.
+  CHECK(swept == 7 * 6 * 7 * 2 * 2 * 2);
 }
 
 // And the message itself arrives whole. The sweep above cannot make this claim:

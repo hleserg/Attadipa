@@ -1351,14 +1351,20 @@ bool handle_send(const Event& event)
                 static_cast<std::size_t>(std::find(event.text.begin(),
                                                    event.text.end(), '\0') -
                                          event.text.begin());
-            if (service.send_private(peer.id,
-                                     std::string_view(event.text.data(), length),
-                                     event.timestamp)) {
+            const auto result = service.send_private(
+                peer.id, std::string_view(event.text.data(), length),
+                event.timestamp);
+            if (result.accepted()) {
                 return true;
             }
-            // The provider refused: the link is not ready, or a send it has not
-            // finished is still in flight. Either way this request is over.
-            ESP_LOGW(kTag, "the provider refused the send; it is not in flight");
+            // The provider refused, and now says which refusal: the link is not
+            // ready, a send it has not finished is still in flight, the body is
+            // over the byte budget or cut through a code point. Either way this
+            // request is over -- and the reason reaches the serial log, which is
+            // where an operator debugging a send that "just does not work" looks
+            // first. The text itself never does; only its length.
+            ESP_LOGW(kTag, "the provider refused the send (%s); it is not in flight",
+                     attadipa::core::to_string(result.refusal));
             provider.send_abandoned();
             return false;
         }
@@ -1372,15 +1378,16 @@ bool handle_send_room(Event& event)
 {
     const std::size_t text_length = static_cast<std::size_t>(
         std::find(event.text.begin(), event.text.end(), '\0') - event.text.begin());
-    const bool accepted = provider.send_room(
+    const auto result = provider.send_room(
         event.room, std::string_view(event.password.data(), event.password_length),
         std::string_view(event.text.data(), text_length), event.timestamp);
     std::fill(event.password.begin(), event.password.end(), '\0');
-    if (!accepted) {
-        ESP_LOGW(kTag, "Room Server message rejected by provider");
+    if (!result.accepted()) {
+        ESP_LOGW(kTag, "Room Server message rejected by provider (%s)",
+                 attadipa::core::to_string(result.refusal));
         provider.send_abandoned();
     }
-    return accepted;
+    return result.accepted();
 }
 
 // Defined below handle_frame, which is its only caller: the identity settles
@@ -1655,7 +1662,7 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:196` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1710` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1717` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
         // `firmware/main/meshcore_ble.cpp:938` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store

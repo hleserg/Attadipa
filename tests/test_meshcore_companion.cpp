@@ -716,7 +716,7 @@ void test_room_send_does_not_wait_for_contact_sync()
 
     std::array<std::uint8_t, 32> room{};
     CHECK(client.status().availability == Availability::Unreachable);
-    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
 }
 
 void test_send_and_receive()
@@ -726,7 +726,7 @@ void test_send_and_receive()
     MeshService service(client);
     MeshPeer peer{};
     CHECK(service.peer(0, peer));
-    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}).accepted());
     CHECK(service.status().delivery == MeshDelivery::Queued);
 
     MeshCoreFrame frame{};
@@ -784,7 +784,7 @@ void test_a_room_password_never_reaches_the_transcript()
     // or a capture. No real password appears anywhere in this tree.
     const char* const canary = "CANARY-NOTREAL";
     const std::size_t canary_len = std::strlen(canary);
-    CHECK(client.send_room(room, canary, "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, canary, "Hello", WallTime{1000}).accepted());
 
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
@@ -816,10 +816,10 @@ void test_a_room_password_never_reaches_the_transcript()
     connect_and_handshake(cancelled);
     const std::uint8_t receiver_hint[] = {21};
     CHECK(cancelled.receive(receiver_hint, sizeof(receiver_hint), at(8)));
-    CHECK(cancelled.send_room(room, canary, "never sent", WallTime{1000}));
+    CHECK(cancelled.send_room(room, canary, "never sent", WallTime{1000}).accepted());
     cancelled.tick(at(100));
     cancelled.tick(at(15100));
-    CHECK(cancelled.status().delivery == MeshDelivery::Failed);
+    CHECK(cancelled.status().delivery == MeshDelivery::Unknown);
     CHECK(!cancelled.send_busy());
     CHECK(cancelled.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 20);
@@ -839,7 +839,7 @@ void test_a_frame_without_a_credential_still_prints_whole()
     MeshService service(client);
     MeshPeer peer{};
     CHECK(service.peer(0, peer));
-    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}).accepted());
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
     CHECK(frame.bytes[0] == 2);
@@ -853,8 +853,8 @@ void test_room_login_then_private_message()
     connect_and_handshake(client);
     std::array<std::uint8_t, 32> room{};
     for (std::size_t i = 0; i < room.size(); ++i) room[i] = static_cast<std::uint8_t>(0x80 + i);
-    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
-    CHECK(!client.send_room(room, "0123456789abcdef", "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
+    CHECK(!client.send_room(room, "0123456789abcdef", "Hello", WallTime{1000}).accepted());
 
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
@@ -902,7 +902,7 @@ void test_room_login_success_during_a_contact_burst_still_sends()
 
     std::array<std::uint8_t, 32> room{};
     for (std::size_t i = 0; i < room.size(); ++i) room[i] = static_cast<std::uint8_t>(0x40 + i);
-    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 41 && frame.bytes[0] == 26);
 
@@ -977,7 +977,7 @@ void test_bad_frames_and_disconnect_fail_closed()
     CHECK(client.status().availability == Availability::Unreachable);
     MeshPeer peer{};
     CHECK(!client.peer(0, peer));
-    CHECK(!client.send_private(peer.id, "no", WallTime{1000}));
+    CHECK(!client.send_private(peer.id, "no", WallTime{1000}).accepted());
     std::uint8_t frame = 13;
     CHECK(!client.receive(&frame, 1, at(10)));
 }
@@ -1117,12 +1117,12 @@ void test_one_send_is_in_flight_at_a_time()
     }
 
     CHECK(!client.send_busy());
-    CHECK(service.send_private(peer.id, "first", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "first", WallTime{1000}).accepted());
     CHECK(client.send_busy());
 
     // Before RESP_CODE_SENT. Neither a private nor a Room send may start.
-    CHECK(!service.send_private(peer.id, "second", WallTime{1001}));
-    CHECK(!client.send_room(room, "password", "second", WallTime{1001}));
+    CHECK(!service.send_private(peer.id, "second", WallTime{1001}).accepted());
+    CHECK(!client.send_room(room, "password", "second", WallTime{1001}).accepted());
 
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
@@ -1139,8 +1139,8 @@ void test_one_send_is_in_flight_at_a_time()
     CHECK(client.receive(sent, sizeof(sent), at(8)));
     CHECK(service.status().delivery == MeshDelivery::Accepted);
     CHECK(client.send_busy());
-    CHECK(!service.send_private(peer.id, "second", WallTime{1002}));
-    CHECK(!client.send_room(room, "password", "second", WallTime{1002}));
+    CHECK(!service.send_private(peer.id, "second", WallTime{1002}).accepted());
+    CHECK(!client.send_room(room, "password", "second", WallTime{1002}).accepted());
 
     // An ack for a different message does not end this operation, and the slot
     // it does not free stays claimed.
@@ -1156,7 +1156,7 @@ void test_one_send_is_in_flight_at_a_time()
 
     // Terminal, so the next one may start -- and a late duplicate of the
     // confirmation cannot end it.
-    CHECK(service.send_private(peer.id, "third", WallTime{1003}));
+    CHECK(service.send_private(peer.id, "third", WallTime{1003}).accepted());
     CHECK(client.send_busy());
     CHECK(client.receive(ack, sizeof(ack), at(11)));
     CHECK(service.status().delivery == MeshDelivery::Queued);
@@ -1180,7 +1180,7 @@ void test_a_short_send_confirmed_is_refused_and_the_send_still_lives()
     MeshPeer peer{};
     CHECK(service.peer(0, peer));
 
-    CHECK(service.send_private(peer.id, "first", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "first", WallTime{1000}).accepted());
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
     // est_timeout 0x0966 = 2406 ms -- the node's own ESTIMATE of the round
@@ -1233,7 +1233,7 @@ void test_a_short_send_confirmed_is_refused_and_the_send_still_lives()
     // "PUSH_CODE_SEND_CONFIRMED  82 38 66 6c b8 1b 03 00 00" -- so four bytes
     // this build does not read follow the ack on real hardware, and calling
     // them malformed would refuse every confirmation the T114 sends.
-    CHECK(service.send_private(peer.id, "second", WallTime{1001}));
+    CHECK(service.send_private(peer.id, "second", WallTime{1001}).accepted());
     CHECK(client.next_tx(frame));
     CHECK(client.receive(sent, sizeof(sent), at(12)));
     const std::uint8_t trailing[] = {0x82, 1, 2, 3, 4, 0x1b, 3, 0, 0};
@@ -1245,7 +1245,7 @@ void test_a_short_send_confirmed_is_refused_and_the_send_still_lives()
     // A well-formed ack for a message this client never sent stays what it
     // always was -- a correlation outcome, not a length error. Nothing is
     // counted against the node for it.
-    CHECK(service.send_private(peer.id, "third", WallTime{1002}));
+    CHECK(service.send_private(peer.id, "third", WallTime{1002}).accepted());
     CHECK(client.next_tx(frame));
     CHECK(client.receive(sent, sizeof(sent), at(14)));
     const std::uint8_t other_ack[] = {0x82, 9, 9, 9, 9};
@@ -1280,9 +1280,9 @@ void test_a_room_send_owns_the_slot_through_its_login()
         room[i] = static_cast<std::uint8_t>(0x80 + i);
     }
 
-    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
     CHECK(client.send_busy());
-    CHECK(!service.send_private(peer.id, "cuts in", WallTime{1001}));
+    CHECK(!service.send_private(peer.id, "cuts in", WallTime{1001}).accepted());
 
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
@@ -1299,7 +1299,7 @@ void test_a_room_send_owns_the_slot_through_its_login()
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 18 && frame.bytes[0] == 2);
     CHECK(client.send_busy());
-    CHECK(!service.send_private(peer.id, "cuts in", WallTime{1002}));
+    CHECK(!service.send_private(peer.id, "cuts in", WallTime{1002}).accepted());
 
     CHECK(client.receive(sent, sizeof(sent), at(10)));
     CHECK(client.send_busy());
@@ -1307,7 +1307,7 @@ void test_a_room_send_owns_the_slot_through_its_login()
     CHECK(client.receive(ack, sizeof(ack), at(11)));
     CHECK(client.status().delivery == MeshDelivery::Confirmed);
     CHECK(!client.send_busy());
-    CHECK(service.send_private(peer.id, "now it may", WallTime{1003}));
+    CHECK(service.send_private(peer.id, "now it may", WallTime{1003}).accepted());
 }
 
 // The three other ways an operation ends. A node that accepts a message and
@@ -1346,14 +1346,14 @@ void test_a_room_login_that_is_never_answered_still_ends()
             const std::uint8_t vars[] = {21};
             CHECK(client.receive(vars, sizeof(vars), at(7)));
         }
-        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
         const std::uint8_t error[] = {1, 2};
         CHECK(client.receive(error, sizeof(error), at(8)));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Refused);
         CHECK(!client.send_busy());
         // The private path is not down with it. This is the assertion the
         // reproduction in the review turns on.
-        CHECK(service.send_private(peer.id, "still works", WallTime{1001}));
+        CHECK(service.send_private(peer.id, "still works", WallTime{1001}).accepted());
     }
 
     // The node queues the login and the room never answers: no LOGIN_SUCCESS
@@ -1364,14 +1364,14 @@ void test_a_room_login_that_is_never_answered_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
         CHECK(client.receive(sent, sizeof(sent), at(8)));
         client.tick(at(8 + 2405));
         CHECK(client.send_busy());
         client.tick(at(8 + 2406));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
         CHECK(!client.send_busy());
-        CHECK(service.send_private(peer.id, "still works", WallTime{1001}));
+        CHECK(service.send_private(peer.id, "still works", WallTime{1001}).accepted());
     }
 
     // The node answers nothing at all -- not even RESP_CODE_SENT -- so there is
@@ -1382,14 +1382,14 @@ void test_a_room_login_that_is_never_answered_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
         client.tick(at(8));
         client.tick(at(8 + 14999));
         CHECK(client.send_busy());
         client.tick(at(8 + 15000));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
         CHECK(!client.send_busy());
-        CHECK(service.send_private(peer.id, "still works", WallTime{1002}));
+        CHECK(service.send_private(peer.id, "still works", WallTime{1002}).accepted());
     }
 
     // The same absence one state over: a CMD_SEND_TXT_MSG the node takes over
@@ -1400,12 +1400,12 @@ void test_a_room_login_that_is_never_answered_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         client.tick(at(8));
         client.tick(at(8 + 14999));
         CHECK(client.send_busy());
         client.tick(at(8 + 15000));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
         CHECK(!client.send_busy());
     }
 
@@ -1418,14 +1418,14 @@ void test_a_room_login_that_is_never_answered_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "one", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "one", WallTime{1000}).accepted());
         CHECK(client.receive(sent, sizeof(sent), at(100)));  // budget 2406 ms
         const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
         CHECK(client.receive(ack, sizeof(ack), at(101)));
         CHECK(!client.send_busy());
         // No tick between the two. The second send is queued and then seen for
         // the first time well past the first one's deadline.
-        CHECK(service.send_private(peer.id, "two", WallTime{1001}));
+        CHECK(service.send_private(peer.id, "two", WallTime{1001}).accepted());
         client.tick(at(100 + 2406));
         CHECK(client.send_busy());
         CHECK(client.status().delivery == MeshDelivery::Queued);
@@ -1437,11 +1437,11 @@ void test_a_room_login_that_is_never_answered_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "one", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "one", WallTime{1000}).accepted());
         CHECK(client.receive(sent, sizeof(sent), at(100)));
         const std::uint8_t ack[] = {0x82, 1, 2, 3, 4};
         CHECK(client.receive(ack, sizeof(ack), at(101)));
-        CHECK(client.send_room(room, "password", "Hello", WallTime{1001}));
+        CHECK(client.send_room(room, "password", "Hello", WallTime{1001}).accepted());
         client.tick(at(100 + 2406));
         CHECK(client.send_busy());
         CHECK(client.status().delivery == MeshDelivery::Queued);
@@ -1470,12 +1470,12 @@ void test_a_send_that_is_never_confirmed_still_ends()
             const std::uint8_t vars[] = {21};
             CHECK(client.receive(vars, sizeof(vars), at(7)));
         }
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         const std::uint8_t error[] = {1, 4};
         CHECK(client.receive(error, sizeof(error), at(8)));
-        CHECK(service.status().delivery == MeshDelivery::Failed);
+        CHECK(service.status().delivery == MeshDelivery::Refused);
         CHECK(!client.send_busy());
-        CHECK(service.send_private(peer.id, "again", WallTime{1001}));
+        CHECK(service.send_private(peer.id, "again", WallTime{1001}).accepted());
     }
 
     // An explicit RESP_CODE_ERR after RESP_CODE_SENT. This half used to be
@@ -1494,11 +1494,11 @@ void test_a_send_that_is_never_confirmed_still_ends()
         CHECK(service.peer(0, peer));
         const std::uint8_t vars[] = {21};
         CHECK(client.receive(vars, sizeof(vars), at(7)));
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         CHECK(client.receive(sent, sizeof(sent), at(8)));
         const std::uint8_t error[] = {1, 4};
         CHECK(client.receive(error, sizeof(error), at(9)));
-        CHECK(service.status().delivery == MeshDelivery::Failed);
+        CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
         CHECK(!client.send_busy());
     }
 
@@ -1508,15 +1508,15 @@ void test_a_send_that_is_never_confirmed_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         CHECK(client.receive(sent, sizeof(sent), at(8)));
         client.tick(at(8 + 2405));
         CHECK(service.status().delivery == MeshDelivery::Accepted);
         CHECK(client.send_busy());
         client.tick(at(8 + 2406));
-        CHECK(service.status().delivery == MeshDelivery::Failed);
+        CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
         CHECK(!client.send_busy());
-        CHECK(service.send_private(peer.id, "again", WallTime{1001}));
+        CHECK(service.send_private(peer.id, "again", WallTime{1001}).accepted());
     }
 
     // A node that reports no estimate at all does not fail a send that is
@@ -1526,7 +1526,7 @@ void test_a_send_that_is_never_confirmed_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         const std::uint8_t no_estimate[] = {6, 0, 1, 2, 3, 4, 0, 0, 0, 0};
         CHECK(client.receive(no_estimate, sizeof(no_estimate), at(8)));
         client.tick(at(8 + 999));
@@ -1542,7 +1542,7 @@ void test_a_send_that_is_never_confirmed_still_ends()
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         const std::uint8_t forever[] = {6, 0, 1, 2, 3, 4, 0xFF, 0xFF, 0xFF, 0xFF};
         CHECK(client.receive(forever, sizeof(forever), at(8)));
         client.tick(at(8 + 15000));
@@ -1551,17 +1551,27 @@ void test_a_send_that_is_never_confirmed_still_ends()
 
     // The link dropping ends it too, from either phase, and the session that
     // follows starts with the slot free rather than with the dead one's.
+    //
+    // AND THE VERDICT IS `Unknown`, WHICH IS THE WHOLE OF ADR-0023 DECISION 5.
+    // It was `None`, which renders as *"not sent"* -- for a message this client
+    // had put in its transmit ring and, in the `after_response` half, one the
+    // node had answered RESP_CODE_SENT for. A frame that has left the ring may
+    // already have been written to the characteristic and this object cannot
+    // tell that from one still queued behind it, so "not sent" was a claim it
+    // had no way to make. The difference matters to the owner and not only to
+    // the vocabulary: "not sent" invites a resend, and `Unknown` says the first
+    // attempt may already have gone.
     for (const bool after_response : {false, true}) {
         MeshCoreCompanion client;
         connect_and_handshake(client);
         MeshService service(client);
         CHECK(service.peer(0, peer));
-        CHECK(service.send_private(peer.id, "text", WallTime{1000}));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
         if (after_response) CHECK(client.receive(sent, sizeof(sent), at(8)));
         CHECK(client.send_busy());
         client.disconnected(at(9));
         CHECK(!client.send_busy());
-        CHECK(client.status().delivery == MeshDelivery::None);
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
     }
 }
 
@@ -1579,7 +1589,7 @@ void test_a_custom_vars_error_does_not_fail_an_accepted_send()
     MeshService service(client);
     MeshPeer peer{};
     CHECK(service.peer(0, peer));
-    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}).accepted());
 
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
@@ -1620,7 +1630,7 @@ void test_an_unanswered_custom_vars_request_stops_taking_the_blame()
     client.tick(at(7 + 14999));
     client.tick(at(7 + 15000));  // kMaxAckWait; the request is given up on
 
-    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}).accepted());
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 18 && frame.bytes[0] == 2);
@@ -1633,7 +1643,7 @@ void test_an_unanswered_custom_vars_request_stops_taking_the_blame()
     // window the receiver hint would have taken this error in.
     const std::uint8_t err[] = {1, 4};
     CHECK(client.receive(err, sizeof(err), at(7 + 15002)));
-    CHECK(service.status().delivery == MeshDelivery::Failed);
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
     CHECK(!client.send_busy());
     CHECK(client.status().availability == Availability::Ready);
 }
@@ -1657,7 +1667,7 @@ void test_an_old_node_refusing_opcode_40_does_not_fail_a_room_login()
     for (std::size_t i = 0; i < room.size(); ++i) {
         room[i] = static_cast<std::uint8_t>(0x40 + i);
     }
-    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 41 && frame.bytes[0] == 26);
@@ -1730,7 +1740,7 @@ void test_an_answered_login_does_not_take_a_later_opcode_40s_error()
     for (std::size_t i = 0; i < room.size(); ++i) {
         room[i] = static_cast<std::uint8_t>(0x40 + i);
     }
-    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}));
+    CHECK(client.send_room(room, "password", "Hello", WallTime{1000}).accepted());
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 41 && frame.bytes[0] == 26);
 
@@ -1749,7 +1759,12 @@ void test_an_answered_login_does_not_take_a_later_opcode_40s_error()
     // Then it refuses opcode 40, naming nothing.
     const std::uint8_t error[] = {1, 1};  // ERR_CODE_UNSUPPORTED_CMD
     CHECK(client.receive(error, sizeof(error), at(9)));
-    CHECK(client.status().delivery != MeshDelivery::Failed);
+    // The send is untouched, and `Queued` is what untouched looks like here:
+    // the RESP_CODE_SENT above answered CMD_SEND_LOGIN, not a text, so it
+    // publishes no `Accepted`. Written as the state rather than as "not the
+    // failure state", which was one value when this line was first written and
+    // is three now.
+    CHECK(client.status().delivery == MeshDelivery::Queued);
     CHECK(client.send_busy());
 
     std::uint8_t login_ok[] = {0x85, 0, 0, 0, 0, 0, 0, 0};
@@ -1769,7 +1784,7 @@ void test_an_old_node_refusing_opcode_40_does_not_fail_a_queued_send()
     MeshService service(client);
     MeshPeer peer{};
     CHECK(service.peer(0, peer));
-    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}));
+    CHECK(service.send_private(peer.id, "Hello", WallTime{1000}).accepted());
 
     const std::uint8_t error[] = {1, 1};
     CHECK(client.receive(error, sizeof(error), at(8)));
@@ -1992,7 +2007,7 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         CHECK(client.receive(hint, sizeof(hint), at(8)));
         MeshPeer peer{};
         CHECK(client.peer(0, peer));
-        CHECK(client.send_private(peer.id, "first", WallTime{1}));
+        CHECK(client.send_private(peer.id, "first", WallTime{1}).accepted());
         client.tick(at(10));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
         CHECK(client.receive(sent, sizeof(sent), at(11)));
@@ -2000,7 +2015,7 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         CHECK(client.receive(confirmed, sizeof(confirmed), at(12)));
         client.tick(at(13));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
-        CHECK(client.send_private(peer.id, "second", WallTime{2}));
+        CHECK(client.send_private(peer.id, "second", WallTime{2}).accepted());
         client.tick(at(14));
         CHECK(!client.next_tx(frame));
         CHECK(client.receive(error, sizeof(error), at(15)));
@@ -2009,7 +2024,7 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         client.tick(at(16));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
         CHECK(client.receive(error, sizeof(error), at(17)));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Refused);
         CHECK(!client.send_busy());
     }
 
@@ -2024,7 +2039,7 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         CHECK(client.peer(0, peer));
         client.tick(at(10));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
-        CHECK(client.send_private(peer.id, "after poll", WallTime{1}));
+        CHECK(client.send_private(peer.id, "after poll", WallTime{1}).accepted());
         client.tick(at(12));
         CHECK(!client.next_tx(frame));
         client.tick(at(5010));
@@ -2039,13 +2054,13 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         client.tick(at(60010));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
         CHECK(client.receive(voltage, sizeof(voltage), at(60011)));
-        CHECK(client.send_private(peer.id, "no reply", WallTime{2}));
+        CHECK(client.send_private(peer.id, "no reply", WallTime{2}).accepted());
         client.tick(at(60012));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
         CHECK(client.receive(error, sizeof(error), at(60013)));
         CHECK(client.send_busy());
         client.tick(at(75012));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
         CHECK(!client.send_busy());
     }
 
@@ -2060,15 +2075,19 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         client.tick(at(10));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
         client.tick(at(5010));
-        CHECK(client.send_private(peer.id, "A", WallTime{1}));
+        CHECK(client.send_private(peer.id, "A", WallTime{1}).accepted());
         client.tick(at(5011));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
         CHECK(client.receive(error, sizeof(error), at(5012))); // A's refusal
         CHECK(client.send_busy());
         client.tick(at(20011));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        // `Unknown` and not `Refused`, and the line above is why: the error was
+        // ambiguous and did not reach the send, which is still busy. What ends
+        // this one is the budget, from a phase where the node has answered
+        // nothing -- and there is no acceptance there to be unsure about.
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
         CHECK(!client.send_busy());
-        CHECK(client.send_private(peer.id, "B", WallTime{2}));
+        CHECK(client.send_private(peer.id, "B", WallTime{2}).accepted());
         client.tick(at(20012));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
         CHECK(client.receive(error, sizeof(error), at(20013))); // old poll
@@ -2117,9 +2136,9 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         MeshPeer peer{};
         CHECK(client.peer(0, peer));
         if (room) {
-            CHECK(client.send_room(peer.id.public_key, "password", "stalled pump", WallTime{1}));
+            CHECK(client.send_room(peer.id.public_key, "password", "stalled pump", WallTime{1}).accepted());
         } else {
-            CHECK(client.send_private(peer.id, "stalled pump", WallTime{1}));
+            CHECK(client.send_private(peer.id, "stalled pump", WallTime{1}).accepted());
         }
         // Retained drain work after the operation tests FIFO compaction too.
         const std::uint8_t drained[] = {10};
@@ -2128,14 +2147,14 @@ void test_attached_node_battery_uses_the_live_queue_and_public_status()
         client.tick(at(13));
         CHECK(client.send_busy());
         client.tick(at(15013));
-        CHECK(client.status().delivery == MeshDelivery::Failed);
+        CHECK(client.status().delivery == MeshDelivery::Unknown);
         CHECK(!client.send_busy());
         CHECK(client.next_tx(frame) && frame.bytes[0] == 20);
         CHECK(client.receive(voltage, sizeof(voltage), at(15014)));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 10);
         CHECK(!client.next_tx(frame)); // no expired text or login remains
         CHECK(client.receive(drained, sizeof(drained), at(15015)));
-        CHECK(client.send_private(peer.id, "new", WallTime{2}));
+        CHECK(client.send_private(peer.id, "new", WallTime{2}).accepted());
         client.tick(at(15016));
         CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
         CHECK(std::memcmp(&frame.bytes[13], "new", 3) == 0);
@@ -2221,16 +2240,16 @@ void test_typed_battery_failure_does_not_create_err_ambiguity()
             CHECK(client.status().node_battery.validity == core::Validity::Unknown);
             CHECK(client.status().node_battery.millivolts == 0);
             CHECK(client.status().node_battery.received_at.ms == 0);
-            CHECK(client.send_private(peer.id, "after typed reply", WallTime{1}));
+            CHECK(client.send_private(peer.id, "after typed reply", WallTime{1}).accepted());
             client.tick(at(reply_at + 1));
             CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
             CHECK(client.receive(error, sizeof(error), at(reply_at + 2)));
             CHECK(client.send_busy() == previous_timeout);
             CHECK(client.status().delivery == (previous_timeout ? MeshDelivery::Queued
-                                                               : MeshDelivery::Failed));
+                                                               : MeshDelivery::Refused));
             if (previous_timeout) {
                 client.tick(at(reply_at + 15001));
-                CHECK(client.status().delivery == MeshDelivery::Failed);
+                CHECK(client.status().delivery == MeshDelivery::Unknown);
                 CHECK(!client.send_busy());
             }
         }
@@ -2300,7 +2319,7 @@ void test_a_lost_contacts_end_still_asks_for_messages()
 
     // AND THE SNAPSHOT IS COMPLETE. `peers_complete` is what the face reads to
     // decide whether it may print the kept/reported pair --
-    // `apps/src/mesh.cpp:282` -- "if (status.peers_complete && retained <
+    // `apps/src/mesh.cpp:284` -- "if (status.peers_complete && retained <
     // reported) {". Withholding it here would make the watch print the node's
     // own total alone on exactly the session where the two numbers differ.
     CHECK(client.status().peers_complete);
@@ -2396,7 +2415,7 @@ void test_a_confirmation_mid_walk_confirms_without_dirtying()
     open_a_contact_stream(client, true);
     MeshPeer peer{};
     CHECK(client.peer(0, peer));
-    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}));
+    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}).accepted());
 
     std::uint8_t sent[10]{};
     sent[0] = 6;  // RESP_CODE_SENT
@@ -2958,7 +2977,7 @@ void test_an_error_owed_to_a_re_read_does_not_fail_a_send()
     // The wearer's message is queued after it and goes out.
     MeshPeer peer{};
     CHECK(client.peer(0, peer));
-    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}));
+    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}).accepted());
     CHECK(client.status().delivery == core::MeshDelivery::Queued);
     CHECK(client.next_tx(frame));
     CHECK(frame.bytes[0] == 2);  // CMD_SEND_TXT_MSG
@@ -2987,7 +3006,7 @@ void test_an_error_owed_to_a_re_read_does_not_fail_a_send()
     client.tick(at(9 + 10003));
     CHECK(client.status().delivery == core::MeshDelivery::Queued);
     client.tick(at(9 + 10003 + 15000));
-    CHECK(client.status().delivery == core::MeshDelivery::Failed);
+    CHECK(client.status().delivery == core::MeshDelivery::Unknown);
 }
 
 // AND THE SAME ROW READ THE OTHER WAY, because "attributed by the existing
@@ -3010,7 +3029,7 @@ void test_an_error_older_than_the_re_read_still_fails_the_send()
     // The message goes out while the quiet window is still counting down.
     MeshPeer peer{};
     CHECK(client.peer(0, peer));
-    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}));
+    CHECK(client.send_private(peer.id, "on my way", WallTime{1000}).accepted());
     CHECK(client.next_tx(frame));
     CHECK(frame.bytes[0] == 2);
 
@@ -3023,7 +3042,7 @@ void test_an_error_older_than_the_re_read_still_fails_the_send()
     const std::uint8_t err[] = {1, 4};
     CHECK(client.receive(err, sizeof(err), at(9 + 10002)));
     CHECK(client.malformed_frames() == 0);
-    CHECK(client.status().delivery == core::MeshDelivery::Failed);
+    CHECK(client.status().delivery == core::MeshDelivery::Refused);
 
     // The re-read kept its claim on an answer it has not had, and that answer
     // still commits the staged set.
@@ -3404,7 +3423,7 @@ void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
     // resumes afterwards. Those rows belong to a walk this client decided not to
     // trust. Routed on `retry_open_` alone they would land in the published set
     // -- a union of two walks that `peers_retained` counts and `peers_reported`
-    // does not, which is the pair `apps/src/mesh.cpp:282` -- "        if (status.peers_complete && retained < reported) {"
+    // does not, which is the pair `apps/src/mesh.cpp:284` -- "        if (status.peers_complete && retained < reported) {"
     // -- compares. A second key, so a merge would show as a count rather than
     // as a rename.
     std::uint8_t third[148]{};
@@ -3432,7 +3451,7 @@ void test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1227` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1256` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3480,7 +3499,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:659` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:688` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -3496,7 +3515,7 @@ void test_a_quiet_stream_that_cannot_send_tries_again()
     for (std::size_t i = 0; i < 32; ++i) {
         peer.public_key[i] = static_cast<std::uint8_t>(i + 1);
     }
-    CHECK(client.send_private(peer, "Hello", core::WallTime{1000}));
+    CHECK(client.send_private(peer, "Hello", core::WallTime{1000}).accepted());
 
     client.tick(at(6 + 3000));
     CHECK(!client.status().peers_complete);
@@ -3525,7 +3544,7 @@ void test_a_quiet_stream_that_cannot_send_tries_again()
 // contact list, so `peers_retained < peers_reported` was already true and stayed
 // true. The cost only exists below the cap -- on the short list `peers_complete`
 // was added for, where the pair would otherwise count up:
-// `apps/src/mesh.cpp:266` -- "        // final, and the pair would count up through `3/40`. Both numbers also".
+// `apps/src/mesh.cpp:268` -- "        // final, and the pair would count up through `3/40`. Both numbers also".
 // Two contacts announced, one delivered, and the sweep publishes 1 of 2.
 void test_a_misfired_sweep_publishes_a_partial_pair()
 {
@@ -3895,6 +3914,428 @@ void test_forgetting_the_node_withdraws_a_contact_coordinate()
     CHECK(!client.remote_position(who, position, arrived));
 }
 
+// ROWS 1-4 OF THE RESEARCH REPORT'S SECTION 11.1: THE CAP REFUSES AT THE BYTE.
+//
+// `kMeshTextBytes` is 128 and it is a count of BYTES. The whole reason the row
+// exists is that a character counter would be right in English and wrong by a
+// factor of two in Russian, where a letter is two bytes, and wrong by four on
+// an emoji -- so the boundary is asserted at 127, 128 and 129 with the 129th
+// byte being the second half of a code point, which is the case a truncating
+// implementation would repair instead of refusing.
+void test_the_text_budget_is_counted_in_bytes_and_refused_not_repaired()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    // Row 1: 127 and 128 go, 129 does not. One client per send, because a
+    // send that is accepted holds the slot and the next would be refused as
+    // Busy rather than for its length -- which is a different refusal and
+    // would make this row prove nothing.
+    for (const std::size_t length : {std::size_t{127}, std::size_t{128}}) {
+        MeshCoreCompanion fresh;
+        connect_and_handshake(fresh);
+        MeshService on(fresh);
+        MeshPeer to{};
+        CHECK(on.peer(0, to));
+        const std::string body(length, 'a');
+        const auto result = on.send_private(to.id, body, WallTime{1000});
+        CHECK(result.accepted());
+        CHECK(result.refusal == core::MeshSendRefusal::None);
+        MeshCoreFrame frame{};
+        CHECK(fresh.next_tx(frame));
+        // Thirteen bytes of header, then the body entire -- nothing shortened
+        // on the way out.
+        CHECK(frame.size == 13 + length);
+    }
+    {
+        const std::string body(129, 'a');
+        const auto result = service.send_private(peer.id, body, WallTime{1000});
+        CHECK(!result.accepted());
+        CHECK(result.refusal == core::MeshSendRefusal::BodyTooLong);
+        CHECK(service.status().delivery == MeshDelivery::None);
+    }
+
+    // Row 2: a two-byte code point straddling byte 128. 127 bytes of Latin and
+    // then one Cyrillic letter is 129, and the letter's first byte is the
+    // 128th. A client that counted characters would send it; one that
+    // truncated at 128 would put half a character on the air.
+    {
+        std::string body(127, 'a');
+        body += "\xd0\xb0";  // U+0430 CYRILLIC SMALL LETTER A
+        CHECK(body.size() == 129);
+        const auto result = service.send_private(peer.id, body, WallTime{1000});
+        CHECK(!result.accepted());
+        CHECK(result.refusal == core::MeshSendRefusal::BodyTooLong);
+        // AND THE REPAIR IS AVAILABLE AND IS NOT TAKEN. The boundary helper
+        // says the body's longest whole-code-point prefix within 128 bytes ends
+        // at 127 -- so a caller that wants to shorten can, at a boundary, and
+        // this layer still refuses rather than doing it silently.
+        CHECK(core::utf8_prefix_length(body, 128) == 127);
+    }
+
+    // Row 3: the same for the code point that costs four. 125 bytes of Latin
+    // and one emoji is 129, and the emoji spans bytes 126..129.
+    {
+        std::string body(125, 'a');
+        body += "\xf0\x9f\x8c\x8d";  // U+1F30D EARTH GLOBE EUROPE-AFRICA
+        CHECK(body.size() == 129);
+        const auto result = service.send_private(peer.id, body, WallTime{1000});
+        CHECK(!result.accepted());
+        CHECK(result.refusal == core::MeshSendRefusal::BodyTooLong);
+        CHECK(core::utf8_prefix_length(body, 128) == 125);
+    }
+
+    // Row 4: upstream's own boundary is 160, and it is refused HERE. The
+    // asymmetry is asserted rather than assumed: 128 out and 128 in is one
+    // number, and raising the outbound cap alone would make this product emit
+    // messages its own receiver truncates.
+    {
+        const std::string body(160, 'a');
+        const auto result = service.send_private(peer.id, body, WallTime{1000});
+        CHECK(!result.accepted());
+        CHECK(result.refusal == core::MeshSendRefusal::BodyTooLong);
+    }
+
+    // AND A BODY THAT ARRIVED ALREADY CUT is refused too, with its own reason.
+    // This is the shape a caller produces by shortening with `substr`: under
+    // budget, and not a message.
+    {
+        const std::string body = std::string("\xd0") + "";  // a lone lead byte
+        CHECK(body.size() == 1);
+        const auto result = service.send_private(peer.id, body, WallTime{1000});
+        CHECK(!result.accepted());
+        CHECK(result.refusal == core::MeshSendRefusal::BodyNotUtf8);
+    }
+    // An empty body is its own refusal and not `BodyNotUtf8`: nothing to send
+    // is a different mistake from something unsendable.
+    CHECK(service.send_private(peer.id, "", WallTime{1000}).refusal ==
+          core::MeshSendRefusal::EmptyBody);
+    // Nothing above was accepted, so nothing above published a delivery state.
+    // ADR-0023 decision 3: a local refusal is an answer to the call.
+    CHECK(service.status().delivery == MeshDelivery::None);
+    CHECK(service.status().request_id == 0);
+}
+
+// THE BOUNDARY HELPER ITSELF, because the send path uses it to decide and a
+// caller uses it to shorten, and a helper that is wrong is wrong in both.
+void test_the_utf8_boundary_stops_at_a_code_point()
+{
+    using core::utf8_prefix_length;
+    CHECK(utf8_prefix_length("", 10) == 0);
+    CHECK(utf8_prefix_length("abc", 10) == 3);
+    CHECK(utf8_prefix_length("abc", 2) == 2);
+    // Two bytes, cut in the middle: the prefix ends before the letter.
+    CHECK(utf8_prefix_length("a\xd0\xb0", 2) == 1);
+    CHECK(utf8_prefix_length("a\xd0\xb0", 3) == 3);
+    // Four bytes, cut at every offset inside it.
+    for (std::size_t limit = 1; limit <= 4; ++limit) {
+        CHECK(utf8_prefix_length("\xf0\x9f\x8c\x8d", limit) == (limit == 4 ? 4 : 0));
+    }
+    // A continuation byte with nothing leading it is not a character.
+    CHECK(utf8_prefix_length("\xb0", 4) == 0);
+    // An over-long form -- '/' written as two bytes -- is refused rather than
+    // decoded, which is the classic way a filter is walked past.
+    CHECK(utf8_prefix_length("\xc0\xaf", 4) == 0);
+    // A surrogate half, which UTF-8 never encodes.
+    CHECK(utf8_prefix_length("\xed\xa0\x80", 4) == 0);
+    // Past U+10FFFF.
+    CHECK(utf8_prefix_length("\xf7\xbf\xbf\xbf", 4) == 0);
+    // The limit may exceed the string; the string wins.
+    CHECK(utf8_prefix_length("\xd0\xb0", 99) == 2);
+}
+
+// ROW 7: A LOCAL REQUEST ID, NON-ZERO AND DISTINCT, AND IT IS NOT THE NODE'S
+// ACK TAG.
+void test_a_request_id_is_local_non_zero_and_distinct()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    CHECK(service.status().request_id == 0);  // no request yet
+    const auto first = service.send_private(peer.id, "one", WallTime{1000});
+    CHECK(first.accepted() && first.request_id != 0);
+    CHECK(service.status().request_id == first.request_id);
+
+    // A refusal issues no id and does not disturb the live one.
+    const auto refused = service.send_private(peer.id, "two", WallTime{1001});
+    CHECK(!refused.accepted() && refused.request_id == 0);
+    CHECK(refused.refusal == core::MeshSendRefusal::Busy);
+    CHECK(service.status().request_id == first.request_id);
+
+    // End the first, then a second send gets a different id.
+    client.tick(at(8));
+    client.tick(at(8 + 15000));
+    CHECK(!client.send_busy());
+    const auto second = service.send_private(peer.id, "two", WallTime{1002});
+    CHECK(second.accepted());
+    CHECK(second.request_id != first.request_id);
+    CHECK(service.status().request_id == second.request_id);
+
+    // AND IT IS NOT THE NODE'S TAG. The ack tag here is 01 02 03 04, which is
+    // 0x04030201 little-endian -- a number the node computed and this client
+    // copied. Nothing in the id is derived from it.
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8 + 15001)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(service.status().request_id == second.request_id);
+    CHECK(second.request_id != 0x04030201U);
+    CHECK(second.request_id != 0x01020304U);
+}
+
+// ROWS 10, 11 AND 12: THE ACKNOWLEDGEMENT'S TIMING, AND THE ROW THIS WHOLE
+// CHANGE EXISTS TO PRODUCE.
+void test_an_ack_after_the_budget_upgrades_unconfirmed_to_confirmed()
+{
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4, 0, 0, 0, 0};
+
+    // Row 12 first, and it is the defect: an expired budget is `Unconfirmed`,
+    // and specifically NOT `Failed`. `Failed` said *"не доставлено"* -- not
+    // delivered -- about a message the node had accepted and which the wire
+    // cannot say anything negative about at all.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        MeshPeer peer{};
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        CHECK(service.status().delivery == MeshDelivery::Accepted);
+        client.tick(at(8 + 2406));
+        CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+        CHECK(!client.send_busy());
+
+        // Row 11: the node has no notion of this client's budget and clears its
+        // own ack table only on a match, so a confirmation after the budget is
+        // ordinary traffic. It is positive proof against the absence of proof,
+        // and the absence loses.
+        CHECK(client.receive(ack, sizeof(ack), at(8 + 30000)));
+        CHECK(service.status().delivery == MeshDelivery::Confirmed);
+        CHECK(!client.send_busy());
+
+        // Row 10: a duplicate changes nothing and is not counted malformed.
+        const std::uint32_t malformed = client.malformed_frames();
+        CHECK(client.receive(ack, sizeof(ack), at(8 + 30001)));
+        CHECK(service.status().delivery == MeshDelivery::Confirmed);
+        CHECK(client.malformed_frames() == malformed);
+    }
+
+    // AND THE UPGRADE IS BOUNDED BY THE REQUEST, NOT BY THE CLOCK. Once the
+    // request has been replaced, a match has nothing to attach to -- the tag is
+    // a keyed hash of timestamp, attempt and text and repeats for identical
+    // messages in the same second, so an unattached match would be evidence
+    // about some other message.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        MeshPeer peer{};
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "first", WallTime{1000}).accepted());
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        client.tick(at(8 + 2406));
+        CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+
+        // A second send replaces the request. It is `Queued`, not
+        // `Unconfirmed`, so the late-ack arm cannot fire for it.
+        CHECK(service.send_private(peer.id, "second", WallTime{1001}).accepted());
+        CHECK(service.status().delivery == MeshDelivery::Queued);
+        CHECK(client.receive(ack, sizeof(ack), at(8 + 3000)));
+        CHECK(service.status().delivery == MeshDelivery::Queued);
+    }
+
+    // Row 9: an ack that matches nothing changes nothing, and is not malformed
+    // either -- a well-formed acknowledgement for another message is a
+    // correlation outcome, not a bad frame.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        MeshPeer peer{};
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        const std::uint32_t malformed = client.malformed_frames();
+        const std::uint8_t other[] = {0x82, 9, 9, 9, 9, 0, 0, 0, 0};
+        CHECK(client.receive(other, sizeof(other), at(9)));
+        CHECK(service.status().delivery == MeshDelivery::Accepted);
+        CHECK(client.send_busy());
+        CHECK(client.malformed_frames() == malformed);
+    }
+
+    // Row 15's second half: a reconnect does not resurrect the request. The
+    // disconnect leaves `Unknown`, `reset_session()` zeroes the tag, and a
+    // match arriving afterwards has nothing to attach to. `Unknown` is
+    // deliberately not upgradeable for exactly this reason.
+    {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        MeshPeer peer{};
+        CHECK(service.peer(0, peer));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
+        CHECK(client.receive(sent, sizeof(sent), at(8)));
+        CHECK(service.status().delivery == MeshDelivery::Accepted);
+        client.disconnected(at(9));
+        CHECK(service.status().delivery == MeshDelivery::Unknown);
+        connect_and_handshake(client);
+        CHECK(service.status().delivery == MeshDelivery::Unknown);
+        CHECK(client.receive(ack, sizeof(ack), at(200)));
+        CHECK(service.status().delivery == MeshDelivery::Unknown);
+    }
+}
+
+// ROW 18: THE NODE'S ACK TAG IS A HASH AND CAN REPEAT, AND NOTHING HERE MAY BE
+// WRITTEN AS IF IT WERE A MESSAGE ID.
+//
+// Upstream computes it from timestamp, attempt and text -- the recipient's key
+// is not an input -- so two identical messages in the same second produce the
+// same four bytes. This client never computes one; it copies the node's. So the
+// collision is asserted through the seam the host has: two sends, two
+// RESP_CODE_SENT frames carrying the SAME tag, and each verdict belonging to
+// the request that was in flight when its frame arrived.
+void test_an_identical_ack_tag_does_not_confirm_the_earlier_request()
+{
+    const std::uint8_t sent[] = {6, 0, 7, 7, 7, 7, 0x66, 0x09, 0, 0};
+    const std::uint8_t ack[] = {0x82, 7, 7, 7, 7, 0, 0, 0, 0};
+
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    const auto first = service.send_private(peer.id, "same body", WallTime{1000});
+    CHECK(first.accepted());
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(service.status().request_id == first.request_id);
+
+    // The first is given up on. Its tag is still in `expected_ack_`, which is
+    // what makes row 11 possible and what makes this row necessary.
+    client.tick(at(8 + 2406));
+    CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
+
+    // The same body, the same second, so the node produces the same tag.
+    const auto second = service.send_private(peer.id, "same body", WallTime{1000});
+    CHECK(second.accepted());
+    CHECK(second.request_id != first.request_id);
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    CHECK(service.status().request_id == second.request_id);
+
+    // THE SECOND'S RESP_CODE_SENT IS THE SECOND'S. The identical tag does not
+    // make it an answer to the first, and the state it publishes is the
+    // second's `Accepted` -- not an upgrade of the first's `Unconfirmed`.
+    CHECK(client.receive(sent, sizeof(sent), at(9)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(service.status().request_id == second.request_id);
+
+    // And the confirmation that follows confirms the second, which is the one
+    // in flight. The first stays what the wire left it: given up on, and never
+    // retrospectively confirmed by a tag that belongs to a different message.
+    CHECK(client.receive(ack, sizeof(ack), at(10)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+    CHECK(service.status().request_id == second.request_id);
+}
+
+// ROW 17: `ERR_CODE_TABLE_FULL` IS NOT "THE NODE IS FULL".
+//
+// The same error code answers a text that is too long, so a screen that named
+// the node's contact table would be telling an owner to delete contacts because
+// their message was long. Every `RESP_CODE_ERR` for an accepted command reaches
+// the owner as one word -- `Refused` -- and the code stays in the log.
+void test_an_error_code_is_not_shown_to_the_owner_as_a_reason()
+{
+    // 4 is ERR_CODE_TABLE_FULL and 1 is ERR_CODE_UNSUPPORTED_CMD; upstream also
+    // answers 4 for a text over its own length bound.
+    for (const std::uint8_t code : {std::uint8_t{4}, std::uint8_t{1}, std::uint8_t{2}}) {
+        MeshCoreCompanion client;
+        connect_and_handshake(client);
+        MeshService service(client);
+        MeshPeer peer{};
+        CHECK(service.peer(0, peer));
+        // The handshake's own CMD_GET_CUSTOM_VARS is the older outstanding
+        // command, so an untagged error is its before it is the send's.
+        // Answering it first is what a node that defines opcode 40 does.
+        const std::uint8_t vars[] = {21};
+        CHECK(client.receive(vars, sizeof(vars), at(7)));
+        CHECK(service.send_private(peer.id, "text", WallTime{1000}).accepted());
+        const std::uint8_t error[] = {1, code};
+        CHECK(client.receive(error, sizeof(error), at(8)));
+        // One verdict, whatever the code was. The distinction the owner needs
+        // is Refused versus Unconfirmed, which is about whether a resend can
+        // duplicate -- and that is the same answer for all three codes.
+        CHECK(service.status().delivery == MeshDelivery::Refused);
+        CHECK(!client.send_busy());
+    }
+}
+
+// ROW 6: THE SIX-BYTE NARROWING HAPPENS ONCE, IN THE ADAPTER.
+//
+// A full 32-byte identity goes in and the frame carries its first six bytes at
+// offsets 7..12. The prefix is what MeshCore's private-message frame addresses
+// by; it is not what an application holds, and this is the one place the two
+// meet.
+void test_the_recipient_narrows_to_six_bytes_in_the_frame_and_nowhere_else()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    // The fixture's contact is keyed 1..32, so every byte is distinct and a
+    // frame built from the wrong offset would be visible.
+    for (std::size_t i = 0; i < core::kMeshPublicKeyBytes; ++i) {
+        CHECK(peer.id.public_key[i] == static_cast<std::uint8_t>(i + 1));
+    }
+    CHECK(service.send_private(peer.id, "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.bytes[0] == 2);
+    for (std::size_t i = 0; i < 6; ++i) {
+        CHECK(frame.bytes[7 + i] == peer.id.public_key[i]);
+    }
+    // And the seventh byte of the key is NOT in the frame where the text
+    // begins: the body starts at 13.
+    CHECK(frame.bytes[13] == 'h' && frame.bytes[14] == 'i');
+    CHECK(frame.size == 13 + 2);
+}
+
+// `send_abandoned()` CLEARS RATHER THAN CONDEMNS. The worker claimed the slot,
+// could not resolve the recipient, and handed this object nothing. ADR-0023
+// decision 3: no message exists, so no message has a state -- and the previous
+// send's verdict must not be read as this one's, which is what the function is
+// for and what `None` still does.
+void test_an_abandoned_request_clears_the_previous_verdict()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    const std::uint8_t ack[] = {0x82, 1, 2, 3, 4, 0, 0, 0, 0};
+    const auto first = service.send_private(peer.id, "delivered", WallTime{1000});
+    CHECK(first.accepted());
+    CHECK(client.receive(sent, sizeof(sent), at(8)));
+    CHECK(client.receive(ack, sizeof(ack), at(9)));
+    CHECK(service.status().delivery == MeshDelivery::Confirmed);
+
+    client.send_abandoned();
+    CHECK(service.status().delivery == MeshDelivery::None);
+    CHECK(service.status().request_id == 0);
+    // It ends nothing, because there was nothing to end.
+    CHECK(!client.send_busy());
+}
+
 int main()
 {
     test_typed_battery_failure_does_not_create_err_ambiguity();
@@ -3967,6 +4408,14 @@ int main()
     test_unpin_clears_the_pin_and_the_refusal_it_caused();
     test_a_short_self_info_is_refused_before_anything_reads_it();
     test_a_re_read_the_sweep_closed_does_not_commit_what_it_swept();
+    test_the_text_budget_is_counted_in_bytes_and_refused_not_repaired();
+    test_the_utf8_boundary_stops_at_a_code_point();
+    test_a_request_id_is_local_non_zero_and_distinct();
+    test_an_ack_after_the_budget_upgrades_unconfirmed_to_confirmed();
+    test_an_identical_ack_tag_does_not_confirm_the_earlier_request();
+    test_an_error_code_is_not_shown_to_the_owner_as_a_reason();
+    test_the_recipient_narrows_to_six_bytes_in_the_frame_and_nowhere_else();
+    test_an_abandoned_request_clears_the_previous_verdict();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

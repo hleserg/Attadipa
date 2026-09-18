@@ -177,7 +177,25 @@ void MeshCoreCompanion::reset_session()
     // the only report of why.
     status_.last_sender.fill('\0');
     status_.last_message.fill('\0');
-    status_.delivery = core::MeshDelivery::None;
+    // A SESSION THAT ENDS MID-FLIGHT YIELDS `Unknown`, AND A SETTLED VERDICT IS
+    // LEFT ALONE. ADR-0023 decision 5, and it replaces a `None` that rendered
+    // as *"not sent"* for a message the node had accepted and may already have
+    // delivered.
+    //
+    // The two halves are one rule. A frame that has left this client's ring may
+    // already have been written to the characteristic, and nothing here
+    // distinguishes that from one still queued behind it -- so from the moment
+    // the request is made, not from `Accepted`, the honest answer is that the
+    // outcome is unknowable. And `Unknown` is the state of an *unfinished*
+    // request, not a solvent poured over finished ones: a `Confirmed` is a
+    // verdict the wire gave, and a disconnect afterwards is not evidence
+    // against it.
+    //
+    // Read before `end_operation()` at the bottom of this function clears the
+    // three flags `send_busy()` is made of.
+    if (send_busy()) {
+        status_.delivery = core::MeshDelivery::Unknown;
+    }
     status_.peers_reported = 0;
     status_.peers_retained = 0;
     status_.has_snr = false;
@@ -311,8 +329,18 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // PUSH_CODE_SEND_CONFIRMED at all, and a room out of range produces no
     // PUSH_CODE_LOGIN_SUCCESS and no PUSH_CODE_LOGIN_FAIL either -- so without
     // a bound the one in-flight slot is held for the life of the session by an
-    // operation that already failed. Fail-closed and observable: the verdict is
-    // Failed, not a silent release.
+    // operation that already ended. Fail-closed and observable: a verdict, not
+    // a silent release.
+    //
+    // ONE BUDGET, THREE PHASES, AND ONLY THE LAST HAS AN ACCEPTANCE TO BE
+    // UNSURE ABOUT. `send_busy()` covers a room login outstanding, a text
+    // awaiting RESP_CODE_SENT, and a text awaiting its acknowledgement.
+    // `Unconfirmed` is a claim about the third and only the third: *the node
+    // accepted this message and this product cannot tell whether it arrived.*
+    // In the first two the node answered nothing at all, and calling that
+    // "accepted, unconfirmed" would invent an acceptance the wire never gave --
+    // and point the owner away from the resend that is safe there. Those expire
+    // to `Unknown`. ADR-0023 decision 2.
     if (!send_busy()) {
         op_budget_ = core::Millis{};
     } else if (op_budget_.value == 0 &&
@@ -321,7 +349,8 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
         op_budget_ = kMaxAckWait;
     } else if (op_budget_.value != 0 &&
                core::elapsed(op_since_, now) >= op_budget_) {
-        status_.delivery = core::MeshDelivery::Failed;
+        status_.delivery = awaiting_confirm_ ? core::MeshDelivery::Unconfirmed
+                                             : core::MeshDelivery::Unknown;
         end_operation();
     }
     // The receiver hint gets a bound of its own, and it is not the operation's:
@@ -477,7 +506,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1270` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1299` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -1477,10 +1506,38 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // the only things that release the slot: a well-formed ack for another
         // message is a correlation outcome, and a malformed frame is not even
         // that.
-        if (awaiting_confirm_ &&
-            std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) == 0) {
+        if (std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0) {
+            break;
+        }
+        if (awaiting_confirm_) {
             status_.delivery = core::MeshDelivery::Confirmed;
             awaiting_confirm_ = false;
+            break;
+        }
+        // A MATCH AFTER THE BUDGET EXPIRED UPGRADES `Unconfirmed` TO
+        // `Confirmed`. ADR-0023 decision 2a. The node has no notion of this
+        // client's budget -- it pushes the confirmation whenever its own
+        // acknowledgement arrives -- so a late match is ordinary traffic and
+        // not a protocol violation, and its own ack table is cleared on a match
+        // and never by age. Positive proof outranks the absence of proof, and
+        // discarding it would leave the owner deciding whether to risk the
+        // duplicate decision 7 exists to prevent, about a message this client
+        // had since learned was delivered.
+        //
+        // THE BOUND IS THE REQUEST, NOT THE CLOCK, and `delivery` is what
+        // carries it. `Unconfirmed` is reachable only from `Accepted`, only for
+        // the request whose tag `expected_ack_` holds, and a later send leaves
+        // `Queued` here until its own RESP_CODE_SENT overwrites the tag. So
+        // there is no window in which a stale tag can be matched against a
+        // different request -- which matters, because the tag is a keyed hash
+        // of timestamp, attempt and text and repeats for identical messages in
+        // the same second.
+        //
+        // `Unknown` is deliberately NOT upgraded. It is where a disconnect
+        // leaves a request, and `reset_session()` zeroes `expected_ack_`, so a
+        // match cannot reach across a reconnect to resurrect one.
+        if (status_.delivery == core::MeshDelivery::Unconfirmed) {
+            status_.delivery = core::MeshDelivery::Confirmed;
         }
         break;
     case kPushMessageWaiting:
@@ -1502,9 +1559,22 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             return false;
         }
         awaiting_login_ = false;
+        // THE ROOM PATH'S SECOND PHASE, AND THE ONE PLACE `Refused` IS NOT THE
+        // NODE'S VERDICT. `send_room()` published `Queued` and returned a
+        // request id a second ago, so ADR-0023 decision 3 -- a local refusal is
+        // not a delivery state, because no message exists -- does not reach
+        // here: a message was published and an owner is looking at it. Without
+        // this arm, removing `Failed` would leave the path with no terminal
+        // state at all: `awaiting_login_` is already false and `awaiting_send_`
+        // was never set, so `send_busy()` is false, `tick()`'s expiry arm never
+        // runs, and the screen holds `Queued` for the rest of the session.
+        //
+        // `Refused` is exactly right from the owner's side: nothing reached the
+        // radio, and a resend cannot duplicate anything. ADR-0023 decision 4.
         if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),
-                             room_timestamp_)) {
-            status_.delivery = core::MeshDelivery::Failed;
+                             room_timestamp_)
+                 .accepted()) {
+            status_.delivery = core::MeshDelivery::Refused;
         }
         room_peer_ = {};
         room_text_.fill('\0');
@@ -1517,7 +1587,9 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             return false;
         }
         end_operation();
-        status_.delivery = core::MeshDelivery::Failed;
+        // The node declining a login is the node declining, and it is not a
+        // statement about the radio -- ADR-0023 decision 4.
+        status_.delivery = core::MeshDelivery::Refused;
         break;
     case kResponseContactMessage:
         drain_after(accept_message(data, size, false, now), now);
@@ -1632,7 +1704,26 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         if (battery_errors_ambiguous_) break;
         if (send_busy()) {
-            status_.delivery = core::MeshDelivery::Failed;
+            // AND THE PHASE DECIDES WHICH VERDICT, for the same reason the
+            // budget's does. An error while `awaiting_send_` or
+            // `awaiting_login_` is the node declining a command it had not yet
+            // answered: nothing reached the air, a resend cannot duplicate
+            // anything, and that is `Refused` -- ADR-0023 decisions 1 and 4.
+            //
+            // An error while `awaiting_confirm_` is a different claim and must
+            // not be written as the same one. The node already answered this
+            // send with RESP_CODE_SENT; what is outstanding is a radio round
+            // trip, and the attribution above has already established this
+            // error is not that send's answer -- it is the one that could not
+            // be charged to any older outstanding command. Calling it `Refused`
+            // would tell the owner nothing reached the radio, about a text the
+            // node accepted, and invite exactly the duplicate ADR-0023
+            // decision 7 exists to prevent. `Unconfirmed` is what is true of
+            // it, and `expected_ack_` survives `end_operation()`, so a
+            // confirmation still on its way can upgrade it.
+            status_.delivery = awaiting_confirm_
+                                   ? core::MeshDelivery::Unconfirmed
+                                   : core::MeshDelivery::Refused;
             end_operation();
         }
         break;
@@ -1711,16 +1802,64 @@ bool MeshCoreCompanion::node_id(core::MeshPeerId& out) const
     return true;
 }
 
-bool MeshCoreCompanion::send_private(const core::MeshPeerId& peer,
-                                     std::string_view text,
-                                     core::WallTime timestamp)
+core::MeshSendResult MeshCoreCompanion::send_private(const core::MeshPeerId& peer,
+                                                     std::string_view text,
+                                                     core::WallTime timestamp)
 {
     return enqueue_private(peer, text, timestamp);
 }
 
-bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
-                                        std::string_view text,
-                                        core::WallTime timestamp)
+// Monotonic within a session, never zero. Wraparound skips zero rather than
+// wrapping onto it, because zero is what `MeshSendResult` uses to mean "no
+// request" and a request that answered zero would read as a refusal with no
+// reason. There is one in-flight slot, so a counter this wide cannot alias a
+// live id: it would have to wrap onto the one request the session is tracking,
+// which needs 2^32 accepted sends inside the ack budget.
+// WHAT MAKES A BODY UNSENDABLE, in one place, because `send_private()` and
+// `send_room()` have to agree about it: the room path checks the text at the
+// call and then again when the login succeeds, and two copies of this cascade
+// would be two chances for them to drift.
+core::MeshSendRefusal MeshCoreCompanion::refuse_text(std::string_view text,
+                                                     core::WallTime timestamp) const
+{
+    if (!link_.ready() || !device_info_seen_ || !self_info_seen_) {
+        return core::MeshSendRefusal::LinkNotReady;
+    }
+    if (send_busy()) return core::MeshSendRefusal::Busy;
+    if (text.empty()) return core::MeshSendRefusal::EmptyBody;
+    // COUNTED IN BYTES, NOT IN CHARACTERS, and the difference is a factor of
+    // two in this product's second language: a Russian letter is about two
+    // bytes and a single emoji is four, so a character counter over-promises by
+    // half in Russian and by three quarters on an emoji.
+    if (text.size() > core::kMeshTextBytes) return core::MeshSendRefusal::BodyTooLong;
+    // AND THE BODY IS REFUSED RATHER THAN REPAIRED. A body whose last code
+    // point is cut short arrived that way from whoever shortened it, and
+    // finishing the job here -- dropping the partial character and sending the
+    // rest -- would put a message on the air that is not the one the owner
+    // composed, silently. Over budget is a refusal the owner sees *before*
+    // sending; `core::utf8_prefix_length()` is what a caller shortens with, and
+    // it stops at a code-point boundary.
+    if (core::utf8_prefix_length(text, text.size()) != text.size()) {
+        return core::MeshSendRefusal::BodyNotUtf8;
+    }
+    if (timestamp.unix_seconds < 0 ||
+        static_cast<std::uint64_t>(timestamp.unix_seconds) >
+            std::numeric_limits<std::uint32_t>::max()) {
+        return core::MeshSendRefusal::TimestampOutOfRange;
+    }
+    return core::MeshSendRefusal::None;
+}
+
+std::uint32_t MeshCoreCompanion::next_request_id()
+{
+    ++request_seq_;
+    if (request_seq_ == 0) request_seq_ = 1;
+    return request_seq_;
+}
+
+core::MeshSendResult MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
+                                                        std::string_view text,
+                                                        core::WallTime timestamp)
 {
     // MeshCore private-message frames address the destination by its six-byte
     // public-key prefix; the full key is only used by commands such as login.
@@ -1738,13 +1877,13 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
     // that asymmetry is #315. The Room flow's own text send is not caught by
     // this: `kPushLoginSuccess` clears `awaiting_login_` before it calls here,
     // because the login and the text it carries are one owned operation.
-    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || send_busy() ||
-        text.empty() ||
-        text.size() > core::kMeshTextBytes ||
-        timestamp.unix_seconds < 0 ||
-        static_cast<std::uint64_t>(timestamp.unix_seconds) >
-            std::numeric_limits<std::uint32_t>::max()) {
-        return false;
+    // EACH REFUSAL NAMED, because the remedies differ and they all used to
+    // arrive as one `false`: wait for the link, wait for the send in flight,
+    // shorten the body, fix the clock. ADR-0023 decision 3 -- none of these is
+    // a delivery state, because no message exists to have one.
+    if (const core::MeshSendRefusal refusal = refuse_text(text, timestamp);
+        refusal != core::MeshSendRefusal::None) {
+        return {0, refusal};
     }
     std::array<std::uint8_t, header + core::kMeshTextBytes> frame{};
     frame[0] = kSendText;
@@ -1754,28 +1893,32 @@ bool MeshCoreCompanion::enqueue_private(const core::MeshPeerId& peer,
     std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);
     std::memcpy(&frame[header], text.data(), text.size());
     if (!enqueue(frame.data(), header + text.size())) {
-        return false;
+        return {0, core::MeshSendRefusal::RingFull};
     }
     awaiting_send_ = true;
     op_answered_ = false;
     op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
-    return true;
+    status_.request_id = next_request_id();
+    return {status_.request_id, core::MeshSendRefusal::None};
 }
 
-bool MeshCoreCompanion::send_room(
+core::MeshSendResult MeshCoreCompanion::send_room(
     const std::array<std::uint8_t, core::kMeshPublicKeyBytes>& room,
     std::string_view password, std::string_view text, core::WallTime timestamp)
 {
     constexpr std::size_t kMaxRoomPasswordBytes = 15;
-    if (!link_.ready() || !device_info_seen_ || !self_info_seen_ || send_busy() ||
-        password.empty() || password.size() > kMaxRoomPasswordBytes ||
-        text.empty() || text.size() > core::kMeshTextBytes ||
-        timestamp.unix_seconds < 0 ||
-        static_cast<std::uint64_t>(timestamp.unix_seconds) >
-            std::numeric_limits<std::uint32_t>::max()) {
-        return false;
+    // The text is checked here and again in `enqueue_private()` when the login
+    // succeeds, and that is not redundant: refusing a 200-byte body at the call
+    // is the only place an owner can be told before a login goes out over the
+    // air for a message that can never be sent.
+    if (const core::MeshSendRefusal refusal = refuse_text(text, timestamp);
+        refusal != core::MeshSendRefusal::None) {
+        return {0, refusal};
+    }
+    if (password.empty() || password.size() > kMaxRoomPasswordBytes) {
+        return {0, core::MeshSendRefusal::RoomPasswordInvalid};
     }
     std::array<std::uint8_t, 1 + core::kMeshPublicKeyBytes + kMaxRoomPasswordBytes> frame{};
     frame[0] = kSendLogin;
@@ -1789,7 +1932,7 @@ bool MeshCoreCompanion::send_room(
     // once that inlines a plain fill is a dead store and may be dropped.
     secure_zero(frame.data(), frame.size());
     if (!queued) {
-        return false;
+        return {0, core::MeshSendRefusal::RingFull};
     }
     room_peer_.public_key = room;
     std::memcpy(room_text_.data(), text.data(), text.size());
@@ -1800,7 +1943,8 @@ bool MeshCoreCompanion::send_room(
     op_seq_ = tx_seq_;
     op_budget_ = core::Millis{};
     status_.delivery = core::MeshDelivery::Queued;
-    return true;
+    status_.request_id = next_request_id();
+    return {status_.request_id, core::MeshSendRefusal::None};
 }
 
 }  // namespace attadipa::link

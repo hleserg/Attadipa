@@ -70,10 +70,18 @@ struct MeshText {
     // face, which is the layer that knows how wide the panel is.
     char message[core::kMeshTextBytes + 1] = "";
     char sender[40]          = "";
-    // 32 rather than 24 because `не отправлено` and `не доставлено` are 25
-    // bytes each and lost their last character -- and `MeshDelivery::None` is
-    // the default, so the truncated word was the one a watch showed first.
-    char delivery[32]        = "";
+    // 40 rather than 32, and 32 rather than 24 before that, both times for the
+    // same reason and both times found by the same sweep below rather than by
+    // reading the strings. 24 cut `не отправлено` and `не доставлено`, 25 bytes
+    // each; 32 cuts `нет подтверждения`, which is 34, and `исход неизвестен`,
+    // which is 31 and needs a thirty-second byte for its terminator.
+    //
+    // Cyrillic is two bytes a letter here, so a Russian word costs twice what
+    // its length suggests and a buffer sized by eye in English is short by half
+    // in the product's second language. The strings are chosen for the reader
+    // and the buffer follows them; sizing the words to the buffer is what this
+    // comment exists to stop the next change doing.
+    char delivery[40]        = "";
 
     char snr[12]         = "";
     char snr_label[16]   = "";
@@ -109,7 +117,7 @@ struct MeshText {
     // carrying them. `message_partial` is a tail the node sent and the watch
     // no longer has: `MeshCoreCompanion::accept_message()` copies into
     // `core::MeshStatus::last_message` and reports the overflow
-    // (`core/include/attadipa/core/mesh_service.h:139` — "    bool message_truncated = false;").
+    // (`core/include/attadipa/core/mesh_service.h:216` — "    bool message_truncated = false;").
     // The face's one-line ellipsis is a different statement -- "the rest of
     // this is off the edge of a 240 px panel" -- and it is recoverable by
     // definition, because the bytes are still in `message`. A wearer reading
