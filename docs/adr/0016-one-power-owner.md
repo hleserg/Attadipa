@@ -92,7 +92,7 @@ window is not: a phase published after the sleeper read the snapshot and during
 `esp_light_sleep_start()` is still a declaration the sleeper never saw, the same
 width as before with the snapshot carrying it instead of the table. Closing
 *that* needs the sleep itself to be refusable by the transport, which
-`core/include/attadipa/core/power_owner.h:359` — "// does not yet have and which nothing in the current firmware needs, because"
+`core/include/attadipa/core/power_owner.h:372` — "// does not yet have and which nothing in the current firmware needs, because"
 — still records as absent. It is inert while no plan gates a domain a cross-task
 consumer declares; **the first plan that does must close this window before it
 ships**, not after.
@@ -117,7 +117,7 @@ screen and answers nothing.
 **A failed rollback is not the only way to get there.** A step that neither
 took effect nor went back leaves the same unknown state without any rollback
 having run, and it has to latch the same way. `StepResult` is where a step says
-which of the three it was — `core/include/attadipa/core/power_owner.h:233` —
+which of the three it was — `core/include/attadipa/core/power_owner.h:237` —
 "    Unknown,    // it does not, and the state before the step was not restored"
 — and a `suspend()` or an `arm_wake()` that answers `Unknown` records that
 domain or source exactly as a failed unwind of it would. The distinction the

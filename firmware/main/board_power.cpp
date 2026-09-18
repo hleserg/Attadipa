@@ -256,12 +256,26 @@ public:
       return attadipa::core::StepResult::Unchanged;
     }
     // A DRIVER ERROR OVER A BUS IS NOT A PROMISE THAT THE PANEL DID NOTHING,
-    // AND THIS PANEL CANNOT BE ASKED. Both calls below are writes to the
-    // CO5300 over its own link; `esp_lcd_panel_disp_on_off` has no getter and
-    // neither does the brightness register, so an `ESP_FAIL` here separates
-    // "the command never left the host" from "the command landed and the
-    // acknowledgement did not come back" nowhere at all. `Unchanged` asserts
-    // the first. The touch-wake path below may say `Unchanged` for the
+    // AND NOTHING HERE CAN ASK IT. Both calls below are writes to the CO5300
+    // over its own link, and neither has a read counterpart in the code that
+    // issues it. Traced, not assumed: at ESP-IDF v5.5.5 all twelve functions
+    // in `components/esp_lcd/include/esp_lcd_panel_ops.h` are setters, and
+    // `espressif/esp_lcd_co5300` 2.1.0 publishes exactly one brightness
+    // function, `esp_lcd_panel_co5300_set_brightness`, with no getter beside
+    // it. An `ESP_FAIL` here therefore separates "the command never left the
+    // host" from "the command landed and the acknowledgement did not come
+    // back" nowhere at all. `Unchanged` asserts the first.
+    //
+    // The transport is not what forecloses it, and saying otherwise would be
+    // the easy wrong reason: `esp_lcd_panel_io_rx_param` exists, and the
+    // driver's own MIPI path uses it to read the display ID. This board takes
+    // the SPI path -- `SOC_MIPI_DSI_SUPPORTED` is 0 on the ESP32-S3, so
+    // `esp_lcd_new_panel_co5300` falls through to
+    // `esp_lcd_new_panel_co5300_spi` -- and that file issues no read at all.
+    // Whether the CO5300 *silicon* would answer a brightness read over this
+    // board's QSPI link is UNKNOWN: no CO5300 datasheet is in hand. It is not
+    // load-bearing either way, because the question is what this code can ask,
+    // and this code has the driver and nothing else. The touch-wake path below may say `Unchanged` for the
     // opposite reason: a wake enable is SoC-side state that
     // `gpio_wakeup_disable` genuinely puts back, and the disable's own return
     // says whether it did.
@@ -425,12 +439,15 @@ public:
       // chain of `else if` guards that all fail reaches the final `else`. The
       // trace is in docs/research/POWER_OWNERSHIP.md.
       //
-      // **Nothing in this tree reaches it today**, and it is kept rather than
-      // deleted as dead code, which is the trade worth stating. Every path
-      // that could produce it closes itself: the owner disarms only a source
-      // it recorded as armed, `arm_wake(Touch)` un-does its own first step
-      // when its second fails, and `recover()` retries only a disarm that
-      // failed -- which left the trigger bit set, so the retry gets `ESP_OK`.
+      // **One path in this tree reaches it, and it is the line above**: a
+      // `disarm_wake(Touch)` on a board with no touch interrupt pin produces
+      // this value deliberately, so that a source which was never armable is
+      // reported disarmed rather than as a failure the owner would latch. The
+      // ESP-IDF paths that could also produce it close themselves: the owner
+      // disarms only a source it recorded as armed, `arm_wake(Touch)` un-does
+      // its own first step when its second fails, and `recover()` retries a
+      // disarm only when one failed -- which left the trigger bit set, so the
+      // retry gets `ESP_OK`.
       // What the branch is for is the arithmetic on the other side. Mapping
       // this code to a failure costs a board that is provably in the requested
       // state a latch into `Failed` and a reboot to leave it; mapping it to
