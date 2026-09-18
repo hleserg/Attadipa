@@ -2790,6 +2790,33 @@ void test_a_reconnect_does_not_inherit_a_contact_coordinate()
     CHECK(!client.remote_position(who, position, arrived));
 }
 
+// AND SO DOES A FORGET, which is the half the session teardown does not cover.
+// `unpin()` clears `wrong_node_` on its way past, so after a forget the other
+// half of the accessor's guard is already open and this flag is the whole of
+// what stops the watch publishing a place it read out of the contact table of a
+// node the owner has just repudiated. The node's own coordinate has been held
+// against exactly this since it once was not; the contact's had nothing.
+void test_forgetting_the_node_withdraws_a_contact_coordinate()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    deliver_message(client, peer, "@12.3456,65.4321", 100);
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(client.remote_position(who, position, arrived));
+
+    // Bound first, so the forget is the one the owner performs rather than a
+    // no-op on an unpinned session: `unpin()` returns true only when there was
+    // a pin to clear, and the coordinate must go either way.
+    client.pin(client.status().node_id);
+    CHECK(client.unpin());
+    CHECK(!client.remote_position(who, position, arrived));
+}
+
 int main()
 {
     test_typed_battery_failure_does_not_create_err_ambiguity();
@@ -2805,6 +2832,7 @@ int main()
     test_a_second_peer_restarts_the_first_peers_arrival();
     test_an_unchanged_coordinate_is_not_re_stamped();
     test_a_reconnect_does_not_inherit_a_contact_coordinate();
+    test_forgetting_the_node_withdraws_a_contact_coordinate();
     test_a_misfired_sweep_publishes_a_partial_pair();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();

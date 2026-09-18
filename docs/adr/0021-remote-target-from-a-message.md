@@ -154,7 +154,7 @@ ADR-0011 amendment and is not decided here, exactly as ADR-0020 declined to
 decide it.
 
 **7. All four refusals of ADR-0020 decision 7 apply before the number is used,
-and the text wire adds three of its own.** ADR-0020's four, restated in full
+and the text wire adds five of its own.** ADR-0020's four, restated in full
 because an earlier draft of this clause listed three and dropped the contact
 type: exactly `(0, 0)` is refused; a latitude outside ±90° and a longitude
 outside ±180° are refused; **a contact whose type is not `ADV_TYPE_CHAT` is
@@ -162,11 +162,13 @@ refused** — `docs/adr/0020-remote-target-position-source.md:132` — "a contac
 which still governs the fallback and is what keeps a repeater out of the target
 slot; and a contact the node has deleted is discarded rather than aged.
 
-To those the text wire adds four. A coordinate that does not match the grammar
-whole is not read at all — and the grammar bounds the **integer** digits as well
-as the decimals, at most three before the point, because the slot is `int32`
-tenth-microdegrees and `@100000000.0,0.5` otherwise matches every other rule
-here and overflows by seven orders of magnitude before any ±90 test runs.
+To those the text wire adds five, and they are counted here because the comment
+that pays them counts out of this text by hand. A coordinate that does not match
+the grammar whole is not read at all — and the grammar bounds the **integer**
+digits as well as the decimals, at most three before the point, because the slot
+is `int32` tenth-microdegrees and `@100000000.0,0.5` otherwise matches every
+other rule here and overflows by seven orders of magnitude before any ±90 test
+runs.
 Signed overflow is undefined behaviour and a range check after it is exactly
 what a compiler is entitled to delete, so the bounds are checked **before**
 scaling — the ordering ADR-0020 made explicit for the binary wire and which this
