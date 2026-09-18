@@ -58,7 +58,7 @@ new wire must apply them to it.
 
 **1. The remote target's coordinate is read from the text of a message this
 companion already accepts.** The message arrives on the path this repository
-parses today — `link/src/meshcore_companion.cpp:612` — "bool MeshCoreCompanion::accept_message(const std::uint8_t* data," —
+parses today — `link/src/meshcore_companion.cpp:766` — "bool MeshCoreCompanion::accept_message(const std::uint8_t* data," —
 and the coordinate is a substring of the text it copies. The grammar is fixed in
 §14 of the research report and is the only shape accepted: nothing is inferred
 from a number that does not carry the sigil.
@@ -80,7 +80,7 @@ This replaces ADR-0020 decision 1 as the primary source.
 message's sender prefix resolved to, and a message that resolves to no contact
 carries no target.** ADR-0020 decision 2 required the full key and refused a
 six-byte prefix. The message frame carries only the prefix —
-`link/src/meshcore_companion.cpp:514` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+`link/src/meshcore_companion.cpp:521` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
 so this decision does not weaken that rule, it routes through it: the prefix is a
 lookup key into a table that holds full keys, never an identity of its own.
 
@@ -88,7 +88,7 @@ lookup key into a table that holds full keys, never an identity of its own.
 inside one contact table would attribute a coordinate to the wrong contact.
 Nothing here measures that risk and nothing should claim it is zero. What is
 decided is the failure mode: an unresolved prefix means **no target**, not an
-unnamed one, because `link/src/meshcore_companion.cpp:633` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" —
+unnamed one, because `link/src/meshcore_companion.cpp:788` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" —
 already answers `nullptr` while the text is accepted regardless. A coordinate
 without a named sender is dropped.
 
@@ -154,7 +154,7 @@ ADR-0011 amendment and is not decided here, exactly as ADR-0020 declined to
 decide it.
 
 **7. All four refusals of ADR-0020 decision 7 apply before the number is used,
-and the text wire adds three of its own.** ADR-0020's four, restated in full
+and the text wire adds five of its own.** ADR-0020's four, restated in full
 because an earlier draft of this clause listed three and dropped the contact
 type: exactly `(0, 0)` is refused; a latitude outside ±90° and a longitude
 outside ±180° are refused; **a contact whose type is not `ADV_TYPE_CHAT` is
@@ -162,11 +162,13 @@ refused** — `docs/adr/0020-remote-target-position-source.md:132` — "a contac
 which still governs the fallback and is what keeps a repeater out of the target
 slot; and a contact the node has deleted is discarded rather than aged.
 
-To those the text wire adds four. A coordinate that does not match the grammar
-whole is not read at all — and the grammar bounds the **integer** digits as well
-as the decimals, at most three before the point, because the slot is `int32`
-tenth-microdegrees and `@100000000.0,0.5` otherwise matches every other rule
-here and overflows by seven orders of magnitude before any ±90 test runs.
+To those the text wire adds five, and they are counted here because the comment
+that pays them counts out of this text by hand. A coordinate that does not match
+the grammar whole is not read at all — and the grammar bounds the **integer**
+digits as well as the decimals, at most three before the point, because the slot
+is `int32` tenth-microdegrees and `@100000000.0,0.5` otherwise matches every
+other rule here and overflows by seven orders of magnitude before any ±90 test
+runs.
 Signed overflow is undefined behaviour and a range check after it is exactly
 what a compiler is entitled to delete, so the bounds are checked **before**
 scaling — the ordering ADR-0020 made explicit for the binary wire and which this
@@ -175,10 +177,24 @@ clamped** — clamping would invent a place. And **a message our own receiver
 truncated yields no coordinate**, whatever the remainder parses to: the text
 buffer is 128 bytes against a frame that can deliver 157, the cut lands on the
 tail where §14.2 tells the sender to put the coordinate, and the result —
-`@55.9821,37` out of `@55.9821,37.2104` — is inside every bound and about 13 km
-wrong. The sender's own truncation cannot be caught here and is recorded as a
+`@55.9821,37.2` out of `@55.9821,37.2104` — is inside every bound and about
+650 m wrong. 650 m is this coordinate's cost, not the clause's worst case: a
+survivor cut back to a single decimal — the fewest the grammar still accepts —
+can be under 0.1° of longitude wrong, some 6 km at that latitude. The sender's
+own truncation cannot be caught here and is recorded as a
 property of the wire (§14.3); ours is reported by the parser already, so
 refusing it costs one branch and is not optional.
+
+**A match that goes wrong replaces the previous one with nothing**, and it does
+that whichever way it went wrong. The bound and the grammar are one rule here,
+not two: a fallback reaches for a stale place exactly when the fresh one is
+malformed, and the sender's own truncation is the shape that arrives in the
+wild — a cut on or before the decimal point fails the grammar rather than a
+bound, so paying this for bounds alone would publish a quoted older coordinate
+with the new message's arrival stamp. What does *not* clear anything is an
+anchored `@` that never began a number: `@alice` is a mention. The same reading
+settles the punctuation that ends a sentence — a full stop after the decimals
+ends the number, and only a further digit group after it refuses the shape.
 
 The sign is part of the grammar, not an afterthought: a leading `-` on either
 number is accepted and means the southern or western hemisphere. A parser that
@@ -238,7 +254,7 @@ all (§14.3).
 **Harder, and new with this ADR: the sixteen-peer cap now gates the coordinate
 itself.** Decision 2 attributes through `find_peer_prefix`, which searches only
 the peers this companion retains, and that table holds sixteen —
-`link/src/meshcore_companion.cpp:504` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
+`link/src/meshcore_companion.cpp:511` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
 against a contact table the T114 build sizes at 350. Under ADR-0020 that cap did
 not reach the position: `docs/adr/0020-remote-target-position-source.md:226` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
 and that sentence is **falsified by this ADR**, in a paragraph the clause table
