@@ -237,9 +237,9 @@ same tag by (1).
 
 ## 3. What the vocabulary got wrong
 
-**This section describes the vocabulary as it was at `eb7460a9`, the tree this
-research was written against. Its citations into the catalogue are pinned to
-that revision and carry no line number, because the entry they name is the one
+**This section describes the vocabulary as it was at `40271f5`, the revision §0
+says this research was read against. Its citation into the catalogue is pinned
+there and carries no line number, because the entry it names is the one
 [#573](https://github.com/hleserg/Attadipa/issues/573) deleted.** Each defect
 below says what replaced it.
 
@@ -249,7 +249,7 @@ they mislead:
 **Defect 1 — `Failed` asserts a fact the wire cannot carry.** §2.4. The word
 reached the owner's screen through
 `apps/src/mesh.cpp:244` — "l10n::tr(delivery_word(status.delivery), locale));" and the
-catalogue rendered it from the entry `l10n/strings.toml` at `eb7460a9` —
+catalogue rendered it from the entry `l10n/strings.toml` at `40271f5` —
 "[mesh_delivery_failed]" — as *failed* in English and
 *не доставлено* in Russian. The Russian string was
 literally *"not delivered"*: a claim of non-delivery, made by a client that
