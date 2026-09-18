@@ -1616,6 +1616,63 @@ def a_timeout_that_is_not_a_length_of_time_is_refused() -> None:
           "zero is still a timeout and still means what it meant")
 
 
+def a_button_held_for_no_readable_time_is_never_pressed_at_all() -> None:
+    """The same defect one layer down, and the one with a finger on it.
+
+    A pointer path routes its duration through `_pointer_duration`; the button
+    path did not, so `nan` and `inf` reached `time.sleep` *between*
+    BUTTON_DOWN and BUTTON_UP. `inf` parks there with the button delivered and
+    held, and only the device's own 30 s hold expiry lets go. `nan` returns at
+    once and reports a hold that never happened. `button_hold` compounds it:
+    it compares `duration * 1000` against the device's cap first, and every
+    comparison with `nan` is False, so the cap that exists to refuse an
+    over-long hold waves it through.
+
+    So the refusal has to land before BUTTON_DOWN, and `device.events` is what
+    says it did (round 1 of #580's review, `button-hold-duration-unchecked`).
+
+    The watch here is given its capabilities directly rather than left
+    unconnected: an unconnected one raises `WatchError: connect() has not run`
+    from `button_index` before the duration is ever looked at, which is a
+    refusal this test would have counted and must not.
+    """
+    from watch import client as client_module  # noqa: PLC0415
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    for value, name in ((float("nan"), "a NaN"),
+                        (float("inf"), "an infinite"),
+                        (-1.0, "a negative")):
+        for verb in ("click", "hold"):
+            clock = FakeClock()
+            device = InputLog(clock)
+            watch = Watch(device, timeout=1.0)
+            watch.capabilities = p.Capabilities(
+                width=240, height=240, format=p.PixelFormat.RGB888,
+                buttons=[p.Button(id="power", injectable=True, role_known=True)],
+                max_hold_ms=30000)
+            real, client_module.time = client_module.time, clock
+            try:
+                if verb == "click":
+                    watch.button_click("power", value)
+                else:
+                    watch.button_hold("power", value)
+            except WatchError as exc:
+                # The message, not just the type. Every refusal on this path is
+                # a `WatchError`, so "it raised one" is satisfied by a fake that
+                # was never connected as readily as by the guard under test.
+                check("not a length of time" in str(exc) or "cannot take" in str(exc),
+                      f"{name} {verb} is refused for being unreadable, "
+                      f"not for something else: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                check(False, f"{name} {verb}: raised {type(exc).__name__}: {exc}")
+            else:
+                check(False, f"{name} {verb} duration was accepted")
+            finally:
+                client_module.time = real
+            check(device.events == [],
+                  f"and {name} {verb} never put the button down")
+
+
 CASES = (
     a_previous_invocations_reply_is_not_this_ones_answer,
     an_aborted_screenshots_chunks_do_not_enter_the_next_processs_frame,
@@ -1661,6 +1718,7 @@ CASES = (
     an_id_is_never_issued_twice_on_one_connection,
     a_connection_out_of_ids_refuses_rather_than_reusing_one,
     a_timeout_that_is_not_a_length_of_time_is_refused,
+    a_button_held_for_no_readable_time_is_never_pressed_at_all,
 )
 
 

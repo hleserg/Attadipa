@@ -783,18 +783,31 @@ class Watch:
         self._event(p.EventType.BUTTON_UP, button=self.button_index(name))
 
     def button_click(self, name: str, duration: float = 0.05) -> None:
+        # BEFORE THE BUTTON GOES DOWN, not between the two events. A pointer
+        # gesture asked for an unreadable length of time is refused with
+        # nothing on the panel; a button is worse, because `inf` here parks
+        # `time.sleep` with BUTTON_DOWN already delivered and only the device's
+        # own 30 s hold expiry lets go. `nan` is the quiet half: `sleep(nan)`
+        # returns at once, so the click is reported as made and the interface
+        # was never held at all.
+        seconds = _duration_seconds(duration, "a button click")
         index = self.button_index(name)
         self._event(p.EventType.BUTTON_DOWN, button=index)
-        time.sleep(duration)
+        time.sleep(seconds)
         self._event(p.EventType.BUTTON_UP, button=index)
 
     def button_hold(self, name: str, duration: float) -> None:
+        # Checked here as well as in `button_click`, because this one does
+        # arithmetic on the value first and `nan * 1000 > anything` is False:
+        # an unreadable hold would walk past the cap that exists to say the
+        # device will cut it short, and only then reach the sleep.
+        seconds = _duration_seconds(duration, "a button hold")
         caps = self._caps()
-        if caps.max_hold_ms and duration * 1000 > caps.max_hold_ms:
+        if caps.max_hold_ms and seconds * 1000 > caps.max_hold_ms:
             raise WatchError(
                 f"the device releases anything held longer than {caps.max_hold_ms} ms, "
-                f"so a {duration:.1f}s hold would be cut short")
-        self.button_click(name, duration)
+                f"so a {seconds:.1f}s hold would be cut short")
+        self.button_click(name, seconds)
 
     def screen_size(self) -> tuple[int, int]:
         """The geometry a coordinate is expressed in: the **displayed** one.

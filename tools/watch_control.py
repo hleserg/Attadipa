@@ -83,7 +83,12 @@ def take_screenshots(watch: Watch, args, prefix: str = "screen") -> list[dict]:
     """One image, or a series. The series is what animations need."""
     shots = []
     count = max(1, int(getattr(args, "count", 1) or 1))
-    interval = float(getattr(args, "interval", 0.0) or 0.0)
+    # Both callers meet here: the `--interval` flag, which argparse has already
+    # checked, and the `live` REPL's `series`, which converts its word with a
+    # bare `float()` and cannot. Checking the value where it is used rather
+    # than at each way in is what makes the second caller safe too.
+    interval = _duration_seconds(getattr(args, "interval", 0.0) or 0.0,
+                                 "the interval between screenshots")
     base = getattr(args, "output", None)
 
     for index in range(count):

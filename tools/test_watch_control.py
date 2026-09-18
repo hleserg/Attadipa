@@ -373,5 +373,41 @@ else:
        f"exit {code}, calls {calls}, err {err!r}")
 
 
+# THE SERIES INTERVAL, which both ways in share. `--interval` is checked by
+# argparse, but the `live` REPL's `series` converts its word with a bare
+# `float()` and hands the result straight to this function -- so `series 5 inf`
+# used to sleep forever between two screenshots with the session still open.
+# Checking it where it is used covers the caller argparse cannot
+# (round 1 of #580's review, `live-series-interval-unchecked`).
+import argparse as _argparse  # noqa: E402
+from watch.client import WatchError as _WatchError  # noqa: E402
+
+for _bad, _what in ((float("inf"), "an infinite"), (float("nan"), "a NaN"),
+                    (-1.0, "a negative")):
+    try:
+        wc.take_screenshots(None, _argparse.Namespace(
+            count=2, interval=_bad, output=None, json=False), "series")
+    except _WatchError:
+        ok(f"{_what} series interval is refused before any screenshot")
+    except Exception as exc:  # noqa: BLE001
+        no(f"{_what} series interval is refused before any screenshot",
+           f"raised {type(exc).__name__}: {exc}")
+    else:
+        no(f"{_what} series interval is refused before any screenshot",
+           "it was accepted")
+
+# And a real interval still works, so the guard is not simply refusing every
+# series.
+try:
+    wc.take_screenshots(None, _argparse.Namespace(
+        count=1, interval=0.0, output=None, json=False), "series")
+except _WatchError as exc:
+    no("a zero series interval is still accepted", str(exc))
+except AttributeError:
+    ok("a zero series interval is still accepted")  # reached the device, as it should
+else:
+    no("a zero series interval is still accepted", "it returned without a device")
+
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
