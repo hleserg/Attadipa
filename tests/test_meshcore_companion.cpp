@@ -3605,7 +3605,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1352` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1406` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3669,7 +3669,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1256` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1310` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3717,7 +3717,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:688` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:742` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -4635,6 +4635,416 @@ void test_a_zero_tag_does_not_confirm_a_settled_unconfirmed()
     CHECK(service.status().delivery == MeshDelivery::Unconfirmed);
 }
 
+
+// ---------------------------------------------------------------------------
+// The node is the address book (#573 §8).
+//
+// `connect_and_handshake` leaves exactly one contact retained, keyed 1..32.
+// Every test below sends to a key the window does *not* hold, which is the
+// whole point: sixteen slots against a node MEASURED holding 233 contacts.
+
+// A key made of one repeated byte, so it cannot collide with the fixture's
+// 1..32 contact in any prefix and a frame built from the wrong offset shows.
+core::MeshPeerId absent_key(std::uint8_t byte)
+{
+    core::MeshPeerId id{};
+    id.public_key.fill(byte);
+    return id;
+}
+
+// The reply the node sends to CMD_GET_CONTACT_BY_KEY: the same response code
+// the walk uses, which is hazard 1.
+void fetched_contact(std::uint8_t (&out)[148], const core::MeshPeerId& id,
+                     std::uint8_t advert_type)
+{
+    std::memset(out, 0, sizeof(out));
+    out[0] = 3;
+    std::memcpy(&out[1], id.public_key.data(), id.public_key.size());
+    out[33] = advert_type;
+    std::memcpy(&out[100], "Far", 3);
+}
+
+void test_a_send_to_an_unretained_key_asks_the_node_for_the_contact()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    const auto far = absent_key(0xB7);
+
+    const auto result = service.send_private(far, "up here", WallTime{1000});
+    CHECK(result.accepted());
+    // Accepted, and `Queued` -- a fetch is a round trip to the node over BLE
+    // with no radio in it, exactly like the room login's first phase.
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    // Opcode 30, then the WHOLE key: no prefix, no iteration, no ambiguity.
+    CHECK(frame.size == 1 + core::kMeshPublicKeyBytes);
+    CHECK(frame.bytes[0] == 30);
+    for (std::size_t i = 0; i < core::kMeshPublicKeyBytes; ++i) {
+        CHECK(frame.bytes[1 + i] == 0xB7);
+    }
+    CHECK(!client.next_tx(frame));
+
+    // The node names the contact, and the text goes out behind it, narrowed to
+    // six bytes in the frame and nowhere else.
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 1);
+    CHECK(client.receive(reply, sizeof(reply), at(10)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.bytes[0] == 2);
+    for (std::size_t i = 0; i < 6; ++i) CHECK(frame.bytes[7 + i] == 0xB7);
+    CHECK(frame.size == 13 + 7);
+    CHECK(std::memcmp(&frame.bytes[13], "up here", 7) == 0);
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+}
+
+// HAZARD 1. The reply is the iteration's frame, and the fetch exists precisely
+// because this contact is not in the sixteen. Folding it in would grow the
+// cache with a contact nobody asked to retain -- and on a full window it would
+// be dropped in silence instead, which is the case that matters.
+void test_a_fetched_contact_does_not_enter_the_retained_window()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    const std::uint16_t before = service.status().peers_retained;
+    CHECK(before == 1);
+
+    const auto far = absent_key(0xC4);
+    CHECK(service.send_private(far, "hi", WallTime{1000}).accepted());
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 1);
+    CHECK(client.receive(reply, sizeof(reply), at(10)));
+
+    CHECK(service.status().peers_retained == before);
+    CHECK(service.peer_count() == 1);
+    MeshPeer kept{};
+    CHECK(service.peer(0, kept));
+    CHECK(kept.id.public_key[0] == 1);  // still the fixture's contact
+}
+
+// HAZARD 2. `accept_contact()` drops any advert type that is not chat, which is
+// right for a list and wrong for a targeted fetch: the node HAS this key and it
+// is a repeater. Absorbing that would leave the send with no terminal state at
+// all, and the screen holding `Queued` for the session.
+void test_a_fetched_contact_that_is_not_a_chat_contact_is_refused()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    const auto far = absent_key(0x5A);
+    CHECK(service.send_private(far, "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 3);  // a Room Server, not a chat contact
+    CHECK(client.receive(reply, sizeof(reply), at(10)));
+
+    // `Refused` and not a timeout: nothing reached the radio, so a resend
+    // cannot duplicate anything -- what has to change is the recipient.
+    CHECK(service.status().delivery == MeshDelivery::Refused);
+    CHECK(!client.send_busy());
+    CHECK(!client.next_tx(frame));  // and no text went out
+}
+
+// HAZARD 3, AND THE PLACEMENT IS THE SECOND LINE, NOT THE FIRST.
+//
+// A fetch reply refreshing `last_contact_at_` would move the boundary that
+// decides a stream has gone quiet. Taking the frame above that stamp is why it
+// cannot -- but nothing can currently reach that code, because the fetch is
+// refused while any walk is running, which is the test below and the one after
+// it. The placement is kept because the exclusion is a condition somebody can
+// widen and the stamp is not obviously downstream of it.
+//
+// A RE-READ IS THE CASE "IS A WALK OPEN" DOES NOT COVER. `contacts_open_` is
+// deliberately false throughout one, so `retry_*` is what has to be asked --
+// and a re-read is exactly the walk whose end has no boundary frame to arrive,
+// only the quiet sweep this stamp feeds.
+void test_a_fetch_waits_for_a_re_read_too()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshService service(client);
+    CHECK(service.status().snapshot == core::MeshSnapshot::Dirty);
+
+    // The re-read is asked for on the delay, and is then outstanding.
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    const auto during_retry =
+        service.send_private(absent_key(0x88), "hi", WallTime{1000});
+    CHECK(!during_retry.accepted());
+    CHECK(during_retry.refusal == core::MeshSendRefusal::ContactsBusy);
+
+    // And once the node starts streaming it, still refused -- this is the half
+    // that runs with `contacts_open_` false.
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(8 + 10002)));
+    CHECK(service.status().snapshot == core::MeshSnapshot::RetryPending);
+    const auto during_stream =
+        service.send_private(absent_key(0x88), "hi", WallTime{1000});
+    CHECK(!during_stream.accepted());
+    CHECK(during_stream.refusal == core::MeshSendRefusal::ContactsBusy);
+    CHECK(service.status().delivery == MeshDelivery::None);
+}
+
+// The node looked and does not have it. That is an answer to give the owner,
+// not a reason to widen the search -- §8.3's third refusal.
+void test_a_key_the_node_does_not_hold_is_refused()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    CHECK(service.send_private(absent_key(0x91), "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    // The handshake's own CMD_GET_CUSTOM_VARS is still outstanding and is the
+    // *older* claimant for an untagged error, so a node that defines opcode 40
+    // answers it first -- as every pre-existing test here does.
+    const std::uint8_t vars[] = {21};
+    CHECK(client.receive(vars, sizeof(vars), at(9)));
+    // RESP_CODE_ERR carries no tag. The fetch is now the only command
+    // outstanding, and it is the oldest, so it takes it.
+    const std::uint8_t error[] = {1, 2};  // ERR_CODE_NOT_FOUND
+    CHECK(client.receive(error, sizeof(error), at(10)));
+    CHECK(service.status().delivery == MeshDelivery::Refused);
+    CHECK(!client.send_busy());
+}
+
+// A fetch the node never answers ends on the budget, and ends as `Refused`.
+//
+// Three verdicts were arguable and two are wrong. `Unconfirmed` would invent
+// an acceptance the node never gave. `Unknown` -- which this row asserted
+// until #599 round 1 -- says *a frame may already be on the characteristic,
+// weigh a duplicate before resending*, and no `CMD_SEND_TXT_MSG` was ever
+// built: `take_fetched_contact()` clears `awaiting_contact_` before
+// `enqueue_private()` runs, so the expiry can only fire with the fetch alone
+// outstanding. Nothing reached the air, so `Refused` -- which is also what the
+// same fetch answered `ERR_CODE_NOT_FOUND` yields, one row above. Identical
+// ground truth must not reach the owner two ways depending on whether the node
+// troubled itself to reply.
+void test_a_fetch_the_node_never_answers_expires_refused()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    CHECK(service.send_private(absent_key(0x33), "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    client.tick(at(10));
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    client.tick(at(10 + 15000 + 1));
+    CHECK(service.status().delivery == MeshDelivery::Refused);
+    CHECK(!client.send_busy());
+}
+
+// AND THE LINK GOING IS THE THIRD ROUTE TO THE SAME GROUND TRUTH. The budget
+// arm and the `ERR_CODE_NOT_FOUND` arm both answer `Refused`; a disconnect
+// with the fetch outstanding used to answer `Unknown` through
+// `reset_session()`, so one fact -- no `CMD_SEND_TXT_MSG` was ever built --
+// reached the owner two ways depending on how the session ended. `fault()`
+// shares the route, which is why one of these two tests is enough for it.
+void test_a_fetch_the_link_drops_under_is_refused()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    CHECK(service.send_private(absent_key(0x33), "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    client.tick(at(10));
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    client.disconnected(at(20));
+    CHECK(service.status().delivery == MeshDelivery::Refused);
+    CHECK(!client.send_busy());
+}
+
+// AND A TEXT THE LINK DROPS UNDER IS STILL `Unknown`, which is what keeps the
+// row above from being "a disconnect always refuses". That frame left the ring
+// and may be on the characteristic already -- §11.1 row 14.
+void test_a_text_the_link_drops_under_stays_unknown()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    CHECK(service.send_private(peer.id, "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+
+    client.tick(at(10));
+    client.disconnected(at(20));
+    CHECK(service.status().delivery == MeshDelivery::Unknown);
+    CHECK(!client.send_busy());
+}
+
+// AND A TEXT THE NODE NEVER ANSWERS STILL EXPIRES `Unknown`, which is what
+// keeps the row above from being a rename. Here the frame did leave the ring.
+void test_a_text_the_node_never_answers_expires_unknown()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    CHECK(service.send_private(peer.id, "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+
+    client.tick(at(10));
+    client.tick(at(10 + 15000 + 1));
+    CHECK(service.status().delivery == MeshDelivery::Unknown);
+    CHECK(!client.send_busy());
+}
+
+// THE WALK EXCLUSION IS TWO-SIDED, and this is the side `send_private()`
+// cannot defend. Its refusal is checked once, at the call; the re-read leaves
+// from `tick()`, so a walk can start *after* a fetch is outstanding. Then the
+// walk's own `RESP_CODE_CONTACT` for that key is consumed as the fetch's
+// reply, and the genuine reply folds into the retained window as a contact no
+// walk listed.
+//
+// `test_a_fetch_waits_for_a_re_read_too()` is this row with the two steps in
+// the other order, and it passes either way -- which is why the hazard needed
+// its own row rather than an argument from that one.
+// AND IF A WALK STARTS ANYWAY, IT OWNS THE FRAME. Both senders of
+// `CMD_GET_CONTACTS` are excluded from overlapping a fetch, so this shape
+// needs the node to volunteer a `RESP_CODE_CONTACTS_START` -- which the arm
+// accepts, because refusing an unsolicited one would be a claim about upstream
+// firmware this project has not traced. The point of the row is that the
+// intercept holds its own precondition rather than resting on the two call
+// sites: a third sender added later does not silently start feeding walk rows
+// to a fetch.
+void test_a_walk_that_starts_anyway_owns_the_contact_frame()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    const auto far = absent_key(0x44);
+    CHECK(service.send_private(far, "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    const std::uint8_t start[] = {2, 1, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(10)));
+
+    // The very key the fetch is waiting for, inside the walk.
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 1);
+    CHECK(client.receive(reply, sizeof(reply), at(11)));
+
+    // It went to the walk, and the fetch is still outstanding.
+    CHECK(client.peer_count() == 1);
+    CHECK(client.send_busy());
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    CHECK(client.malformed_frames() == 0);
+
+    // And the fetch ends the way an unanswered fetch ends: nothing reached the
+    // air, so a resend duplicates nothing. Two ticks, because the first is
+    // what arms the budget.
+    client.tick(at(12));
+    client.tick(at(12 + 15000 + 1));
+    CHECK(service.status().delivery == MeshDelivery::Refused);
+}
+
+void test_a_re_read_waits_for_a_fetch_too()
+{
+    MeshCoreCompanion client;
+    open_a_dirty_walk(client, true);
+    MeshService service(client);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+
+    // The fetch goes out first, while no walk is running.
+    CHECK(service.send_private(absent_key(0x88), "hi", WallTime{1000}).accepted());
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    // The delay elapses. The re-read is due and must not go while the fetch is.
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 0);
+
+    // It is deferred, not cancelled: the budget is untouched, so the next tick
+    // after the fetch is answered asks.
+    std::uint8_t reply[148];
+    fetched_contact(reply, absent_key(0x88), 1);
+    CHECK(client.receive(reply, sizeof(reply), at(8 + 10002)));
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(8 + 10003)));
+    const std::uint8_t confirmed[] = {0x82, 1, 2, 3, 4};
+    CHECK(client.receive(confirmed, sizeof(confirmed), at(8 + 10004)));
+    CHECK(!client.send_busy());
+    while (client.next_tx(frame)) {
+    }
+    client.tick(at(8 + 10005));
+    CHECK(drain_counting_re_reads(client) == 1);
+}
+
+// ONE REQUEST, ONE ID, ACROSS BOTH PHASES. The caller was answered with an id
+// before the fetch went out; a second id minted when the text is queued would
+// publish every verdict against a number no caller holds.
+void test_a_fetch_keeps_the_request_id_its_caller_was_given()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    const auto far = absent_key(0x77);
+    const auto result = service.send_private(far, "hi", WallTime{1000});
+    CHECK(result.accepted());
+    CHECK(service.status().request_id == result.request_id);
+
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 1);
+    CHECK(client.receive(reply, sizeof(reply), at(10)));
+    CHECK(service.status().request_id == result.request_id);
+
+    const std::uint8_t sent[] = {6, 0, 1, 2, 3, 4, 0x66, 0x09, 0, 0};
+    CHECK(client.receive(sent, sizeof(sent), at(11)));
+    CHECK(service.status().delivery == MeshDelivery::Accepted);
+    CHECK(service.status().request_id == result.request_id);
+}
+
+// HAZARD 3, THE OTHER HALF: a walk owns the RESP_CODE_CONTACT arm while it is
+// running, so a fetch is refused rather than issued into a frame two readers
+// would both have a claim on. It is refused as a *call* -- no message exists --
+// and with a reason of its own, because the remedy is to wait, not to shorten
+// anything or fix a clock.
+void test_a_fetch_waits_for_a_contacts_walk()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+
+    // Captured before the walk starts: RESP_CODE_CONTACTS_START empties the
+    // retained set, which is the walk's own contract and not this test's
+    // subject.
+    MeshPeer kept{};
+    CHECK(service.peer(0, kept));
+
+    const std::uint8_t start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(10)));
+    const auto refused = service.send_private(absent_key(0x66), "hi", WallTime{1000});
+    CHECK(!refused.accepted());
+    CHECK(refused.refusal == core::MeshSendRefusal::ContactsBusy);
+    // Nothing was published about it: it is a refusal, not a delivery state.
+    CHECK(service.status().delivery == MeshDelivery::None);
+
+    // And the walk hands that contact back, at which point the cached path is
+    // open again: the refusal is about the fetch, not about sending.
+    std::uint8_t contact[148];
+    fetched_contact(contact, kept.id, 1);
+    CHECK(client.receive(contact, sizeof(contact), at(11)));
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(12)));
+    CHECK(service.send_private(kept.id, "hi", WallTime{1000}).accepted());
+}
+
 int main()
 {
     test_typed_battery_failure_does_not_create_err_ambiguity();
@@ -4715,8 +5125,21 @@ int main()
     test_an_error_code_is_not_shown_to_the_owner_as_a_reason();
     test_the_recipient_narrows_to_six_bytes_in_the_frame_and_nowhere_else();
     test_a_refused_send_does_not_erase_the_previous_verdict();
-    test_a_room_login_keeps_the_request_id_its_caller_was_given();
     test_a_zero_tag_does_not_confirm_a_settled_unconfirmed();
+    test_a_send_to_an_unretained_key_asks_the_node_for_the_contact();
+    test_a_fetched_contact_does_not_enter_the_retained_window();
+    test_a_fetched_contact_that_is_not_a_chat_contact_is_refused();
+    test_a_fetch_waits_for_a_re_read_too();
+    test_a_key_the_node_does_not_hold_is_refused();
+    test_a_fetch_the_node_never_answers_expires_refused();
+    test_a_fetch_the_link_drops_under_is_refused();
+    test_a_text_the_link_drops_under_stays_unknown();
+    test_a_text_the_node_never_answers_expires_unknown();
+    test_a_walk_that_starts_anyway_owns_the_contact_frame();
+    test_a_re_read_waits_for_a_fetch_too();
+    test_a_fetch_keeps_the_request_id_its_caller_was_given();
+    test_a_room_login_keeps_the_request_id_its_caller_was_given();
+    test_a_fetch_waits_for_a_contacts_walk();
     test_a_duplicate_end_does_not_delay_the_first_attempt();
     test_a_swept_walks_late_end_does_not_delay_the_next_attempt();
     test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt();

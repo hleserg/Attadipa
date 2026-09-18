@@ -66,7 +66,17 @@ inline constexpr std::uint8_t kClassDebug = 0x02;  // this file
 // node protocol's `proto_major` -- ADR-0005 section 5's point that version and
 // capability set are orthogonal applies here too. v2 added the session
 // generation to `HelloBody`; a v1 body still decodes (see `decode_hello`).
-inline constexpr std::uint8_t kDebugProtocolVersion = 2;
+//
+// v3 IS A BODY LAYOUT CHANGE UNDER AN OPCODE THAT ALREADY EXISTED, which is
+// exactly what the per-request version gate is for. `MeshSend` carries the
+// recipient's whole 32-byte public key instead of a six-byte prefix (#573), so
+// a v2 host's frame is not short -- past 26 text bytes it is long enough to
+// pass the length check and be misparsed, the old prefix and timestamp landing
+// inside the new key field. Refusing it by version turns a silent misparse
+// into "the device speaks a different protocol version", which is the sentence
+// the operator can act on. `HelloBody` is untouched, and the gate exempts
+// Hello, so the handshake still negotiates rather than refusing.
+inline constexpr std::uint8_t kDebugProtocolVersion = 3;
 
 enum class Opcode : std::uint16_t {
     // Requests

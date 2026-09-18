@@ -740,17 +740,17 @@ public:
   }
 
   attadipa::debug::MeshSinkResult
-  send(const std::uint8_t peer_prefix[6], const char *text,
+  send(const std::uint8_t peer_key[32], const char *text,
        std::size_t text_length, std::int64_t utc_seconds) override {
-    if (peer_prefix == nullptr || text == nullptr || text_length == 0 ||
+    if (peer_key == nullptr || text == nullptr || text_length == 0 ||
         text_length > 160 ||
         std::memchr(text, '\0', text_length) != nullptr || utc_seconds < 0 ||
         utc_seconds > std::numeric_limits<std::uint32_t>::max()) {
       return attadipa::debug::MeshSinkResult::Rejected;
     }
-    std::array<std::uint8_t, 6> prefix{};
-    std::memcpy(prefix.data(), peer_prefix, prefix.size());
-    return meshcore_ble_send(prefix, std::string_view(text, text_length),
+    std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes> key{};
+    std::memcpy(key.data(), peer_key, key.size());
+    return meshcore_ble_send(key, std::string_view(text, text_length),
                              attadipa::core::WallTime{utc_seconds})
                ? attadipa::debug::MeshSinkResult::Accepted
                : attadipa::debug::MeshSinkResult::Failed;

@@ -210,7 +210,8 @@ public:
     // where the caller can still be told, rather than accepted and then lost.
     bool send_busy() const
     {
-        return awaiting_send_ || awaiting_confirm_ || awaiting_login_;
+        return awaiting_send_ || awaiting_confirm_ || awaiting_login_ ||
+               awaiting_contact_;
     }
 
     // THERE IS NO `send_abandoned()`, AND THE ABSENCE IS THE DECISION. It
@@ -224,10 +225,25 @@ public:
     // the id it zeroes belongs to a request still in flight -- the verdict
     // recovers on the next `RESP_CODE_SENT`, the id never does.
     //
-    // What the function was for is answered by `MeshSendResult`: the caller is
-    // handed its own refusal, synchronously, and a refusal is not a delivery
-    // state -- decision 3. Nothing that failed to become an operation may
-    // write to `status_` at all.
+    // What the function was for is answered by `MeshSendResult` *for this
+    // object's own caller*: it is handed its refusal synchronously, and a
+    // refusal is not a delivery state -- decision 3. Nothing that failed to
+    // become an operation may write to `status_` at all.
+    //
+    // AND THAT IS NOT THE CALLER WHO ASKED. The one send path the product has
+    // crosses a queue: the debug bridge is answered `Accepted` one call before
+    // the worker ever reaches this object, so the worker holds the refusal and
+    // the operator holds a promise made without it. The row on the panel then
+    // keeps the *previous* message's verdict, which can be `Confirmed` --
+    // **доставлено** about a message that never left the watch. That is
+    // [#598](https://github.com/hleserg/Attadipa/issues/598), and it is not
+    // fixed here: this change removes the refusal the deleted function's own
+    // comment called the shipping one -- a recipient outside the retained
+    // sixteen, which is now a question for the node rather than a refusal --
+    // and leaves `BodyNotUtf8`, `RingFull` and `ContactsBusy` reachable with
+    // the link up. Restoring `send_abandoned()` is not the answer to it;
+    // `status_.request_id` is the field that already knows which message a
+    // verdict is about, and nothing carries it across the queue yet.
 
 private:
     static constexpr std::size_t kRetainedPeers = 16;
@@ -325,21 +341,31 @@ private:
     // reasoning from that flag alone charges it for errors whose own answer had
     // already been and gone -- the same mistake as `awaiting_confirm_`, one
     // phase over.
+    // A FETCH IS ALWAYS OWED AN ANSWER, WHICH IS WHY IT NEEDS NO `op_answered_`
+    // TERM. `CMD_GET_CONTACT_BY_KEY` has exactly one reply -- RESP_CODE_CONTACT
+    // or RESP_CODE_ERR -- and `awaiting_contact_` is cleared by whichever
+    // arrives. The login and the text send both have a two-phase shape the
+    // flag alone cannot read; this one does not.
     bool op_owed_an_answer() const
     {
-        return (awaiting_send_ || awaiting_login_) && !op_answered_;
+        return awaiting_contact_ ||
+               ((awaiting_send_ || awaiting_login_) && !op_answered_);
     }
 
     bool enqueue(const std::uint8_t* data, std::size_t size);
     // `request_id` non-zero continues an operation the caller was already given
-    // an id for -- today that is a room login that succeeded -- instead of
-    // minting a second one. A caller holding id N cannot match a verdict
-    // published against N+1, and `core::MeshSendResult`'s contract is that the
-    // id it returns is the one every later verdict is about.
+    // an id for -- a room login that succeeded, a contact the node has just
+    // handed over -- instead of minting a second one. A caller holding id N
+    // cannot match a verdict published against N+1, and both continuations
+    // publish against the request the caller actually made.
     core::MeshSendResult enqueue_private(const core::MeshPeerId& peer,
                                          std::string_view text,
                                          core::WallTime timestamp,
                                          std::uint32_t request_id = 0);
+    // The reply to `CMD_GET_CONTACT_BY_KEY`, taken out of the contact stream
+    // before the stream sees it. See the definition for the three hazards that
+    // placement answers.
+    void take_fetched_contact(const std::uint8_t* data, std::size_t size);
     // The one place a request id is minted. Non-zero, distinct from the live
     // one, and never the node's ack tag -- see `core::MeshSendResult`.
     std::uint32_t next_request_id();
@@ -596,6 +622,19 @@ private:
     // operation `kMaxAckWait` on its first pass, so a non-zero budget does not
     // mean the node has said anything.
     bool op_answered_ = false;
+    // A SEND WHOSE RECIPIENT THE NODE STILL HAS TO NAME. Set while
+    // `CMD_GET_CONTACT_BY_KEY` is outstanding, holding the body until the node
+    // answers with the contact -- at which point the text goes out under the
+    // same request id -- or refuses it.
+    //
+    // It is a phase of a send and not a lookup beside one: it is in
+    // `send_busy()`, so nothing else may start while it runs, and it is in
+    // `op_owed_an_answer()`, so an untagged RESP_CODE_ERR can be charged to it
+    // in submission order like every other outstanding command.
+    bool awaiting_contact_ = false;
+    core::MeshPeerId contact_peer_{};
+    std::array<char, core::kMeshTextBytes + 1> contact_text_{};
+    core::WallTime contact_timestamp_{};
     core::MeshPeerId room_peer_{};
     std::array<char, core::kMeshTextBytes + 1> room_text_{};
     core::WallTime room_timestamp_{};
