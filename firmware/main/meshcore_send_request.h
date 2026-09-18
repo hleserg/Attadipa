@@ -65,8 +65,10 @@ inline bool mesh_timestamp_sendable(std::int64_t utc_seconds)
 
 // A whole 32-byte recipient key, since #573; the pointer is all an array
 // parameter decays to, so its length is the bridge's guarantee and not this
-// one's -- `debug/include/attadipa/debug/bridge.h:186` -- "// are really there.
-// What does check it is the caller -- bridge.cpp refuses".
+// one's -- `debug/include/attadipa/debug/bridge.h:187` -- "// MeshSend under 41 body bytes and MeshRoomSend under 42 before either call,".
+// That sentence said "under 15" until this change, which was the six-byte
+// prefix's arithmetic and would have left seven bytes for a thirty-two byte
+// key; a decision not to re-check here should not rest on a stale number.
 inline bool mesh_send_arguments_ok(const std::uint8_t* peer_key,
                                    const char* text, std::size_t text_length,
                                    std::int64_t utc_seconds)
