@@ -31,7 +31,8 @@
 //
 // `Availability` is uncovered the other way round: the owner publishes it and
 // nothing reads it. `PowerOwner::availability()` has no caller outside `core/`
-// and `tests/`, so a `Failed` latch after a failed unwind leaves the watch
+// and `tests/`, so a `Failed` latch -- after a failed unwind, or after a step
+// that answered `Unknown` with no unwind behind it -- leaves the watch
 // showing nothing and one `ESP_LOGE` on a serial port a wearer does not have.
 // ADR-0016 section 4 wants the layer above to decide to reboot, and there is no
 // such layer yet. The pattern for it already exists -- `MeshCoreCompanion`

@@ -212,13 +212,43 @@ struct WakeCauses {
     std::uint32_t unmapped_from_soc = 0;
 };
 
+// WHAT A STEP LEFT BEHIND, WHICH IS NOT THE SAME QUESTION AS WHETHER IT WORKED.
+//
+// A `bool` answers "did the postcondition happen". On this board two steps are
+// several operations, and when the second fails the adapter issues a third to
+// put the first one back. That third can fail as well, and then there are two
+// different failures wearing one word: the board is where it started, or the
+// board is somewhere nobody can name. Only the adapter is in a position to
+// tell them apart -- the owner cannot re-derive it, because the evidence is
+// the return value of a call the owner never made.
+//
+// `Unchanged` is the answer an adapter has to be able to justify, and it is
+// the ordinary one: a step refused before any bus traffic, a board with no
+// path for this domain, an operation whose own return value is the evidence
+// that nothing happened. `Unknown` is what is left when none of those hold --
+// a compensation that was issued and did not succeed, and equally a single
+// bus write whose error does not say whether it landed, with no read-back to
+// settle it. The adapter answers `Unknown` because it cannot answer
+// `Unchanged`, not because a compensation ran; a failed write reported as
+// `Unchanged` is the manufactured certainty ADR-0016 exists to prevent.
+enum class StepResult : std::uint8_t {
+    Done,       // the postcondition holds
+    Unchanged,  // it does not, and the state before the step was restored
+    Unknown,    // it does not, and the state before the step was not restored
+};
+
 class PowerHardware {
 public:
     virtual ~PowerHardware() = default;
 
     // Quiesce the consumer on this domain, with its clock and its bus still up.
     // This is why rail gating comes after suspension and never before.
-    virtual bool suspend(PowerDomain domain) = 0;
+    //
+    // `Unknown` here means the adapter cannot say the consumer is as it was:
+    // it changed something and could not put it back, or it issued a write it
+    // cannot read back and the error does not say whether the write landed.
+    // The owner latches it rather than unwinding around it: see `sleep()`.
+    virtual StepResult suspend(PowerDomain domain) = 0;
     virtual bool resume(PowerDomain domain) = 0;
 
     // The rail that feeds a domain. Cutting one is authorised by a measurement,
@@ -231,7 +261,15 @@ public:
     // did not actually arm has manufactured exactly the state ADR-0016 exists to
     // prevent — software believing the hardware holds something it does not —
     // and it has done it in the one place nothing downstream can detect.
-    virtual bool arm_wake(WakeSource source) = 0;
+    //
+    // `Unchanged` says the source is not armed and the SoC's wake configuration
+    // is as it was. `Unknown` says the adapter cannot promise either half, and
+    // it is the more serious answer here than anywhere else: what the SoC holds
+    // is the union of every plan ever armed and nothing reads it back —
+    // ADR-0016's Context, finding 2 — so a source left in an unknown state is
+    // one that may fire on a sleep that never asked for it. The owner latches
+    // it exactly as it latches one from `suspend()`.
+    virtual StepResult arm_wake(WakeSource source) = 0;
     virtual bool disarm_wake(WakeSource source) = 0;
 
     // Stop the CPU, and report every source that brought it back.
@@ -294,8 +332,11 @@ struct SleepReport {
     // what a log has to print, because there is nothing else to say about it.
     std::uint32_t unmapped_causes = 0;
 
-    // False once an unwind step failed. The board is then in a state nobody
-    // read back, and ADR-0016 §4 is what happens next: `Failed`, never `Ready`.
+    // False once a step left the board in a state nobody read back. Two ways
+    // in, not one: an unwind step that would not go back, and -- since this
+    // enum existed to say so -- a `suspend()` or `arm_wake()` that answered
+    // `Unknown`, where no unwind ran at all. ADR-0016 §4 is what happens next
+    // either way: `Failed`, never `Ready`.
     bool hardware_known = true;
 
     constexpr bool slept() const { return outcome == SleepOutcome::Woken; }
@@ -342,9 +383,12 @@ public:
 
     PowerState state() const { return state_; }
 
-    // `Failed` once an unwind failed, and it stays there until the board says
-    // it has re-initialised. Unpowered or unknown-state hardware is never
-    // reported Active (ADR-0016 §4).
+    // `Failed` once the board state stopped being known, and it stays there
+    // until the board says it has re-initialised. Two routes in, the same as
+    // `SleepReport::hardware_known` above: an unwind step that would not go
+    // back, and a `suspend()` or `arm_wake()` that answered `StepResult`
+    // `Unknown`, where no unwind ran at all. Unpowered or unknown-state
+    // hardware is never reported Active (ADR-0016 §4).
     Availability availability() const
     {
         return hardware_known_ ? Availability::Ready : Availability::Failed;
@@ -384,8 +428,10 @@ private:
     std::uint32_t  cycles_         = 0;
     bool           hardware_known_ = true;
 
-    // What an unwind left un-done, and what `recover()` retries. Domains for
-    // the first two, `WakeSource` bits for the third.
+    // What an unwind left un-done -- or what a step answered `Unknown` about,
+    // which needs the same retry and has no unwind behind it -- and what
+    // `recover()` re-issues. Domains for the first two, `WakeSource` bits for
+    // the third.
     std::uint16_t failed_resume_  = 0;
     std::uint16_t failed_rail_    = 0;
     std::uint16_t failed_disarm_  = 0;

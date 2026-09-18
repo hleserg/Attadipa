@@ -293,9 +293,17 @@ private:
       char stuck_domains[96];
       describe_wake(stuck, sizeof(stuck), report.blocked_sources);
       describe_domains(stuck_domains, sizeof(stuck_domains), report.blocked_by);
+      // NOT "AFTER A FAILED UNWIND" ANY MORE, AND IT MATTERS ON A SERIAL LINE.
+      // `hardware_known` had one source when this line was written: a rollback
+      // step that would not go back. It now has a second -- a `suspend()` or
+      // an `arm_wake()` that answered `Unknown`, on a path where no unwind ran
+      // and nothing was suspended to unwind. Naming the unwind there sends
+      // whoever is reading the log to look for a rollback that is not in it,
+      // and `domains none, sources none` beside the sentence reads like a bug
+      // in the printer rather than the true answer it is. Found in review.
       ESP_LOGE(kTag,
-               "power hardware state is unknown after a failed unwind; "
-               "availability is Failed until re-initialisation "
+               "power hardware state is unknown; a step neither took effect "
+               "nor went back. Availability is Failed until re-initialisation "
                "(domains %s, sources %s)",
                report.blocked_by == 0 ? "none" : stuck_domains,
                report.blocked_sources == 0 ? "none" : stuck);

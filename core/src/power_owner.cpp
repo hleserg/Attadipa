@@ -392,9 +392,23 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
         if ((plan.suspend & domain_bit(domain)) == 0) {
             continue;
         }
-        if (!hardware_.suspend(domain)) {
+        const StepResult step = hardware_.suspend(domain);
+        if (step != StepResult::Done) {
             report.outcome    = SleepOutcome::FailedSuspend;
             report.blocked_by = domain_bit(domain);
+            // THE DOMAIN THAT FAILED IS NOT IN `suspended`, so the unwind below
+            // will not touch it -- it unwinds what succeeded, and this one did
+            // not. That is right for `Unchanged` and wrong for `Unknown`: the
+            // adapter says it left the display somewhere it cannot name, and
+            // an owner that publishes `Ready` over that is the state ADR-0016
+            // exists to prevent. Journal it the way a failed unwind is
+            // journalled, so `recover()` retries exactly the operation that
+            // would settle it and nothing sleeps until it does.
+            if (step == StepResult::Unknown) {
+                report.hardware_known = false;
+                failed_resume_        = static_cast<std::uint16_t>(
+                    failed_resume_ | domain_bit(domain));
+            }
             (void)unwind_suspend(suspended, report);
             hardware_known_ = report.hardware_known;
             return report;
@@ -430,9 +444,21 @@ SleepReport PowerOwner::sleep(const SleepPlan& plan, MonotonicTime now)
         if ((plan.wake_sources & wake_bit(source)) == 0) {
             continue;
         }
-        if (!hardware_.arm_wake(source)) {
+        const StepResult step = hardware_.arm_wake(source);
+        if (step != StepResult::Done) {
             report.outcome         = SleepOutcome::FailedArm;
             report.blocked_sources = wake_bit(source);
+            // The same reading as the suspend above, one field over: a
+            // per-pin enable that took, a global enable that did not, and a
+            // disable that did not either leaves the SoC holding a wake
+            // configuration nobody recorded. `failed_disarm_` is what
+            // `recover()` retries, and `disarm_wake()` is the operation that
+            // settles it.
+            if (step == StepResult::Unknown) {
+                report.hardware_known  = false;
+                failed_disarm_         = static_cast<std::uint16_t>(
+                    failed_disarm_ | wake_bit(source));
+            }
             (void)unwind_wake(armed, report);
             (void)unwind_rails(cut, report);
             (void)unwind_suspend(suspended, report);

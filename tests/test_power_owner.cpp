@@ -49,13 +49,19 @@ public:
     // A second, so a failing unwind can be tested alongside a failing step.
     std::string fail_on_too;
 
+    // Which failing step also reports that it could not put the board back.
+    // A separate knob rather than a derived one, because that is how the real
+    // adapter learns it: the return value of the compensating call, which no
+    // caller of this interface ever sees.
+    std::string unknown_on;
+
     std::uint16_t soc_causes     = 0;
     std::uint16_t derived_causes  = 0;
     std::uint32_t unmapped_causes = 0;
     bool          sleep_succeeds  = true;
     int           sleeps          = 0;
 
-    bool suspend(PowerDomain domain) override { return record("suspend", to_string(domain)); }
+    StepResult suspend(PowerDomain domain) override { return step("suspend", to_string(domain)); }
     bool resume(PowerDomain domain) override { return record("resume", to_string(domain)); }
 
     bool set_rail(PowerDomain domain, bool on) override
@@ -63,7 +69,7 @@ public:
         return record(on ? "rail-on" : "rail-off", to_string(domain));
     }
 
-    bool arm_wake(WakeSource source) override { return record("arm", to_string(source)); }
+    StepResult arm_wake(WakeSource source) override { return step("arm", to_string(source)); }
     bool disarm_wake(WakeSource source) override { return record("disarm", to_string(source)); }
 
     bool sleep(PowerState state, WakeCauses& causes) override
@@ -107,6 +113,15 @@ public:
     }
 
 private:
+    StepResult step(const char* verb, const char* subject)
+    {
+        const std::string call = std::string(verb) + ":" + subject;
+        if (record(verb, subject)) {
+            return StepResult::Done;
+        }
+        return call == unknown_on ? StepResult::Unknown : StepResult::Unchanged;
+    }
+
     bool record(const char* verb, const char* subject)
     {
         std::string call = std::string(verb) + ":" + subject;
@@ -599,6 +614,121 @@ void test_a_failed_suspend_rolls_back_and_arms_nothing()
     CHECK(!hw.logged("arm:Timer"));
     CHECK(hw.sleeps == 0);
     CHECK(owner.cycles() == 0);
+}
+
+void test_a_suspend_that_could_not_put_the_display_back_publishes_failed()
+{
+    // The failing domain is never in `suspended`, so no unwind reaches it and
+    // the owner used to report `hardware_known` over a panel the adapter had
+    // just said it could not describe.
+    FakeHardware hw;
+    hw.fail_on    = "suspend:Display";
+    hw.unknown_on = "suspend:Display";
+    PowerOwner owner(hw);
+
+    SleepPlan plan = light_sleep_plan();
+    plan.suspend   = domain_bit(PowerDomain::Display);
+
+    const SleepReport report = owner.sleep(plan, kNow);
+    CHECK(report.outcome == SleepOutcome::FailedSuspend);
+    CHECK(report.blocked_by == domain_bit(PowerDomain::Display));
+    CHECK(!report.hardware_known);
+    CHECK(owner.availability() == Availability::Failed);
+
+    // Nothing was unwound in this cycle -- the step that failed was not one
+    // that had succeeded -- and nothing after it ran.
+    CHECK(!hw.logged("resume:Display"));
+    CHECK(!hw.logged("arm:Timer"));
+    CHECK(hw.sleeps == 0);
+
+    // The recovery is recorded, so the next request retries exactly it, before
+    // any new hardware action.
+    hw.fail_on    = "";
+    hw.unknown_on = "";
+    hw.calls.clear();
+
+    const SleepReport second = owner.sleep(plan, kNow);
+    CHECK(second.outcome == SleepOutcome::Woken);
+    CHECK(second.hardware_known);
+    CHECK(owner.availability() == Availability::Ready);
+    CHECK(hw.index_of("resume:Display") >= 0);
+    CHECK(hw.index_of("resume:Display") < hw.index_of("suspend:Display"));
+}
+
+void test_a_suspend_that_did_put_the_display_back_is_an_ordinary_failure()
+{
+    // The other half of the same rule, and the one that keeps it narrow: a
+    // compensation that succeeded leaves the board where it started, so this
+    // must stay `Ready` and must owe no recovery.
+    FakeHardware hw;
+    hw.fail_on = "suspend:Display";  // and `unknown_on` deliberately unset
+    PowerOwner owner(hw);
+
+    SleepPlan plan = light_sleep_plan();
+    plan.suspend   = domain_bit(PowerDomain::Display);
+
+    const SleepReport report = owner.sleep(plan, kNow);
+    CHECK(report.outcome == SleepOutcome::FailedSuspend);
+    CHECK(report.hardware_known);
+    CHECK(owner.availability() == Availability::Ready);
+
+    hw.fail_on = "";
+    hw.calls.clear();
+
+    const SleepReport second = owner.sleep(plan, kNow);
+    CHECK(second.outcome == SleepOutcome::Woken);
+    // No stale recovery record: the next cycle starts with its own suspend and
+    // never re-issues a resume nobody owed.
+    CHECK(hw.count("resume:Display") == 1);  // the clean cycle's own unwind
+    CHECK(hw.index_of("suspend:Display") < hw.index_of("resume:Display"));
+}
+
+void test_an_arm_that_could_not_put_the_pin_back_names_touch_and_publishes_failed()
+{
+    FakeHardware hw;
+    hw.fail_on    = "arm:Touch";
+    hw.unknown_on = "arm:Touch";
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::FailedArm);
+    CHECK((report.blocked_sources & wake_bit(WakeSource::Touch)) != 0);
+    CHECK(!report.hardware_known);
+    CHECK(owner.availability() == Availability::Failed);
+    CHECK(hw.sleeps == 0);
+
+    // The sources that did arm are still disarmed -- the latch is in addition
+    // to the unwind, not instead of it.
+    CHECK(hw.logged("disarm:Timer"));
+    // And the display that was suspended still comes back.
+    CHECK(hw.logged("resume:Display"));
+
+    hw.fail_on    = "";
+    hw.unknown_on = "";
+    hw.calls.clear();
+
+    const SleepReport second = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(second.outcome == SleepOutcome::Woken);
+    CHECK(owner.availability() == Availability::Ready);
+    CHECK(hw.index_of("disarm:Touch") >= 0);
+    CHECK(hw.index_of("disarm:Touch") < hw.index_of("arm:Touch"));
+}
+
+void test_an_arm_that_did_put_the_pin_back_is_an_ordinary_failure()
+{
+    FakeHardware hw;
+    hw.fail_on = "arm:Touch";
+    PowerOwner owner(hw);
+
+    const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
+    CHECK(report.outcome == SleepOutcome::FailedArm);
+    CHECK(report.hardware_known);
+    CHECK(owner.availability() == Availability::Ready);
+    // Everything that was armed before it is still given back.
+    CHECK(hw.logged("disarm:Timer"));
+    CHECK(hw.logged("resume:Display"));
+    // Touch was never armed, so it is never disarmed.
+    CHECK(!hw.logged("disarm:Touch"));
 }
 
 void test_a_failed_rail_rolls_back_the_rails_it_cut_and_the_consumers_it_suspended()
@@ -1101,6 +1231,10 @@ int main()
     test_a_lease_on_an_untouched_domain_does_not_block_sleep();
     test_an_overdue_lease_is_carried_in_the_report_and_still_blocks();
     test_a_failed_suspend_rolls_back_and_arms_nothing();
+    test_a_suspend_that_could_not_put_the_display_back_publishes_failed();
+    test_a_suspend_that_did_put_the_display_back_is_an_ordinary_failure();
+    test_an_arm_that_could_not_put_the_pin_back_names_touch_and_publishes_failed();
+    test_an_arm_that_did_put_the_pin_back_is_an_ordinary_failure();
     test_a_failed_rail_rolls_back_the_rails_it_cut_and_the_consumers_it_suspended();
     test_a_partly_armed_wake_plan_disarms_exactly_what_it_armed();
     test_a_failed_sleep_still_disarms_and_still_resumes();

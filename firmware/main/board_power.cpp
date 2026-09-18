@@ -242,9 +242,10 @@ public:
     debug_timer_wake_ = false;
   }
 
-  bool suspend(attadipa::core::PowerDomain domain) override {
+  attadipa::core::StepResult
+  suspend(attadipa::core::PowerDomain domain) override {
     if (panel_ == nullptr) {
-      return false;
+      return attadipa::core::StepResult::Unchanged;
     }
     if (domain != attadipa::core::PowerDomain::Display) {
       // No other consumer has a suspend path on this board yet, and saying yes
@@ -252,23 +253,59 @@ public:
       // something.
       ESP_LOGE(kTag, "no suspend path for %s",
                attadipa::core::to_string(domain));
-      return false;
+      return attadipa::core::StepResult::Unchanged;
     }
+    // A DRIVER ERROR OVER A BUS IS NOT A PROMISE THAT THE PANEL DID NOTHING,
+    // AND NOTHING HERE CAN ASK IT. Both calls below are writes to the CO5300
+    // over its own link, and neither has a read counterpart in the code that
+    // issues it. Traced, not assumed: at ESP-IDF v5.5.5 all twelve functions
+    // in `components/esp_lcd/include/esp_lcd_panel_ops.h` are setters, and
+    // `espressif/esp_lcd_co5300` 2.1.0 publishes exactly one brightness
+    // function, `esp_lcd_panel_co5300_set_brightness`, with no getter beside
+    // it. An `ESP_FAIL` here therefore separates "the command never left the
+    // host" from "the command landed and the acknowledgement did not come
+    // back" nowhere at all. `Unchanged` asserts the first.
+    //
+    // The transport is not what forecloses it, and saying otherwise would be
+    // the easy wrong reason: `esp_lcd_panel_io_rx_param` exists, and the
+    // driver's own MIPI path uses it to read the display ID. This board takes
+    // the SPI path -- `SOC_MIPI_DSI_SUPPORTED` is 0 on the ESP32-S3, so
+    // `esp_lcd_new_panel_co5300` falls through to
+    // `esp_lcd_new_panel_co5300_spi` -- and that file issues no read at all.
+    // Whether the CO5300 *silicon* would answer a brightness read over this
+    // board's QSPI link is UNKNOWN: no CO5300 datasheet is in hand. It is not
+    // load-bearing either way, because the question is what this code can ask,
+    // and this code has the driver and nothing else. The touch-wake path below may say `Unchanged` for the
+    // opposite reason: a wake enable is SoC-side state that
+    // `gpio_wakeup_disable` genuinely puts back, and the disable's own return
+    // says whether it did.
+    //
+    // Reported as `Unchanged` this read like a display nothing had touched, on
+    // exactly the failure where the screen is most likely to be black: the
+    // owner does not call `resume()` for a suspend that never succeeded, so a
+    // brightness that did reach zero stays there with the panel on. That is
+    // this pull request's own defect, one path further along than the one it
+    // set out to fix. Found in review.
     esp_err_t result = esp_lcd_panel_co5300_set_brightness(panel_, 0);
-    if (result == ESP_OK) {
-      result = esp_lcd_panel_disp_on_off(panel_, false);
-      if (result != ESP_OK) {
-        // Half-done is not done. The brightness went to zero and the panel is
-        // still on, so put the brightness back before reporting the failure:
-        // the owner will not call resume() for a suspend that never succeeded.
-        (void)esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
-      }
-    }
     if (result != ESP_OK) {
-      ESP_LOGE(kTag, "suspend display: %s", esp_err_to_name(result));
-      return false;
+      ESP_LOGE(kTag, "suspend display: brightness to zero: %s",
+               esp_err_to_name(result));
+      return attadipa::core::StepResult::Unknown;
     }
-    return true;
+    result = esp_lcd_panel_disp_on_off(panel_, false);
+    if (result == ESP_OK) {
+      return attadipa::core::StepResult::Done;
+    }
+    // Half-done is not done. The brightness went to zero, so put it back before
+    // reporting the failure -- best effort on the one value we know we wrote,
+    // not evidence about the one we could not read. Its own return is logged
+    // because an owner reading `Unknown` still needs to know whether the screen
+    // is dark by our hand or by the panel's.
+    const esp_err_t restored =
+        esp_lcd_panel_co5300_set_brightness(panel_, awake_brightness_);
+    ESP_LOGE(kTag, "suspend display: %s; brightness back: %s",
+             esp_err_to_name(result), esp_err_to_name(restored));
+    return attadipa::core::StepResult::Unknown;
   }
 
   bool resume(attadipa::core::PowerDomain domain) override {
@@ -311,38 +348,55 @@ public:
     return false;
   }
 
-  bool arm_wake(attadipa::core::WakeSource source) override {
+  attadipa::core::StepResult
+  arm_wake(attadipa::core::WakeSource source) override {
     switch (source) {
     case attadipa::core::WakeSource::Timer: {
       const std::uint64_t us =
           debug_timer_wake_ ? kDebugWakeDelayUs : kPmuSleepPollUs;
       const esp_err_t result = esp_sleep_enable_timer_wakeup(us);
       if (result != ESP_OK) {
+        // One operation, nothing to put back: a failure here is a failure that
+        // changed nothing, and that is the whole claim.
         ESP_LOGE(kTag, "arm timer wake: %s", esp_err_to_name(result));
-        return false;
+        return attadipa::core::StepResult::Unchanged;
       }
-      return true;
+      return attadipa::core::StepResult::Done;
     }
     case attadipa::core::WakeSource::Touch: {
       if (touch_interrupt_ == GPIO_NUM_NC) {
         // Attached without a touch controller: the line is undriven and its
         // level UNKNOWN, so it is refused like Button below, not guessed.
+        // Nothing was configured, so the refusal is `Unchanged` -- the pin's
+        // level being unknown is not the same as this step having left it that
+        // way.
         ESP_LOGE(kTag, "no touch line to arm on this boot");
-        return false;
+        return attadipa::core::StepResult::Unchanged;
       }
       esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);
       if (result == ESP_OK) {
         result = esp_sleep_enable_gpio_wakeup();
         if (result != ESP_OK) {
-          (void)gpio_wakeup_disable(touch_interrupt_);
+          // The per-pin enable took and the global one did not, so the pin is
+          // configured for a wake the SoC will not act on. If putting it back
+          // fails as well, that configuration is still there and no longer
+          // recorded anywhere -- which is a wake nobody can explain, the exact
+          // state `unwind_wake()` names its sources for.
+          const esp_err_t undone = gpio_wakeup_disable(touch_interrupt_);
+          if (undone != ESP_OK) {
+            ESP_LOGE(kTag,
+                     "arm touch wake: %s, and the pin did not go back: %s",
+                     esp_err_to_name(result), esp_err_to_name(undone));
+            return attadipa::core::StepResult::Unknown;
+          }
         }
       }
       if (result != ESP_OK) {
         ESP_LOGE(kTag, "arm touch wake: %s", esp_err_to_name(result));
-        return false;
+        return attadipa::core::StepResult::Unchanged;
       }
       touch_armed_ = true;
-      return true;
+      return attadipa::core::StepResult::Done;
     }
     default:
       break;
@@ -354,7 +408,7 @@ public:
     // place nothing downstream can detect.
     ESP_LOGE(kTag, "this board cannot arm %s as a wake source",
              attadipa::core::to_string(source));
-    return false;
+    return attadipa::core::StepResult::Unchanged;
   }
 
   bool disarm_wake(attadipa::core::WakeSource source) override {
@@ -385,17 +439,33 @@ public:
       // chain of `else if` guards that all fail reaches the final `else`. The
       // trace is in docs/research/POWER_OWNERSHIP.md.
       //
-      // **Nothing in this tree reaches it today**, and it is kept rather than
-      // deleted as dead code, which is the trade worth stating. Every path
-      // that could produce it closes itself: the owner disarms only a source
-      // it recorded as armed, `arm_wake(Touch)` un-does its own first step
-      // when its second fails, and `recover()` retries only a disarm that
-      // failed -- which left the trigger bit set, so the retry gets `ESP_OK`.
-      // What the branch is for is the arithmetic on the other side. Mapping
-      // this code to a failure costs a board that is provably in the requested
-      // state a latch into `Failed` and a reboot to leave it; mapping it to
-      // success costs one log line if a future source can be half-armed. The
-      // second is the cheaper way to be wrong.
+      // **TWO PATHS REACH IT, AND THE SECOND IS WHY IT CANNOT BE DELETED.**
+      //
+      // The first is the line above: `disarm_wake(Touch)` on a board with no
+      // touch interrupt pin produces this value deliberately, so that a source
+      // which was never armable is reported disarmed rather than as a failure
+      // the owner would latch.
+      //
+      // The second is recovery after an `Unknown`, and it is load-bearing.
+      // `core/src/power_owner.cpp:459` -- "                failed_disarm_         = static_cast<std::uint16_t>("
+      // records the source when `arm_wake()` answers `Unknown`, precisely
+      // because nobody knows whether it is armed. `recover()` then re-issues
+      // `disarm_wake()` on it, and if it was in fact never armed the trigger
+      // bit is clear and ESP-IDF answers `ESP_ERR_INVALID_STATE`. Mapping that
+      // to failure would leave `failed_disarm_` set for ever: `recover()`
+      // returns false, `availability()` stays `Failed`, and the watch needs a
+      // reboot to leave a state it is provably already out of. This branch is
+      // that loop's exit.
+      //
+      // An earlier round of this comment claimed the owner "disarms only a
+      // source it recorded as armed" and called the branch dead code kept for
+      // a future board. Both were wrong, and in the same direction: the
+      // recovery path was already the caller.
+      //
+      // The arithmetic on the other side is unchanged. Mapping this code to
+      // success costs one log line if a future source can be half-armed;
+      // mapping it to failure costs the reboot above. The first is the cheaper
+      // way to be wrong.
       ESP_LOGW(kTag, "disarm %s: already disarmed",
                attadipa::core::to_string(source));
       return true;
