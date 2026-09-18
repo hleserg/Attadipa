@@ -20,14 +20,22 @@ bool g_host_time_unavailable_reported = false;
 
 core::WallTime host_local_wall_time(core::WallTime utc) {
   const auto instant = static_cast<std::time_t>(utc.unix_seconds);
-  // `std::localtime` rather than `localtime_r`, for two reasons and not one.
-  // The simulator has no second thread — nothing under `sim/` or `debug/`
-  // creates one and the debug channel is polled from the same loop as LVGL — so
-  // the static buffer this returns has a single reader. And `localtime_r` is
-  // POSIX, not C++: under `-std=c++17` glibc hides it behind a feature macro,
-  // and this file compiles clean under the `-Werror` set with no such macro
-  // defined. If a thread ever appears here, this is the call that has to
-  // change.
+  // `std::localtime` rather than `localtime_r`, for one reason: the simulator
+  // has no second thread. Nothing under `sim/` or `debug/` creates one, the
+  // debug channel is polled from the same loop as LVGL, and
+  // `sim/lv_conf_simulator.h:149` — "#define LV_USE_OS   LV_OS_NONE" — is what
+  // keeps LVGL from making one either. So the static buffer this returns has a
+  // single reader.
+  //
+  // It used to give a second reason, that `localtime_r` is hidden behind a
+  // feature macro under `-std=c++17`. That was false and worth deleting rather
+  // than softening, because it told the next maintainer the obvious fix was
+  // unavailable: this build is `-std=gnu++17` (CMake's `CXX_EXTENSIONS`
+  // defaults to `ON` and nothing here sets it), GCC passes `-D_GNU_SOURCE` for
+  // C++ regardless, and `tests/test_sim_host_time.cpp` already calls `::tzset()`
+  // through the same `__USE_POSIX` guard that hides `localtime_r`. **If a thread
+  // ever appears here, this is the call that has to change, and `localtime_r`
+  // is two lines away.**
   const std::tm *broken = std::localtime(&instant);
   if (broken != nullptr) {
     // A leap second is the one field value a correct host can produce that
