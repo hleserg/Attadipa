@@ -1,0 +1,14 @@
+# A third locale, written the way a singular entry is written. The catalogue
+# ships two and the generator emits two, so this is not a locale being added --
+# it is a translator's copy-paste, and the shape it takes is the one that used
+# to reach `_check_formats` and raise AttributeError instead of a message
+# naming the id. Every form below agrees on `%u`, so the placeholder comparison
+# has nothing to say about it.
+[message_count]
+plural = true
+en.one = "%u message"
+en.other = "%u messages"
+ru.one = "%u сообщение"
+ru.few = "%u сообщения"
+ru.many = "%u сообщений"
+de = "%u Nachrichten"

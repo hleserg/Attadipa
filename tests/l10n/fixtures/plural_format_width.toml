@@ -1,0 +1,11 @@
+# The right kind of number, the wrong width. `%llu` reads 64 bits where the
+# caller pushed a 32-bit count, so the high half is whatever was next on the
+# stack or in the register -- a plausible-looking wrong number rather than a
+# crash, which is worse, because it survives a glance at the screen.
+[message_count]
+plural = true
+en.one = "%llu message"
+en.other = "%llu messages"
+ru.one = "%llu сообщение"
+ru.few = "%llu сообщения"
+ru.many = "%llu сообщений"

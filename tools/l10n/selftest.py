@@ -33,7 +33,88 @@ PARSE_CASES = {
     "format_mismatch.toml":  "same placeholders",
     "empty_value.toml":      "is empty",
     "bad_identifier.toml":   "not a usable identifier",
+    # The four the equality check cannot see. Every locale and every form agrees
+    # in each of these files, so "the placeholders match" is true of all of them
+    # and true of none of the things that matter at the snprintf call.
+    "plural_format_type.toml":    "read as a pointer",
+    "plural_format_width.toml":   "length modifier 'll'",
+    "plural_format_missing.toml": "has 0 count conversion",
+    "plural_format_twice.toml":   "has 2 count conversion",
+    "plural_locale_not_a_table.toml": "unknown locale(s): ['de']",
 }
+
+# Accepted on purpose. Over-strictness is the failure mode of a check written
+# from one crash: it is still a rejection, so every negative case above keeps
+# passing while correct strings start being refused. This file is the only thing
+# that fails when that happens.
+ACCEPT_CASES = {
+    "plural_format_valid.toml": "a count with width, flags and a literal %%",
+}
+
+# ONE SPELLING PER LINE, because a file per spelling is a dozen fixtures that
+# differ by one character and nobody reads the twelfth. Each line below is
+# written to a real catalogue and put through `load()` -- the same function
+# `gen_strings.py` calls -- with the text repeated in all five forms, so the
+# placeholder comparison agrees and the count contract is the only thing left
+# to object. A fragment is the reason the spelling must be refused; `None` says
+# it must be accepted.
+SPELLING_CASES = [
+    ("%q message",    "not a conversion this catalogue understands"),
+    ("%*u message",   "not a conversion this catalogue understands"),
+    ("%u message %",  "not a conversion this catalogue understands"),
+    # Its own closing `%` used to be reported as the unrecognised one. It is
+    # refused either way, and only one of the two reasons is true.
+    ("%-100% items",  "has 0 count conversion"),
+    ("%+u message",   "flag(s) ['+']"),
+    ("%d message",    "reads a signed int"),
+    ("%i message",    "reads a signed int"),
+    ("%hu message",   "truncates the count"),
+    # A percent somebody meant literally. It is not the spelling it looks like:
+    # `% d` is one conversion with the space flag, so it passes the count and
+    # flag branches and is refused by the type branch -- which is where the
+    # hint about `%%` has to be said, and was not.
+    ("100% done",     "A literal percent sign is written `%%`"),
+    # Accepted: the `#` flag on the conversions C defines it for, and a percent
+    # written the way the contract says to write one.
+    ("%#x message",   None),
+    ("%u of 100%%",   None),
+]
+
+# The singular half, which is not this branch's subject and is the one thing it
+# can break: `_format_signature` is the only check a singular pair has, and a
+# filter that dropped every percent-terminated spelling would let this pair
+# through as two empty signatures.
+SINGULAR_CASES = [
+    (("0%-100%", "0-100 %"), "same placeholders"),
+]
+
+_PLURAL_TEMPLATE = """[count_spelling]
+plural = true
+en.one = "{text}"
+en.other = "{text}"
+ru.one = "{text}"
+ru.few = "{text}"
+ru.many = "{text}"
+"""
+
+_SINGULAR_TEMPLATE = """[label]
+en = "{en}"
+ru = "{ru}"
+"""
+
+
+def _load_text(toml_text):
+    """`load()` on a catalogue written to a temporary file."""
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".toml", encoding="utf-8",
+                                     delete=False) as handle:
+        handle.write(toml_text)
+        name = handle.name
+    try:
+        return load(name)
+    finally:
+        Path(name).unlink()
+
 
 # Rejected by the glyph check rather than by the parser: the file is valid TOML
 # and a valid catalogue, and still cannot be drawn.
@@ -64,6 +145,57 @@ def run():
                 print(f"  ok  {name:<28} rejected: {message.splitlines()[0][:78]}")
         else:
             failures.append(f"{name}: ACCEPTED, and it must not be. The check is not working.")
+
+    for name, what in ACCEPT_CASES.items():
+        path = FIXTURES / name
+        if not path.exists():
+            failures.append(f"{name}: fixture is missing")
+            continue
+        try:
+            entries = load(path)
+        except CatalogueError as exc:
+            failures.append(f"{name}: REJECTED, and it must not be -- {what} is valid.\n"
+                            f"    got: {exc}")
+        else:
+            print(f"  ok  {name:<28} accepted: {len(entries)} entries, {what}")
+
+    for text, expected in SPELLING_CASES:
+        toml_text = _PLURAL_TEMPLATE.format(text=text)
+        try:
+            _load_text(toml_text)
+        except CatalogueError as exc:
+            message = str(exc)
+            if expected is None:
+                failures.append(f"spelling {text!r}: REJECTED, and it must not be.\n"
+                                f"    got: {message}")
+            elif expected not in message:
+                failures.append(
+                    f"spelling {text!r}: rejected, but not for the reason it is about.\n"
+                    f"    expected the message to contain: {expected!r}\n"
+                    f"    got: {message}"
+                )
+            else:
+                print(f"  ok  {text!r:<28} rejected: {expected}")
+        else:
+            if expected is None:
+                print(f"  ok  {text!r:<28} accepted")
+            else:
+                failures.append(f"spelling {text!r}: ACCEPTED, and it must not be. "
+                                f"Expected {expected!r}.")
+
+    for (en, ru), expected in SINGULAR_CASES:
+        toml_text = _SINGULAR_TEMPLATE.format(en=en, ru=ru)
+        try:
+            _load_text(toml_text)
+        except CatalogueError as exc:
+            if expected not in str(exc):
+                failures.append(f"singular {en!r}/{ru!r}: rejected, but not for its own reason.\n"
+                                f"    expected: {expected!r}\n    got: {exc}")
+            else:
+                print(f"  ok  {en!r} vs {ru!r} rejected: {expected}")
+        else:
+            failures.append(f"singular {en!r} vs {ru!r}: ACCEPTED, and it must not be -- "
+                            f"the two do not carry the same placeholders.")
 
     for name, expected_fragments in GLYPH_CASES.items():
         path = FIXTURES / name
@@ -97,8 +229,11 @@ def run():
             print(f"  * {failure}", file=sys.stderr)
         return 1
 
-    print(f"\nl10n selftest: {len(PARSE_CASES) + len(GLYPH_CASES)} deliberate mistakes, "
-          f"all rejected, each for its own reason")
+    rejected = (len(PARSE_CASES) + len(GLYPH_CASES) + len(SINGULAR_CASES)
+                + sum(1 for _, expected in SPELLING_CASES if expected is not None))
+    accepted = len(ACCEPT_CASES) + sum(1 for _, expected in SPELLING_CASES if expected is None)
+    print(f"\nl10n selftest: {rejected} deliberate mistakes, all rejected, each for its own "
+          f"reason; {accepted} correct catalogue(s) accepted")
     return 0
 
 

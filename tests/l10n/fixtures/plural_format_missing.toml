@@ -1,0 +1,12 @@
+# Spelled out instead of formatted. Safe at the snprintf call -- an unused
+# argument is allowed -- and still wrong: a plural entry exists to render a
+# count, so forms that never show one are five strings that will disagree with
+# the number the caller passed. If the count really is not meant to appear,
+# these are singular entries chosen by the caller, not a plural.
+[message_count]
+plural = true
+en.one = "one message"
+en.other = "several messages"
+ru.one = "одно сообщение"
+ru.few = "несколько сообщений"
+ru.many = "много сообщений"

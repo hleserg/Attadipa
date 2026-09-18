@@ -1,0 +1,51 @@
+# The only fixture here that must be *accepted*.
+#
+# A validator with no accept case drifts one rejection at a time into refusing
+# things that were always fine, and the first person to find out is a translator
+# whose correct string was called undefined behaviour. Each entry below is a
+# part of the contract that has to keep working.
+#
+# A plain count, and a literal percent sign beside it.
+[message_count]
+plural = true
+en.one = "%u message, 100%% delivered"
+en.other = "%u messages, 100%% delivered"
+ru.one = "%u сообщение, 100%% доставлено"
+ru.few = "%u сообщения, 100%% доставлено"
+ru.many = "%u сообщений, 100%% доставлено"
+
+# Width and flags. They decide how the number is laid out and not what is read,
+# so the argument is still the one unsigned int the caller passed. The same
+# width in every form, because the placeholders still have to match each other.
+[padded_count]
+plural = true
+en.one = "%-3u message"
+en.other = "%-3u messages"
+ru.one = "%-3u сообщение"
+ru.few = "%-3u сообщения"
+ru.many = "%-3u сообщений"
+
+# Not how anybody would write a count for a wrist, and accepted anyway: the
+# rule enforced is that the conversion reads the argument that is passed, and
+# `%x` reads exactly the same unsigned int as `%u`. Refusing it would be taste
+# dressed as safety, and a check that mixes the two gets argued with.
+[hex_count]
+plural = true
+en.one = "0x%04x message"
+en.other = "0x%04x messages"
+ru.one = "0x%04x сообщение"
+ru.few = "0x%04x сообщения"
+ru.many = "0x%04x сообщений"
+
+# The `#` flag, which the checker accepts for the three conversions C defines it
+# for. It writes `0x` in front of the number rather than changing what is read,
+# so it is the same unsigned int the caller passed -- and it is here because the
+# code allowed it while none of the contract texts named it, which is a rule
+# only its author knew.
+[hash_count]
+plural = true
+en.one = "%#x message"
+en.other = "%#x messages"
+ru.one = "%#x сообщение"
+ru.few = "%#x сообщения"
+ru.many = "%#x сообщений"
