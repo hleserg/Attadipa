@@ -71,13 +71,22 @@ bool parse_int64(const char *text, std::int64_t &out) {
 }
 
 // The window is the panel scaled by this factor, so the bounds are what a
-// window can usefully be rather than what a `float` can hold. At 1/16 the
-// 240 px T-Watch panel is 15 px across; at 64 the 502 px Waveshare one is
-// 32 128 px, past the 16 384 px maximum texture size SDL renderers commonly
-// report, so the window would not appear at all. Both figures are sanity
-// bounds, not measurements of this host.
+// window can usefully be rather than what a `float` can hold, and each one is
+// the last factor that still works rather than the first that does not --
+// review round 2 caught the earlier pair justifying 64 by describing what 64
+// itself breaks, and then accepting it.
+//
+// Upper: 502 px is the larger panel, and 16 384 px is the maximum texture size
+// SDL renderers commonly report, so 32 is the largest power of two that fits
+// (32 x 502 = 16 064). Lower: 1/16 leaves the 240 px panel 15 px across, which
+// is small and still a window; 1/32 would be 7 px.
+//
+// Both figures are sanity bounds on what a window can be, NOT measurements of
+// this host: nothing here queries the renderer, and a host with a smaller
+// limit will fail inside SDL as it did before. The bound is there to refuse
+// the arithmetic that cannot work anywhere, not to promise the rest will.
 constexpr double kMinZoom = 1.0 / 16.0;
-constexpr double kMaxZoom = 64.0;
+constexpr double kMaxZoom = 32.0;
 
 bool parse_zoom(const char *text, float &out) {
   char *end = nullptr;
@@ -121,7 +130,7 @@ void print_usage(const char *argv0) {
       "lr1121,\n"
       "                   cc1101, si4432. Only meaningful on a board with a "
       "radio\n"
-      "  --zoom <factor>  scale the window, 0.0625 to 64. The panel "
+      "  --zoom <factor>  scale the window, 0.0625 to 32. The panel "
       "resolution\n"
       "                   does not change\n"
       "  --frames <n>     render n frames and exit. For CI, with "

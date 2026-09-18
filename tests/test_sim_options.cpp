@@ -125,7 +125,9 @@ int main() {
 
   refused_zoom("0", "a zero scale factor is refused");
   refused_zoom("-2", "a negative scale factor is refused");
-  refused_zoom("65", "a factor past the upper bound is refused");
+  refused_zoom("33", "a factor past the upper bound is refused");
+  refused_zoom("64", "and 64 in particular, which the bound used to admit "
+                     "while its own comment said it yields no window");
   refused_zoom("0.03", "a factor below the lower bound is refused");
   refused_zoom("2x", "trailing text is refused");
   refused_zoom("", "an empty value is refused");
@@ -133,7 +135,7 @@ int main() {
   // And the other direction, at both ends of the range it does accept.
   accepted_zoom("2", 2.0F, "an ordinary scale factor still parses");
   accepted_zoom("0.0625", 0.0625F, "the smallest factor in range is kept");
-  accepted_zoom("64", 64.0F, "the largest factor in range is kept");
+  accepted_zoom("32", 32.0F, "the largest factor in range is kept");
 
   std::printf("%s\n", failures == 0 ? "all passed" : "FAILED");
   return failures == 0 ? 0 : 1;
