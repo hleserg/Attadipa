@@ -198,9 +198,21 @@ void MeshCoreCompanion::reset_session()
     // against it.
     //
     // Read before `end_operation()` at the bottom of this function clears the
-    // three flags `send_busy()` is made of.
+    // four flags `send_busy()` is made of.
+    //
+    // A FETCH OUTSTANDING IS THE ONE PHASE WHERE NOTHING REACHED THE AIR, and
+    // it is never up beside the other three: every send asks `send_busy()`
+    // before it arms anything, and `take_fetched_contact()` clears this flag
+    // before `enqueue_private()` asks. So a session ending with
+    // `awaiting_contact_` alone ended before any CMD_SEND_TXT_MSG was built,
+    // and `Refused` is the whole truth -- `Unknown` would tell the wearer a
+    // resend may duplicate a frame that does not exist. The budget arm below
+    // already makes this argument for this flag; the disconnect route is the
+    // half that still answered `Unknown`, and one ground truth must not reach
+    // the owner two ways depending on how the session ended.
     if (send_busy()) {
-        status_.delivery = core::MeshDelivery::Unknown;
+        status_.delivery = awaiting_contact_ ? core::MeshDelivery::Refused
+                                             : core::MeshDelivery::Unknown;
     }
     status_.peers_reported = 0;
     status_.peers_retained = 0;
@@ -548,7 +560,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1341` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1353` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -1454,7 +1466,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         // AND A BOUNDARY FRAME BELONGS TO NOBODY WHEN NO WALK IS OPEN. The
         // rule is the one `accept_contact()` applies --
-        // `link/src/meshcore_companion.cpp:679` -- "    if (retry_swept_ && !retry_open_) {"
+        // `link/src/meshcore_companion.cpp:691` -- "    if (retry_swept_ && !retry_open_) {"
         // -- a frame of a walk that is over belongs to nobody -- and it was
         // applied to the rows and not to the frame that ends them.
         //
@@ -1468,7 +1480,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // every flag false and fell through. Both are the same mistake, and
         // `!contacts_open_` is the form that covers all three walks. A walk the
         // node opens afterwards sets it again, including the node's own --
-        // `link/src/meshcore_companion.cpp:1413` -- "        contacts_open_ = true;"
+        // `link/src/meshcore_companion.cpp:1425` -- "        contacts_open_ = true;"
         // -- so a later walk owns its frames.
         //
         // Every shape of it is wrong about a walk that is already over. With a

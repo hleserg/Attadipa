@@ -3605,7 +3605,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1394` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1406` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3669,7 +3669,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1298` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1310` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3717,7 +3717,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:730` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:742` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -4842,6 +4842,48 @@ void test_a_fetch_the_node_never_answers_expires_refused()
     CHECK(!client.send_busy());
 }
 
+// AND THE LINK GOING IS THE THIRD ROUTE TO THE SAME GROUND TRUTH. The budget
+// arm and the `ERR_CODE_NOT_FOUND` arm both answer `Refused`; a disconnect
+// with the fetch outstanding used to answer `Unknown` through
+// `reset_session()`, so one fact -- no `CMD_SEND_TXT_MSG` was ever built --
+// reached the owner two ways depending on how the session ended. `fault()`
+// shares the route, which is why one of these two tests is enough for it.
+void test_a_fetch_the_link_drops_under_is_refused()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    CHECK(service.send_private(absent_key(0x33), "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+
+    client.tick(at(10));
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+    client.disconnected(at(20));
+    CHECK(service.status().delivery == MeshDelivery::Refused);
+    CHECK(!client.send_busy());
+}
+
+// AND A TEXT THE LINK DROPS UNDER IS STILL `Unknown`, which is what keeps the
+// row above from being "a disconnect always refuses". That frame left the ring
+// and may be on the characteristic already -- §11.1 row 14.
+void test_a_text_the_link_drops_under_stays_unknown()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshService service(client);
+    MeshPeer peer{};
+    CHECK(service.peer(0, peer));
+    CHECK(service.send_private(peer.id, "hi", WallTime{1000}).accepted());
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+
+    client.tick(at(10));
+    client.disconnected(at(20));
+    CHECK(service.status().delivery == MeshDelivery::Unknown);
+    CHECK(!client.send_busy());
+}
+
 // AND A TEXT THE NODE NEVER ANSWERS STILL EXPIRES `Unknown`, which is what
 // keeps the row above from being a rename. Here the frame did leave the ring.
 void test_a_text_the_node_never_answers_expires_unknown()
@@ -5090,6 +5132,8 @@ int main()
     test_a_fetch_waits_for_a_re_read_too();
     test_a_key_the_node_does_not_hold_is_refused();
     test_a_fetch_the_node_never_answers_expires_refused();
+    test_a_fetch_the_link_drops_under_is_refused();
+    test_a_text_the_link_drops_under_stays_unknown();
     test_a_text_the_node_never_answers_expires_unknown();
     test_a_walk_that_starts_anyway_owns_the_contact_frame();
     test_a_re_read_waits_for_a_fetch_too();

@@ -150,7 +150,7 @@ than from this observation.
 
 This repository already holds one of these frames, captured on the bench and
 committed. The four bytes it deliberately declined to interpret —
-`link/src/meshcore_companion.cpp:1627` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
+`link/src/meshcore_companion.cpp:1639` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
 reads the ack and stops — are a millisecond count:
 
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298` — "82 38 66 6c b8 1b 03 00 00"
@@ -311,7 +311,7 @@ send(recipient: full 32-byte identity,
 
 - **Full 32-byte identity at the app/core boundary.** The six-byte prefix is
   what the adapter writes into `CMD_SEND_TXT_MSG` and must not be what an
-  application holds — `link/src/meshcore_companion.cpp:2107` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
+  application holds — `link/src/meshcore_companion.cpp:2119` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
   is where the narrowing belongs and is already where it happens.
 - **A local request id, and the word "local" is the contract.** Non-zero so
   that zero means "no request"; monotonic within a session; explicitly **not**
@@ -361,7 +361,7 @@ of `Failed` an earlier draft of this report did not enumerate.** A room send is
 one call in two phases: `send_room()` publishes `Queued` and returns `true`
 while `CMD_SEND_LOGIN` is outstanding, and the text frame is enqueued later,
 from the `PUSH_CODE_LOGIN_SUCCESS` arm —
-`link/src/meshcore_companion.cpp:1693` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
+`link/src/meshcore_companion.cpp:1705` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
 If the four-deep ring is full at that moment the enqueue fails, and the call
 that would have reported it returned `true` a second ago. So decision 3's rule
 — a local refusal is not a delivery state, because no message exists — does not
@@ -375,7 +375,7 @@ would hold `Queued` for the rest of the session.
 
 **One budget, three phases, and only the last of them has an acceptance to be
 unsure about.** `op_budget_` is armed for anything `send_busy()` covers —
-`link/src/meshcore_companion.cpp:365` — "    if (!send_busy()) {" — which is a
+`link/src/meshcore_companion.cpp:377` — "    if (!send_busy()) {" — which is a
 room login outstanding, a text awaiting `RESP_CODE_SENT`, and a text awaiting
 its acknowledgement. `Unconfirmed` is a claim about the third: *the node
 accepted this message and this product cannot tell whether it arrived.* In the
@@ -397,7 +397,7 @@ owner's side: nothing reached the radio, and a resend cannot duplicate anything.
 path answers `CMD_SEND_LOGIN` and publishes `Accepted` for a text the node has
 not been sent. That defect does not exist, and this is a retraction rather than
 a softening: the claim was checked by running it, and it was false.** The arm is
-gated on the phase — `link/src/meshcore_companion.cpp:1562` — "if (awaiting_send_) {" — and a
+gated on the phase — `link/src/meshcore_companion.cpp:1574` — "if (awaiting_send_) {" — and a
 room login has `awaiting_login_` set with `awaiting_send_` clear, so the
 login's `RESP_CODE_SENT` publishes no `Accepted` at all. The gate predates this
 report: it is #315's, written so that a second send could not overwrite
@@ -679,7 +679,7 @@ reasons the command is a design task and not a one-line addition:
    in silence**, which is the case that matters, because the whole point of the
    fetch is that the contact is not in the cache.
 2. **The chat-type filter drops it too.**
-   `link/src/meshcore_companion.cpp:665` — "if (size < 148 || data[33] != kAdvertTypeChat) {"
+   `link/src/meshcore_companion.cpp:677` — "if (size < 148 || data[33] != kAdvertTypeChat) {"
    refuses any advert type that is not chat, correctly for a contact list and
    incorrectly for a targeted fetch, where the refusal must be *reported* rather
    than absorbed.
@@ -696,20 +696,20 @@ hazard answered by a different mechanism** — which is why the paragraph above
 was right that it is not a one-line addition. The flag is `awaiting_contact_`,
 and the arm consults it *and the key* before deciding which of the two meanings
 the frame has:
-`link/src/meshcore_companion.cpp:1435` — "        if (awaiting_contact_ &&". Hazard 1
+`link/src/meshcore_companion.cpp:1447` — "        if (awaiting_contact_ &&". Hazard 1
 is answered by that branch taking the frame out before `accept_contact()` sees
 it, so a fetched contact never enters the window and never competes for its
 sixteen slots. Hazard 2 is answered by giving the fetch its own copy of the
 type test: the walk's guard still drops a non-chat advert in silence, which is
 right for a cache, and the fetch reports it as `Refused` —
-`link/src/meshcore_companion.cpp:2009` — "    if (data[33] != kAdvertTypeChat) {". Hazard
+`link/src/meshcore_companion.cpp:2021` — "    if (data[33] != kAdvertTypeChat) {". Hazard
 3 is answered by *exclusion*, and the exclusion has to be two-sided, which is
 the correction #600 round 1 made to this paragraph. `ContactsBusy` refuses a
 fetch while a walk or a re-read is outstanding, and that is checked once, at
 the call; the re-read leaves from `tick()`, so without a term of its own it
 could open a walk *after* a fetch was already outstanding and reach the same
 frame from the other direction. It now stands down while one is —
-`link/src/meshcore_companion.cpp:444` — "        !retry_unanswered_ && !wrong_node_ && !awaiting_contact_ &&".
+`link/src/meshcore_companion.cpp:456` — "        !retry_unanswered_ && !wrong_node_ && !awaiting_contact_ &&".
 
 **And the arm holds its own precondition rather than resting on those two call
 sites.** The intercept asks `!contacts_open_ && !retry_open_` beside the key,
@@ -800,21 +800,27 @@ harness, which delivers bytes to `receive()` rather than calling internals.
 | 15 | disconnect after `Accepted` | `Unknown`; and a reconnect does not resurrect the request |
 | 16 | `RESP_CODE_ERR` with `ERR_CODE_NOT_FOUND` after a send | `Refused`, distinguishable from a timeout |
 | 17 | `RESP_CODE_ERR` with `ERR_CODE_TABLE_FULL` | not reported to the owner as "the node is full" — §2.1 point 4 |
-| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1563` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
-
+| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1575` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
 | 19 | a send to a key the retained window does not hold | `CMD_GET_CONTACT_BY_KEY` goes out with the whole key, and the call publishes `Queued` rather than refusing — §8.1 |
 | 20 | the node answers that fetch with `RESP_CODE_CONTACT` | the text is sent, and the contact is **not** appended to the retained window — §8.2 hazard 1 |
 | 21 | the node answers with an advert type that is not chat | `Refused`, reported rather than absorbed — §8.2 hazard 2 |
-| 22 | the node answers `ERR_CODE_NOT_FOUND`, or never answers | `Refused` **either way** — no `CMD_SEND_TXT_MSG` was ever built, so nothing reached the air and a resend duplicates nothing. One ground truth must not reach the owner two ways depending on whether the node troubled itself to reply, which is what `Unknown` here did until #600 round 1 |
+| 22 | the node answers `ERR_CODE_NOT_FOUND`, never answers, or the link drops with the fetch outstanding | `Refused` **all three ways** — no `CMD_SEND_TXT_MSG` was ever built, so nothing reached the air and a resend duplicates nothing. One ground truth must not reach the owner three ways depending on whether the node troubled itself to reply and on how the session ended. The error and budget routes said `Unknown` until #600 round 1; the disconnect route, which `reset_session()` owns and `fault()` shares, until round 3 |
 | 23 | a send to an unheld key while a contacts walk or a re-read is outstanding | `ContactsBusy`, a *call* refusal, and the walk is untouched — §8.2 hazard 3 |
 | 24 | the re-read falls due while a fetch is outstanding | the re-read stands down and asks on the next tick after the fetch is answered; row 23 with the two steps in the other order, which is the half a call refusal cannot cover |
 | 25 | a contacts walk begins anyway while a fetch is outstanding, and streams the fetched key | the **walk** takes the frame: the snapshot stays whole and the quiet window keeps being stamped, and the fetch waits for its own reply or expires `Refused` |
 | 26 | the budget expires with a text, rather than a fetch, outstanding | `Unknown`, unchanged — that frame did leave the ring and may be on the characteristic, so a resend may duplicate. This row is what keeps row 22 from being a rename |
 
 Rows 11, 12 and 18 are the ones this research exists to produce. A test suite
-without them can pass while the product lies. Rows 19 to 23 were added when §8
-was implemented; row 23 is the one that makes hazard 3 unreachable rather than
-handled, so it is the test that has to exist *instead* of a direct one.
+without them can pass while the product lies. Rows 19 to 26 were added when §8
+was implemented, and rows 23 to 25 are hazard 3 from both ends. Row 23 is the
+*call* refusal, for a send that arrives while a walk is already outstanding; row
+24 is the same pair in the other order at the re-read, which stands down; row 25
+is the order a call refusal cannot cover at all, a walk beginning while a fetch
+is outstanding and streaming the fetched key — §8.2. **So hazard 3 is handled at
+each end rather than unreachable at one**, and the tie-breaking terms of the
+contact arm are load-bearing, not redundant. An earlier draft of this paragraph
+said the opposite and was the stated reason a direct hazard-3 test did not need
+to exist; row 25 is that test.
 
 ### 11.2 Simulator and replay
 
@@ -893,7 +899,7 @@ One finite executable issue, and deliberately not more:
 **In:** the `MeshDelivery` vocabulary of §4.2 including the removal of `Failed`,
 the local request id, the full-identity boundary, `CMD_GET_CONTACT_BY_KEY` with
 its three hazards handled, the byte-accurate UTF-8 budget and its refusal, and
-rows 1–18 of §11.1.
+rows 1–26 of §11.1.
 
 **Out, and each for a stated reason:** the coordinate (§7.3, owner), a chat
 database (§4.3), a retry queue (§4.2), v14 support (§5), chunking (§6.3), and
