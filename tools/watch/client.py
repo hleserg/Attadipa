@@ -249,7 +249,14 @@ class Watch:
     def __init__(self, transport: Transport, timeout: float = DEFAULT_TIMEOUT) -> None:
         self._transport = transport
         self._decoder = p.FrameDecoder()
-        self._timeout = timeout
+        # A DEADLINE IS ONLY A BOUND IF ITS INPUT IS A LENGTH OF TIME. `nan`
+        # and `inf` are both accepted by `float()` and by argparse, and both
+        # disable the check they were asked to arm: `monotonic() >= nan` is
+        # false forever and a finite clock never reaches `+inf`, so the request
+        # loop below runs until something outside kills it (#580). Refused here
+        # rather than at the first request, so the caller is still the one
+        # holding the mistake.
+        self._timeout = _duration_seconds(timeout, "the request timeout")
         # `None` once the space is spent. Not a counter that wraps: see
         # `_allocate_req_id`.
         self._next_req_id: int | None = 1
@@ -326,7 +333,8 @@ class Watch:
 
     def _await(self, req_id: int, ops: tuple[p.Op, ...], timeout: float | None = None,
                session: int | None = None):
-        waited = timeout if timeout is not None else self._timeout
+        waited = (_duration_seconds(timeout, "the request timeout")
+                  if timeout is not None else self._timeout)
         deadline = time.monotonic() + waited
         previous, self._awaiting = self._awaiting, req_id
         try:
@@ -397,6 +405,8 @@ class Watch:
         exactly whether a second attempt is answered. Retrying is skipped for a
         typed error, which is an answer.
         """
+        if timeout is not None:
+            timeout = _duration_seconds(timeout, "the request timeout")
         last: Exception | None = None
         for attempt in range(retries + 1):
             req_id = self._allocate_req_id()
@@ -655,6 +665,10 @@ class Watch:
         """
         if not 0 <= quiet_ms <= 0xFFFF:
             raise WatchError(f"quiet_ms must fit in 16 bits, got {quiet_ms}")
+        # Its own deadline and its own sleep, so neither reaches `_await`'s
+        # check. A scenario file can put `.nan` in either (#580).
+        timeout = _duration_seconds(timeout, "wait_stable's timeout")
+        poll = _duration_seconds(poll, "wait_stable's poll interval")
         body = struct.pack("<H", quiet_ms)
         deadline = time.monotonic() + timeout
         while True:

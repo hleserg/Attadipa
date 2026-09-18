@@ -33,7 +33,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from watch import protocol as p            # noqa: E402
 from watch import scenario as scenario_mod  # noqa: E402
-from watch.client import Watch, WatchError, WatchIdsExhausted, connect  # noqa: E402
+from watch.client import (Watch, WatchError, WatchIdsExhausted,  # noqa: E402
+                          _duration_seconds, connect)
 from flash.ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = os.path.join("artifacts", "watch")
@@ -549,11 +550,11 @@ def cmd_live(watch: Watch, args) -> int:
                 print(f"automatic screenshot {'on' if auto else 'off'}")
                 continue
             if verb == "delay":
-                delay = float(rest[0])
+                delay = _duration_seconds(rest[0], "the screenshot delay")
                 print(f"screenshot delay {delay}s")
                 continue
             if verb == "wait":
-                time.sleep(float(rest[0]))
+                time.sleep(_duration_seconds(rest[0], "a wait"))
                 continue
             if verb in ("shot", "screenshot"):
                 path = os.path.join(DEFAULT_OUTPUT_DIR, f"{rest[0]}.png") if rest else None
@@ -636,6 +637,23 @@ def after_action(watch: Watch, args, description: str, prefix: str) -> int:
 
 # --- argument parsing -----------------------------------------------------
 
+def seconds(text: str) -> float:
+    """A duration typed on the command line.
+
+    `type=float` accepts `nan` and `inf`, and both of them silently disable the
+    thing they were given to: a deadline built on `nan` is never reached
+    because every comparison with it is false, one built on `inf` is never
+    reached because the clock is finite, and `sleep(nan)` returns at once so a
+    pause asked to be unreadably long takes none (#580). The rule is the
+    library's -- there is no second copy of it here -- and argparse turns the
+    refusal into a usage error because it is an `ArgumentTypeError`.
+    """
+    try:
+        return _duration_seconds(text, "a duration")
+    except WatchError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="watch_control.py",
@@ -653,7 +671,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="USB serial of the watch (default: $ATTADIPA_WATCH_SERIAL, "
                              f"else {DEFAULT_SERIAL})")
     parser.add_argument("--socket", dest="socket_path", help="a Unix socket, for the simulator")
-    parser.add_argument("--timeout", type=float, default=10.0, help="seconds to wait for a reply")
+    parser.add_argument("--timeout", type=seconds, default=10.0, help="seconds to wait for a reply")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -661,10 +679,10 @@ def build_parser() -> argparse.ArgumentParser:
     def with_screenshot(sub):
         sub.add_argument("--screenshot-after", action="store_true",
                          help="photograph the result and print its path")
-        sub.add_argument("--delay", type=float, help="seconds to wait before that screenshot")
+        sub.add_argument("--delay", type=seconds, help="seconds to wait before that screenshot")
         sub.add_argument("--output", "-o", help="where to write it")
         sub.add_argument("--count", type=int, default=1)
-        sub.add_argument("--interval", type=float, default=0.2)
+        sub.add_argument("--interval", type=seconds, default=0.2)
         return sub
 
     info = subparsers.add_parser("info", help="what the device says it is")
@@ -725,13 +743,13 @@ def build_parser() -> argparse.ArgumentParser:
     shot = subparsers.add_parser("screenshot", help="one image, or a series")
     shot.add_argument("--output", "-o", help="path for the PNG")
     shot.add_argument("--count", type=int, default=1, help="how many, for an animation")
-    shot.add_argument("--interval", type=float, default=0.2, help="seconds between them")
+    shot.add_argument("--interval", type=seconds, default=0.2, help="seconds between them")
     shot.set_defaults(func=cmd_screenshot)
 
     button = with_screenshot(subparsers.add_parser("button", help="press a physical button"))
     button.add_argument("name")
     button.add_argument("event", choices=["press", "release", "click", "hold"])
-    button.add_argument("--duration", type=float, help="seconds, for click and hold")
+    button.add_argument("--duration", type=seconds, help="seconds, for click and hold")
     button.set_defaults(func=cmd_button)
 
     tap = with_screenshot(subparsers.add_parser("tap"))
@@ -742,7 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
     long_tap = with_screenshot(subparsers.add_parser("long-tap"))
     long_tap.add_argument("--x", type=int, required=True)
     long_tap.add_argument("--y", type=int, required=True)
-    long_tap.add_argument("--duration", type=float, default=1.0)
+    long_tap.add_argument("--duration", type=seconds, default=1.0)
     long_tap.set_defaults(func=cmd_long_tap)
 
     double_tap = with_screenshot(subparsers.add_parser("double-tap"))
@@ -755,7 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--from", dest="start", type=parse_point, required=True,
                          metavar="X,Y")
         sub.add_argument("--to", dest="end", type=parse_point, required=True, metavar="X,Y")
-        sub.add_argument("--duration", type=float, default=default_duration)
+        sub.add_argument("--duration", type=seconds, default=default_duration)
         sub.add_argument("--steps", type=int, default=0,
                          help="intermediate points; 0 picks about 60 per second")
         sub.set_defaults(func=handler)
@@ -775,7 +793,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     live = subparsers.add_parser("live", help="an interactive session on one connection")
     live.add_argument("--screenshot-after", action="store_true")
-    live.add_argument("--delay", type=float)
+    live.add_argument("--delay", type=seconds)
     live.set_defaults(func=cmd_live)
 
     return parser
