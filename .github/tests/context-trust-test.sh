@@ -721,5 +721,50 @@ if mutate "no state or location" \
   fi
 fi
 
+# M9 and M10 are one experiment in two halves: what happens when the ordering
+# stage loses records. It is the one stage of the bundle that reorders rather
+# than fetches, and it sits AFTER both fetch counts have already agreed, so
+# nothing upstream can notice. `head -1` stands in for what a full filesystem
+# or a non-zero `sort` does -- `pipefail` is set but `-e` is not, and the
+# pipeline's status is discarded.
+#
+# M9: with the guard, a short `ordered` must HOLD.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$work` there
+# is the path variable inside the script being edited, not one of this suite.
+if mutate "ordering truncated" 's/| cut -f3- > "\$work\/ordered"/| cut -f3- | head -1 > "$work\/ordered"/'; then
+  rm -f "$work/out"
+  if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 18; then
+    no "case 14 M9: a truncated ordering was written as a complete bundle"
+  else
+    case "$(cat "$work/err")" in
+      *"ordering kept"*) ok "case 14 M9: a truncated ordering holds and says the counts" ;;
+      *) no "case 14 M9: it held, but not on the count: $(cat "$work/err")" ;;
+    esac
+  fi
+fi
+
+# M10: the same truncation with the guard disabled. This is the half that says
+# the guard is what did it, and it is what the bundle looked like before this
+# check existed: records silently gone, `=== nothing was withheld.` underneath,
+# and status 0.
+# shellcheck disable=SC2016  # The sed script must NOT expand: `$work` there
+# is the path variable inside the script being edited, not one of this suite.
+if mutate "truncated, and no count on the ordering" \
+    's/| cut -f3- > "\$work\/ordered"/| cut -f3- | head -1 > "$work\/ordered"/;
+     s/^  if \[ "\$ordered_count" != "\$all_count" \]; then$/  if false; then/'; then
+  rm -f "$work/out"
+  if SCRIPT_UNDER_TEST="$work/mutant.sh" run_bundle 18; then
+    kept="$(grep -o 'FIRST\|MIDDLE\|CORRECTION' "$work/out" | tr '\n' ' ')"
+    case "$kept" in
+      "FIRST MIDDLE CORRECTION ")
+        no "case 14 M10: the mutant was not truncated, so it proves nothing" ;;
+      *)
+        ok "case 14 M10: without the count the bundle keeps only ($kept) and says so nowhere" ;;
+    esac
+  else
+    no "case 14 M10: something other than the count is holding the short bundle"
+  fi
+fi
+
 printf '\ncontext trust: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

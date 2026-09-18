@@ -161,9 +161,11 @@ reviewer should check:
   deferred-findings issues are authored that way and holding on them made the
   queue's own work items undispatchable — and because held to issues alone,
   every agent pull request would hold on the body the agent wrote itself. That
-  is sound on the login alone: `[` is not legal in a registered GitHub login,
-  so the `[bot]` form cannot be typed by anybody, and an App opens an issue or
-  a pull request *here* only with a token this repository issues. The later
+  rests on two facts and not one: `[` is not legal in a registered GitHub
+  login, so the `[bot]` form cannot be typed by anybody and an App opens an
+  issue or a pull request *here* only with a token this repository issues —
+  and `user.type` attests independently that the account is an App. Since
+  #616 the exemption needs both; the bullet below says why. The later
   **comments** of either identity are still not task text.
 - **The bundle is in time order, not list order.** A pull request has three
   record lists — issue comments, reviews, inline comments — and appending them
