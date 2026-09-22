@@ -146,8 +146,35 @@ bool DebugServer::listen(const std::string& path)
     // says to check both boards every time. And with a non-socket path it is
     // worse still -- `--debug-socket /tmp/keepme` deleted the file, silently,
     // which is the one thing CLAUDE.md says never to do without looking first.
+    //
+    // `lstat`, NOT `stat`, and that distinction is the whole of #554. `stat`
+    // follows the final symbolic link, so a link pointing at a stale socket
+    // answered `S_ISSOCK` about the TARGET -- and then `unlink` below removed
+    // the LINK, because `unlink` never follows one. The check asked about one
+    // filesystem object and the removal acted on another. A path somebody set
+    // up as configuration was replaced by a socket, silently, and the stale
+    // target it named was left exactly where it was.
     struct stat existing {};
-    if (::stat(path.c_str(), &existing) == 0) {
+    if (::lstat(path.c_str(), &existing) == 0) {
+        if (S_ISLNK(existing.st_mode)) {
+            // This branch does not prevent the destruction -- `lstat` alone
+            // already does, and deleting the branch was mutation-tested to
+            // confirm it: the link then falls through to `!S_ISSOCK` below and
+            // is refused there. What the branch buys is the *reason*. Without
+            // it a link is reported as "exists and is not a socket", which
+            // sends the reader looking at a file that is fine, and says the
+            // same thing about a dangling link, whose target does not exist at
+            // all. Refused rather than followed because following would bind a
+            // path the caller did not name: the socket would appear somewhere
+            // the person reading `--debug-socket` has no reason to look.
+            std::fprintf(stderr,
+                         "debug: %s is a symbolic link -- refusing to replace it. "
+                         "Pass the path it points at, or remove the link first\n",
+                         path.c_str());
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return false;
+        }
         if (!S_ISSOCK(existing.st_mode)) {
             std::fprintf(stderr,
                          "debug: %s exists and is not a socket -- refusing to remove it\n",
@@ -201,7 +228,7 @@ bool DebugServer::listen(const std::string& path)
     // somebody else's rescue.
     path_ = path;
     struct stat bound {};
-    if (::stat(path_.c_str(), &bound) == 0) {
+    if (::lstat(path_.c_str(), &bound) == 0) {
         path_dev_ = bound.st_dev;
         path_ino_ = bound.st_ino;
     }
@@ -251,9 +278,12 @@ void DebugServer::close()
         // binds the same path, that new socket can land on the same number and
         // be removed here. There is no portable way to ask a bound AF_UNIX
         // descriptor which inode it holds, so a stat is the strongest check
-        // available.
+        // available. `lstat` for the reason `listen` uses it: `unlink` acts on
+        // the name, so the check has to ask about the name too. A link put
+        // here to the socket this bound would pass a `stat` and be deleted
+        // while the socket itself stayed behind.
         struct stat current {};
-        if (::stat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
+        if (::lstat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
             current.st_ino == path_ino_) {
             ::unlink(path_.c_str());
         }
