@@ -23,7 +23,10 @@ mechanism.
 
 from __future__ import annotations
 
+import fcntl
 import os
+import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -259,9 +262,219 @@ def _socket_path_is_not_a_scratch_pad(simulator: str, board: str) -> None:
         check(os.path.islink(dangling), "and that link survives as well")
 
 
+def _log_says(log_path: str, phrase: str) -> bool:
+    return phrase in Path(log_path).read_text(errors="replace")
+
+
+def _entry(path: str):
+    """`lstat`, or `None` where there is no entry at all.
+
+    The failure this file is checking for deletes a directory entry, so a
+    missing one is an outcome to report, not an exception to escape through.
+    Raised, it takes the whole suite down with a traceback and no line saying
+    which assertion was being made.
+    """
+    try:
+        return os.lstat(path)
+    except FileNotFoundError:
+        return None
+
+
+def _same_inode(one, other) -> bool:
+    return (one is not None and other is not None
+            and (one.st_dev, one.st_ino) == (other.st_dev, other.st_ino))
+
+
+def _connects(path: str) -> bool:
+    """Is anything answering on this path right now?
+
+    The same question `socket_is_served()` asks inside the simulator, and for
+    the same reason: a stale socket file and a live one are the same directory
+    entry, and only a connection tells them apart.
+    """
+    asking = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    asking.settimeout(10.0)
+    try:
+        asking.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        asking.close()
+
+
+def _within(seconds: float, settled) -> bool:
+    """Poll `settled` until it is true, and say whether it ever was."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if settled():
+            return True
+        time.sleep(0.05)
+    return settled()
+
+
+def _one_stale_socket_has_one_recoverer(simulator: str, board: str) -> None:
+    """Two simulators recovering the same stale socket, let go together.
+
+    Every case above is about what *one* simulator finds at a path. This is
+    about two of them finding the same thing at the same moment, which ends the
+    same way by a different route: both probe one stale socket, both get
+    `ECONNREFUSED`, both conclude the entry may go -- and the second one's
+    `unlink` removes the first one's freshly bound socket, because `unlink`
+    acts on the name and the name changed hands between the probe and the
+    removal. The first simulator then runs unreachable while printing that it
+    is listening, which is the exact symptom the live-socket refusal exists to
+    prevent.
+
+    Held rather than raced. The test takes the claim the simulator itself uses
+    -- `<socket path>.lock`, an exclusive `flock` -- so both contenders stop at
+    a point this file chose, with the stale inode still in place and nothing
+    removed yet, and the part under test starts when the claim is dropped. A
+    build whose `listen` does not take that claim never prints that it is
+    waiting and never stops, so it does not make this case flaky: it fails it.
+    """
+    environment = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    with tempfile.TemporaryDirectory() as workdir:
+        contended = os.path.join(workdir, "contended.sock")
+
+        # What a killed simulator leaves behind, made directly rather than by
+        # killing one: a directory entry with nothing serving it. Bound and
+        # closed without ever listening, so a connect gets ECONNREFUSED --
+        # which is the only signal that tells a stale inode from a live one.
+        abandoned = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            abandoned.bind(contended)
+        finally:
+            abandoned.close()
+        stale = os.lstat(contended)
+        check(stat.S_ISSOCK(stale.st_mode), "a stale socket is in place, with nothing serving it")
+
+        logs = [os.path.join(workdir, f"contender-{which}.log") for which in ("a", "b")]
+        contenders: list[subprocess.Popen] = []
+        handles = [open(path, "wb") for path in logs]
+        try:
+            claim_fd = os.open(contended + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(claim_fd, fcntl.LOCK_EX)
+                for handle in handles:
+                    contenders.append(subprocess.Popen(
+                        [simulator, "--board", board, "--debug-socket", contended],
+                        stdout=handle, stderr=subprocess.STDOUT, env=environment))
+
+                waiting = _within(60, lambda: all(
+                    _log_says(log, "waiting for the simulator claiming") for log in logs))
+                check(waiting, "both simulators wait for a claim somebody else holds")
+                check(all(one.poll() is None for one in contenders),
+                      "and neither of them gave up while it was held")
+                check(_same_inode(_entry(contended), stale),
+                      "and the stale socket is still exactly the inode it was")
+                # Asked as well as the inode, and it is the stronger of the
+                # two: /tmp is tmpfs here and hands a freed inode number
+                # straight back, so a contender that had already unlinked the
+                # stale socket and bound its own can pass the comparison
+                # above. Nothing can be *serving* this path yet, though --
+                # whoever holds the claim has not let go.
+                check(not _connects(contended),
+                      "with nothing serving it, because nobody has been let through yet")
+            finally:
+                os.close(claim_fd)  # which is what releases the flock
+
+            # Both are now free to recover the same stale socket at once.
+            _within(60, lambda: (
+                sum(_log_says(log, "listening on") for log in logs) == 1
+                and sum(one.poll() is not None for one in contenders) == 1))
+            bound = [n for n, log in enumerate(logs) if _log_says(log, "listening on")]
+            exited = [n for n, one in enumerate(contenders) if one.poll() is not None]
+            check(len(bound) == 1 and len(exited) == 1 and bound[0] != exited[0],
+                  f"exactly one of the two takes the path (bound {bound}, exited {exited})")
+            if len(bound) != 1 or len(exited) != 1 or bound[0] == exited[0]:
+                return
+
+            owner, refused = contenders[bound[0]], contenders[exited[0]]
+            claimed = _entry(contended)
+            said = Path(logs[exited[0]]).read_text(errors="replace")
+            check(refused.returncode != 0, "the one that lost exits non-zero")
+            check("already served" in said,
+                  f"having been told the endpoint is live: {said[-200:]!r}")
+            check(owner.poll() is None, "the one that won is still running")
+
+            # The defect itself: the loser's `unlink` used to land on whatever
+            # held the name by then, which is the winner's socket. Sampled once
+            # the loser has already exited, so a removal shows up here as a
+            # missing entry or a different inode rather than as a race this
+            # test would have to catch mid-flight.
+            check(claimed is not None and stat.S_ISSOCK(claimed.st_mode),
+                  "the path is still a socket, not a hole the loser left")
+            # The loser has exited, so whatever answers on this path is the
+            # winner. That is what makes the connection an ownership assertion
+            # and not just a liveness one.
+            check(_connects(contended), "and it still reaches the simulator that won")
+            check(_same_inode(claimed, _entry(contended)),
+                  "on the inode the winner bound, unchanged by the loser")
+        finally:
+            for one in contenders:
+                one.terminate()
+            for one in contenders:
+                try:
+                    one.wait(timeout=10)
+                except subprocess.TimeoutExpired:      # pragma: no cover
+                    one.kill()
+            for handle in handles:
+                handle.close()
+
+
+def _a_cleanup_that_failed_is_not_a_cleanup(simulator: str, board: str) -> None:
+    """A stale socket that cannot be removed has to stop the start-up there.
+
+    `unlink` used to be called for its effect with its result thrown away, so a
+    removal that failed carried straight on into `bind`, and `bind` then said
+    `Address already in use`. True, and about the wrong thing: what failed was
+    the cleanup, and somebody reading `EADDRINUSE` goes looking for the other
+    simulator, which is not there.
+
+    Made to fail by taking write permission off the *directory*, since that is
+    the permission `unlink` needs, while leaving what is in it readable and
+    connectable. The claim file is created before the directory is sealed for
+    the same reason: without one already there the simulator cannot claim the
+    path at all and refuses a step earlier, which is a different case than the
+    one being made here.
+    """
+    if os.geteuid() == 0:
+        skip("a cleanup that cannot happen stops the start-up",
+             "root ignores the directory permission this case is built from")
+        return
+
+    environment = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    with tempfile.TemporaryDirectory() as workdir:
+        sealed = os.path.join(workdir, "sealed")
+        os.mkdir(sealed)
+        stuck = os.path.join(sealed, "stuck.sock")
+        abandoned = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            abandoned.bind(stuck)
+        finally:
+            abandoned.close()
+        os.close(os.open(stuck + ".lock", os.O_RDWR | os.O_CREAT, 0o600))
+
+        before = _entry(stuck)
+        os.chmod(sealed, 0o500)
+        try:
+            code, said = _refusal(simulator, board, stuck, environment)
+            check(code != 0, "a stale socket that cannot be removed is not bound over")
+            check("unlink" in said, f"and what is named is the cleanup: {said[-200:]!r}")
+            check("Address already in use" not in said,
+                  "and not the bind that used to follow it")
+            check(_same_inode(_entry(stuck), before), "and the stale socket is still there")
+        finally:
+            # Before the temporary directory is removed, which needs it.
+            os.chmod(sealed, 0o700)
+
+
 def run(simulator: str, board: str = "waveshare-amoled-206") -> int:
     print("socket path")
     _socket_path_is_not_a_scratch_pad(simulator, board)
+    _one_stale_socket_has_one_recoverer(simulator, board)
+    _a_cleanup_that_failed_is_not_a_cleanup(simulator, board)
 
     with tempfile.TemporaryDirectory() as workdir:
         socket_path = os.path.join(workdir, "sim.sock")

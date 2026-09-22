@@ -68,6 +68,20 @@ A path that exists and is **not** a socket is refused too. `--debug-socket` used
 to unlink whatever was at the path before binding, so a mistyped
 `--debug-socket ~/notes.md` deleted the file without a word.
 
+**There is a `<socket path>.lock` beside the socket, and it stays there.** An
+empty 0600 file the simulator holds an exclusive `flock` on while it inspects
+the path, clears a stale socket off it and binds — and nothing else; nothing is
+ever written into it. Two simulators started on one path at the same moment
+otherwise both find the same stale socket, both decide it may go, and the second
+one's `unlink` removes the socket the first has just bound: the first stays
+alive, goes on printing that it is listening, and is unreachable. Whichever one
+gets there second now waits — it says `waiting for the simulator claiming …` if
+it has to wait at all — and is then refused with the *already served* message
+above. The file is not deleted on exit on purpose: removing a lock file lets the
+next two contenders lock two different inodes and both believe they hold it.
+Delete it by hand if you like; the simulator makes it again. One file per socket
+path, so simulators on different paths never wait for each other.
+
 Add `--diagnostic` for the test pattern instead of the capability screen — see
 [the diagnostic screen](#the-diagnostic-screen).
 

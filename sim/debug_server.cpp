@@ -6,10 +6,12 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 namespace attadipa::sim {
@@ -52,6 +54,21 @@ constexpr int kMaxChunksPerPoll = 64;
 // because it runs before anything is on screen and the fallback answer is a
 // refusal the operator can read.
 constexpr int kProbeTimeoutMs = 250;
+
+// The claim that goes beside a socket path. One per path -- see PathClaim.
+constexpr const char* kClaimSuffix = ".lock";
+
+// How long to wait for the simulator that is already claiming this path, and
+// how often to ask again.
+//
+// The section a claim covers is a handful of syscalls plus at most one
+// `kProbeTimeoutMs` probe, so a contender that is alive is out of it inside
+// half a second and this budget is about sixteen of those -- room for a loaded
+// machine, not room for a different kind of problem. Bounded at all for the
+// reason the probe is bounded: this runs before anything is on screen, and a
+// start-up that waits for ever is indistinguishable from one that hung.
+constexpr int kClaimWaitMs  = 5000;
+constexpr int kClaimRetryMs = 20;
 
 bool set_non_blocking(int fd)
 {
@@ -111,6 +128,151 @@ bool socket_is_served(const std::string& path)
     return !refused;
 }
 
+// Exclusive use of one socket path, for as long as it takes to decide what is
+// at that path and then take it.
+//
+// Everything `listen` does between `lstat` and a successful `listen(2)` is
+// check-then-act on a *name*. Two simulators recovering the same stale socket
+// both see `ECONNREFUSED`, both conclude the entry may go, and the second
+// one's `unlink` deletes the first one's freshly bound socket -- because
+// `unlink` acts on the name, and by then the name holds something the second
+// one never probed. The first then runs on a socket no path reaches, printing
+// that it is listening: the identical symptom the live-socket refusal below
+// exists to prevent, arrived at from the other side. Re-checking cannot close
+// that, because every answer is only true until the next process acts. So the
+// processes take turns instead.
+//
+// `flock` on a file beside the socket, and all three of those choices are load
+// bearing:
+//
+//   * `flock`, because the kernel drops it when the holder dies. The process
+//     that leaves a stale socket behind is one that was killed -- a claim it
+//     could also leave behind would turn a mess that recovers by itself into
+//     one that needs a person.
+//   * a file, because it is the only thing two simulators that have never
+//     heard of each other can both already name. It is created 0600, nothing
+//     is ever written into it, and it is **not removed on exit**: deleting a
+//     lock file lets the next two contenders lock two different inodes and
+//     both believe they hold it.
+//   * beside the socket, because the claim has to be per path. One claim for
+//     the program, or a lock on the containing directory, would serialise
+//     every simulator whose socket happens to live in /tmp and hand any local
+//     user a way to stall somebody else's start-up.
+//
+// What this does not do is defend a path against a process that does not play:
+// an older build without this code, or a person with `rm` and `ln`. That is
+// what the identity re-check in `listen` narrows, and why the removal there is
+// still written as though nothing were holding the path still.
+class PathClaim {
+public:
+    explicit PathClaim(const std::string& socket_path)
+        : socket_path_(socket_path), path_(socket_path + kClaimSuffix)
+    {
+    }
+    ~PathClaim() { release(); }
+
+    PathClaim(const PathClaim&)            = delete;
+    PathClaim& operator=(const PathClaim&) = delete;
+
+    // True once this process, and no other simulator, may act on the socket
+    // path. Prints its own refusal; the caller only has to stop.
+    bool acquire()
+    {
+        // `O_NOFOLLOW` so a link left at this name cannot move the claim --
+        // and the file it creates -- somewhere the caller did not name. No
+        // `O_TRUNC`: a file already here is to be locked, never rewritten.
+        // The umask is pinned for the reason `bind` pins it and for one more:
+        // an inherited 000 would publish a claim any local user can hold, and
+        // an inherited 0600 would create one *this same user cannot open next
+        // time*, which is a lock-out that outlives the process.
+        const mode_t previous_umask = ::umask(0177);
+        fd_ = ::open(path_.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, S_IRUSR | S_IWUSR);
+        const int open_errno = errno;
+        ::umask(previous_umask);
+        if (fd_ < 0) {
+            std::fprintf(stderr, "debug: cannot claim %s -- open(%s): %s\n", socket_path_.c_str(),
+                         path_.c_str(), std::strerror(open_errno));
+            return false;
+        }
+
+        // Asked of the descriptor rather than of the name, so there is no
+        // second object for this to be wrong about. A claim has to be an
+        // ordinary file: a fifo or a device node here makes the `open` above
+        // mean something else entirely, and a socket here means somebody is
+        // running a simulator on a path ending in `.lock`.
+        struct stat claim {};
+        if (::fstat(fd_, &claim) != 0 || !S_ISREG(claim.st_mode)) {
+            std::fprintf(stderr,
+                         "debug: %s is not a regular file -- refusing to use it to claim %s\n",
+                         path_.c_str(), socket_path_.c_str());
+            release();
+            return false;
+        }
+
+        // Measured, not counted off the sleeps below: `nanosleep` returns
+        // early when a signal arrives, so a loop that adds up what it *asked*
+        // for gives up before the budget and then prints a number that was
+        // never waited.
+        timespec started{};
+        ::clock_gettime(CLOCK_MONOTONIC, &started);
+
+        bool said_waiting = false;
+        for (;;) {
+            if (::flock(fd_, LOCK_EX | LOCK_NB) == 0) {
+                return true;
+            }
+            if (errno != EWOULDBLOCK) {
+                std::fprintf(stderr, "debug: flock(%s): %s\n", path_.c_str(),
+                             std::strerror(errno));
+                release();
+                return false;
+            }
+            timespec now{};
+            ::clock_gettime(CLOCK_MONOTONIC, &now);
+            const long waited_ms = (now.tv_sec - started.tv_sec) * 1000 +
+                                   (now.tv_nsec - started.tv_nsec) / (1000 * 1000);
+            if (waited_ms >= kClaimWaitMs) {
+                std::fprintf(stderr,
+                             "debug: another simulator has been claiming %s for %ld ms; "
+                             "giving up rather than waiting longer\n",
+                             socket_path_.c_str(), waited_ms);
+                release();
+                return false;
+            }
+            if (!said_waiting) {
+                // Said once, and said *before* the waiting rather than after
+                // it, because a start-up that has printed nothing and a
+                // start-up that has hung look the same from outside -- which
+                // is the same argument the probe timeout above is made from.
+                // It is also the barrier the end-to-end test holds two
+                // simulators against, so it is load bearing in both
+                // directions.
+                std::printf("debug: waiting for the simulator claiming %s\n", socket_path_.c_str());
+                std::fflush(stdout);
+                said_waiting = true;
+            }
+            const timespec nap{0, static_cast<long>(kClaimRetryMs) * 1000 * 1000};
+            ::nanosleep(&nap, nullptr);
+        }
+    }
+
+    void release()
+    {
+        if (fd_ >= 0) {
+            // Closing the descriptor releases the lock and leaves the file.
+            // `flock` is held by the open file description and by nothing
+            // else, so this is the whole of it.
+            ::close(fd_);
+            fd_ = -1;
+        }
+    }
+
+private:
+    std::string socket_path_;
+    std::string path_;
+    int         fd_ = -1;
+};
+
 }  // namespace
 
 DebugServer::~DebugServer()
@@ -126,6 +288,15 @@ bool DebugServer::listen(const std::string& path)
         return false;
     }
 
+    // Taken before anything at the path is looked at, and held until this
+    // simulator is listening on it, because what has to be exclusive is the
+    // *decision* and not any one step of it. Released by the destructor on
+    // every way out of this function, success included. See PathClaim.
+    PathClaim claim(path);
+    if (!claim.acquire()) {
+        return false;
+    }
+
     listen_fd_ = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (listen_fd_ < 0) {
         std::fprintf(stderr, "debug: socket(): %s\n", std::strerror(errno));
@@ -134,7 +305,10 @@ bool DebugServer::listen(const std::string& path)
 
     // A stale socket file from a simulator that was killed rather than closed
     // would make bind() fail with EADDRINUSE forever, so one has to be removed.
-    // What must not happen is removing anything else.
+    // What must not happen is removing anything else -- and "anything else"
+    // includes the socket the *next* simulator binds a microsecond from now,
+    // which is what the claim above is for and what the identity re-check
+    // below still asks about.
     //
     // The previous spelling was an unconditional `unlink`, and its stated
     // reason -- "a live server holds the path open and a second one is refused
@@ -192,7 +366,43 @@ bool DebugServer::listen(const std::string& path)
             listen_fd_ = -1;
             return false;
         }
-        ::unlink(path.c_str());
+
+        // The probe answered about the inode `lstat` returned; `unlink`
+        // removes whatever the *name* holds now, and those were the same
+        // filesystem object only for as long as nobody touched the path.
+        // Under the claim no other simulator can have, and this asks anyway,
+        // because the claim binds simulators and the name is writable by
+        // everything else with access to the directory -- an older build from
+        // the same working tree, or a person with `rm` and `ln`. What is
+        // there now is not what was proved stale, so it is not what this is
+        // allowed to delete. It is the narrower of the two guards and the
+        // weaker one: it shrinks the window rather than closing it, which is
+        // why the claim above exists and is not spelled as another check.
+        struct stat still {};
+        if (::lstat(path.c_str(), &still) != 0 || still.st_dev != existing.st_dev ||
+            still.st_ino != existing.st_ino) {
+            std::fprintf(stderr,
+                         "debug: %s changed while it was being checked -- refusing to remove "
+                         "whatever is there now\n",
+                         path.c_str());
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return false;
+        }
+
+        // `ENOENT` is the one failure that is the outcome being asked for.
+        // The socket's own owner can be inside `close()`, which unlinks it by
+        // this same identity check, and a name that is already gone is a name
+        // that can be bound. Every other error leaves the entry where it is,
+        // and going on to `bind` would report `EADDRINUSE` -- true, and about
+        // the wrong thing. What failed was the cleanup, so that is what gets
+        // said.
+        if (::unlink(path.c_str()) != 0 && errno != ENOENT) {
+            std::fprintf(stderr, "debug: unlink(%s): %s\n", path.c_str(), std::strerror(errno));
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return false;
+        }
     }
 
     sockaddr_un address{};

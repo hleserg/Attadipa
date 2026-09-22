@@ -39,6 +39,16 @@ namespace attadipa::sim {
 // Two clients injecting input into one interface is not a use case, it is a
 // race. A second connection is accepted and immediately closed, which tells the
 // second tool something definite instead of letting it wait.
+//
+// ### One simulator per path, and the file that enforces it
+//
+// `listen` takes an exclusive `flock` on `<socket path>.lock` -- created 0600,
+// never written to, and deliberately **left behind on exit** -- for as long as
+// it takes to inspect the path, remove a stale socket from it and bind. Two
+// simulators started on one path otherwise both classify the same stale entry
+// and the second one's `unlink` removes the first one's live socket. The lock
+// is per path, so two simulators on two paths never wait for each other, and
+// `docs/testing/WATCH_CONTROL.md` tells the operator the file is there.
 class DebugServer {
 public:
     ~DebugServer();
