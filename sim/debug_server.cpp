@@ -228,7 +228,7 @@ bool DebugServer::listen(const std::string& path)
     // somebody else's rescue.
     path_ = path;
     struct stat bound {};
-    if (::stat(path_.c_str(), &bound) == 0) {
+    if (::lstat(path_.c_str(), &bound) == 0) {
         path_dev_ = bound.st_dev;
         path_ino_ = bound.st_ino;
     }
@@ -278,9 +278,12 @@ void DebugServer::close()
         // binds the same path, that new socket can land on the same number and
         // be removed here. There is no portable way to ask a bound AF_UNIX
         // descriptor which inode it holds, so a stat is the strongest check
-        // available.
+        // available. `lstat` for the reason `listen` uses it: `unlink` acts on
+        // the name, so the check has to ask about the name too. A link put
+        // here to the socket this bound would pass a `stat` and be deleted
+        // while the socket itself stayed behind.
         struct stat current {};
-        if (::stat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
+        if (::lstat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
             current.st_ino == path_ino_) {
             ::unlink(path_.c_str());
         }

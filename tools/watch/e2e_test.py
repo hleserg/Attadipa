@@ -154,15 +154,12 @@ def _socket_path_is_not_a_scratch_pad(simulator: str, board: str) -> None:
         keepme = os.path.join(workdir, "keepme.txt")
         Path(keepme).write_text("a file that is not a socket\n")
 
-        refused = subprocess.run(
-            [simulator, "--board", board, "--debug-socket", keepme],
-            capture_output=True, text=True, env=environment, timeout=60)
+        code, said = _refusal(simulator, board, keepme, environment)
         check(Path(keepme).exists(), "a non-socket path is not deleted")
         check(Path(keepme).read_text() == "a file that is not a socket\n",
               "and it is not overwritten either")
-        check(refused.returncode != 0, "and the simulator exits non-zero")
-        check("not a socket" in (refused.stdout + refused.stderr),
-              f"and says why: {(refused.stdout + refused.stderr)[-200:]!r}")
+        check(code != 0, "and the simulator exits non-zero")
+        check("not a socket" in said, f"and says why: {said[-200:]!r}")
 
         # Now the two-simulator case, on a path the first one is serving.
         taken = os.path.join(workdir, "taken.sock")
@@ -180,12 +177,9 @@ def _socket_path_is_not_a_scratch_pad(simulator: str, board: str) -> None:
                 check(os.path.exists(taken), "the first simulator listens")
                 before = os.stat(taken)
 
-                second = subprocess.run(
-                    [simulator, "--board", board, "--debug-socket", taken],
-                    capture_output=True, text=True, env=environment, timeout=60)
-                check(second.returncode != 0, "a second simulator on the same path is refused")
-                check("already served" in (second.stdout + second.stderr),
-                      f"and says so: {(second.stdout + second.stderr)[-200:]!r}")
+                code, said = _refusal(simulator, board, taken, environment)
+                check(code != 0, "a second simulator on the same path is refused")
+                check("already served" in said, f"and says so: {said[-200:]!r}")
 
                 after = os.stat(taken)
                 check((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino),
@@ -251,8 +245,11 @@ def _socket_path_is_not_a_scratch_pad(simulator: str, board: str) -> None:
         # The other half, and the one that says the refusal is about the LINK
         # rather than about the target being stale: a link to a path that does
         # not exist at all is refused the same way. `stat` would have failed
-        # here and fallen through to the bind, which is how the alias got
-        # replaced without anything even reporting a type.
+        # here and fallen through to the bind, and the bind would have refused
+        # too -- a dangling link's own entry exists, so it is EADDRINUSE and
+        # the link survives. The exit code alone therefore passes against the
+        # old code; the message is what this case checks, because "Address
+        # already in use" names the wrong object.
         dangling = os.path.join(workdir, "dangling.sock")
         os.symlink(os.path.join(workdir, "nothing-here.sock"), dangling)
         code, said = _refusal(simulator, board, dangling, environment)
