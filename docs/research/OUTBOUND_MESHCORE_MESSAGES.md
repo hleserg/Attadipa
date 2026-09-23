@@ -658,7 +658,7 @@ loop that is both of §8.3's refusals at once.
 This resolves the #552 requirement directly: **a runtime retention policy must
 not become a product address-book limit.** It was one until
 [#573](https://github.com/hleserg/Attadipa/issues/573), which deleted the
-lookup from the worker and made the provider ask the node — `firmware/main/meshcore_ble.cpp:1355` — "    const auto result = service.send_private("
+lookup from the worker and made the provider ask the node — `firmware/main/meshcore_ble.cpp:1366` — "    const auto result = service.send_private("
 — with the whole key the debug boundary now carries.
 
 ### 8.2 `CMD_GET_CONTACT_BY_KEY` (30) is the right instrument and is not free

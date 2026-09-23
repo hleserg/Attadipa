@@ -2734,7 +2734,7 @@ code under its own licence — no new dependency, no new licence surface:
   instance. This slot stays the HIL bridge's, its bond-shaped names
   (`Deleted`, `Refused`, `Nothing`) intact.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:1817`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:1845`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. #411 put its
@@ -3176,3 +3176,92 @@ own reasoning being encoded wrongly: a budget that expires must not produce
 than by accident; and the same body sent twice in the same second must be
 asserted to produce the **same** ack tag, so that no correlator is ever written
 as if the tag were unique.
+
+---
+
+### Noticing that the NimBLE host task was never created
+
+**Problem:** MeshCore's BLE bootstrap ended with `nimble_port_freertos_init()`,
+and treated that step as the one that could not fail
+([#344](https://github.com/hleserg/Attadipa/issues/344)). It creates a FreeRTOS
+task, FreeRTOS can refuse to create one, and without it nothing calls
+`nimble_port_run()` — no advertising, no session, and `start_meshcore_ble()`
+returning `ESP_OK` to a watch whose radio is inert, with the event queue, the
+worker and an initialised NimBLE runtime held until reboot.
+
+**Candidates:**
+
+1. **The pinned wrapper itself** — ESP-IDF `v5.5.5` pins
+   `components/bt/host/nimble/nimble` at esp-nimble
+   `685675c0128deafdd201c9eb82e61d227364646c` (GitHub contents API). There,
+   `porting/npl/freertos/src/nimble_port_freertos.c` reads
+   `xTaskCreatePinnedToCore(host_task, "nimble_host", NIMBLE_HS_STACK_SIZE, NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);`
+   followed by `return ESP_OK;` — the `BaseType_t` discarded — and
+   `nimble_port_freertos_init()` is `void` on top of that. `esp_nimble_enable()`
+   is public and does return `esp_err_t`, but in this revision that value is a
+   constant, so calling it directly buys nothing.
+2. **The upstream fix**, esp-nimble `nimble-1.9.0-idf`, same file: the return is
+   compared against `pdPASS`, the handle cleared, `ESP_ERR_NO_MEM` returned, and
+   `nimble_port_freertos_init()` itself becomes `esp_err_t`. Apache-2.0.
+3. **Moving the ESP-IDF pin forward** to a release carrying candidate 2.
+4. **Patching the submodule in the build** — a repository-held diff applied to
+   ESP-IDF's vendored NimBLE at configure time.
+5. **Inferring the failure instead of observing it** — a heap preflight before
+   the call, or looking for a task named `nimble_host` afterwards.
+
+**Licence:** Apache-2.0 into GPL-3.0-or-later, compatible in direction. Three
+lines of call sequence and four named constants, all of them the port's own
+public macros; no upstream file is copied into this tree, so no notice travels.
+
+**Strengths:** candidate 2 is the same defect, diagnosed and fixed by the people
+who own the code, and it fixes it the obvious way — so a later pin bump
+converges on this behaviour rather than fighting it.
+
+**Weaknesses:** candidate 2 is *not in the pin*, and `nimble_port_freertos_init`
+changing return type is an API break, which is why it arrived with a release
+rather than a patch. Candidate 3 is a whole-toolchain move for one return check,
+against a pin this repository verifies by container digest
+(`.github/workflows/ci.yml:636` — "container: espressif/idf@sha256:a9231d06").
+Candidate 4 puts a patch step between the verified container and the build, and
+the thing it patches is a submodule of a submodule. Candidate 5 is a guess
+wearing a check: a preflight answers a question about a moment that has passed
+by the time the task is created, and a name lookup cannot tell "not created"
+from "not scheduled yet".
+
+**Decision:** `PORT` candidate 2 to this repository's own call site, and
+`REJECT` 3, 4 and 5.
+
+**Reason:** the wrapper is three lines, and the only one that matters is the one
+that throws the answer away. Writing those three lines here — same task name,
+same `NIMBLE_HS_STACK_SIZE`, same `configMAX_PRIORITIES - 4`, same
+`NIMBLE_CORE`, all read from `nimble/nimble_port.h` rather than copied as
+numbers — keeps the result and keeps the constants tracking Kconfig, without
+touching the toolchain or the build. What this costs is stated rather than
+hidden: the port's static `host_task_h` is now never set, so
+`nimble_port_freertos_deinit()` would delete nothing, and this image's host task
+ends itself instead — `firmware/main/meshcore_ble.cpp:2056` — "    vTaskDelete(nullptr);".
+When the pin moves to a release with candidate 2 in it, this becomes a call to
+`nimble_port_freertos_init()` again with its `esp_err_t` checked, and the
+ordering rule in `meshcore_boot.h` stays exactly as it is.
+
+**Source revision:** ESP-IDF `v5.5.5`; esp-nimble
+`685675c0128deafdd201c9eb82e61d227364646c` for the pinned behaviour and
+`nimble-1.9.0-idf` for the fix. Nothing cloned — `nimble_port_freertos.c`,
+`nimble_port_freertos.h`, `nimble_port.c`, `nimble_port.h` and `ble_hs_stop.c`
+were read at those revisions on 2026-09-23, and the submodule SHA was taken from
+the ESP-IDF contents API rather than from the issue that reported it.
+
+**Attadipa integration:** `RealBootOps::host_start()` in
+`firmware/main/meshcore_ble.cpp`, reached through
+`firmware/main/meshcore_boot.h:91` — "    if (!ops.host_start()) {". The same
+read of the pin decided the acquisition order around it: `nimble_port_stop()`
+pends `BLE_NPL_TIME_FOREVER` on a semaphore only the host's run loop releases,
+and refuses with `BLE_HS_EALREADY` until that loop has processed the start
+event, so the host task is an acquisition this bootstrap cannot take back and
+nothing fallible may follow it.
+
+**Tests required:** the host-start failure branch and its rollback, in
+`tests/test_session_owner.cpp` — which drive the production
+`boot_meshcore()` template, not a copy of it. What they cannot cover is the
+FreeRTOS half: that `xTaskCreatePinnedToCore` with these arguments produces a
+working NimBLE host is **NOT EXECUTED — HARDWARE REQUIRED**.
