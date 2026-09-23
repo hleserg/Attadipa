@@ -2,7 +2,7 @@
 
 Research for #562. Reviewed at `main@8e16c1af`, 2026-09-23. No automation,
 workflow or Dependabot configuration is changed by this document; the one change
-it argues for is filed as a separate executable issue.
+it argues for is filed as #641.
 
 Hardware: not applicable. Nothing here is a hardware result.
 
@@ -97,18 +97,25 @@ the queue instead of all of it. Security PRs do not count toward this limit, per
 GitHub's reference: "*Security update* pull requests are not subject to this
 limit and do not count toward it."
 
+**A parked PR is still an open PR.** `queue:parked` removes a PR from our queue
+count. It does not remove it from Dependabot's `open-pull-requests-limit`. With
+#631–#633 parked and a limit of 2, Dependabot would open nothing and give no
+signal here: a silent stall. So the limit only works if a burst that meets a full
+queue is **closed, not parked**, and #631–#633 are closed before the limit
+changes (#641).
+
 **4. How Dependabot PRs should count.**
 
 | Option | Failure mode |
 |---|---|
 | Count as ordinary WIP (today) | a burst fills the queue; it is released only by hand-finishing or parking |
-| Auto-`queue:parked` on open | the queue stays free, but parked PRs pile up unseen, and the branch-update decision skips them once it is wired |
+| Auto-`queue:parked` on open | the queue stays free, but parked PRs pile up unseen, still fill Dependabot's own limit, and the branch-update decision skips them once it is wired |
 | Separate bounded intake | new write-capable automation, which the issue's non-goals rule out |
 | One PR at a time | `open-pull-requests-limit: 1` makes the Claude and CodeQL updates wait on each other week to week; security PRs still ignore it |
 
 Recommendation: keep counting them (no hidden exemption), and bound the count
-with question 3. Parking is a manual lever, used when a burst meets a full queue,
-as on 2026-09-23. Whether to exempt bot PRs from WIP is a question for the owner
+with question 3. Parking worked on 2026-09-23 only because the Dependabot limit
+was 5. Under limit 2 the manual step is closing (§3). Whether to exempt bot PRs from WIP is a question for the owner
 (question 8).
 
 **5. Who writes the second half.** Today, and under every candidate here, the
@@ -136,7 +143,7 @@ rebasing its branch after a person pushes to it. The options reference read for
 this document does not say. Both past hand-finished PRs merged within hours, so
 it did not matter then.
 
-**8. What only the owner can decide.**
+**8. What only the owner can decide.** Asked in #643 (`needs-owner`).
 - Auto-merge of dependency PRs. It is rejected here as a default and needs an
   owner decision to enable.
 - Whether Dependabot PRs are exempt from the writer queue.
@@ -151,7 +158,7 @@ it did not matter then.
 | Today | 5 | yes | no (split) | owner/agent by hand, unannounced | unbounded |
 | Group `github/codeql-action/*` only | 5 | yes (if 5 distinct updates) | yes | same | unbounded |
 | Group + limit 2 **(recommended)** | 2 | no | yes | same, now stated | unbounded, not counted by Dependabot, **counted** by our queue |
-| Group + limit 2 + auto-park | 2 | no | yes | same | parked PRs go unseen |
+| Group + limit 2 + auto-park | 2, then **0**: parked PRs stay open and fill it | no | yes | same | silent stall |
 | Exempt bots from WIP | 5 | no | no | same | unbounded and invisible to the queue |
 
 **Research verdict: PARTIAL.** The recommended process keeps full-SHA pins
@@ -168,8 +175,11 @@ adds no auto-merge. Two parts are still open:
 - **Grouped run produces two PRs anyway.** The first Monday after the change
   shows it. Close both, revert the `groups` entry, record the observed names.
   The inventory gate still refuses any partial bump, so no split can merge.
-- **Burst meets a full queue.** Park the Dependabot PRs with `queue:parked` and
-  a comment. Unpark them once the owner-token session is ready to hand-finish
-  them.
-- **Limit too low, updates starve.** Dependabot waits until a PR closes. Raise
-  the limit by one-line revert.
+- **Burst meets a full queue.** Close the Dependabot PRs with a comment. Do
+  not park them under limit 2: a parked PR still fills Dependabot's limit (§3).
+  Whether Dependabot re-proposes a version whose PR was closed is **UNKNOWN**.
+  If it does not, the owner-token session makes that bump by hand.
+- **Limit too low, updates starve.** Dependabot waits until a PR closes, and
+  reports it only in its own job log, which nothing here reads. Check the open
+  Dependabot PRs whenever a weekly run brings none. Raise the limit by a one-line
+  revert.
