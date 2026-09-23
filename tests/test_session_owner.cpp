@@ -1234,9 +1234,12 @@ void a_failed_worker_releases_in_reverse_acquisition_order()
 
 // #344 again, reopened: the host task is a task, FreeRTOS can refuse to create
 // one, and the pinned esp-nimble wrapper throws that answer away. Red before
-// the fix in two ways at once -- `host_start()` returned `void`, so this does
-// not compile against it, and `boot_meshcore()` returned `Ok` regardless, so a
-// watch with no NimBLE host loop reported a successful BLE start.
+// the fix, and red the informative way rather than by failing to build: the
+// old sequence called `ops.host_start();` as a statement, so an `Ops` whose
+// `host_start()` returns `bool` compiled against it perfectly and the answer
+// went nowhere -- which is the defect, in one line. `boot_meshcore()` then
+// returned `Ok`, and a watch with no NimBLE host loop reported a successful
+// BLE start.
 void a_failed_host_start_ends_the_worker_and_gives_everything_back()
 {
     using attadipa::firmware::BootResult;
