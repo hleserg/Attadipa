@@ -210,7 +210,7 @@ exists yet.** The four candidates, each measured against the code:
 | **the retained window** | up to 16 chat contacts, `peers_retained` against `peers_reported`, with completeness already published — `core/include/attadipa/core/mesh_service.h:216` — "    bool peers_complete = false;". On the bench node that is 16 of 233 |
 | **recent message senders** | **nothing the window does not already contain.** A sender is resolved by `find_peer_prefix` against `peers_`, so a message from outside the window has no sender at all — `link/src/meshcore_companion.cpp:1065` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" — and cannot appear in a "recent senders" list, because nothing knows who it was. This candidate looks like a second source and is a subset of the first |
 | **exact-key entry or search** | the *transport* exists after #600 and the *interaction* does not. 32 bytes is 64 hex characters, on a 2.06-inch touch screen, with no keyboard in the tree. A key the wearer cannot type is a key they cannot select |
-| **enumerating the node's table on demand** | the only candidate that reaches contact 200. It costs a walk: ~350 records × 148 bytes ≈ 52 kB over a link whose notifications carry 173 bytes, under ADR-0022's snapshot rules, and the result does not fit in RAM as a list |
+| **enumerating the node's table on demand** | the only candidate that reaches contact 200. It costs a walk: at the T114 build's 350-slot capacity, ~350 records × 148 bytes ≈ 52 kB over a link whose notifications carry 173 bytes — about 34 kB for the 233 the bench node actually holds — under ADR-0022's snapshot rules, and the result does not fit in RAM as a list. The byte count is the easy half; **M41** is the stall it has to survive |
 
 **So Q2's real answer is that the gap is enumeration, and #600 did not close
 it.** #600 lets the watch act on a key *it already holds*; the wearer holding a
@@ -316,13 +316,29 @@ The ranking that follows from the evidence:
    with nothing marking it client-written — the owner's own phone is such a
    client (**M31**). A record silently replacing a message coordinate would let
    a second app on the owner's phone move the arrow.
-3. **A message coordinate that goes wrong clears; it does not demote.** The
-   parser already implements this — a failed bound *and* a failed grammar both
-   clear, and only a later well-formed match restores. If a failed match fell
-   through to the contact record, a sender-side truncation would silently swap
-   the wearer onto a coordinate from a different wire with no visible change,
-   which is precisely the substitution ADR-0021 decision 7 was written to stop.
-   State the cleared case, do not fill it.
+3. **A message coordinate that goes wrong must not demote to the record**, and
+   **"clears" is true of the parser and not yet of the slot.** The distinction
+   is load-bearing and an earlier draft of this clause blurred it. *Inside one
+   message*, `parse_trailing_coordinate()` already does the right thing: a
+   failed bound and a failed grammar both reset the answer, so an earlier
+   quoted match in the same text cannot win, and only a later well-formed match
+   restores. *At the session slot* nothing of the kind happens, because the
+   parser's verdict arrives as one boolean that means two different things —
+   **no coordinate in this message** and **a coordinate that failed** — and the
+   caller returns early on both:
+   `link/src/meshcore_companion.cpp:1128` — "if (!parse_trailing_coordinate(status_.last_message.data(), position))"
+
+   That is correct today and it cannot carry the rule. A rule that cleared the
+   slot on every `false` would blank the arrow when the selected contact sent
+   "on my way" — an ordinary message that says nothing about a place, and
+   nothing about the coordinate already held. So the seam needs three answers
+   where it has two: **absent**, **failed**, **ok**. Absent leaves the slot
+   alone; failed clears it and does *not* fall through to the contact record,
+   because a sender-side truncation would otherwise swap the wearer onto a
+   coordinate from a different wire with no visible change — precisely the
+   substitution ADR-0021 decision 7 was written to stop. State the cleared
+   case, do not fill it. The tri-state is a prerequisite (§13), not a
+   preference: no owner answer changes it.
 4. **A fallback read is never presented as a refresh.** ADR-0020 decision 6
    forbids re-stamping unchanged bytes; reading the record after a message
    failed is a different source answering, not the same source updating.
@@ -363,8 +379,10 @@ The ranking that follows from the evidence:
    a reason the selection moved.
 6. A deleted contact's coordinate is discarded, not aged (ADR-0021 decision 7),
    and this is a prerequisite rather than a follow-up.
-7. Precedence is by source rank, not by arrival; a failed message coordinate
-   clears rather than demoting to the record.
+7. Precedence is by source rank, not by arrival; a **failed** message
+   coordinate clears rather than demoting to the record, and a message that
+   simply carries none leaves the slot untouched. Today's seam cannot tell
+   those two apart, which is why the tri-state is in §13 rather than assumed.
 8. The selected key is re-validated on load, and a storage **failure** is
    distinguishable from a storage **absence** (ADR-0006 decision 1).
 9. Leaving the readout stops sensor and location work without changing identity
@@ -402,8 +420,8 @@ on showing a place with its state.
 watch-side implementations converged on, and on a wrist a single tap is the
 input most easily made by accident.
 
-**None of these four blocks writing the prerequisites** — §2.4's deletion arm
-and §6's keyed cache are needed under every answer.
+**None of these four blocks writing the prerequisites** — §2.4's deletion arm,
+§6's keyed cache and §7's tri-state parser verdict are needed under every answer.
 
 ---
 
@@ -473,9 +491,13 @@ the client and an assertion out of the selection seam:
 - Duplicate display names across two contacts → selection unaffected; duplicate
   six-byte prefix → the mismatched full key drops the coordinate rather than
   attributing it.
-- Malformed, out-of-bounds, `(0,0)`, and grammar-failing coordinates → the
-  target coordinate is cleared and the contact record does **not** fill in
-  behind it (§7).
+- Malformed, out-of-bounds, `(0,0)` and grammar-failing coordinates → the held
+  coordinate is cleared and the contact record does **not** fill in behind it.
+  **Paired with its opposite, because the two are one test:** a message from the
+  selected contact carrying *no* coordinate at all — "on my way" — leaves the
+  held coordinate and its arrival stamp untouched. A suite that asserts only the
+  first half passes on an implementation that clears on every parser `false`,
+  and that implementation blanks the arrow on an ordinary message (§7).
 - `PUSH_CODE_CONTACT_DELETED` for the selected key → coordinate discarded, state
   says unavailable, **selection retained**.
 - Retention truncation past 16 with a selected contact beyond it → the state is
@@ -514,16 +536,22 @@ and M35 already says about this wire still applies and is not restated.
 - **M40** — whether the sixteen-contact window ever excludes a contact the
   wearer wants, on a real fleet, which decides whether §4's browse is needed at
   all or is a hypothetical.
-- **M41** — what a paged browse of a 233-contact table costs in time and power
-  over BLE, which is the number O2 option (b) is actually being priced on.
+- **M41** — what a paged browse of the node's table costs in **power**, and how
+  often it meets the 3850 ms stall the one long capture caught inside a walk.
+  The bytes and the nominal wall time are already `MEASURED`; the outlier is
+  what O2 option (b) is really being priced on, because it is the one that
+  drops rows.
 
 ---
 
 ## 13. Recommendation, and confidence
 
-**Build the prerequisites, which no owner answer changes:** the deletion arm of
-ADR-0021 decision 7 (§2.4), and a coordinate held per key rather than in one
-slot (§6). Then take O1(b) and O2(a) as the smallest honest selection — a
+**Build the three prerequisites, which no owner answer changes:** the deletion
+arm of ADR-0021 decision 7 (§2.4); a coordinate held per key rather than in one
+slot (§6); and a parser verdict of **absent / failed / ok** where there is one
+boolean today (§7), because the rule that a failed coordinate clears is not
+expressible at that seam and the plausible shortcut blanks the arrow on an
+ordinary message. Then take O1(b) and O2(a) as the smallest honest selection — a
 persisted 32-byte key, a picker over the retained window with `k of N` visible,
 explicit commit — and leave the node-wide browse to O2(b) when M40 says it is
 needed.
