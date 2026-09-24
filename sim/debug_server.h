@@ -49,6 +49,9 @@ namespace attadipa::sim {
 // and the second one's `unlink` removes the first one's live socket. The lock
 // is per path, so two simulators on two paths never wait for each other, and
 // `docs/testing/WATCH_CONTROL.md` tells the operator the file is there.
+// `close()` takes it too, and unlinks only a socket whose device and inode are
+// still the ones this server bound -- best effort, since a reused inode number
+// matches; see there.
 class DebugServer {
 public:
     ~DebugServer();

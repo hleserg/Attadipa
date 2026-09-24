@@ -80,9 +80,13 @@ it has to wait at all — and is then refused with the *already served* message
 above. If the claim is still held after five seconds it gives up instead, with
 `another simulator has been claiming … for … ms`: something is holding the
 `.lock` that is not a simulator starting up, and `fuser <socket path>.lock`
-names it. A simulator that exits takes the same claim before it removes its
-socket, so it cannot remove the one a new simulator has just bound. The
-file is not deleted on exit on purpose: removing a lock file lets the next two
+names it. A simulator that exits on its own (`--frames N`) takes the same claim
+before it removes its socket, and removes it only while the name still carries
+the inode it bound. That narrows the old failure without closing it: tmpfs
+reuses a freed inode number routinely, so a socket bound after the first one was
+deleted by hand can still match. A killed simulator -- the command above runs
+until it is -- never gets there and leaves its socket for the next start-up's
+probe. The file is not deleted on exit on purpose: removing a lock file lets the next two
 contenders lock two different inodes and both believe they hold it. Delete it by
 hand only when no simulator is running on that path; the simulator makes it
 again. In a sticky directory such as `/tmp` another user's `.lock` cannot be
