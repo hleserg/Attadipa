@@ -47,7 +47,7 @@ recorded here so that no option is credited with paying them.
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:2298` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   `firmware/main/meshcore_ble.cpp:2308` — "bool configure_meshcore_ble(std::uint32_t passkey)"
    reaches `firmware/main/meshcore_ble.cpp:1746` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
    `firmware/main/meshcore_ble.cpp:206` — "std::atomic_bool configured{false};"
@@ -178,7 +178,7 @@ The decisive fact is one the firmware already asserts to its peer:
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:2298` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:2308` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.

@@ -2269,6 +2269,7 @@ esp_err_t start_meshcore_ble()
     }
 
     RealBootOps ops;
+    esp_err_t failed = ESP_ERR_NO_MEM;
     switch (attadipa::firmware::boot_meshcore(ops)) {
     case attadipa::firmware::BootResult::Ok:
         restore_passkey();
@@ -2278,7 +2279,8 @@ esp_err_t start_meshcore_ble()
         // this call, so a failure here left a task polling a queue nothing
         // would ever post to for the rest of the boot -- roughly 24 KiB held,
         // ESTIMATED -- while app_main logged that MeshCore had failed safely.
-        return ops.port_status;
+        failed = ops.port_status;
+        break;
     case attadipa::firmware::BootResult::HostFailed:
         // Its own line because ESP_ERR_NO_MEM alone does not say which task,
         // and this one is the task the radio is: without it nothing services
@@ -2292,7 +2294,15 @@ esp_err_t start_meshcore_ble()
     case attadipa::firmware::BootResult::WorkerFailed:
         break;
     }
-    return ESP_ERR_NO_MEM;
+    // No failure arm leaves a worker, and publish() is worker-only, so this is
+    // the last word on availability for this boot. Left at Unprovisioned, the
+    // mesh screen would ask the wearer to pick a node on a radio that will
+    // never advertise; Failed is the answer that means a reset, not a retry.
+    // Under the lock: the UI task may already be reading it.
+    taskENTER_CRITICAL(&snapshot_lock);
+    snapshot.availability = attadipa::core::Availability::Failed;
+    taskEXIT_CRITICAL(&snapshot_lock);
+    return failed;
 }
 
 bool configure_meshcore_ble(std::uint32_t passkey)
