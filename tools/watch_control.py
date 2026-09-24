@@ -745,7 +745,9 @@ def build_parser() -> argparse.ArgumentParser:
         "mesh-room-send", help="log in to one MeshCore Room Server and send one message")
     mesh_room_send.add_argument("--room", required=True,
                                 help="the Room Server's 64-digit public key")
-    mesh_room_send.add_argument("--text", required=True)
+    mesh_room_send.add_argument("--text", required=True,
+                                help=f"the message, 1..{p.MESH_TEXT_BYTES} UTF-8 bytes; "
+                                     "a password of 14 or more bytes leaves fewer")
     mesh_room_send.add_argument("--utc-seconds", type=int,
                                 help="Unix UTC seconds (default: this host's current time)")
     mesh_room_send.set_defaults(func=cmd_mesh_room_send)

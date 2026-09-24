@@ -515,8 +515,17 @@ def mesh_room_send_encode(room: bytes, password: str, text: str,
         raise ValueError("MeshCore Room Server public key must be exactly 32 bytes")
     if not 1 <= len(encoded_password) <= 15:
         raise ValueError("MeshCore Room Server password must be 1..15 UTF-8 bytes")
-    if not encoded_text or len(encoded_text) > 126:
-        raise ValueError("MeshCore Room Server message must be 1..126 UTF-8 bytes")
+    if not encoded_text or len(encoded_text) > MESH_TEXT_BYTES:
+        raise ValueError(
+            f"MeshCore Room Server message must be 1..{MESH_TEXT_BYTES} UTF-8 bytes, "
+            f"not {len(encoded_text)}")
+    # The watch takes 128 here too; the envelope is what runs out first once the
+    # password is 14 bytes or longer, so say which password did it.
+    room_for_text = MAX_BODY - 32 - 1 - len(encoded_password) - 8
+    if len(encoded_text) > room_for_text:
+        raise ValueError(
+            f"a {len(encoded_password)}-byte password leaves {room_for_text} "
+            f"bytes for the text, not {len(encoded_text)}")
     if not -(1 << 63) <= utc_seconds < (1 << 63):
         raise ValueError("utc_seconds must fit in a signed 64-bit integer")
     return (room + bytes([len(encoded_password)]) + encoded_password +

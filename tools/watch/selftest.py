@@ -750,8 +750,7 @@ def a_private_message_is_bounded_by_one_number_and_it_is_the_watchs() -> None:
         # this opcode and not of `mesh_room_send`, where the two ceilings do
         # still collide: 32 + 1 + 15 + 8 + 128 is 184 against a 182-byte body,
         # so a full-length password and a full-length text do not fit together.
-        # #609 fences the Room Server off as a non-goal, so that is recorded
-        # rather than fixed here.
+        # Fixing that is a layout change; the encoder names the password's cost.
         frame = p.envelope_encode(p.Envelope(op=p.Op.MESH_SEND, req_id=1, body=body))
         check(len(body) <= p.MAX_BODY and len(frame) <= p.MAX_PAYLOAD,
               f"a {size}-byte private message stays inside the generic envelope")
@@ -802,6 +801,23 @@ def a_private_message_is_bounded_by_one_number_and_it_is_the_watchs() -> None:
     check(device.asked == [], "and nothing was written to the device")
     watch.mesh_send(key, "a" * 128, 1234567890)
     check(len(device.asked) == 1, "while a message at the limit is sent")
+
+    # The Room Server text is the watch's 128 too, not 126: that was the
+    # envelope's worst case with a 15-byte password, and it refused 127 and 128
+    # to every shorter one. A 13-byte password and 128 bytes is 182 exactly.
+    for password, size in (("p", 128), ("p" * 13, 128), ("p" * 15, 126)):
+        body = p.mesh_room_send_encode(key, password, "a" * size, 1234567890)
+        check(len(body) <= p.MAX_BODY,
+              f"a {len(password)}-byte password and {size} bytes of room text fit")
+    check_raises(ValueError, "129 bytes of room text are refused whatever the password",
+                 lambda: p.mesh_room_send_encode(key, "p", "a" * 129, 1234567890))
+    try:
+        p.mesh_room_send_encode(key, "p" * 15, "a" * 127, 1234567890)
+    except ValueError as exc:
+        check("15-byte password" in str(exc) and "126" in str(exc),
+              "an overflow the password caused names the password and what it left")
+    else:
+        check(False, "a 15-byte password and 127 bytes of text are refused")
 
 
 def a_stability_wait_actually_waits() -> None:
