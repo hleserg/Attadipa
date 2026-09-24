@@ -61,7 +61,7 @@ connector** rather than an enable line for it. The main board names the net
 the daughterboard names the same pin `VDD3V3`,
 `docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
 and there it reaches the module's `VCC` and `V_IO` balls with nothing in
-between: `docs/research/VERIFIED_FACTS.md:1271` — "Ball `J4` (`V_IO`) and ball `B1` (`VCC`)".
+between: `docs/research/VERIFIED_FACTS.md:1317` — "Ball `J4` (`V_IO`) and ball `B1` (`VCC`)".
 The two lists are not mirrored halves: pins 1, 2, 6 and 8 carry the same net in
 both, four independent agreements, so pin 3 is pin 3 on either side.
 
@@ -220,8 +220,8 @@ Four cells deserve their reasoning in words rather than a footnote.
 **The rail action in two of those rows is a register write, not a demonstrated
 supply cut.** What this project has established is the *attribution* — `BLDO1`
 at 3300 mV is the GNSS supply. What it has not established is *control*:
-`docs/research/VERIFIED_FACTS.md:816` — "  exercised. So **nothing here shows that toggling BLDO1 controls the module** —" —
-and `docs/research/VERIFIED_FACTS.md:818` — "  proposes to switch this rail at runtime owes that experiment first." —
+`docs/research/VERIFIED_FACTS.md:862` — "  exercised. So **nothing here shows that toggling BLDO1 controls the module** —" —
+and `docs/research/VERIFIED_FACTS.md:864` — "  proposes to switch this rail at runtime owes that experiment first." —
 because the bit was found already set and never cleared. There is **one**
 unexercised link here and not two: `GPS_LDO` on FPC pin 3 is that same supply
 on its way to the daughterboard, not a second control in series with it, so

@@ -328,6 +328,20 @@ open is not what the protocol does. It is what happens on a radio.
 | M41 | **Will [MeshCore #3447](https://github.com/meshcore-dev/MeshCore/pull/3447) merge, and is its polling invariant a compatibility rule or only that pull request's premise?** Read 2026-09-26: open, base `dev`, head `0d7ba547`, untouched since it was opened on 2026-09-18, **no review of any kind**. The paragraph requiring a host to advance its loop on any response was written by the pull request's own author in the same diff | **UNKNOWN** | watching the pull request, and reading any maintainer response. It changes nothing structural here — ADR-0024 is reachable through opcode 29 without it — so this is a monitoring question, not a blocker |
 | M42 | **Does any firmware anywhere actually emit `0x1E` or `0x1F`?** Mainline calls neither `queueSentMessage()` nor `queueSentChannelMessage()`, by the author's own comment and by a grep of the tree at `0d7ba547`. They exist for a custom build that self-originates messages | **UNKNOWN, and probably no today** | a survey of published custom companion firmware, or a node observed emitting one. Until then the device-originated *feature* stays out of scope and only the general forward-compatibility rule is implemented |
 
+### What choosing a target would need to know, and nobody has measured
+
+Opened 2026-09-24 by [#488](https://github.com/hleserg/Attadipa/issues/488). The
+reading is [NAVIGATION_TARGET_SELECTION](NAVIGATION_TARGET_SELECTION.md), and
+what is open here is not a protocol question — every frame involved is already
+read from source. It is three numbers about a fleet in use, and each of them
+decides the size of a thing rather than whether to build it.
+
+| # | Question | Status | Resolved by |
+|---|---|---|---|
+| M43 | **How many distinct contacts send a coordinate to one watch in a session?** It is what sizes the per-key coordinate cache that replaces the single slot. One is the shape the slot implements today; two is already enough to make a selected target go blank and to stamp a re-send as a fresh arrival. Nothing bounds it from above except the retained window, and the window is a cap on attribution rather than a prediction about people | **UNKNOWN** | a session log on the bench counting distinct sender keys that carry a coordinate, over a period a person would actually wear the watch. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M44 | **Does the sixteen-contact window ever exclude a contact the wearer wants?** It decides whether a node-wide browse is a requirement or a hypothesis. The bench node holds 233 contacts against a window of 16, so the *arithmetic* says yes and the arithmetic is not the question: which sixteen the window holds depends on the node's iteration order, and whether the people a wearer walks towards fall inside it is a fact about that person's contacts | **UNKNOWN** | naming the contacts the owner would actually select, and checking whether they appear in a completed walk's first sixteen retained rows, on each bench node. `NOT EXECUTED — HARDWARE REQUIRED` |
+| M45 | **What does a paged browse of a 233-contact table cost in time and power?** ~52 kB over a link whose notifications carry 173 bytes, and a 59-minute capture has already MEASURED every inter-record gap inside a walk at under 70 ms but has never been asked what the whole walk costs the battery with the screen on. It is the number the browse option is priced on, and without it the choice between a wider window and a browse is a preference | **UNKNOWN** | one instrumented full contact walk with the display active, logging wall time and current. `NOT EXECUTED — HARDWARE REQUIRED` |
+
 ## Architecture
 
 | # | Question | Status | Resolved by |
