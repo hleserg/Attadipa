@@ -150,7 +150,7 @@ T-Watch it leaves with the GNSS module —
 power-off behaviour are PMU register policy —
 
 with the consequence already written down in the testing guide:
-`docs/testing/WATCH_CONTROL.md:115` — "so on a device a held power key may be a shutdown rather than an event".
+`docs/testing/WATCH_CONTROL.md:124` — "so on a device a held power key may be a shutdown rather than an event".
 
 That entry is read from the **T-Watch** schematic —
 `docs/research/VERIFIED_FACTS.md:1358` — "- **Source:** S3 sheet 1." — and its

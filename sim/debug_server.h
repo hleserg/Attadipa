@@ -76,6 +76,11 @@ private:
 
     static void emit(void* ctx, const std::uint8_t* payload, std::size_t length);
 
+    // `close` for a caller that already holds the path's claim -- `listen`,
+    // failing after its bind. Taking the claim again there would wait on
+    // itself: `flock` locks conflict between two opens in one process too.
+    void close_claimed(bool may_unlink);
+
     int         listen_fd_ = -1;
     int         client_fd_ = -1;
     std::string path_;

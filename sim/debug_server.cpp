@@ -76,6 +76,40 @@ bool set_non_blocking(int fd)
     return flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
+// Prints why an existing entry at `path` must not be replaced, and says
+// whether it must not. Asked twice by `listen`: once before the claim, so a
+// path this refuses is never given a claim file beside it -- and an unwritable
+// directory is reported as what the path is, not as a failed claim on a name
+// the operator never typed -- and once under the claim, which is the answer
+// that counts.
+bool refuse_to_replace(const std::string& path, const struct stat& existing)
+{
+    if (S_ISLNK(existing.st_mode)) {
+        // This branch does not prevent the destruction -- `lstat` alone
+        // already does, and deleting the branch was mutation-tested to
+        // confirm it: the link then falls through to `!S_ISSOCK` below and
+        // is refused there. What the branch buys is the *reason*. Without
+        // it a link is reported as "exists and is not a socket", which
+        // sends the reader looking at a file that is fine, and says the
+        // same thing about a dangling link, whose target does not exist at
+        // all. Refused rather than followed because following would bind a
+        // path the caller did not name: the socket would appear somewhere
+        // the person reading `--debug-socket` has no reason to look.
+        std::fprintf(stderr,
+                     "debug: %s is a symbolic link -- refusing to replace it. "
+                     "Pass the path it points at, or remove the link first\n",
+                     path.c_str());
+        return true;
+    }
+    if (!S_ISSOCK(existing.st_mode)) {
+        std::fprintf(stderr,
+                     "debug: %s exists and is not a socket -- refusing to remove it\n",
+                     path.c_str());
+        return true;
+    }
+    return false;
+}
+
 // Is something serving this socket right now?
 //
 // A stale socket file left by a killed simulator and a live one belonging to a
@@ -288,10 +322,17 @@ bool DebugServer::listen(const std::string& path)
         return false;
     }
 
-    // Taken before anything at the path is looked at, and held until this
-    // simulator is listening on it, because what has to be exclusive is the
-    // *decision* and not any one step of it. Released by the destructor on
-    // every way out of this function, success included. See PathClaim.
+    // A first look that writes nothing. See refuse_to_replace.
+    struct stat early {};
+    if (::lstat(path.c_str(), &early) == 0 && refuse_to_replace(path, early)) {
+        return false;
+    }
+
+    // Held from here until this simulator is listening on the path, because
+    // what has to be exclusive is the *decision* and not any one step of it.
+    // Everything the look above found is asked again under it. Released by
+    // the destructor on every way out of this function, success included.
+    // See PathClaim.
     PathClaim claim(path);
     if (!claim.acquire()) {
         return false;
@@ -330,29 +371,7 @@ bool DebugServer::listen(const std::string& path)
     // target it named was left exactly where it was.
     struct stat existing {};
     if (::lstat(path.c_str(), &existing) == 0) {
-        if (S_ISLNK(existing.st_mode)) {
-            // This branch does not prevent the destruction -- `lstat` alone
-            // already does, and deleting the branch was mutation-tested to
-            // confirm it: the link then falls through to `!S_ISSOCK` below and
-            // is refused there. What the branch buys is the *reason*. Without
-            // it a link is reported as "exists and is not a socket", which
-            // sends the reader looking at a file that is fine, and says the
-            // same thing about a dangling link, whose target does not exist at
-            // all. Refused rather than followed because following would bind a
-            // path the caller did not name: the socket would appear somewhere
-            // the person reading `--debug-socket` has no reason to look.
-            std::fprintf(stderr,
-                         "debug: %s is a symbolic link -- refusing to replace it. "
-                         "Pass the path it points at, or remove the link first\n",
-                         path.c_str());
-            ::close(listen_fd_);
-            listen_fd_ = -1;
-            return false;
-        }
-        if (!S_ISSOCK(existing.st_mode)) {
-            std::fprintf(stderr,
-                         "debug: %s exists and is not a socket -- refusing to remove it\n",
-                         path.c_str());
+        if (refuse_to_replace(path, existing)) {
             ::close(listen_fd_);
             listen_fd_ = -1;
             return false;
@@ -424,7 +443,7 @@ bool DebugServer::listen(const std::string& path)
 
     if (bind_result != 0) {
         std::fprintf(stderr, "debug: bind(%s): %s\n", path.c_str(), std::strerror(bind_errno));
-        close();
+        close_claimed(true);
         return false;
     }
 
@@ -447,17 +466,17 @@ bool DebugServer::listen(const std::string& path)
     // beats listening on something more open than advertised.
     if (::chmod(path.c_str(), S_IRUSR | S_IWUSR) != 0) {
         std::fprintf(stderr, "debug: chmod(%s, 0600): %s\n", path.c_str(), std::strerror(errno));
-        close();
+        close_claimed(true);
         return false;
     }
     if (::listen(listen_fd_, 1) != 0) {
         std::fprintf(stderr, "debug: listen(): %s\n", std::strerror(errno));
-        close();
+        close_claimed(true);
         return false;
     }
     if (!set_non_blocking(listen_fd_)) {
         std::fprintf(stderr, "debug: could not make the listening socket non-blocking\n");
-        close();
+        close_claimed(true);
         return false;
     }
 
@@ -467,6 +486,24 @@ bool DebugServer::listen(const std::string& path)
 }
 
 void DebugServer::close()
+{
+    // The claim is taken while the listening socket is still open, so no
+    // other simulator can be inside its own `listen` between this socket
+    // closing and its name being removed. Without it one could probe the
+    // closed socket, unlink it and bind a new one -- on tmpfs, often at the
+    // freed inode number -- and the identity check below would then delete a
+    // live server's socket. If the claim cannot be had the socket is left:
+    // the next start-up's staleness probe removes it, which is recoverable,
+    // and deleting somebody else's is not.
+    if (path_.empty()) {
+        close_claimed(false);
+        return;
+    }
+    PathClaim claim(path_);
+    close_claimed(claim.acquire());
+}
+
+void DebugServer::close_claimed(bool may_unlink)
 {
     if (client_fd_ >= 0) {
         ::close(client_fd_);
@@ -493,7 +530,7 @@ void DebugServer::close()
         // here to the socket this bound would pass a `stat` and be deleted
         // while the socket itself stayed behind.
         struct stat current {};
-        if (::lstat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
+        if (may_unlink && ::lstat(path_.c_str(), &current) == 0 && current.st_dev == path_dev_ &&
             current.st_ino == path_ino_) {
             ::unlink(path_.c_str());
         }

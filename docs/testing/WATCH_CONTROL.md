@@ -77,10 +77,19 @@ one's `unlink` removes the socket the first has just bound: the first stays
 alive, goes on printing that it is listening, and is unreachable. Whichever one
 gets there second now waits — it says `waiting for the simulator claiming …` if
 it has to wait at all — and is then refused with the *already served* message
-above. The file is not deleted on exit on purpose: removing a lock file lets the
-next two contenders lock two different inodes and both believe they hold it.
-Delete it by hand if you like; the simulator makes it again. One file per socket
-path, so simulators on different paths never wait for each other.
+above. If the claim is still held after five seconds it gives up instead, with
+`another simulator has been claiming … for … ms`: something is holding the
+`.lock` that is not a simulator starting up, and `fuser <socket path>.lock`
+names it. A simulator that exits takes the same claim before it removes its
+socket, so it cannot remove the one a new simulator has just bound. The
+file is not deleted on exit on purpose: removing a lock file lets the next two
+contenders lock two different inodes and both believe they hold it. Delete it by
+hand only when no simulator is running on that path; the simulator makes it
+again. In a sticky directory such as `/tmp` another user's `.lock` cannot be
+deleted at all, so pick a path of your own there. A path the simulator refuses
+outright — a link, or something that is not a socket — is refused before the
+`.lock` is created. One file per socket path, so simulators on different paths
+never wait for each other.
 
 Add `--diagnostic` for the test pattern instead of the capability screen — see
 [the diagnostic screen](#the-diagnostic-screen).

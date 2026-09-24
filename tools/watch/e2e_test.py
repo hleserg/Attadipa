@@ -361,9 +361,16 @@ def _one_stale_socket_has_one_recoverer(simulator: str, board: str) -> None:
                         [simulator, "--board", board, "--debug-socket", contended],
                         stdout=handle, stderr=subprocess.STDOUT, env=environment))
 
-                waiting = _within(60, lambda: all(
+                # Bounded by the simulator's own budget, not a generous one:
+                # the first contender starts counting at its own `acquire`,
+                # so a wait longer than this would hold the claim past the
+                # point where that contender has already given up, and the
+                # failure would surface below as the regression under test.
+                # `sim/debug_server.cpp:70` — "constexpr int kClaimWaitMs  = 5000;"
+                waiting = _within(5, lambda: all(
                     _log_says(log, "waiting for the simulator claiming") for log in logs))
-                check(waiting, "both simulators wait for a claim somebody else holds")
+                check(waiting, "both simulators wait for a claim somebody else holds, "
+                               "and reach it within the 5 s the first will wait")
                 check(all(one.poll() is None for one in contenders),
                       "and neither of them gave up while it was held")
                 check(_same_inode(_entry(contended), stale),
