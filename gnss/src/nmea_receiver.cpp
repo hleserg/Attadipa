@@ -155,8 +155,9 @@ bool millimetres(const minmea_float& f, std::int32_t& out)
 // so leading zeros keep `value` small while `scale` reaches 10^9 on the ninth
 // digit and overflows a signed 32-bit int on the tenth. That is undefined
 // behaviour, and the wrap can land positive: a false coordinate `present()`
-// cannot see. No receiver sends ten fractional digits, so a sentence that does
-// is refused whole. Stricter than needed for the `T` time field, whose own
+// cannot see. Nine is a design margin over five, the most fractional digits
+// the bench capture shows (`tests/gnss/bench-epochs.nmea`), so a sentence with
+// more is refused whole. Stricter than needed for the `T` time field, whose own
 // loop is bounded; at the two or three digits receivers send, that costs nothing.
 bool fractions_fit(const char* line)
 {
@@ -247,6 +248,9 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 
     if (!fractions_fit(line_)) {
         ++discarded_;
+        // Unread is not harmless: a GGA saying quality 0 would have vetoed the
+        // fix, so an epoch that lost a sentence here cannot claim one.
+        if (open_valid_) refused_in_epoch_ = true;
         return;
     }
 
@@ -269,6 +273,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         saw_gga_ = false;
         gga_quality_ = 0;
         gsa_fix_ = 0;
+        refused_in_epoch_ = false;
 
         if (frame.valid) {
             Position position{};
@@ -407,6 +412,7 @@ void NmeaReceiver::reset()
     saw_gga_    = false;
     gga_quality_ = 0;
     gsa_fix_     = 0;
+    refused_in_epoch_ = false;
 }
 
 void NmeaReceiver::close_epoch()
@@ -424,7 +430,7 @@ void NmeaReceiver::close_epoch()
     // arriving off a wire is not obliged to try. Where they differ, taking the
     // better answer would mean picking the more flattering one.
     const bool no_fix = !rmc_active_ || (saw_gga_ && gga_quality_ == 0) || gsa_fix_ == 1 ||
-                        !open_.position.has_value();
+                        refused_in_epoch_ || !open_.position.has_value();
 
     if (no_fix) {
         open_.fix_type = FixType::NoFix;

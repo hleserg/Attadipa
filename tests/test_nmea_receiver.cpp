@@ -350,7 +350,9 @@ void a_field_that_defeats_the_overflow_guard_is_not_a_position()
     CHECK(receiver.discarded() == 1);
     CHECK(receiver.sample(sample));
 
-    // The RMC in the same epoch stated a real coordinate, so that survives.
+    // The RMC in the same epoch stated a real coordinate, so that survives --
+    // but not as a fix: the refused GGA might have said quality 0.
+    CHECK(sample.observation.fix_type == core::FixType::NoFix);
     CHECK(sample.observation.position.has_value());
     CHECK(sample.observation.position->latitude_e7 == 5000006);
     CHECK(sample.observation.position->longitude_e7 == 10000006);
@@ -382,29 +384,65 @@ void nine_fractional_digits_fit_and_ten_do_not()
     // The boundary: nine digits take `scale` to 10^9, which fits; the tenth
     // is the multiplication that overflows. Checked on a coordinate and on a
     // field that is not one, because the preflight covers every `f` field.
+    // Each row sits inside an epoch an RMC opened, since a GGA with no epoch
+    // is dropped before minmea sees it, and a kept row has to show the value
+    // it carried: a count alone would pass with the row never scanned.
     struct Case {
-        const char* body;
-        bool        kept;
-        const char* why;
+        const char*  body;
+        bool         kept;
+        std::int32_t latitude_e7;
+        std::int32_t altitude_mm;
+        const char*  why;
     };
     const Case cases[] = {
         {"GPGGA,140000.00,0030.000000000,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,", true,
-         "nine digits in a latitude fit"},
-        {"GPGGA,140000.00,0030.0000000000,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,", false,
+         5000000, 10000, "nine digits in a latitude fit"},
+        {"GPGGA,140000.00,0030.0000000000,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,", false, 0, 0,
          "ten digits in a latitude do not"},
         {"GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.000000000,M,25.0,M,,", true,
-         "nine digits in an altitude fit"},
+         5000006, 10000, "nine digits in an altitude fit"},
+        {"GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,0.123456789,M,25.0,M,,", true,
+         5000006, 123, "nine significant digits take scale to 10^9 and fit"},
         {"GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.0000000000,M,25.0,M,,", false,
-         "ten digits in an altitude do not"},
-        {"GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.0000000001,,040926,,,D,V", false,
+         0, 0, "ten digits in an altitude do not"},
+        {"GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.0000000001,,040926,,,D,V", false, 0, 0,
          "ten digits in a speed do not"},
     };
     for (const Case& c : cases) {
-        gnss::NmeaReceiver receiver;
+        gnss::NmeaReceiver   receiver;
+        core::PositionSample sample;
         g_now.ms += 1000;
+        deliver(receiver, "$GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
         deliver_body(receiver, c.body);
+        deliver(receiver, "$GNRMC,140001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V*13");
         check(receiver.discarded() == (c.kept ? 0U : 1U), c.why, __LINE__);
+        if (!c.kept) continue;
+        check(receiver.sample(sample) && sample.observation.fix_type != core::FixType::NoFix &&
+                  sample.observation.position.has_value() &&
+                  sample.observation.position->latitude_e7 == c.latitude_e7 &&
+                  sample.observation.altitude_msl_mm == c.altitude_mm,
+              c.why, __LINE__);
     }
+}
+
+void a_refused_sentence_cannot_vouch_for_the_fix()
+{
+    // Refusing a sentence unread must not throw away what it might have said
+    // against the fix. This GGA says quality 0; had it been scanned it would
+    // have made the epoch NoFix, so refusing it cannot make the epoch TwoD.
+    gnss::NmeaReceiver   receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+    deliver_body(receiver,
+                 "GPGGA,140000.00,0030.0000000000,N,00100.00004,E,0,08,1.00,10.0,M,25.0,M,,");
+    deliver(receiver, "$GNRMC,140001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V*13");
+
+    CHECK(receiver.discarded() == 1);
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.fix_type == core::FixType::NoFix);
+    CHECK(core::classify(sample.observation, g_now, {}) == core::PositionValidity::NoFix);
 }
 
 void two_altitudes_that_each_fit_and_do_not_together()
@@ -1217,6 +1255,7 @@ int main()
     a_field_that_defeats_the_overflow_guard_is_not_a_position();
     a_scale_that_wraps_positive_is_not_a_position();
     nine_fractional_digits_fit_and_ten_do_not();
+    a_refused_sentence_cannot_vouch_for_the_fix();
     two_altitudes_that_each_fit_and_do_not_together();
     one_sentence_saying_no_fix_is_enough();
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
