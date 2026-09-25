@@ -283,7 +283,11 @@ moved and a commit cannot — and a re-tagged v9.5.0 would still say `9.5.0` in
 `lv_version.h`, so the version check alone cannot catch it.
 `ATTADIPA_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
 work; it skips the fetch and neither check, and it has to be a git checkout: a
-tree with no git metadata cannot show its commit and is refused. Both checks run
+tree with no git metadata cannot show its commit and is refused. So is a tree git
+cannot read, with git's own reason, and configuring the simulator needs git
+installed. The lookup is bounded to the tree itself: without that, a tree under
+`build-sim/_deps` with no usable `.git` would answer with the enclosing Attadipa
+commit. Both checks run
 before LVGL's own `CMakeLists.txt` does — `SOURCE_SUBDIR` names a directory that
 does not exist, so `FetchContent_MakeAvailable` only populates, and the tree is
 added once it has passed (#637). Every failure is a configure error rather than

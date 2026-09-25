@@ -136,24 +136,40 @@ endif()
 #    checked this way, and is refused: the version header it carries is part of
 #    the content being checked, not evidence about it.
 find_package(Git QUIET)
-set(_lv_head "")
-if(Git_FOUND)
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" -C "${lvgl_SOURCE_DIR}" rev-parse HEAD
-        OUTPUT_VARIABLE _lv_head
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-        RESULT_VARIABLE _lv_head_result)
-    if(NOT _lv_head_result EQUAL 0)
-        set(_lv_head "")
-    endif()
+if(NOT Git_FOUND)
+    message(FATAL_ERROR
+        "git was not found, and the simulator build needs it to verify that LVGL "
+        "is commit ${ATTADIPA_LVGL_COMMIT}. Install git and configure again.")
 endif()
 
-if(_lv_head STREQUAL "")
+# git searches upward from -C. Without a ceiling, a tree with no .git of its
+# own inside build-sim/_deps answers with the enclosing Attadipa HEAD.
+file(REAL_PATH "${lvgl_SOURCE_DIR}/.." _lv_parent)
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${_lv_parent}"
+            "${GIT_EXECUTABLE}" -C "${lvgl_SOURCE_DIR}" rev-parse HEAD
+    OUTPUT_VARIABLE _lv_head
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_VARIABLE _lv_head_error
+    RESULT_VARIABLE _lv_head_result)
+
+if(NOT EXISTS "${lvgl_SOURCE_DIR}/.git")
+    if(ATTADIPA_LVGL_SOURCE_DIR)
+        set(_lv_remedy "Point ATTADIPA_LVGL_SOURCE_DIR at a git clone checked out at that commit.")
+    else()
+        # FetchContent's stamps outlive the source tree, so deleting only
+        # the tree reruns the update step against nothing.
+        set(_lv_remedy "Delete ${FETCHCONTENT_BASE_DIR} and configure again to fetch it afresh.")
+    endif()
     message(FATAL_ERROR
         "LVGL at ${lvgl_SOURCE_DIR} is not a git checkout, so the commit pin "
         "${ATTADIPA_LVGL_COMMIT} cannot be verified and the tree is refused.\n"
-        "Point ATTADIPA_LVGL_SOURCE_DIR at a git clone checked out at that commit.")
+        "${_lv_remedy}")
+elseif(NOT _lv_head_result EQUAL 0)
+    message(FATAL_ERROR
+        "git could not read the commit of LVGL at ${lvgl_SOURCE_DIR}, so the pin "
+        "${ATTADIPA_LVGL_COMMIT} cannot be verified and the tree is refused.\n"
+        "git said: ${_lv_head_error}")
 elseif(NOT _lv_head STREQUAL ATTADIPA_LVGL_COMMIT)
     message(FATAL_ERROR
         "LVGL commit mismatch — the tag does not point where it did.\n"

@@ -9,6 +9,12 @@
 #
 # Run as: cmake -DWORK_DIR=<dir> -DREPO_DIR=<repo root> -P lvgl_pin_refusal.cmake
 
+foreach(var WORK_DIR REPO_DIR)
+    if(NOT DEFINED ${var})
+        message(FATAL_ERROR "lvgl_pin_refusal.cmake: -D${var} is required")
+    endif()
+endforeach()
+
 find_package(Git REQUIRED)
 
 file(REMOVE_RECURSE "${WORK_DIR}")
@@ -41,11 +47,11 @@ endfunction()
 
 # configure(<name> <fixture dir> <expect pass?> <regex> [extra -D args...])
 function(configure name dir expect_pass regex)
-    # A fixture under the repository's build tree would otherwise resolve to
-    # the repository's own HEAD.
+    # No git ceiling here: the fixtures sit inside the repository's build tree,
+    # so the module's own ceiling is what keeps brokengit from answering with
+    # the repository's HEAD.
     execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${WORK_DIR}"
-                "${CMAKE_COMMAND}" -S "${_driver}" -B "${WORK_DIR}/build-${name}"
+        COMMAND "${CMAKE_COMMAND}" -S "${_driver}" -B "${WORK_DIR}/build-${name}"
                 "-DATTADIPA_LVGL_SOURCE_DIR=${dir}" ${ARGN}
         RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
     # CMake wraps a long message, so a deep build path splits the phrase.
@@ -71,6 +77,13 @@ endfunction()
 # A copy with no git metadata cannot prove what it is.
 make_fixture("${WORK_DIR}/nogit")
 configure(nogit "${WORK_DIR}/nogit" FALSE "is not a git checkout")
+
+# A .git git cannot use. git skips it and searches upward, so without the
+# module's ceiling this tree would answer with the repository's HEAD.
+make_fixture("${WORK_DIR}/brokengit")
+file(MAKE_DIRECTORY "${WORK_DIR}/brokengit/.git")
+configure(brokengit "${WORK_DIR}/brokengit" FALSE
+          "git could not read the commit.*git said: .*not a git repository")
 
 # A git checkout at a commit other than the pin.
 set(_git "${WORK_DIR}/wronghead")
