@@ -407,7 +407,7 @@ Two things in what follows are worth reading against that, rather than deleted:
   power key: PWR reaches
   the AXP2101 `PWRON` pin and never a GPIO, so press *duration* is PMU register
   policy and whether a long press can be reported to firmware at all is
-  **UNKNOWN** — `docs/testing/WATCH_CONTROL.md:101` — "so on a device a held power key may be a shutdown rather than an event".
+  **UNKNOWN** — `docs/testing/WATCH_CONTROL.md:128` — "so on a device a held power key may be a shutdown rather than an event".
   Any future option resting on a held-key gesture has to close that first.
 
 Verified in this tree at `144459f`, not inferred from the issue that predicted

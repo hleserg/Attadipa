@@ -68,6 +68,33 @@ A path that exists and is **not** a socket is refused too. `--debug-socket` used
 to unlink whatever was at the path before binding, so a mistyped
 `--debug-socket ~/notes.md` deleted the file without a word.
 
+**There is a `<socket path>.lock` beside the socket, and it stays there.** An
+empty 0600 file the simulator holds an exclusive `flock` on while it inspects
+the path, clears a stale socket off it and binds — and nothing else; nothing is
+ever written into it. Two simulators started on one path at the same moment
+otherwise both find the same stale socket, both decide it may go, and the second
+one's `unlink` removes the socket the first has just bound: the first stays
+alive, goes on printing that it is listening, and is unreachable. Whichever one
+gets there second now waits — it says `waiting for the simulator claiming …` if
+it has to wait at all — and is then refused with the *already served* message
+above. If the claim is still held after five seconds it gives up instead, with
+`another simulator has been claiming … for … ms`: something is holding the
+`.lock` that is not a simulator starting up, and `fuser <socket path>.lock`
+names it. A simulator that exits on its own (`--frames N`) takes the same claim
+before it removes its socket, and removes it only while the name still carries
+the inode it bound. That narrows the old failure without closing it: tmpfs
+reuses a freed inode number routinely, so a socket bound after the first one was
+deleted by hand can still match. A killed simulator -- the command above runs
+until it is -- never gets there and leaves its socket for the next start-up's
+probe. The file is not deleted on exit on purpose: removing a lock file lets the next two
+contenders lock two different inodes and both believe they hold it. Delete it by
+hand only when no simulator is running on that path; the simulator makes it
+again. In a sticky directory such as `/tmp` another user's `.lock` cannot be
+deleted at all, so pick a path of your own there. A path the simulator refuses
+outright — a link, or something that is not a socket — is refused before the
+`.lock` is created. One file per socket path, so simulators on different paths
+never wait for each other.
+
 Add `--diagnostic` for the test pattern instead of the capability screen — see
 [the diagnostic screen](#the-diagnostic-screen).
 
