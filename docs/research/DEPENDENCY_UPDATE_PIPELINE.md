@@ -26,9 +26,9 @@ instead of hiding it.
 |---|---|---|
 | Writer queue width | 4 | repository variable `ATTADIPA_WIP_LIMIT` = `4` (`gh variable list`, 2026-09-23) |
 | What counts against it | every same-repository open PR without `queue:parked` or `queue:emergency`; **no author filter** | `.github/scripts/wip-limit.sh:39` — "queue:emergency" |
-| Dependabot version-update ceiling | 5 open PRs | `.github/dependabot.yml:20` — "open-pull-requests-limit: 5" |
+| Dependabot version-update ceiling | 5 open PRs; 2 since #641 | `.github/dependabot.yml:20` — "open-pull-requests-limit: 2" |
 | Dependabot security updates | **enabled**, not paused | `gh api repos/hleserg/Attadipa/automated-security-fixes` → `{"enabled":true,"paused":false}`; vulnerability alerts → `204` |
-| Groups | none | `.github/dependabot.yml` has no `groups:` key |
+| Groups | none; one CodeQL group since #641 | `.github/dependabot.yml:30` — "github/codeql-action/*" |
 | Second burst | #631 (claude-code-action), #632 (codeql `analyze`), #633 (codeql `init`), opened 2026-09-21 05:14–05:16Z | `gh pr view` |
 | Its effect | the writer lease for this issue was refused: "Active pull requests: 5 (incident) — #633 #632 #631 #622 #610" | `writer-start.sh start`, 2026-09-23 |
 | Workaround applied | 631–633 labelled `queue:parked`, with a comment linking here | PR comments, 2026-09-23 |
@@ -58,7 +58,7 @@ Each guard below was read at source. None of them was assumed.
 | Stage | What happens to a `dependabot/*` PR | Source |
 |---|---|---|
 | Opened | counts against the queue immediately; `pr-wip-limit.yml` adds `queue:over-limit` (add-only, read by nothing) | `.github/scripts/wip-limit.sh:39` — "queue:emergency" |
-| Labels | gets `dependencies` (a label that does not exist here) and `source:owner`, which is defined as filed by the owner. **A bot PR is labelled as owner-filed.** | `.github/dependabot.yml:23` — "- source:owner"; `.github/scripts/setup-labels.sh:63` — "Filed by the owner, per the task marker." |
+| Labels | gets `dependencies` (a label that does not exist here) and `source:owner`, which is defined as filed by the owner. **A bot PR is labelled as owner-filed.** | `.github/dependabot.yml:22` — "- source:owner"; `.github/scripts/setup-labels.sh:63` — "Filed by the owner, per the task marker." |
 | Required CI | red: inventory gate; for a split CodeQL bump, also CodeQL | above |
 | Independent review | **never runs** while Dependabot is the actor | `.github/workflows/claude-pr-review.yml:90` — "github.actor != 'dependabot[bot]'" |
 | CI repair | **refused**: only `claude/*` branches | `.github/workflows/claude-ci-repair.yml:126` — "claude/*) ;;" |
