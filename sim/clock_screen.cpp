@@ -344,7 +344,7 @@ void enter_provisioning(apps::EntryTask task) {
   // over. Live, it is host local wall time with the offset already folded in
   // and unrecoverable from it -- true of the simulator since #553, and always
   // true of a board:
-  // `firmware/main/waveshare_board.cpp:487` -- "clock.time = time.local;".
+  // `firmware/main/waveshare_board.cpp:461` -- "clock.time = time.local;".
   // Pinned, it is the number `--clock-time` was handed, copied in and drawn as
   // written, so nothing folded an offset in and nothing recorded one:
   // `sim/main.cpp:237` -- "options.clock_time_set ? options.clock_time".

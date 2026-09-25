@@ -29,24 +29,27 @@ attadipa::core::TimeObservation sample(
 
 // ---- provision_time.h: the one sequence that sets the clock ----------------
 
-// The storage and the chip, as a test sees them. The store is one blob that is
-// there or is not -- `nvs_set_blob` lands whole or leaves the old value -- but
-// it can land *and* report failure, when the erase of the old version after
-// it fails, so a refused save has two shapes and the fake has both.
+// The storage and the chip, as a test sees them. Two keys: `blob` is the one
+// boot restores, `staged` is written before the chip and read by nothing. Each
+// is there or is not -- `nvs_set_blob` lands whole or leaves the old value --
+// but a save can land *and* report failure, when the erase of the old version
+// after it fails, so a refused save has two shapes and the fake has both.
 struct FakeTimeOps {
     bool has_blob = false;
     attadipa::firmware::TimeMetadata blob{};
-    bool fail_read = false, fail_save = false, fail_rtc = false;
+    bool has_staged = false;
+    attadipa::firmware::TimeMetadata staged{};
+    bool fail_stage = false, fail_save = false, fail_rtc = false;
     bool save_lands_then_fails = false;  // once: the next save only
-    int saves = 0, erases = 0, rtc_writes = 0;
+    int stages = 0, saves = 0, rtc_writes = 0;
 
-    attadipa::firmware::MetadataRead read_metadata(
-        attadipa::firmware::TimeMetadata *out)
+    bool stage_metadata(const attadipa::firmware::TimeMetadata &m)
     {
-        if (fail_read) return attadipa::firmware::MetadataRead::Unreadable;
-        if (!has_blob) return attadipa::firmware::MetadataRead::Absent;
-        *out = blob;
-        return attadipa::firmware::MetadataRead::Present;
+        ++stages;
+        if (fail_stage) return false;
+        staged = m;
+        has_staged = true;
+        return true;
     }
     bool save_metadata(const attadipa::firmware::TimeMetadata &m)
     {
@@ -60,13 +63,6 @@ struct FakeTimeOps {
         }
         return true;
     }
-    bool erase_metadata()
-    {
-        ++erases;
-        has_blob = false;
-        blob = {};
-        return true;
-    }
     bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &,
                               std::int64_t)
     {
@@ -74,6 +70,14 @@ struct FakeTimeOps {
         return !fail_rtc;
     }
 };
+
+// What a reboot would restore: the committed key, never the staged one.
+bool boot_restores(const FakeTimeOps &ops, std::int16_t offset,
+                   std::int64_t last_sync)
+{
+    return ops.has_blob && ops.blob.offset_minutes == offset &&
+           ops.blob.last_sync_utc == last_sync;
+}
 
 const attadipa::core::MonotonicTime kProvisionNow{1000};
 // 2026-09-02T00:00:00Z, inside the years the PCF85063 can hold.
@@ -102,9 +106,8 @@ void test_provision_time()
         CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
               ProvisionTimeResult::Accepted);
         CHECK(svc.state(kProvisionNow).source == TimeSource::Manual);
-        CHECK(ops.has_blob && ops.blob.offset_minutes == 300 &&
-              ops.blob.last_sync_utc == kProvisionUtc);
-        CHECK(ops.rtc_writes == 1 && ops.erases == 0);
+        CHECK(boot_restores(ops, 300, kProvisionUtc));
+        CHECK(ops.stages == 1 && ops.rtc_writes == 1 && ops.saves == 1);
     }
     // Rejected before anything is touched: no validity window ...
     {
@@ -114,7 +117,7 @@ void test_provision_time()
         r.valid_for_ms = 0;
         CHECK(provision_time(ops, r, svc, kProvisionNow) ==
               ProvisionTimeResult::Rejected);
-        CHECK(ops.saves == 0 && ops.rtc_writes == 0);
+        CHECK(ops.stages == 0 && ops.saves == 0 && ops.rtc_writes == 0);
         CHECK(svc.state(kProvisionNow).source == TimeSource::None);
     }
     // ... a window whose deadline overflows ...
@@ -139,79 +142,66 @@ void test_provision_time()
               ProvisionTimeResult::Rejected);
         CHECK(ops.rtc_writes == 0);
     }
-    // Unreadable metadata stops the sequence before the chip: the fail-closed
-    // check, whose whole value is the order.
-    {
+    // A store that refuses the staging write stops the sequence before the
+    // chip: #396's fail-closed check, whose whole value is the order. Boot's
+    // blob is not touched.
+    for (const bool had : {true, false}) {
         FakeTimeOps ops;
-        ops.fail_read = true;
+        ops.has_blob = had;
+        if (had) ops.blob = {-60, 42};
+        ops.fail_stage = true;
         TimeService svc;
         CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
               ProvisionTimeResult::Failed);
-        CHECK(ops.saves == 0 && ops.rtc_writes == 0);
+        CHECK(ops.rtc_writes == 0 && ops.saves == 0);
+        CHECK(had ? boot_restores(ops, -60, 42) : !ops.has_blob);
         CHECK(svc.state(kProvisionNow).source == TimeSource::None);
     }
-    // A refused save likewise stops before the chip, and the old blob stays.
-    {
+    // The chip refuses, with an old blob and without one (#625): boot's key is
+    // never written, so a reboot restores exactly what it had -- not the
+    // candidate, and not a zero where there was nothing. What the staging
+    // write left behind is in a key boot does not read.
+    for (const bool had : {true, false}) {
         FakeTimeOps ops;
-        ops.has_blob = true;
-        ops.blob = {-60, 42};
+        ops.has_blob = had;
+        if (had) ops.blob = {-60, 42};
+        ops.fail_rtc = true;
+        TimeService svc;
+        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
+              ProvisionTimeResult::Failed);
+        CHECK(ops.stages == 1 && ops.rtc_writes == 1 && ops.saves == 0);
+        CHECK(had ? boot_restores(ops, -60, 42) : !ops.has_blob);
+        CHECK(ops.has_staged && ops.staged.offset_minutes == 300);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
+    }
+    // The chip was verified and the commit refused before landing: boot keeps
+    // the old blob, which belongs to the last verified synchronization. The
+    // answer is still Failed -- the chip moved and the service did not.
+    for (const bool had : {true, false}) {
+        FakeTimeOps ops;
+        ops.has_blob = had;
+        if (had) ops.blob = {-60, 42};
         ops.fail_save = true;
         TimeService svc;
         CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
               ProvisionTimeResult::Failed);
-        CHECK(ops.rtc_writes == 0 && ops.erases == 0);
-        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
-              ops.blob.last_sync_utc == 42);
+        CHECK(ops.rtc_writes == 1 && ops.saves == 1);
+        CHECK(had ? boot_restores(ops, -60, 42) : !ops.has_blob);
+        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
     }
-    // A save that landed and then said it failed -- the old version's erase
-    // refused -- is put back too, or a reboot would restore an offset for a
-    // synchronization the host was told did not happen.
-    {
+    // The commit landed and then said it failed -- the old version's erase
+    // refused. Boot restores this synchronization, whose chip write *was*
+    // verified; nothing tries to put the old one back.
+    for (const bool had : {true, false}) {
         FakeTimeOps ops;
-        ops.has_blob = true;
-        ops.blob = {-60, 42};
+        ops.has_blob = had;
+        if (had) ops.blob = {-60, 42};
         ops.save_lands_then_fails = true;
         TimeService svc;
         CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
               ProvisionTimeResult::Failed);
-        CHECK(ops.rtc_writes == 0 && ops.saves == 2 && ops.erases == 0);
-        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
-              ops.blob.last_sync_utc == 42);
-        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
-    }
-    {
-        FakeTimeOps ops;
-        ops.save_lands_then_fails = true;
-        TimeService svc;
-        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
-              ProvisionTimeResult::Failed);
-        CHECK(ops.rtc_writes == 0 && ops.saves == 1 && ops.erases == 1);
-        CHECK(!ops.has_blob);
-    }
-    // The chip refuses and the store had a blob: it comes back exactly.
-    {
-        FakeTimeOps ops;
-        ops.has_blob = true;
-        ops.blob = {-60, 42};
-        ops.fail_rtc = true;
-        TimeService svc;
-        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
-              ProvisionTimeResult::Failed);
-        CHECK(ops.has_blob && ops.blob.offset_minutes == -60 &&
-              ops.blob.last_sync_utc == 42);
-        CHECK(ops.saves == 2 && ops.erases == 0);
-        CHECK(svc.state(kProvisionNow).source == TimeSource::None);
-    }
-    // The chip refuses and the store had nothing: it is absent again, not a
-    // zero. A watch that never synchronized must not boot holding an offset it
-    // never accepted.
-    {
-        FakeTimeOps ops;
-        ops.fail_rtc = true;
-        TimeService svc;
-        CHECK(provision_time(ops, provision_request(), svc, kProvisionNow) ==
-              ProvisionTimeResult::Failed);
-        CHECK(!ops.has_blob && ops.erases == 1 && ops.saves == 1);
+        CHECK(ops.rtc_writes == 1 && ops.saves == 1);
+        CHECK(boot_restores(ops, 300, kProvisionUtc));
         CHECK(svc.state(kProvisionNow).source == TimeSource::None);
     }
 }
@@ -237,6 +227,12 @@ void test_time_metadata_bytes()
     const TimeMetadata back = decode_time_metadata(bytes);
     CHECK(back.offset_minutes == -180);
     CHECK(back.last_sync_utc == 0x0102030405060708);
+
+    // #625 kept the key and the ten bytes, so a blob an older image committed
+    // restores as it did. These are the bytes it wrote for {-60, 42}.
+    const TimeMetadata legacy =
+        decode_time_metadata({0xC4, 0xFF, 42, 0, 0, 0, 0, 0, 0, 0});
+    CHECK(legacy.offset_minutes == -60 && legacy.last_sync_utc == 42);
 
     // The corners of both fields survive the trip.
     for (const TimeMetadata sample :
