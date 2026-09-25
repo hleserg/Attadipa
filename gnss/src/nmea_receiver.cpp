@@ -247,10 +247,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
     last_sentence_ = now;
 
     if (!fractions_fit(line_)) {
-        ++discarded_;
-        // Unread is not harmless: a GGA saying quality 0 would have vetoed the
-        // fix, so an epoch that lost a sentence here cannot claim one.
-        if (open_valid_) refused_in_epoch_ = true;
+        refuse(now);
         return;
     }
 
@@ -258,22 +255,14 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
     case MINMEA_SENTENCE_RMC: {
         minmea_sentence_rmc frame{};
         if (!minmea_parse_rmc(&frame, line_)) {
-            ++discarded_;
+            refuse(now);
             return;
         }
         // The epoch boundary. Whatever was open is complete: RMC is first and
         // once per second in every capture from both bench modules.
         close_epoch();
-
-        open_ = GnssObservation{};
-        open_.observed_at = now;
-        open_.source = core::PositionSource::LocalGnss;
-        open_valid_ = true;
+        open_epoch(now);
         rmc_active_ = frame.valid;
-        saw_gga_ = false;
-        gga_quality_ = 0;
-        gsa_fix_ = 0;
-        refused_in_epoch_ = false;
 
         if (frame.valid) {
             Position position{};
@@ -317,7 +306,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         if (!open_valid_) return;  // no epoch open yet; wait for the first RMC
         minmea_sentence_gga frame{};
         if (!minmea_parse_gga(&frame, line_)) {
-            ++discarded_;
+            refuse(now);
             return;
         }
         saw_gga_ = true;
@@ -374,7 +363,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         if (!open_valid_) return;
         minmea_sentence_gsa frame{};
         if (!minmea_parse_gsa(&frame, line_)) {
-            ++discarded_;
+            refuse(now);
             return;
         }
         // One GSA per constellation — 351 of them against 70 RMC in
@@ -399,6 +388,44 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         // or is one this parser refuses to guess at.
         break;
     }
+}
+
+// A checksummed sentence left unread. Unread is not harmless when it is one of
+// the three this driver reads: a GGA saying quality 0 or a GSA saying mode 1
+// would have vetoed the fix, so the epoch that lost it cannot claim one. A
+// refused RMC still bounds the epoch before it, which is complete and had
+// nothing refused (#664); without that close, the last fix went on publishing
+// as current for the whole of `stale_after` while every RMC said V. The epoch
+// it opens is latched, because what that RMC said is exactly what is unknown.
+// Any other type is read past anyway, so refusing it costs the epoch nothing.
+// The type is read from the bytes, not by minmea, so no refused sentence
+// reaches a minmea scanner.
+void NmeaReceiver::refuse(MonotonicTime now)
+{
+    ++discarded_;
+    if (length_ < 6) return;  // "$GNRMC": talker at 1, type at 3
+    const char* type = line_ + 3;
+    if (std::memcmp(type, "RMC", 3) == 0) {
+        close_epoch();
+        open_epoch(now);
+        refused_in_epoch_ = true;
+    } else if (open_valid_ &&
+               (std::memcmp(type, "GGA", 3) == 0 || std::memcmp(type, "GSA", 3) == 0)) {
+        refused_in_epoch_ = true;
+    }
+}
+
+void NmeaReceiver::open_epoch(MonotonicTime now)
+{
+    open_ = GnssObservation{};
+    open_.observed_at = now;
+    open_.source = core::PositionSource::LocalGnss;
+    open_valid_ = true;
+    rmc_active_ = false;
+    saw_gga_ = false;
+    gga_quality_ = 0;
+    gsa_fix_ = 0;
+    refused_in_epoch_ = false;
 }
 
 void NmeaReceiver::reset()

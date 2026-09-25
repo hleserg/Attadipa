@@ -212,6 +212,8 @@ public:
 private:
     void assemble(char byte, core::MonotonicTime now);
     void take_sentence(core::MonotonicTime now);
+    void refuse(core::MonotonicTime now);
+    void open_epoch(core::MonotonicTime now);
     void close_epoch();
 
     // NMEA 0183 allows 82 characters including the leading `$` and the closing

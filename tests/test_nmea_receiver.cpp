@@ -445,6 +445,85 @@ void a_refused_sentence_cannot_vouch_for_the_fix()
     CHECK(core::classify(sample.observation, g_now, {}) == core::PositionValidity::NoFix);
 }
 
+void a_refused_rmc_still_closes_the_epoch_before_it()
+{
+    // #664. A receiver that writes ten fractional digits writes them every
+    // second, so every RMC after the good epochs is refused. Each one still
+    // bounds the epoch before it: that epoch is complete and publishes as it
+    // was. Before this, nothing closed, and the last fix published as current
+    // until `stale_after` while the receiver said V thirty times.
+    gnss::NmeaReceiver   receiver;
+    core::PositionSample sample;
+    const char* const    kRefusedRmc[] = {"GNRMC,140002.00,V,,,,,0.0000000001,,040926,,,N",
+                                          "GNRMC,140003.00,V,,,,,0.0000000001,,040926,,,N"};
+
+    g_now.ms += 1000;
+    deliver(receiver, "$GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+    deliver_body(receiver,
+                 "GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,");
+    deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+    g_now.ms += 1000;
+    const std::uint64_t second = g_now.ms;
+    deliver(receiver, "$GNRMC,140001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V*13");
+    deliver_body(receiver,
+                 "GPGGA,140001.00,0030.00005,N,00100.00005,E,1,08,1.00,10.0,M,25.0,M,,");
+    deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+
+    g_now.ms += 1000;
+    const std::uint64_t refused = g_now.ms;
+    deliver_body(receiver, kRefusedRmc[0]);
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.observed_at.ms == second);
+    CHECK(sample.observation.fix_type == core::FixType::ThreeD);
+
+    // The epoch the refused RMC opened: what it said is unknown, so no fix.
+    g_now.ms += 1000;
+    deliver_body(receiver, kRefusedRmc[1]);
+    CHECK(receiver.discarded() == 2);
+    CHECK(receiver.sample(sample));
+    CHECK(sample.observation.observed_at.ms == refused);
+    CHECK(sample.observation.fix_type == core::FixType::NoFix);
+    CHECK(!sample.observation.position.has_value());
+    CHECK(core::classify(sample.observation, g_now, {}) == core::PositionValidity::NoFix);
+}
+
+void only_a_sentence_that_could_veto_the_fix_costs_it()
+{
+    // A refused sentence costs its epoch the fix only if it is one this driver
+    // reads (#664): a GGA or GSA might have said "no fix". A VTG or ZDA is read
+    // past anyway, so refusing it costs nothing. The id is read from the bytes,
+    // so none of these reaches a minmea scanner.
+    struct Case {
+        const char*   body;
+        core::FixType fix;
+        const char*   why;
+    };
+    const Case cases[] = {
+        {"GNVTG,,T,,M,0.0000000001,N,0.0,K,A", core::FixType::ThreeD,
+         "a refused VTG costs nothing"},
+        {"GNZDA,140000.0000000001,04,09,2026,00,00", core::FixType::ThreeD,
+         "a refused ZDA costs nothing"},
+        {"GNGSA,A,1,,,,,,,,,,,,,99.0,99.0,99.0000000001,1", core::FixType::NoFix,
+         "a refused GSA may have said mode 1"},
+        // Passes the fraction preflight and fails minmea: the second `.`.
+        {"GPGGA,140000.00,0030.00004,N,00100.00004,E,0,08,1..0,10.0,M,25.0,M,,",
+         core::FixType::NoFix, "an unparseable GGA may have said quality 0"},
+    };
+    for (const Case& c : cases) {
+        gnss::NmeaReceiver   receiver;
+        core::PositionSample sample;
+        g_now.ms += 1000;
+        deliver(receiver, "$GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+        deliver_body(receiver,
+                     "GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,");
+        deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+        deliver_body(receiver, c.body);
+        deliver(receiver, "$GNRMC,140001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V*13");
+        check(receiver.discarded() == 1, c.why, __LINE__);
+        check(receiver.sample(sample) && sample.observation.fix_type == c.fix, c.why, __LINE__);
+    }
+}
+
 void two_altitudes_that_each_fit_and_do_not_together()
 {
     // Each field passes `millimetres()` on its own — 2 000 000 m is 2e9 mm,
@@ -1256,6 +1335,8 @@ int main()
     a_scale_that_wraps_positive_is_not_a_position();
     nine_fractional_digits_fit_and_ten_do_not();
     a_refused_sentence_cannot_vouch_for_the_fix();
+    a_refused_rmc_still_closes_the_epoch_before_it();
+    only_a_sentence_that_could_veto_the_fix_costs_it();
     two_altitudes_that_each_fit_and_do_not_together();
     one_sentence_saying_no_fix_is_enough();
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
