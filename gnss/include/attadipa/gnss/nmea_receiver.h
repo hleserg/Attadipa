@@ -71,9 +71,11 @@
 // ponytail: an RMC lost to a bad checksum merges two epochs into one. The
 // fields latch rather than accumulate, so the result is one observation with
 // the later epoch's values and the earlier epoch's `observed_at` — up to a
-// second early, against a 30 s staleness threshold. A sequence counter would
-// close that and is not worth a field until something measures a stream where
-// it matters.
+// second early, against a 30 s staleness threshold. The GSA mode is the one
+// value the later epoch does not decide: the lowest of both stands, so a merge
+// can publish a worse fix than either epoch had, never a better one. A
+// sequence counter would close that and is not worth a field until something
+// measures a stream where it matters.
 //
 // ## One known ceiling, measured rather than assumed
 //
