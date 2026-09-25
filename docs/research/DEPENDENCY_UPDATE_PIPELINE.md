@@ -58,7 +58,7 @@ Each guard below was read at source. None of them was assumed.
 | Stage | What happens to a `dependabot/*` PR | Source |
 |---|---|---|
 | Opened | counts against the queue immediately; `pr-wip-limit.yml` adds `queue:over-limit` (add-only, read by nothing) | `.github/scripts/wip-limit.sh:39` — "queue:emergency" |
-| Labels | gets `dependencies` (a label that does not exist here) and `source:owner`, which is defined as filed by the owner. **A bot PR is labelled as owner-filed.** | `.github/dependabot.yml:22` — "- source:owner"; `.github/scripts/setup-labels.sh:63` — "Filed by the owner, per the task marker." |
+| Labels | gets `source:owner`, which is defined as filed by the owner. **A bot PR is labelled as owner-filed.** Until #641 it also got `dependencies`, a label that does not exist here. | `.github/dependabot.yml:22` — "- source:owner"; `.github/scripts/setup-labels.sh:63` — "Filed by the owner, per the task marker." |
 | Required CI | red: inventory gate; for a split CodeQL bump, also CodeQL | above |
 | Independent review | **never runs** while Dependabot is the actor | `.github/workflows/claude-pr-review.yml:90` — "github.actor != 'dependabot[bot]'" |
 | CI repair | **refused**: only `claude/*` branches | `.github/workflows/claude-ci-repair.yml:126` — "claude/*) ;;" |
