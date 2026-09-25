@@ -815,6 +815,14 @@ void test_there_is_no_bearing_to_where_you_already_are()
     // direction that was never written.
     CHECK(centideg == 4242);
 
+    // 180°W and 180°E are one meridian: the same point spelled twice, which
+    // used to answer 270° at a distance of zero.
+    const Position date_line_west{45 * kDeg, -kLongitudeMaxE7};
+    const Position date_line_east{45 * kDeg, kLongitudeMaxE7};
+    CHECK(!initial_bearing(date_line_west, date_line_east, centideg));
+    CHECK(!initial_bearing(date_line_east, date_line_west, centideg));
+    CHECK(centideg == 4242);
+
     // Standing on a pole there is no north to measure from. Two longitudes at
     // the same pole are also two coordinates and one physical point, which the
     // comparison above cannot see.
@@ -829,6 +837,30 @@ void test_there_is_no_bearing_to_where_you_already_are()
     // The bearing *to* a pole is ordinary, and is due north or due south.
     CHECK(BEARING(here, pole) == 0);
     CHECK(BEARING(here, south_pole) == 18000);
+}
+
+void test_there_is_no_bearing_to_the_antipode()
+{
+    // Every great circle through the origin reaches its antipode at the same
+    // length, so no direction is the one to it. The arithmetic used to answer
+    // 090° or 270° from the residue of sin(pi).
+    std::uint16_t centideg = 4242;
+    const Position origin{0, 0};
+    const Position opposite{0, kLongitudeMaxE7};
+    const Position north_east{45 * kDeg, 10 * kDeg};
+    const Position south_west{-45 * kDeg, -170 * kDeg};
+    CHECK(!initial_bearing(origin, opposite, centideg));
+    CHECK(!initial_bearing(opposite, origin, centideg));
+    CHECK(!initial_bearing(north_east, south_west, centideg));
+    CHECK(!initial_bearing(south_west, north_east, centideg));
+    CHECK(centideg == 4242);
+
+    // One unit of the grid off the antipode is a bearing, and a well-defined
+    // one: the short way is over the pole it leans towards.
+    CHECK(BEARING(origin, (Position{1, kLongitudeMaxE7})) == 0);
+    CHECK(BEARING(origin, (Position{-1, kLongitudeMaxE7})) == 18000);
+    // Only the direction is refused; the distance is still measured.
+    CHECK(great_circle_mm(origin, opposite) == kDistanceSaturated);
 }
 
 void test_a_coordinate_off_the_globe_has_no_bearing()
@@ -1100,6 +1132,7 @@ int main()
     test_a_great_circle_bulges_towards_the_pole();
     test_the_antimeridian_is_not_a_wall_for_a_bearing_either();
     test_there_is_no_bearing_to_where_you_already_are();
+    test_there_is_no_bearing_to_the_antipode();
     test_a_coordinate_off_the_globe_has_no_bearing();
     test_the_seam_at_north_folds_rather_than_overflowing();
     test_the_return_bearing_reverses_over_a_short_hop();

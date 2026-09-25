@@ -177,7 +177,13 @@ bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg)
     if (!in_range(a) || !in_range(b)) {
         return false;
     }
-    if (a.latitude_e7 == b.latitude_e7 && a.longitude_e7 == b.longitude_e7) {
+    // 180°W and 180°E are one meridian, so a full turn of longitude is no
+    // difference at all: the same point spelled twice, not a direction.
+    const std::int64_t dlon_e7 = static_cast<std::int64_t>(b.longitude_e7) -
+                                 static_cast<std::int64_t>(a.longitude_e7);
+    const std::int64_t full_turn = 2LL * kLongitudeMaxE7;
+    if (a.latitude_e7 == b.latitude_e7 &&
+        (dlon_e7 == 0 || dlon_e7 == full_turn || dlon_e7 == -full_turn)) {
         return false;
     }
     // STANDING ON A POLE THERE IS NO NORTH TO MEASURE FROM, so there is no
@@ -194,6 +200,16 @@ bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg)
     if (a.latitude_e7 == kLatitudeMaxE7 || a.latitude_e7 == -kLatitudeMaxE7) {
         return false;
     }
+    // THE ANTIPODE IS EQUALLY FAR IN EVERY DIRECTION, so there is no bearing to
+    // it either: every great circle through `a` reaches it at the same length.
+    // Tested on the integers for the reason above: both `atan2` operands are
+    // zero only algebraically, and the residue of sin(pi) answers 090° or 270°.
+    // Exact on the input grid, so a near-antipodal target, which does have a
+    // bearing, keeps it.
+    if (b.latitude_e7 == -a.latitude_e7 &&
+        (dlon_e7 == kLongitudeMaxE7 || dlon_e7 == -kLongitudeMaxE7)) {
+        return false;
+    }
 
     constexpr double kPi        = 3.14159265358979323846;
     constexpr double kRadPerE7  = kPi / 180.0 / 10000000.0;
@@ -203,10 +219,9 @@ bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg)
     // points a metre apart differ by about 9 in this unit; taken as a
     // difference of two doubles already scaled to radians it would be a
     // difference of two numbers near 1.0, and most of the mantissa would go
-    // into agreeing about the part that cancels.
-    const double dlon =
-        static_cast<double>(static_cast<std::int64_t>(b.longitude_e7) -
-                            static_cast<std::int64_t>(a.longitude_e7)) * kRadPerE7;
+    // into agreeing about the part that cancels. `dlon_e7` above is that
+    // subtraction.
+    const double dlon = static_cast<double>(dlon_e7) * kRadPerE7;
 
     const double lat_a = static_cast<double>(a.latitude_e7) * kRadPerE7;
     const double lat_b = static_cast<double>(b.latitude_e7) * kRadPerE7;

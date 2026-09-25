@@ -106,7 +106,10 @@ std::uint32_t distance_mm(Position a, Position b);
 // `GnssObservation::course_centideg`.
 //
 // False, and `out_centideg` untouched, when there is no bearing to state:
-// either position out of range, or nothing to point at. `std::atan2(0, 0)` is
+// either position out of range, or nothing to point at — the same point, a
+// pole as origin, or the exact antipode, which every direction reaches at the
+// same length. Only the direction is refused there: `great_circle_mm()` still
+// measures, so the screen shows `> 1000 km` beside `—`. `std::atan2(0, 0)` is
 // 0 rather than an error, so without that second refusal "due north" and "you
 // are standing on it" would be the same answer, and turning a user north
 // because they arrived is the kind of confident wrong direction this file's
