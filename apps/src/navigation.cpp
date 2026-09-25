@@ -254,6 +254,10 @@ NavText format_navigation(const NavState &state) {
     // and that is right — the distance is known and the direction is not, which
     // is the same separation the rest of this file keeps. It reads as arrival
     // only to somebody who assumed the em dash meant zero.
+    //
+    // And a third: the exact antipode, which every direction reaches at the
+    // same length. There the distance reads `> 1000 km`, the one case of the
+    // three where nobody could take the em dash for arrival.
   }
 
   // ---- the caveat --------------------------------------------------------

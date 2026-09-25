@@ -106,8 +106,11 @@ std::uint32_t distance_mm(Position a, Position b);
 // `GnssObservation::course_centideg`.
 //
 // False, and `out_centideg` untouched, when there is no bearing to state:
-// either position out of range, or nothing to point at. `std::atan2(0, 0)` is
-// 0 rather than an error, so without that second refusal "due north" and "you
+// either position out of range, or nothing to point at — the same point, a
+// pole as origin, or the exact antipode, which every direction reaches at the
+// same length. Only the direction is refused there: `great_circle_mm()` still
+// measures, so the screen shows `> 1000 km` beside `—`. `std::atan2(0, 0)` is
+// 0 rather than an error, so without the same-point refusal "due north" and "you
 // are standing on it" would be the same answer, and turning a user north
 // because they arrived is the kind of confident wrong direction this file's
 // neighbours exist to prevent.
@@ -157,12 +160,13 @@ bool initial_bearing(Position a, Position b, std::uint16_t& out_centideg);
 // says `982 km`, at high latitude over a long baseline, which is the case #433
 // exists for. There is no cheap pre-filter; ask this function.
 //
-// It does not repeat `initial_bearing()`'s other two refusals, and that is a
-// decision rather than an omission: those two are refusals about *direction*.
-// There is no bearing from a point to itself and none from a pole, because
-// every direction there is the same one — but the distance is zero in the
-// first case and perfectly ordinary in the second, and refusing either would
-// throw away an answer this function can state.
+// It does not repeat `initial_bearing()`'s other three refusals, and that is a
+// decision rather than an omission: those three are refusals about *direction*.
+// There is no bearing from a point to itself, none from a pole and none to the
+// exact antipode, because every direction there is the same one — but the
+// distance is zero in the first case, perfectly ordinary in the second and the
+// longest there is in the third, and refusing any of them would throw away an
+// answer this function can state.
 //
 // `<cmath>` and doubles, once per screen refresh; see the split at the top of
 // this file for why that is allowed here and not in `distance_mm()`. The
