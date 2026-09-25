@@ -50,9 +50,9 @@ is claimed or observed** — the exposure is the execution path.
 
 Resolved 2026-08-28, except the two rows Dependabot has moved since:
 `anthropics/claude-code-action`, re-resolved 2026-09-08 and again 2026-09-14,
-and `github/codeql-action`, re-resolved 2026-09-14. **A date in a row is the
+and `github/codeql-action`, re-resolved 2026-09-14 and again 2026-09-25. **A date in a row is the
 commit's own, not the day the row was resolved**, so the two moved rows name
-commits of 2026-09-11 and 2026-09-09 — later than the 2026-08-28 above, which
+commits of 2026-09-11 and 2026-09-18 — later than the 2026-08-28 above, which
 would otherwise date them before they existed. The three rows that have not
 moved still name commits older than that sweep, which is what an unmoved pin
 looks like. `anthropics/claude-code-action@v1` and
@@ -111,7 +111,7 @@ the commit assertion.
 | **`actions/checkout`** | `3d3c42e5aac5ba805825da76410c181273ba90b1`, 2026-07-17 | `v7`, lightweight | MIT | re-resolve the tag, run `action-pin-test.sh` with `ATTADIPA_PIN_CHECK_NETWORK=1`, bump every occurrence together |
 | **`anthropics/claude-code-action`** | `cfc3eb22bfed5c26ef66e3223c982af27e4524de`, 2026-09-19 | release `v1.0.231`, reached as `v1`, **annotated** | MIT | the highest-privilege dependency here. Read the upstream diff before bumping; `orchestration-bundle-test.sh` asserts the model and effort flags on the pinned step |
 | **`actions/upload-artifact`** | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, 2026-04-10 | `v7`, lightweight | MIT | as `checkout` |
-| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `b96794f015dfd88f77b49b1c93e0fa7110f94c63`, 2026-09-09 | release `v4.38.0`, reached as `v4`, **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle. What a Dependabot PR meets here, and who finishes it: [DEPENDENCY_UPDATE_PIPELINE.md](DEPENDENCY_UPDATE_PIPELINE.md) |
+| **`github/codeql-action/init`**, **`github/codeql-action/analyze`** | `1c5b675653bb5c22dbe9b12b556ec555138e09fd`, 2026-09-18 | release `v4.38.1`, reached as `v4` (which has moved on since), **annotated** | MIT | both sub-paths share one repository and must move together, or `init` and `analyze` disagree about the bundle. What a Dependabot PR meets here, and who finishes it: [DEPENDENCY_UPDATE_PIPELINE.md](DEPENDENCY_UPDATE_PIPELINE.md) |
 | **`actions/cache`** | `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`, 2026-06-23 | `v6`, lightweight | MIT | as `checkout` |
 
 `v1` moved twice while this pin was being prepared — the tag resolved to a
