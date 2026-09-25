@@ -1117,6 +1117,7 @@ struct RecordingBootOps {
     bool port_ok = true;
     bool queue_ok = true;
     bool worker_ok = true;
+    bool host_ok = true;
     std::vector<std::string> calls;
 
     bool port_init()
@@ -1135,7 +1136,13 @@ struct RecordingBootOps {
         calls.push_back("worker_create");
         return worker_ok;
     }
-    void host_start() { calls.push_back("host_start"); }
+    bool host_start()
+    {
+        calls.push_back("host_start");
+        return host_ok;
+    }
+    void worker_release() { calls.push_back("worker_release"); }
+    void worker_abort() { calls.push_back("worker_abort"); }
     void queue_delete() { calls.push_back("queue_delete"); }
     void port_deinit() { calls.push_back("port_deinit"); }
 
@@ -1144,19 +1151,33 @@ struct RecordingBootOps {
         return std::find(calls.begin(), calls.end(), std::string(what)) !=
                calls.end();
     }
+    std::size_t times(const char* what) const
+    {
+        return static_cast<std::size_t>(
+            std::count(calls.begin(), calls.end(), std::string(what)));
+    }
+    std::size_t at(const char* what) const
+    {
+        return static_cast<std::size_t>(
+            std::find(calls.begin(), calls.end(), std::string(what)) -
+            calls.begin());
+    }
 };
 
-void a_successful_boot_starts_the_host_last()
+void a_successful_boot_releases_the_worker_last()
 {
     using attadipa::firmware::BootResult;
     RecordingBootOps ops;
     CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::Ok);
-    // The worker is created before the host task and after everything it
-    // reads. Nothing is released.
+    // The worker is created after everything it reads and released after the
+    // host task exists, so the one step that cannot fail is the last one.
+    // Nothing is released, and the host is started exactly once.
     CHECK(ops.calls == std::vector<std::string>({"port_init", "configure_host",
                                                  "queue_create",
                                                  "worker_create",
-                                                 "host_start"}));
+                                                 "host_start",
+                                                 "worker_release"}));
+    CHECK(ops.times("host_start") == 1);
 }
 
 void a_failed_port_init_publishes_nothing_and_releases_nothing()
@@ -1171,6 +1192,7 @@ void a_failed_port_init_publishes_nothing_and_releases_nothing()
     CHECK(!ops.did("queue_create"));
     CHECK(!ops.did("worker_create"));
     CHECK(!ops.did("host_start"));
+    CHECK(!ops.did("worker_release"));
     // Nothing was acquired, so nimble_port_deinit would be undoing a failure.
     CHECK(!ops.did("port_deinit"));
 }
@@ -1196,6 +1218,10 @@ void a_failed_worker_releases_in_reverse_acquisition_order()
     ops.worker_ok = false;
     CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::WorkerFailed);
     CHECK(!ops.did("host_start"));
+    CHECK(!ops.did("worker_release"));
+    // There is no worker to end: the one thing that could have been acquired
+    // was not.
+    CHECK(!ops.did("worker_abort"));
     const auto queue = std::find(ops.calls.begin(), ops.calls.end(),
                                  std::string("queue_delete"));
     const auto port = std::find(ops.calls.begin(), ops.calls.end(),
@@ -1204,6 +1230,53 @@ void a_failed_worker_releases_in_reverse_acquisition_order()
     CHECK(port != ops.calls.end());
     // The queue is what the worker would have read, so it goes back first.
     CHECK(queue < port);
+}
+
+// #344 again, reopened: the host task is a task, FreeRTOS can refuse to create
+// one, and the pinned esp-nimble wrapper throws that answer away. Red before
+// the fix, and red the informative way rather than by failing to build: the
+// old sequence called `ops.host_start();` as a statement, so an `Ops` whose
+// `host_start()` returns `bool` compiled against it perfectly and the answer
+// went nowhere -- which is the defect, in one line. `boot_meshcore()` then
+// returned `Ok`, and a watch with no NimBLE host loop reported a successful
+// BLE start.
+void a_failed_host_start_ends_the_worker_and_gives_everything_back()
+{
+    using attadipa::firmware::BootResult;
+    RecordingBootOps ops;
+    ops.host_ok = false;
+    CHECK(attadipa::firmware::boot_meshcore(ops) == BootResult::HostFailed);
+    // The worker was acquired, so it is given back -- and it is never let go:
+    // a released worker reads the queue this is about to delete.
+    CHECK(ops.did("worker_abort"));
+    CHECK(!ops.did("worker_release"));
+    // Reverse acquisition order: worker, then queue, then NimBLE. Each exactly
+    // once, so nothing is deleted twice on the way out.
+    CHECK(ops.calls == std::vector<std::string>({"port_init", "configure_host",
+                                                 "queue_create",
+                                                 "worker_create",
+                                                 "host_start",
+                                                 "worker_abort",
+                                                 "queue_delete",
+                                                 "port_deinit"}));
+    CHECK(ops.times("worker_abort") == 1);
+    CHECK(ops.times("queue_delete") == 1);
+    CHECK(ops.times("port_deinit") == 1);
+    // Said as an order and not only as a list, because the list is what a
+    // future step would be appended to and this is the property that matters.
+    CHECK(ops.at("worker_abort") < ops.at("queue_delete"));
+    CHECK(ops.at("queue_delete") < ops.at("port_deinit"));
+}
+
+// The worker is acquired before the host and held shut until after it, which is
+// what makes the rollback above possible: the host task is the acquisition this
+// bootstrap cannot take back, so nothing fallible may follow it.
+void the_worker_is_never_running_while_the_host_may_still_fail()
+{
+    RecordingBootOps ops;
+    (void)attadipa::firmware::boot_meshcore(ops);
+    CHECK(ops.at("worker_create") < ops.at("host_start"));
+    CHECK(ops.at("host_start") < ops.at("worker_release"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1623,10 +1696,12 @@ int main()
     two_forget_bonds_cannot_both_be_answered_by_one_deletion();
     a_request_that_was_never_queued_gives_the_slot_back();
     an_answer_nobody_collected_does_not_wedge_the_next_request();
-    a_successful_boot_starts_the_host_last();
+    a_successful_boot_releases_the_worker_last();
     a_failed_port_init_publishes_nothing_and_releases_nothing();
     a_failed_queue_gives_nimble_back();
     a_failed_worker_releases_in_reverse_acquisition_order();
+    a_failed_host_start_ends_the_worker_and_gives_everything_back();
+    the_worker_is_never_running_while_the_host_may_still_fail();
     a_reconfigure_over_a_live_session_recycles_it_rather_than_stranding_the_provider();
     resetting_the_provider_under_a_live_session_is_what_wedged_it();
     an_unpinned_watch_adopts_the_node_that_identified_itself();

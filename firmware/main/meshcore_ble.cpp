@@ -36,7 +36,6 @@
 #include "host/ble_store.h"
 #include "host/util/util.h"
 #include "nimble/nimble_port.h"
-#include "nimble/nimble_port_freertos.h"
 #include "os/os_mbuf.h"
 
 namespace {
@@ -132,6 +131,18 @@ struct Event {
 };
 
 QueueHandle_t event_queue = nullptr;
+
+// The worker's gate (#344). `mesh_task` is created before the NimBLE host task
+// and blocks on its own notification until the bootstrap says which of these
+// happened, so a bootstrap that fails after creating it has a worker that has
+// read no queue and entered no stack -- see `meshcore_boot.h` for why the
+// ordering is that way round. Only `boot_meshcore()` ever sends one, exactly
+// once, and the notification is latched by the kernel whether or not the task
+// is already waiting, so there is no start-up race to lose.
+constexpr std::uint32_t kWorkerRun = 1;
+constexpr std::uint32_t kWorkerAbort = 2;
+TaskHandle_t worker_task = nullptr;
+
 attadipa::link::MeshCoreCompanion provider;
 attadipa::core::MeshService service(provider);
 
@@ -1661,11 +1672,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:196` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:207` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1718` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1746` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:938` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:949` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1697,6 +1708,23 @@ void settle_node_identity(std::uint32_t generation)
 
 void mesh_task(void*)
 {
+    // THE GATE, AND NOTHING ABOVE IT. Not one line before this may touch the
+    // event queue, the provider or NimBLE, because the whole point of the wait
+    // is that a bootstrap which fails after `xTaskCreate` can end this task
+    // knowing it was never inside any of them.
+    std::uint32_t gate = 0;
+    xTaskNotifyWait(0, UINT32_MAX, &gate, portMAX_DELAY);
+    if (gate != kWorkerRun) {
+        // The bootstrap is about to delete the queue and hand NimBLE back. It
+        // does not wait for this task, and does not need to: there is nothing
+        // shared left to be inside.
+        ESP_LOGW(kTag, "MeshCore worker ended before it ran: startup failed");
+        vTaskDelete(nullptr);
+        return;  // Unreachable: vTaskDelete(nullptr) does not return. Written
+                 // anyway, because the alternative to returning here is falling
+                 // into the loop below and reading a queue that is being freed.
+    }
+
     Event event{};
     SessionMark applied{};
     // Worker-local, like `applied`: the request task claims the slot, but only
@@ -2015,7 +2043,17 @@ void on_sync()
 void host_task(void*)
 {
     nimble_port_run();
-    nimble_port_freertos_deinit();
+    // `vTaskDelete(nullptr)` and not `nimble_port_freertos_deinit()`, because
+    // since #344 this task is created here rather than by
+    // `nimble_port_freertos_init()`. That call would reach
+    // `esp_nimble_disable()`, whose `vTaskDelete(host_task_h)` is guarded by a
+    // handle the port only sets from `esp_nimble_enable()` -- never called now,
+    // so the guard would be null, nothing would be deleted, and this function
+    // would return from a FreeRTOS task, which aborts. Nothing in this image
+    // calls `nimble_port_stop()`, so `nimble_port_run()` does not return and
+    // this line does not run; it is here so that ceases to be what keeps the
+    // image alive.
+    vTaskDelete(nullptr);
 }
 
 }  // namespace
@@ -2052,10 +2090,46 @@ struct RealBootOps {
     }
     bool worker_create()
     {
-        return xTaskCreate(mesh_task, "meshcore", 6144, nullptr, 3, nullptr) ==
-               pdPASS;
+        return xTaskCreate(mesh_task, "meshcore", 6144, nullptr, 3,
+                           &worker_task) == pdPASS;
     }
-    void host_start() { nimble_port_freertos_init(host_task); }
+    // UPSTREAM'S FIX, AT THIS CALL SITE. ESP-IDF v5.5.5 pins
+    // `components/bt/host/nimble/nimble` at esp-nimble `685675c0`, and there
+    // `esp_nimble_enable()` reads
+    //
+    //     xTaskCreatePinnedToCore(host_task, "nimble_host", NIMBLE_HS_STACK_SIZE,
+    //                             NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
+    //     return ESP_OK;
+    //
+    // -- the `BaseType_t` discarded -- and `nimble_port_freertos_init()` is
+    // `void` on top of that. Through that wrapper a host task that was never
+    // created is indistinguishable from one that was, and without it nothing
+    // runs `nimble_port_run()`: no advertising, no session, and a watch that
+    // logged a successful BLE start. esp-nimble has since fixed exactly this
+    // (`nimble-1.9.0-idf`: the return is checked, the handle cleared, and
+    // `ESP_ERR_NO_MEM` returned), but the fix is not in the pin, so the same
+    // three lines are written here -- same task name, same stack, same
+    // priority, same core, all from the port's own public macros -- with the
+    // result kept. The handle is deliberately not: this bootstrap never stops
+    // the host task, and `meshcore_boot.h` says why it must not have to.
+    bool host_start()
+    {
+        return xTaskCreatePinnedToCore(host_task, "nimble_host",
+                                       NIMBLE_HS_STACK_SIZE, nullptr,
+                                       configMAX_PRIORITIES - 4, nullptr,
+                                       NIMBLE_CORE) == pdPASS;
+    }
+    void worker_release()
+    {
+        xTaskNotify(worker_task, kWorkerRun, eSetValueWithOverwrite);
+    }
+    void worker_abort()
+    {
+        xTaskNotify(worker_task, kWorkerAbort, eSetValueWithOverwrite);
+        // The task deletes itself from here on, so this handle is about to name
+        // nothing.
+        worker_task = nullptr;
+    }
     void queue_delete()
     {
         vQueueDelete(event_queue);
@@ -2195,6 +2269,7 @@ esp_err_t start_meshcore_ble()
     }
 
     RealBootOps ops;
+    esp_err_t failed = ESP_ERR_NO_MEM;
     switch (attadipa::firmware::boot_meshcore(ops)) {
     case attadipa::firmware::BootResult::Ok:
         restore_passkey();
@@ -2204,12 +2279,30 @@ esp_err_t start_meshcore_ble()
         // this call, so a failure here left a task polling a queue nothing
         // would ever post to for the rest of the boot -- roughly 24 KiB held,
         // ESTIMATED -- while app_main logged that MeshCore had failed safely.
-        return ops.port_status;
+        failed = ops.port_status;
+        break;
+    case attadipa::firmware::BootResult::HostFailed:
+        // Its own line because ESP_ERR_NO_MEM alone does not say which task,
+        // and this one is the task the radio is: without it nothing services
+        // NimBLE's event queue. Reported rather than survived -- the watch used
+        // to log a successful BLE start here and then never advertise.
+        ESP_LOGE(kTag,
+                 "NimBLE host task could not be created; MeshCore BLE is off "
+                 "for this boot");
+        break;
     case attadipa::firmware::BootResult::QueueFailed:
     case attadipa::firmware::BootResult::WorkerFailed:
         break;
     }
-    return ESP_ERR_NO_MEM;
+    // No failure arm leaves a worker, and publish() is worker-only, so this is
+    // the last word on availability for this boot. Left at Unprovisioned, the
+    // mesh screen would ask the wearer to pick a node on a radio that will
+    // never advertise; Failed is the answer that means a reset, not a retry.
+    // Under the lock: the UI task may already be reading it.
+    taskENTER_CRITICAL(&snapshot_lock);
+    snapshot.availability = attadipa::core::Availability::Failed;
+    taskEXIT_CRITICAL(&snapshot_lock);
+    return failed;
 }
 
 bool configure_meshcore_ble(std::uint32_t passkey)
