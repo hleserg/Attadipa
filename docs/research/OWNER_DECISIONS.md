@@ -2026,3 +2026,41 @@ air. The cost it does not count is the one he named, and it is not a radio cost.
 **What it does not decide:** how a target is chosen in the interface, how long a
 position is kept, and whether this product ever attaches a position to a message
 it sends. The last of those is a separate decision and has not been asked.
+
+---
+
+## OD-31 — The simulator's identity re-check stays without a test
+
+**Decided:** 2026-09-25, by the owner, in conversation, accepting a
+recommendation made on
+[#644](https://github.com/hleserg/Attadipa/pull/644), which the independent
+review had left for an owner decision.
+
+**What was decided:** the second `lstat` in the simulator's stale-socket
+recovery ships untested:
+`sim/debug_server.cpp:401` — "if (::lstat(path.c_str(), &still) != 0 || still.st_dev != existing.st_dev ||".
+It refuses to unlink a name whose device or inode changed after the first
+`lstat`. Nothing a test can drive from outside the process reaches it. Both
+`lstat` calls run under the process's own path claim. The only call between
+them is `socket_is_served`, and on the path that reaches the re-check its
+`connect` has already been refused. A refused `connect` returns at once, so no
+bounded wait sits in that window for a test to stretch. Making the branch
+fire on demand would need a syscall interposition shim (`LD_PRELOAD`) built for
+this one guard.
+
+**What it obliges:** nothing new. The guard stays, with its comment, which
+already calls it the narrower and weaker of the two guards. The path claim
+([#642](https://github.com/hleserg/Attadipa/issues/642)) is the guard the tests
+exercise.
+
+**What it invalidates:** a review finding that asks for a test of this branch.
+The branch is known to be untested, and that was decided here. It is not an
+oversight.
+
+**Why no shim:** `AGENTS.md` — "Do not add a mechanism unless it lets the
+repository remove an old one." An interposition shim removes nothing. It would
+be test-only infrastructure that exists to exercise one comparison.
+
+**What it does not decide:** whether a later change that *does* put a delay
+between the two `lstat` calls needs a test. If one does, the window has become
+reachable, and the question is open again.
