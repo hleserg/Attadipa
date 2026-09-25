@@ -620,6 +620,57 @@ void one_sentence_saying_no_fix_is_enough()
     CHECK(sample.observation.position.has_value());
 }
 
+// One GSA per constellation, and nothing obliges them to agree. The worst
+// mode stands whatever order they arrive in (#584): a later mode 3 used to
+// overwrite an earlier mode 1 and publish a three-dimensional fix.
+void the_worst_gsa_of_an_epoch_stands_in_any_order()
+{
+    struct Case {
+        std::vector<int> modes;
+        core::FixType    fix;
+        std::uint32_t    native_mode;
+    };
+    const Case cases[] = {
+        {{1, 3}, core::FixType::NoFix, 1},
+        {{3, 1}, core::FixType::NoFix, 1},
+        {{2, 3}, core::FixType::TwoD, 2},
+        {{3, 2}, core::FixType::TwoD, 2},
+        {{3, 3}, core::FixType::ThreeD, 3},
+        {{}, core::FixType::TwoD, 0},       // no GSA: the documented fallback
+        {{3, 0}, core::FixType::ThreeD, 3},  // out of range: not a vote
+        {{3, 4}, core::FixType::ThreeD, 3},
+    };
+    for (const Case& c : cases) {
+        gnss::NmeaReceiver receiver;
+        core::PositionSample sample;
+        g_now.ms += 1000;
+        deliver_body(receiver, "GNRMC,141000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V");
+        deliver_body(receiver, "GNGGA,141000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,");
+        for (const int m : c.modes) {
+            deliver_body(receiver, "GNGSA,A," + std::to_string(m) +
+                                       ",21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+        }
+        g_now.ms += 1000;
+        deliver_body(receiver, "GNRMC,141001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V");
+        CHECK(receiver.sample(sample));
+        CHECK(sample.observation.fix_type == c.fix);
+        // The diagnostic byte carries the same worst mode, not the last one.
+        CHECK(((sample.observation.native.status >> 8) & 0xFFu) == c.native_mode);
+        if (c.fix == core::FixType::NoFix) {
+            CHECK(core::classify(sample.observation, g_now, {}) == core::PositionValidity::NoFix);
+        }
+
+        // The next epoch starts clean: its lone mode 3 is not held down by
+        // this one's mode 1.
+        deliver_body(receiver, "GNGGA,141001.00,0030.00005,N,00100.00005,E,1,08,1.00,10.0,M,25.0,M,,");
+        deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+        g_now.ms += 1000;
+        deliver_body(receiver, "GNRMC,141002.00,A,0030.00006,N,00100.00006,E,0.085,,040926,,,D,V");
+        CHECK(receiver.sample(sample));
+        CHECK(sample.observation.fix_type == core::FixType::ThreeD);
+    }
+}
+
 void silence_is_not_the_same_as_never_having_answered()
 {
     gnss::NmeaReceiver receiver{core::Millis{5000}};
@@ -1339,6 +1390,7 @@ int main()
     only_a_sentence_that_could_veto_the_fix_costs_it();
     two_altitudes_that_each_fit_and_do_not_together();
     one_sentence_saying_no_fix_is_enough();
+    the_worst_gsa_of_an_epoch_stands_in_any_order();
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();
     silence_is_not_the_same_as_never_having_answered();
     a_flush_takes_the_open_epoch_with_it();

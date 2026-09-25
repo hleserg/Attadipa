@@ -370,8 +370,12 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         // `fix-20260904T1353Z.nmea` — all reporting the same solution and the
         // same dilutions. Latched, never accumulated: `satellites_used` is
         // GGA's count of the satellites in the fix, and counting the slots
-        // across five GSAs would produce a number no receiver stated.
-        if (frame.fix_type >= MINMEA_GPGSA_FIX_NONE && frame.fix_type <= MINMEA_GPGSA_FIX_3D) {
+        // across five GSAs would produce a number no receiver stated. The mode
+        // is the one exception: the worst of them, not the last (#584), so a
+        // constellation saying mode 1 is not overwritten by a later one saying
+        // 3, and the answer does not depend on the order they arrived in.
+        if (frame.fix_type >= MINMEA_GPGSA_FIX_NONE && frame.fix_type <= MINMEA_GPGSA_FIX_3D &&
+            (gsa_fix_ == 0 || frame.fix_type < gsa_fix_)) {
             gsa_fix_ = static_cast<std::uint8_t>(frame.fix_type);
         }
         std::uint16_t pdop = 0;
