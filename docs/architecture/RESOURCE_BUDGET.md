@@ -136,7 +136,7 @@ compiles it in.
 
 **With a precondition this row has to carry, because it is a device row resting
 on a host-build fact.** That file is the *simulator's* `lv_conf`, and
-`cmake/AttadipaLvgl.cmake:62` "LV_BUILD_CONF_PATH" points the only LVGL build
+`cmake/AttadipaLvgl.cmake:71` "LV_BUILD_CONF_PATH" points the only LVGL build
 this repository has at it — there is no device configuration, because there is
 no device build. The flag also sits under
 `sim/lv_conf_simulator.h:210` "Selectively disable color format support in order to reduce code size",

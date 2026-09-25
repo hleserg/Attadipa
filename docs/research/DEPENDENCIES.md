@@ -282,8 +282,13 @@ the SHA, checked with `git rev-parse HEAD` after the clone, because a tag can be
 moved and a commit cannot — and a re-tagged v9.5.0 would still say `9.5.0` in
 `lv_version.h`, so the version check alone cannot catch it.
 `ATTADIPA_LVGL_SOURCE_DIR` points the build at a tree already on disk for offline
-work; it skips the fetch and neither check. Both failures are configure errors
-rather than behaviour discovered later.
+work; it skips the fetch and neither check, and it has to be a git checkout: a
+tree with no git metadata cannot show its commit and is refused. Both checks run
+before LVGL's own `CMakeLists.txt` does — `SOURCE_SUBDIR` names a directory that
+does not exist, so `FetchContent_MakeAvailable` only populates, and the tree is
+added once it has passed (#637). Every failure is a configure error rather than
+behaviour discovered later, and `tests/lvgl_pin_refusal.cmake` checks that a
+refused tree never ran.
 
 Two things checked rather than assumed, on 2026-08-21:
 

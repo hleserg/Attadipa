@@ -812,3 +812,11 @@ set_tests_properties(meshcore_send_request PROPERTIES LABELS mesh)
 
 add_test(NAME context_trust
          COMMAND bash ${PROJECT_SOURCE_DIR}/.github/tests/context-trust-test.sh)
+
+# cmake/AttadipaLvgl.cmake refuses an unverifiable LVGL before running it (#637).
+add_test(NAME lvgl_pin_refusal
+         COMMAND ${CMAKE_COMMAND}
+                 -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/lvgl_pin_refusal
+                 -DREPO_DIR=${PROJECT_SOURCE_DIR}
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/lvgl_pin_refusal.cmake)
+set_tests_properties(lvgl_pin_refusal PROPERTIES LABELS supply-chain)
