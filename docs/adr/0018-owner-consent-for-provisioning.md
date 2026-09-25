@@ -116,7 +116,7 @@ recorded here so that no option is credited with paying them.
    entry is therefore **new UI on a working input path**, not a new input path.
 
 4. **Both sink interfaces live in the same header as the forbidden symbol.**
-   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {" and `:191` —
+   `debug/include/attadipa/debug/bridge.h:171` — "class TimeSink {" and `:202` —
    "class MeshSink {", while `tools/flash/firmware_elf_check.py:62` — "# Bridge::handle is the single function every privileged opcode is dispatched"
    names what a product image may not contain. The interfaces are pure virtual
    and a header is not a symbol, so reuse is probably fine — but any option that
@@ -370,7 +370,7 @@ Beyond B and C:
   — which hands the request to the sequence that validates it, tags it
   `firmware/main/provision_time.h:143` — "core::TimeSource::Manual, core::TimeQuality::Trusted,"
   — writes the PCF85063 and persists the offset. The passkey's is
-  `debug/include/attadipa/debug/bridge.h:191` — "class MeshSink {" — whose
+  `debug/include/attadipa/debug/bridge.h:202` — "class MeshSink {" — whose
   `configure` takes a passkey and may refuse it: a request the application makes
   and the firmware answers, which is the shape this needs. Neither is missing
   and neither is merely uncalled. `firmware/main/CMakeLists.txt:49` —

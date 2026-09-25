@@ -709,6 +709,117 @@ def mesh_commands_are_validated_and_a_send_is_not_retried() -> None:
                                                "Hello", 1234567890))
 
 
+def a_private_message_is_bounded_by_one_number_and_it_is_the_watchs() -> None:
+    """#609. The encoder said 160; the watch has never accepted more than 128.
+
+    Three layers had three answers for one field. The host encoder took 160,
+    upstream's `MAX_TEXT_LEN`; `core::kMeshTextBytes` is 128 and is what
+    `meshcore_ble_send()` enforces; and the generic envelope's 182-byte body
+    happened to cut the difference at 142 once a whole 32-byte recipient key
+    and a timestamp were in front of the text. So 129..142 bytes left here,
+    crossed the wire, were refused by the watch before anything was queued, and
+    came back to the operator as `OperationFailed` -- a radio that had tried and
+    failed, except that no radio was asked. 143..160 never reached the wire at
+    all and said something different again, about a body size.
+
+    The number is the watch's. This holds the encoder to it, and holds the
+    refusal to happening here rather than a round trip away.
+    """
+    from watch.client import Watch, WatchError  # noqa: PLC0415
+
+    key = bytes(range(32))
+
+    # 128 is written out here rather than read from `p.MESH_TEXT_BYTES`, on the
+    # same reasoning as the opcode tables at the top of this file: a test that
+    # imports the number it is checking moves with it, and would have gone on
+    # passing while the encoder said 160. The import is checked once, against
+    # the literal, so the two cannot drift without this line saying so.
+    check(p.MESH_TEXT_BYTES == 128,
+          "the host's MeshCore text limit is the product's 128")
+
+    # Both sides of the boundary, with the full key that makes the request its
+    # real size. #573 widened the recipient from six bytes to thirty-two, which
+    # is what put the envelope's ceiling within reach of the text limit at all.
+    for size in (1, 127, 128):
+        body = p.mesh_send_encode(key, "a" * size, 1234567890)
+        check(body == key + bytes.fromhex("d202964900000000") + b"a" * size,
+              f"a {size}-byte private message encodes to the v3 layout")
+        # The biggest private message the product allows still fits one frame,
+        # so no legal one can meet the envelope's ceiling and the text limit at
+        # once -- which is the 143..160 half of #609, where it did. Said of
+        # this opcode and not of `mesh_room_send`, where the two ceilings do
+        # still collide: 32 + 1 + 15 + 8 + 128 is 184 against a 182-byte body,
+        # so a full-length password and a full-length text do not fit together.
+        # Fixing that is a layout change; the encoder names the password's cost.
+        frame = p.envelope_encode(p.Envelope(op=p.Op.MESH_SEND, req_id=1, body=body))
+        check(len(body) <= p.MAX_BODY and len(frame) <= p.MAX_PAYLOAD,
+              f"a {size}-byte private message stays inside the generic envelope")
+
+    # One byte over is refused here, by the command's own encoder. 142 and 143
+    # are the two the envelope used to tell apart on its own, and they are the
+    # same answer now; 160 is the bound this encoder used to carry.
+    for size in (129, 142, 143, 160, 1000):
+        check_raises(ValueError,
+                     f"{size} UTF-8 bytes are refused by the encoder",
+                     lambda size=size: p.mesh_send_encode(key, "a" * size, 1234567890))
+    try:
+        p.mesh_send_encode(key, "a" * 129, 1234567890)
+    except ValueError as exc:
+        check("129" in str(exc) and "128" in str(exc),
+              "the refusal names the byte count it measured and the limit it holds")
+    check_raises(ValueError, "an empty message is not a message",
+                 lambda: p.mesh_send_encode(key, "", 1234567890))
+
+    # Bytes, not characters. 64 Cyrillic letters are 128 bytes and fit; 65 are
+    # 130 and do not, though both are a long way under 128 characters. A
+    # `len(text)` bound would have passed the second and put a message on the
+    # wire the watch refuses.
+    at_limit = "а" * 64
+    check(len(at_limit) == 64 and len(at_limit.encode("utf-8")) == 128,
+          "sixty-four Cyrillic letters are exactly the limit in bytes")
+    check(len(p.mesh_send_encode(key, at_limit, 1234567890)) == 32 + 8 + 128,
+          "a message at the limit in bytes is accepted whatever its length in characters")
+    over = "а" * 65
+    check(len(over) < 128, "and sixty-five are still few characters")
+    check_raises(ValueError, "but are refused, because the bound counts bytes",
+                 lambda: p.mesh_send_encode(key, over, 1234567890))
+    # A single emoji costs four bytes, so the last character can push a message
+    # two bytes over a limit it was two bytes under.
+    straddling = "a" * 126 + "🙂"
+    check(len(straddling.encode("utf-8")) == 130,
+          "a four-byte code point can straddle the limit")
+    check_raises(ValueError, "and a straddling code point is refused whole",
+                 lambda: p.mesh_send_encode(key, straddling, 1234567890))
+
+    # And no transport write for any of it: the client raises before it asks
+    # the device anything, so an over-long message costs no round trip and
+    # cannot be answered by a device-side error at all.
+    device = ScriptedDevice(lambda e: [_reply_to(e, p.Op.MESH_OK)])
+    watch = Watch(device, timeout=1.0)
+    check_raises(WatchError, "an over-long message is refused before the wire",
+                 lambda: watch.mesh_send(key, "a" * 129, 1234567890))
+    check(device.asked == [], "and nothing was written to the device")
+    watch.mesh_send(key, "a" * 128, 1234567890)
+    check(len(device.asked) == 1, "while a message at the limit is sent")
+
+    # The Room Server text is the watch's 128 too, not 126: that was the
+    # envelope's worst case with a 15-byte password, and it refused 127 and 128
+    # to every shorter one. A 13-byte password and 128 bytes is 182 exactly.
+    for password, size in (("p", 128), ("p" * 13, 128), ("p" * 15, 126)):
+        body = p.mesh_room_send_encode(key, password, "a" * size, 1234567890)
+        check(len(body) <= p.MAX_BODY,
+              f"a {len(password)}-byte password and {size} bytes of room text fit")
+    check_raises(ValueError, "129 bytes of room text are refused whatever the password",
+                 lambda: p.mesh_room_send_encode(key, "p", "a" * 129, 1234567890))
+    try:
+        p.mesh_room_send_encode(key, "p" * 15, "a" * 127, 1234567890)
+    except ValueError as exc:
+        check("15-byte password" in str(exc) and "126" in str(exc),
+              "an overflow the password caused names the password and what it left")
+    else:
+        check(False, "a 15-byte password and 127 bytes of text are refused")
+
+
 def a_stability_wait_actually_waits() -> None:
     from watch.client import Watch, WatchError  # noqa: PLC0415
 
@@ -1703,6 +1814,7 @@ CASES = (
     every_error_code_has_a_human_sentence,
     a_time_sync_is_validated_and_not_retried,
     mesh_commands_are_validated_and_a_send_is_not_retried,
+    a_private_message_is_bounded_by_one_number_and_it_is_the_watchs,
     a_stability_wait_actually_waits,
     a_stability_wait_that_never_settles_says_so,
     a_finished_screenshot_blacklists_nothing,

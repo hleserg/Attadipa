@@ -557,7 +557,7 @@ void the_trail_points_where_the_readout_says(const platform::BoardProfile &board
 }
 
 // The device does not rebuild this face every tick. It builds once and calls
-// `update()` — `firmware/main/waveshare_board.cpp:1028` —
+// `update()` — `firmware/main/waveshare_board.cpp:1027` —
 // "    state.nav_face.update(text);" — and the simulator only ever builds, so
 // the trail's hide-and-show path has never had a caller any test could reach.
 // It is the path that decides whether a watch that loses its bearing and gets

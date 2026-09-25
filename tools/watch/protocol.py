@@ -454,6 +454,24 @@ def time_sync_encode(utc_seconds: int, timezone_offset_minutes: int,
     return struct.pack("<qhIB", utc_seconds, timezone_offset_minutes, valid_for_ms, flags)
 
 
+# The product's MeshCore text contract, mirrored by hand from
+# `core/include/attadipa/core/mesh_service.h:16` -- "inline constexpr std::size_t kMeshTextBytes = 128;"
+# -- the way the `Op` and `ErrorCode` tables above are mirrored, and for the
+# same reason. It is not the envelope's capacity and must not be derived from
+# `MAX_BODY`: 182 body bytes happen to leave room for 142 text bytes after a
+# whole recipient key and the timestamp, and that arithmetic is a frame size,
+# not a promise about MeshCore. Deriving it would make a protocol-version bump
+# silently move a product limit.
+#
+# 160 is upstream's `MAX_TEXT_LEN` and was this encoder's bound until #609, at
+# which point the host accepted 32 bytes the watch would never send:
+# `firmware/main/meshcore_ble.cpp:2390` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
+# refuses them before anything is queued. `docs/research/OUTBOUND_MESHCORE_MESSAGES.md:552`
+# -- "So: 128 out, 128 in, one number, and the asymmetry with upstream's 160 is"
+# -- is the decision that 128 is deliberate rather than an oversight to correct.
+MESH_TEXT_BYTES = 128
+
+
 def mesh_configure_encode(passkey: int) -> bytes:
     # 0 is in range because it is the wire sentinel for the unpaired diagnostic
     # probe, not because it is a passkey: the firmware pairs only when the value
@@ -476,8 +494,14 @@ def mesh_send_encode(peer_key: bytes, text: str, utc_seconds: int) -> bytes:
     encoded = text.encode("utf-8")
     if len(peer_key) != 32:
         raise ValueError("MeshCore peer public key must be exactly 32 bytes")
-    if not encoded or len(encoded) > 160:
-        raise ValueError("MeshCore message must be 1..160 UTF-8 bytes")
+    if not encoded or len(encoded) > MESH_TEXT_BYTES:
+        # The count is in the message because the operator typed characters and
+        # the bound is in bytes: "Привет" is six of the first and twelve of the
+        # second, so a refusal that named only the limit would look wrong to
+        # whoever hit it with a non-ASCII message one character over.
+        raise ValueError(
+            f"MeshCore message must be 1..{MESH_TEXT_BYTES} UTF-8 bytes, "
+            f"not {len(encoded)}")
     if not -(1 << 63) <= utc_seconds < (1 << 63):
         raise ValueError("utc_seconds must fit in a signed 64-bit integer")
     return peer_key + struct.pack("<q", utc_seconds) + encoded
@@ -491,8 +515,17 @@ def mesh_room_send_encode(room: bytes, password: str, text: str,
         raise ValueError("MeshCore Room Server public key must be exactly 32 bytes")
     if not 1 <= len(encoded_password) <= 15:
         raise ValueError("MeshCore Room Server password must be 1..15 UTF-8 bytes")
-    if not encoded_text or len(encoded_text) > 126:
-        raise ValueError("MeshCore Room Server message must be 1..126 UTF-8 bytes")
+    if not encoded_text or len(encoded_text) > MESH_TEXT_BYTES:
+        raise ValueError(
+            f"MeshCore Room Server message must be 1..{MESH_TEXT_BYTES} UTF-8 bytes, "
+            f"not {len(encoded_text)}")
+    # The watch takes 128 here too; the envelope is what runs out first once the
+    # password is 14 bytes or longer, so say which password did it.
+    room_for_text = MAX_BODY - 32 - 1 - len(encoded_password) - 8
+    if len(encoded_text) > room_for_text:
+        raise ValueError(
+            f"a {len(encoded_password)}-byte password leaves {room_for_text} "
+            f"bytes for the text, not {len(encoded_text)}")
     if not -(1 << 63) <= utc_seconds < (1 << 63):
         raise ValueError("utc_seconds must fit in a signed 64-bit integer")
     return (room + bytes([len(encoded_password)]) + encoded_password +
