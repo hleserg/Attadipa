@@ -275,6 +275,21 @@ void test_standing_on_it_is_a_measured_zero_and_not_a_direction() {
   CHECK(is(text.bearing, "—"));
 }
 
+// The antipode is the other end of the same refusal: every direction reaches
+// it, so none is the one to show. It used to print `090° E` and draw an arrow.
+void test_the_antipode_is_a_distance_and_not_a_direction() {
+  apps::NavState state;
+  state.own = own_fix({0, 0});
+  state.target = node_coordinate({0, core::kLongitudeMaxE7}, 1000);
+  state.heading = watch_heading(9000);
+  const apps::NavText text = apps::format_navigation(state);
+  CHECK(text.has_distance);
+  CHECK(is(text.distance, "> 1000 km"));
+  CHECK(!text.has_bearing);
+  CHECK(is(text.bearing, "—"));
+  CHECK(!text.has_arrow);
+}
+
 // The one line #433 changed, pinned by the one baseline that can tell the two
 // functions apart on the screen.
 //
@@ -651,6 +666,7 @@ int main() {
   test_a_coordinate_off_the_globe_is_refused_rather_than_saturated();
   test_a_stale_own_fix_is_neither_a_missing_one_nor_a_current_one();
   test_standing_on_it_is_a_measured_zero_and_not_a_direction();
+  test_the_antipode_is_a_distance_and_not_a_direction();
   test_the_readout_measures_over_the_pole_and_not_around_it();
   test_the_distance_changes_unit_where_a_person_would();
   test_the_compass_points_are_centred_on_their_own_directions();
