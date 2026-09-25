@@ -279,7 +279,7 @@ the repository's word for the opposite fact —
 `Unsupported` is the terminal one, and the Waveshare is deliberately not it. The
 readout already draws that line three lines above where this state lands, and
 says why —
-`apps/src/navigation.cpp:275` — "    // reader there is no receiver sends them to buy hardware they already own.".
+`apps/src/navigation.cpp:279` — "    // reader there is no receiver sends them to buy hardware they already own.".
 A T-Watch whose receiver is fitted and whose `local_gnss_start()` failed is
 `Unprovisioned` all boot; telling its wearer the watch has no receiver is a lie
 about a part that named itself over `UBX-MON-VER`.
@@ -359,7 +359,7 @@ is that reading working.
 
 **That caveat's gate widens, because as written it cannot reach this case.** The
 sentence is right; the branch it sits in asks about the wrong slot:
-`apps/src/navigation.cpp:283` — "  } else if (usable(state.target) && !target_states_a_fix(state.target)) {".
+`apps/src/navigation.cpp:287` — "  } else if (usable(state.target) && !target_states_a_fix(state.target)) {".
 On the split arrangement a confirmed `own` arrives long before any target does —
 that is the whole point of the arrangement — so the age this decision promises to
 render would never be drawn at all. The gate becomes *the slot a node filled that
@@ -370,7 +370,7 @@ one they can act on.
 **The argument changes with the branch, and an earlier draft said it did not.**
 The confirmed branch renders `state.own.position.age_at_us_ms`, where the branch
 beside it renders the target's —
-`apps/src/navigation.cpp:290` — "    format_age(state.target.position.age_at_us_ms, state.locale, age," —
+`apps/src/navigation.cpp:294` — "    format_age(state.target.position.age_at_us_ms, state.locale, age," —
 because on the split arrangement the target slot is empty (decision 8) and an
 age read off an empty slot is zero. "Node fix unverified, heard 0 s ago", under
 a coordinate nobody has heard since the handshake, is worse than no caveat: it
