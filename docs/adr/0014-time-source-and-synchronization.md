@@ -37,12 +37,15 @@ cannot honestly resume where it left off.
   warns that time may be outdated until a source synchronizes again.
 - The first real input is the existing physical USB debug connection:
   `watch_control.py sync-time`. It sends host UTC, the host's
-  current offset and a bounded lifetime. The device commits the offset
-  metadata to NVS first, then writes PCF85063 seconds through years in one
-  transaction, reads the calendar back, and only then acknowledges (#264
-  reversed the order: a metadata layer that cannot be written is found before
-  the chip is touched). The host does not retry a lost acknowledgement because
-  that could repeat a wall-clock write.
+  current offset and a bounded lifetime. The device first stages the offset
+  metadata in an NVS key boot never reads, then writes PCF85063 seconds
+  through years in one transaction, reads the calendar back, and only then
+  commits the metadata to the key boot restores and acknowledges. Staging keeps
+  #264's order -- a metadata layer that cannot be written is found before the
+  chip is touched -- and committing last means no failure leaves boot an
+  offset for a synchronization whose chip write was not verified (#625). The
+  host does not retry a lost acknowledgement because that could repeat a
+  wall-clock write.
 
   **That is the bench path, and has been only that since #346.**
   `firmware/sdkconfig.defaults:89` — "CONFIG_ATTADIPA_WATCH_CONTROL=n", so the
@@ -55,10 +58,9 @@ cannot honestly resume where it left off.
   (`apps/include/attadipa/apps/provisioning.h:69` —
   "TimeReview,     // The draft and the UTC instant it means. Next saves."), so
   a long press made by accident costs one key and not a retyped clock. A board
-  that failed that write may have moved the chip (the RTC is written last, and
-  nothing puts it back), so the receipt after it keeps the failure on screen
+  that failed that write may have moved the chip (nothing puts it back), so the receipt after it keeps the failure on screen
   rather than saying nothing changed. The board's
-  `firmware/main/waveshare_board.cpp:498` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
+  `firmware/main/waveshare_board.cpp:472` — "set_wall_clock(const attadipa::core::WallClockEntry &entry) override {"
   runs the same `provision_time()` sequence as the opcode, with the same
   order and the same one-day lifetime. Whoever holds the watch may set it —
   [ADR-0018](0018-owner-consent-for-provisioning.md) and OD-26 decided that.
@@ -67,7 +69,7 @@ cannot honestly resume where it left off.
   deadline. If it does not, local time becomes stale rather than silently
   asserting that an old seasonal offset is current.
 - Default NVS is initialised once per boot and its verdict kept
-  (`firmware/main/waveshare_board.cpp:322` — "state.metadata_storage = nvs_flash_init();").
+  (`firmware/main/waveshare_board.cpp:325` — "state.metadata_storage = nvs_flash_init();").
   A verdict other than success is logged once and every
   synchronization of that boot fails before the RTC is touched, with the same
   `Failed` (the host's `OperationFailed`) as a store that cannot be read: the

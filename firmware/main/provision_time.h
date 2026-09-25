@@ -30,7 +30,8 @@ namespace attadipa::firmware {
 enum class ProvisionTimeResult : std::uint8_t {
     Accepted,  // RTC written and verified, metadata stored, service moved.
     Rejected,  // Not a request this watch accepts. Nothing moved.
-    Failed,    // Storage or the chip refused, and what had moved was put back.
+    Failed,    // Storage or the chip refused. The chip may have moved; what
+               // boot reads is from a verified synchronization.
 };
 
 struct TimeProvisionRequest {
@@ -93,30 +94,29 @@ constexpr TimeMetadata decode_time_metadata(const TimeMetadataBytes &bytes)
     return {static_cast<std::int16_t>(offset), static_cast<std::int64_t>(sync)};
 }
 
-enum class MetadataRead : std::uint8_t { Present, Absent, Unreadable };
-
 // `Ops` is the storage and the chip:
 //
-//   MetadataRead read_metadata(TimeMetadata *out);
-//   bool save_metadata(const TimeMetadata &);      // whole or not; false = see below
-//   bool erase_metadata();                          // absent = success
+//   bool stage_metadata(const TimeMetadata &);  // a key boot never reads
+//   bool save_metadata(const TimeMetadata &);   // the key boot reads
 //   bool write_and_verify_rtc(const RtcDateTime &, std::int64_t utc_seconds);
 //
 // `write_and_verify_rtc` is one operation and not three because its three
 // failures -- the write, the read back, a mismatch -- get the same answer
-// from this sequence, and three copies of a rollback is how one is forgotten.
+// from this sequence.
 
-// Metadata first, chip second. The order is #396's: the write that boot can
-// already know is doomed -- an unusable NVS -- runs before the one that
-// rewrites hardware, so it fails closed. A refused save is not a save that
-// did nothing: `Storage::writeItem` erases the old version *after* the new
-// one is written and indexed, and reports that erase failing as a failure
-// (`nvs_storage.cpp:546`-`:549` in VERIFIED_FACTS), so the store may already
-// hold the new blob for a synchronization this function is about to call
-// Failed. A refused chip write comes after the new blob is on flash for
-// certain. The product image restores that blob into the time service on
-// every boot, so on both paths `previous` goes back -- as the blob it was,
-// or as no blob at all.
+// Stage, chip, commit (#625). Boot reads one key, and it is written only after
+// the chip has been verified, so no failure leaves boot an offset for a
+// synchronization that did not happen, and there is nothing to roll back.
+// The staging write keeps #396's fail-closed order: a store that refuses
+// writes is found before the chip is touched, and whatever it left behind is
+// in a key nothing reads. A refused save is not a save that did nothing:
+// `Storage::writeItem` erases the old version *after* the new one is written
+// and indexed, and reports that erase failing as a failure
+// (`nvs_storage.cpp:546`-`:549` in VERIFIED_FACTS). So a commit that fails
+// after a verified chip write leaves boot's key holding the old blob or the
+// new one, each from a verified synchronization. The chip is not put back:
+// `Failed` reaches the owner as "the clock may have moved", and the next
+// synchronization finishes the job.
 template <typename Ops>
 ProvisionTimeResult provision_time(Ops &ops, const TimeProvisionRequest &request,
                                    core::TimeService &service,
@@ -145,21 +145,9 @@ ProvisionTimeResult provision_time(Ops &ops, const TimeProvisionRequest &request
         return ProvisionTimeResult::Rejected;
     }
 
-    TimeMetadata previous{};
-    const MetadataRead had = ops.read_metadata(&previous);
-    if (had == MetadataRead::Unreadable) {
-        return ProvisionTimeResult::Failed;
-    }
-    if (!ops.save_metadata({request.timezone_offset_minutes, request.utc_seconds}) ||
-        !ops.write_and_verify_rtc(rtc, request.utc_seconds)) {
-        // Best effort: a rollback that fails is logged by the ops and leaves
-        // an offset on flash for a synchronization that did not happen, which
-        // the next successful one replaces.
-        if (had == MetadataRead::Present) {
-            ops.save_metadata(previous);
-        } else {
-            ops.erase_metadata();
-        }
+    const TimeMetadata next{request.timezone_offset_minutes, request.utc_seconds};
+    if (!ops.stage_metadata(next) || !ops.write_and_verify_rtc(rtc, request.utc_seconds) ||
+        !ops.save_metadata(next)) {
         return ProvisionTimeResult::Failed;
     }
 

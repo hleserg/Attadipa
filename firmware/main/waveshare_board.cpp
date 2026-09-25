@@ -99,6 +99,9 @@ constexpr char kTimeNvsNamespace[] = "attadipa_time";
 // bench and HIL images ever wrote them, and their watches re-enter the time
 // once rather than carry a migration forever.
 constexpr char kTimeMetadataNvsKey[] = "meta";
+// Written before the chip and never read: the probe that the store takes
+// writes, in a key boot cannot mistake for a verified synchronization (#625).
+constexpr char kTimeStagedNvsKey[] = "pend";
 
 constexpr std::uint8_t kC4[] = {0x80};
 constexpr std::uint8_t kTearingLine[] = {0x01, 0xD1};
@@ -311,7 +314,7 @@ esp_err_t read_time_metadata(attadipa::firmware::TimeMetadata *out,
 // reads as absent (`provision_time.h`).
 //
 // A verdict other than ESP_OK is logged here, once, and then answered from
-// `BoardTimeOps::read_metadata` for every synchronization of this boot, so
+// `BoardTimeOps::stage_metadata` for every synchronization of this boot, so
 // the RTC is never written over metadata that cannot be stored. Nothing here
 // erases NVS: ESP_ERR_NVS_NO_FREE_PAGES and ESP_ERR_NVS_NEW_VERSION_FOUND are
 // the two verdicts ESP-IDF answers with "erase the partition and try again",
@@ -348,32 +351,14 @@ esp_err_t restore_time_metadata() {
   return ESP_OK;
 }
 
-esp_err_t save_time_metadata(const attadipa::firmware::TimeMetadata &metadata) {
+esp_err_t save_time_metadata(const char *key,
+                             const attadipa::firmware::TimeMetadata &metadata) {
   nvs_handle_t handle{};
   ESP_RETURN_ON_ERROR(nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle),
                       kTag, "open time metadata for write");
   const auto bytes = attadipa::firmware::encode_time_metadata(metadata);
   esp_err_t err =
-      nvs_set_blob(handle, kTimeMetadataNvsKey, bytes.data(), bytes.size());
-  if (err == ESP_OK) {
-    err = nvs_commit(handle);
-  }
-  nvs_close(handle);
-  return err;
-}
-
-// A key that is not there is the outcome asked for, not a failure.
-esp_err_t erase_time_metadata() {
-  nvs_handle_t handle{};
-  const esp_err_t opened = nvs_open(kTimeNvsNamespace, NVS_READWRITE, &handle);
-  if (opened == ESP_ERR_NVS_NOT_FOUND) {
-    return ESP_OK;
-  }
-  ESP_RETURN_ON_ERROR(opened, kTag, "open time metadata to erase");
-  esp_err_t err = nvs_erase_key(handle, kTimeMetadataNvsKey);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
-    err = ESP_OK;
-  }
+      nvs_set_blob(handle, key, bytes.data(), bytes.size());
   if (err == ESP_OK) {
     err = nvs_commit(handle);
   }
@@ -384,7 +369,7 @@ esp_err_t erase_time_metadata() {
 // The PCF85063 half of a synchronization: write, read back, and check that
 // what came back is the UTC that was asked for. Its three failures are one
 // answer to the caller because the caller does the same thing for each --
-// roll the metadata back and report Failed.
+// leave boot's metadata alone and report Failed.
 bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
                           std::int64_t utc_seconds) {
   const esp_err_t write_result = write_rtc(rtc);
@@ -412,34 +397,23 @@ bool write_and_verify_rtc(const attadipa::firmware::RtcDateTime &rtc,
 }
 
 // This board's storage and chip, as `provision_time()` sees them. The
-// sequence -- what is written, in which order, and what is put back -- is in
+// sequence -- what is written, and in which order -- is in
 // `provision_time.h` and tested there; this is only the wiring.
 struct BoardTimeOps {
-  attadipa::firmware::MetadataRead
-  read_metadata(attadipa::firmware::TimeMetadata *out) {
-    if (state.metadata_storage != ESP_OK) {  // boot's verdict: not opened, so not read
-      return attadipa::firmware::MetadataRead::Unreadable;
+  bool stage_metadata(const attadipa::firmware::TimeMetadata &metadata) {
+    if (state.metadata_storage != ESP_OK) {  // boot's verdict: not opened
+      return false;
     }
-    bool present = false;
-    if (read_time_metadata(out, &present) != ESP_OK) {
-      return attadipa::firmware::MetadataRead::Unreadable;
-    }
-    return present ? attadipa::firmware::MetadataRead::Present
-                   : attadipa::firmware::MetadataRead::Absent;
+    return save(kTimeStagedNvsKey, metadata);
   }
   bool save_metadata(const attadipa::firmware::TimeMetadata &metadata) {
-    const esp_err_t err = save_time_metadata(metadata);
-    if (err != ESP_OK) {
-      ESP_LOGW(kTag, "persist time metadata failed: %s", esp_err_to_name(err));
-    }
-    return err == ESP_OK;
+    return save(kTimeMetadataNvsKey, metadata);
   }
-  bool erase_metadata() {
-    const esp_err_t err = erase_time_metadata();
+  static bool save(const char *key,
+                   const attadipa::firmware::TimeMetadata &metadata) {
+    const esp_err_t err = save_time_metadata(key, metadata);
     if (err != ESP_OK) {
-      ESP_LOGE(kTag,
-               "could not roll back time metadata: %s -- NVS may hold a UTC "
-               "offset for a synchronization that did not happen",
+      ESP_LOGW(kTag, "persist time metadata (%s) failed: %s", key,
                esp_err_to_name(err));
     }
     return err == ESP_OK;

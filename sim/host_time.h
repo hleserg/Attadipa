@@ -11,7 +11,7 @@ namespace attadipa::sim {
 // offset already added — `core/src/time_service.cpp:208` —
 // "add_offset(result.utc.value, timezone_.minutes_east_of_utc)" — and the
 // composition passes exactly that and not the other one:
-// `firmware/main/waveshare_board.cpp:487` — "clock.time = time.local;".
+// `firmware/main/waveshare_board.cpp:461` — "clock.time = time.local;".
 // Downstream, the formatter renders whatever it is handed with calendar
 // arithmetic that has no timezone in it at all
 // (`core/include/attadipa/core/clock.h:134` — "no locale and no timezone: this
@@ -34,7 +34,7 @@ namespace attadipa::sim {
 // this file decides. A board adds one signed integer --
 // `core/src/time_service.cpp:208` -- "add_offset(result.utc.value, timezone_.minutes_east_of_utc);"
 // -- because ADR-0014 deliberately stores an effective offset and no zone rules
-// -- `docs/adr/0014-time-source-and-synchronization.md:65` -- "This slice stores an effective offset, not an IANA zone database or a DST"
+// -- `docs/adr/0014-time-source-and-synchronization.md:67` -- "This slice stores an effective offset, not an IANA zone database or a DST"
 // -- so a device provisioned at `+120` goes on showing `+120` after the
 // changeover and eventually says its offset is stale rather than correcting
 // itself. `std::localtime` below reads the host's database and does correct

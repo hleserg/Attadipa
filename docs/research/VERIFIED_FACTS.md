@@ -2769,10 +2769,10 @@ ones that heading states.
   indexed. So a failed `nvs_set_blob` is one of two states, untouched or
   replaced, and the caller cannot tell which.
 - **Consequence:** a sequence that writes one blob and then hardware needs no
-  torn-state check at boot — but it does need a rollback for a failed save,
-  because "failed" may mean "replaced". `firmware/main/provision_time.h` —
-  "template <typename Ops>" puts the previous blob back on both refusals, the
-  store's and the chip's. `nvs_get_blob` with a
+  torn-state check at boot — but "failed" may mean "replaced", so the blob boot
+  reads is written only after the chip verifies. `firmware/main/provision_time.h`
+  — "template <typename Ops>" stages under a key boot never reads, writes and
+  verifies the chip, then writes the key boot reads (#625). `nvs_get_blob` with a
   buffer smaller than the stored value is `ESP_ERR_NVS_INVALID_LENGTH`
   (`nvs_api.cpp:522`-`:524`), and a larger buffer returns the stored size in
   `*length` (`:526`), which is what lets a reader reject a blob of another
@@ -2794,7 +2794,7 @@ ones that heading states.
   would make the second call see a different partition.
 - **Checked:** 2026-09-02. A fact about the toolchain; an ESP-IDF upgrade
   re-reads it.
-- **Consequence:** `firmware/main/waveshare_board.cpp:322` —
+- **Consequence:** `firmware/main/waveshare_board.cpp:325` —
   "state.metadata_storage = nvs_flash_init();" — is taken once and kept, and
   the second call in `firmware/main/meshcore_ble.cpp` for the BLE bond store
   cannot contradict it (ADR-0014).
@@ -2815,7 +2815,7 @@ ones that heading states.
 - **Checked:** 2026-09-02, against v5.5.5. An ESP-IDF upgrade re-reads the
   header: a third member of the family would make the boot log recommend the
   wrong recovery for it.
-- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:325` —
+- **Consequence:** the boot log at `firmware/main/waveshare_board.cpp:328` —
   "state.metadata_storage == ESP_ERR_NVS_NO_FREE_PAGES ||" — appends "factory
   reset required" for exactly these two, and ADR-0014 names the same two as
   the erase this firmware never performs on its own.

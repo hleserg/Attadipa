@@ -2213,7 +2213,7 @@ esp_err_t start_meshcore_ble()
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
-    // `firmware/main/waveshare_board.cpp:322` --
+    // `firmware/main/waveshare_board.cpp:325` --
     // "state.metadata_storage = nvs_flash_init();"
     // -- and `firmware/main/attadipa_main.cpp:323` --
     // "Board UI failed safely: %s"
