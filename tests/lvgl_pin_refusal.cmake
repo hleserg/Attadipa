@@ -48,7 +48,8 @@ function(configure name dir expect_pass regex)
                 "${CMAKE_COMMAND}" -S "${_driver}" -B "${WORK_DIR}/build-${name}"
                 "-DATTADIPA_LVGL_SOURCE_DIR=${dir}" ${ARGN}
         RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
-    set(log "${out}${err}")
+    # CMake wraps a long message, so a deep build path splits the phrase.
+    string(REGEX REPLACE "[ \t\r\n]+" " " log "${out}${err}")
     if(expect_pass AND NOT rc EQUAL 0)
         message(FATAL_ERROR "${name}: configure should pass and failed:\n${log}")
     endif()
