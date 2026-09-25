@@ -241,7 +241,7 @@ private:
     bool                  rmc_active_ = false;   // RMC status was 'A'
     bool                  saw_gga_    = false;
     std::uint8_t          gga_quality_ = 0;
-    std::uint8_t          gsa_fix_     = 0;      // 1 none, 2 two-d, 3 three-d
+    std::uint8_t          gsa_fix_     = 0;      // lowest GSA mode: 1 none, 2 two-d, 3 three-d
     bool                  refused_in_epoch_ = false;  // a sentence was refused unread
 
     core::GnssObservation published_{};
