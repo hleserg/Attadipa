@@ -261,9 +261,11 @@ def _is_private_dir(path: str) -> bool:
 
 
 def _is_ours(path: str) -> bool:
-    """True if this socket belongs to us and nobody else may write to it.
+    """True if this is a socket that belongs to us and nobody else may write to.
 
-    The simulator creates it 0600 on purpose. Checking here as well means a
+    A file of ours that is not a socket is skipped, so a stray log at the first
+    name does not hide a simulator at the second (#659). The simulator creates
+    it 0600 on purpose. Checking here as well means a
     socket that somehow ended up group- or world-writable is skipped by
     auto-discovery rather than silently used -- the user can still name it with
     ``--socket`` and take responsibility for it.
@@ -272,7 +274,7 @@ def _is_ours(path: str) -> bool:
         info = os.stat(path)
     except OSError:
         return False
-    if info.st_uid != os.geteuid():
+    if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.geteuid():
         return False
     return not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
 

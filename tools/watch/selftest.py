@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import socket
 import struct
 import sys
 import tempfile
@@ -548,6 +549,32 @@ def the_guide_and_the_tool_name_one_socket_path() -> None:
 
     check_raises(client.WatchError, "a socket name that would escape its directory is refused",
                  lambda: client.default_socket_path("../elsewhere"))
+
+
+def discovery_skips_a_file_that_is_not_a_socket() -> None:
+    """An owned private regular file at the first name does not hide the second (#659)."""
+    with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+        runtime = os.path.join(tmp, "run")
+        os.mkdir(runtime, 0o700)
+        here = os.getcwd()
+        os.chdir(tmp)
+        try:
+            with _as_login(os.geteuid(), runtime, tmp) as client:
+                with open(client.LOCAL_SOCKET, "w", encoding="utf-8") as stray:
+                    stray.write("a redirected log\n")
+                os.chmod(client.LOCAL_SOCKET, 0o600)
+                check(client.discover_socket() is None,
+                      "a regular file of ours is not taken for a socket")
+                listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    listener.bind(client.default_socket_path())
+                    os.chmod(client.default_socket_path(), 0o600)  # as the simulator does
+                    check(client.discover_socket() == client.default_socket_path(),
+                          "and the socket at the next name is found past it")
+                finally:
+                    listener.close()
+        finally:
+            os.chdir(here)
 
 
 # --- the command line ------------------------------------------------------
@@ -1956,6 +1983,7 @@ CASES = (
     two_logins_never_resolve_to_one_socket_path,
     a_runtime_directory_somebody_else_can_reach_is_not_used,
     the_guide_and_the_tool_name_one_socket_path,
+    discovery_skips_a_file_that_is_not_a_socket,
     the_tool_fails_loudly_with_no_device,
     serial_disconnects_are_reported_without_tracebacks,
     scenarios_load,
