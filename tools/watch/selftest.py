@@ -19,6 +19,7 @@ fails and the hex string says where.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import struct
@@ -401,6 +402,152 @@ def a_screenshot_survives_the_whole_chain() -> None:
         path = os.path.join(directory, "chain.png")
         p.write_png(path, turned, w, h)
         check(os.path.getsize(path) > 0, "a rotated frame writes a non-empty PNG")
+
+
+# --- where a simulator listens when nobody said ----------------------------
+
+@contextlib.contextmanager
+def _as_login(uid: int, runtime: str | None, tmpdir: str):
+    """Resolve paths the way another login on this host would.
+
+    A second real UID is what this file cannot have -- the runner maps one --
+    so the two things the resolver reads are substituted instead: the
+    effective UID it asks for, and the two directories it is told about. That
+    is enough to answer the question the defect is about, which is whether two
+    users are sent to one pathname; it is not a substitute for two processes,
+    and the end-to-end file says so where it matters.
+
+    `tempfile.tempdir` rather than `$TMPDIR`: `gettempdir()` reads the
+    environment once per process and caches it, so a test that exported
+    `TMPDIR` would be asserting about the runner's own `/tmp`.
+    """
+    real_geteuid, real_tempdir = os.geteuid, tempfile.tempdir
+    previous = os.environ.get("XDG_RUNTIME_DIR")
+    os.geteuid = lambda: uid
+    tempfile.tempdir = tmpdir
+    if runtime is None:
+        os.environ.pop("XDG_RUNTIME_DIR", None)
+    else:
+        os.environ["XDG_RUNTIME_DIR"] = runtime
+    try:
+        from watch import client  # noqa: PLC0415
+        yield client
+    finally:
+        os.geteuid, tempfile.tempdir = real_geteuid, real_tempdir
+        if previous is None:
+            os.environ.pop("XDG_RUNTIME_DIR", None)
+        else:
+            os.environ["XDG_RUNTIME_DIR"] = previous
+
+
+def two_logins_never_resolve_to_one_socket_path() -> None:
+    """Issue #657, at the level where it can be decided without processes.
+
+    The simulator claims a socket path with an exclusive `flock` on
+    `<path>.lock`, creates that file 0600 and never removes it -- deleting it
+    would let the next two contenders lock two different inodes and both
+    believe they hold it. So a clean run leaves a permanent owner-only file
+    wherever it ran. While "wherever it ran" was one conventional name under
+    `/tmp`, that file was somebody else's `EACCES` for ever: they cannot open
+    it, and in a sticky directory they cannot remove it either.
+
+    What this asserts is therefore not about locking at all. It is that the
+    path nobody typed is a different path for each user, so that a normal run
+    by one has nothing to take away from another.
+    """
+    with tempfile.TemporaryDirectory() as shared:
+        with _as_login(4242, None, shared) as client:
+            theirs, their_search = client.default_socket_path(), client.socket_candidates()
+        with _as_login(4243, None, shared) as client:
+            ours, again = client.default_socket_path(), client.default_socket_path()
+            our_search = client.socket_candidates()
+
+        check(theirs != ours, "two logins resolve to two socket paths")
+        # The assertion that bites the code this replaces, where the candidates
+        # were a module constant: one tuple, the same for everybody, with a
+        # name under /tmp in it.
+        check(their_search != our_search,
+              "and to two lists of places to look, rather than one shared constant")
+        check(theirs + ".lock" != ours + ".lock",
+              "and therefore to two claim files, which is the file that locked them out")
+        check(ours == again, "one login resolves to the same path every time it asks")
+        check(os.path.dirname(theirs) == shared and os.path.dirname(ours) == shared,
+              "the shared directory is still where they go when there is no private one")
+
+    from watch import client  # noqa: PLC0415
+    check(client.default_socket_path() != "/tmp/attadipa-sim.sock",
+          "and no environment resolves back to the name that was shared with everybody")
+
+
+def a_runtime_directory_somebody_else_can_reach_is_not_used() -> None:
+    """`$XDG_RUNTIME_DIR` is used because it is private, not because it is set.
+
+    Container images and minimal CI shells set it to `/tmp`. Taking the
+    variable at its word there would resolve straight back to the shared
+    directory this exists to leave -- silently, and on exactly the multi-user
+    hosts the defect lives on. So the check is the reason, and this is the
+    test that keeps it.
+    """
+    uid = os.geteuid()
+    with tempfile.TemporaryDirectory() as home:
+        private = os.path.join(home, "private")
+        reachable = os.path.join(home, "reachable")
+        plain = os.path.join(home, "a-file")
+        tmp = os.path.join(home, "tmp")
+        for one in (private, reachable, tmp):
+            os.mkdir(one)
+        os.chmod(private, 0o700)
+        os.chmod(reachable, 0o755)
+        Path(plain).write_text("not a directory\n")
+
+        fallback = os.path.join(tmp, f"attadipa-sim-{uid}.sock")
+        with _as_login(uid, private, tmp) as client:
+            check(client.default_socket_path() == os.path.join(private, "attadipa-sim.sock"),
+                  "a private runtime directory is where the socket goes")
+            check(client.default_socket_path("tw") == os.path.join(private, "attadipa-tw.sock"),
+                  "and the second board gets its own name in the same place")
+        for hopeless, what in ((reachable, "one others can enter"),
+                               (plain, "one that is not a directory"),
+                               (os.path.join(home, "absent"), "one that is not there"),
+                               ("run/user/1000", "a relative one")):
+            with _as_login(uid, hopeless, tmp) as client:
+                check(client.default_socket_path() == fallback,
+                      f"a runtime directory that is {what} is not used, and the UID "
+                      f"goes in the name instead")
+
+
+def the_guide_and_the_tool_name_one_socket_path() -> None:
+    """One resolver, called by both, rather than one string written twice.
+
+    The defect was not that `/tmp/attadipa-sim.sock` was a bad name. It was
+    that the guide's command, the tool's candidate list and the reader's habit
+    all carried it independently, so making it per-user in one place would
+    have left the other two pointing at the shared one. Every command that
+    names a socket now asks `watch_control.py socket-path`, and this fails if
+    one of them goes back to writing a path out.
+    """
+    from watch import client  # noqa: PLC0415
+
+    candidates = client.socket_candidates()
+    check(candidates[0] == client.LOCAL_SOCKET,
+          "the working tree's own socket is still tried first")
+    check(client.default_socket_path() in candidates,
+          "and what auto-discovery looks for is what the resolver returns")
+
+    root = HERE.parent.parent
+    for document in (root / "docs" / "testing" / "WATCH_CONTROL.md",
+                     root / ".claude" / "skills" / "watch-ui-testing" / "SKILL.md"):
+        text = document.read_text(encoding="utf-8")
+        check("socket-path" in text, f"{document.name} asks the tool where the socket goes")
+        commands = [line for line in text.splitlines()
+                    if "--debug-socket " in line or "--socket " in line]
+        check(bool(commands), f"{document.name} still shows how to start one")
+        named = [line.strip() for line in commands if "/tmp/attadipa" in line]
+        check(not named,
+              f"and no command in {document.name} writes a shared /tmp path out: {named}")
+
+    check_raises(client.WatchError, "a socket name that would escape its directory is refused",
+                 lambda: client.default_socket_path("../elsewhere"))
 
 
 # --- the command line ------------------------------------------------------
@@ -1806,6 +1953,9 @@ CASES = (
     orientation_turns_the_right_way,
     png_is_a_real_png,
     a_screenshot_survives_the_whole_chain,
+    two_logins_never_resolve_to_one_socket_path,
+    a_runtime_directory_somebody_else_can_reach_is_not_used,
+    the_guide_and_the_tool_name_one_socket_path,
     the_tool_fails_loudly_with_no_device,
     serial_disconnects_are_reported_without_tracebacks,
     scenarios_load,

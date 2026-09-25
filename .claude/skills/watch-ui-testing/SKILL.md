@@ -44,20 +44,26 @@ nothing is listening. Start one:
 
 ```bash
 cmake -S . -B build-sim -DATTADIPA_BUILD_SIMULATOR=ON && cmake --build build-sim -j
-SDL_VIDEODRIVER=dummy ./build-sim/sim/attadipa_sim \
-    --board waveshare-amoled-206 --debug-socket /tmp/attadipa-sim.sock &
+SDL_VIDEODRIVER=dummy ./build-sim/sim/attadipa_sim --board waveshare-amoled-206 \
+    --debug-socket "$(python3 tools/watch_control.py socket-path)" &
 ```
 
 `SDL_VIDEODRIVER=dummy` runs it with no display. Drop it if you want a window
 too. `--board t-watch-s3-plus` for the other geometry — **check both**, the
 Definition of Done says so and 240×240 breaks layouts that 410×502 does not.
 
+`socket-path` connects to nothing; it prints where this user's simulator socket
+goes — inside `$XDG_RUNTIME_DIR` when there is one, and carrying the UID in its
+name when there is not. Do not write a `/tmp` path out instead: the `.lock` the
+simulator leaves beside its socket is 0600 and permanent, so a shared name lets
+one clean run lock every other user off the path.
+
 **Give the second board its own socket path.** Two simulators cannot share one:
-the second is refused now, with a message saying which path is taken. Run it on
-`/tmp/attadipa-tw.sock` and pass `--socket /tmp/attadipa-tw.sock` to the tool —
-the default search covers `./.attadipa-sim.sock` and `/tmp/attadipa-sim.sock`,
-in that order, and nothing else. A path that exists and is not a socket is
-refused too; `--debug-socket` used to delete whatever was there.
+the second is refused now, with a message saying which path is taken. Ask for
+`socket-path tw`, start it there and pass the same value to the tool as
+`--socket` — the default search covers `./.attadipa-sim.sock` and then
+`socket-path`, in that order, and nothing else. A path that exists and is not a
+socket is refused too; `--debug-socket` used to delete whatever was there.
 
 The simulator listens **only** when given `--debug-socket`. That is deliberate:
 the feature is off unless asked for.

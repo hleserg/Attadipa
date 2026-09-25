@@ -162,6 +162,50 @@ bool socket_is_served(const std::string& path)
     return !refused;
 }
 
+// Says what is at a claim that could not be opened, in terms the reader can
+// act on.
+//
+// The caller has already printed `open`'s errno, and for this one failure the
+// errno is the misleading part. A claim is created 0600 and is never removed
+// on purpose -- see PathClaim -- so on a path that two users can both name,
+// the first simulator to run there leaves a file the second can neither open
+// nor, in a sticky directory such as /tmp, delete. "Permission denied" sends
+// that second person looking for a mistake in their own invocation, and there is
+// none: the machine is in a state one clean run of somebody else's put it in,
+// and no amount of retrying changes it. The owning UID is the fact that ends
+// the search, so it is printed, and the way out is printed beside it. Issue
+// #657, which is also why the host tool's default path is per-user now.
+void describe_unopenable_claim(const std::string& claim_path)
+{
+    struct stat existing {};
+    if (::lstat(claim_path.c_str(), &existing) != 0) {
+        // Nothing is there to describe -- a missing directory, most likely,
+        // and `open`'s own ENOENT is already the whole story.
+        return;
+    }
+    if (S_ISLNK(existing.st_mode)) {
+        // `O_NOFOLLOW` refused it. Said here because the errno for that is
+        // `ELOOP`, "Too many levels of symbolic links", about a single link.
+        std::fprintf(stderr,
+                     "debug: %s is a symbolic link, and a claim is never followed -- it would "
+                     "put the lock somewhere nobody named. Remove the link\n",
+                     claim_path.c_str());
+        return;
+    }
+    if (!S_ISREG(existing.st_mode)) {
+        // A directory, a fifo, a device. `open`'s errno names those well
+        // enough on its own, and the sentence below would be false about them.
+        return;
+    }
+    std::fprintf(stderr,
+                 "debug: %s is owned by uid %lu, and a claim outlives the simulator that made "
+                 "it on purpose -- nothing removes one. A path whose claim you cannot open is "
+                 "a path you cannot use, so take one of your own: "
+                 "`python3 tools/watch_control.py socket-path` prints the one the host tool "
+                 "looks in without being told\n",
+                 claim_path.c_str(), static_cast<unsigned long>(existing.st_uid));
+}
+
 // Exclusive use of one socket path, for as long as it takes to decide what is
 // at that path and then take it.
 //
@@ -226,6 +270,7 @@ public:
         if (fd_ < 0) {
             std::fprintf(stderr, "debug: cannot claim %s -- open(%s): %s\n", socket_path_.c_str(),
                          path_.c_str(), std::strerror(open_errno));
+            describe_unopenable_claim(path_);
             return false;
         }
 
