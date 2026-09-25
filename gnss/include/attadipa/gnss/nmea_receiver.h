@@ -182,9 +182,9 @@ public:
     bool sample(core::PositionSample& out) const override;
 
     // Framed sentences that arrived and were thrown away: a bad checksum, a
-    // line longer than NMEA allows, or a field that would not parse. Framed
-    // only — a byte that never got inside a `$`...CRLF run is not here, it is
-    // in `unframed()`.
+    // line longer than NMEA allows, a field that would not parse, or a fraction
+    // too long for minmea to scan safely. Framed only — a byte that never got
+    // inside a `$`...CRLF run is not here, it is in `unframed()`.
     std::uint32_t discarded() const { return discarded_; }
 
     // Bytes that arrived outside any sentence, CR and LF excluded because
@@ -240,6 +240,7 @@ private:
     bool                  saw_gga_    = false;
     std::uint8_t          gga_quality_ = 0;
     std::uint8_t          gsa_fix_     = 0;      // 1 none, 2 two-d, 3 three-d
+    bool                  refused_in_epoch_ = false;  // a sentence was refused unread
 
     core::GnssObservation published_{};
     bool                  has_published_ = false;
