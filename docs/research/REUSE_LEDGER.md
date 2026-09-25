@@ -3224,7 +3224,7 @@ converges on this behaviour rather than fighting it.
 changing return type is an API break, which is why it arrived with a release
 rather than a patch. Candidate 3 is a whole-toolchain move for one return check,
 against a pin this repository verifies by container digest
-(`.github/workflows/ci.yml:636` — "container: espressif/idf@sha256:a9231d06").
+(`.github/workflows/ci.yml:640` — "container: espressif/idf@sha256:a9231d06").
 Candidate 4 puts a patch step between the verified container and the build, and
 the thing it patches is a submodule of a submodule. Candidate 5 is a guess
 wearing a check: a preflight answers a question about a moment that has passed
