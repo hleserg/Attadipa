@@ -2038,7 +2038,7 @@ review had left for an owner decision.
 
 **What was decided:** the second `lstat` in the simulator's stale-socket
 recovery ships untested:
-`sim/debug_server.cpp:401` — "if (::lstat(path.c_str(), &still) != 0 || still.st_dev != existing.st_dev ||".
+`sim/debug_server.cpp:446` — "if (::lstat(path.c_str(), &still) != 0 || still.st_dev != existing.st_dev ||".
 It refuses to unlink a name whose device or inode changed after the first
 `lstat`. Nothing a test can drive from outside the process reaches it. Both
 `lstat` calls run under the process's own path claim. The only call between

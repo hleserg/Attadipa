@@ -48,13 +48,32 @@ cmake --build build-sim -j
 
 # with a window, on the path the tool finds without being told
 ./build-sim/sim/attadipa_sim --board waveshare-amoled-206 \
-    --debug-socket /tmp/attadipa-sim.sock
+    --debug-socket "$(python3 tools/watch_control.py socket-path)"
 
 # headless, for CI or over ssh
+TW="$(python3 tools/watch_control.py socket-path tw)"
 SDL_VIDEODRIVER=dummy ./build-sim/sim/attadipa_sim --board t-watch-s3-plus \
-    --debug-socket /tmp/attadipa-tw.sock &
-# and then: python3 tools/watch_control.py --socket /tmp/attadipa-tw.sock info
+    --debug-socket "$TW" &
+# and then: python3 tools/watch_control.py --socket "$TW" info
 ```
+
+**The path is per-user, and asking for it is how you get it.** `socket-path`
+prints `$XDG_RUNTIME_DIR/attadipa-sim.sock` when that directory really is
+yours and private, and `<tmpdir>/attadipa-sim-<uid>.sock` when there is no such
+directory — the UID is in the name because a temporary directory is shared with
+everybody on the host. It connects to nothing and needs no simulator: it is the
+question you ask before there is one. The simulator itself has no default and
+still listens **only** when given `--debug-socket`, so there is one resolver in
+the repository rather than one per language, and the path the simulator binds is
+the same string the tool searches.
+
+That is not cosmetic. A conventional name under `/tmp` was shared with every
+other login on the machine, and the `.lock` beside it (below) is 0600 and is
+never removed: one clean run left a file the next user could neither open nor,
+in a sticky directory, delete, and the documented path stayed unusable to them
+until its owner or root removed it. Naming a shared path explicitly still works
+— the simulator then says whose claim is in the way and what to do, rather than
+only `Permission denied`.
 
 **One path per simulator, and the second one needs `--socket`.** These two used
 to name the same socket, four lines apart, under a heading that says to run both
@@ -90,7 +109,10 @@ probe. The file is not deleted on exit on purpose: removing a lock file lets the
 contenders lock two different inodes and both believe they hold it. Delete it by
 hand only when no simulator is running on that path; the simulator makes it
 again. In a sticky directory such as `/tmp` another user's `.lock` cannot be
-deleted at all, so pick a path of your own there. A path the simulator refuses
+deleted at all, which is why the default path above is per-user: a run of yours
+has nothing to take away from anybody else, and nothing of theirs to trip over.
+On a path you named yourself and somebody else got to first, the simulator
+prints which UID owns the claim and that nothing removes one. A path it refuses
 outright — a link, or something that is not a socket — is refused before the
 `.lock` is created. One file per socket path, so simulators on different paths
 never wait for each other.
@@ -129,6 +151,10 @@ python3 tools/watch_control.py button power click
 python3 tools/watch_control.py input-reset
 python3 tools/watch_control.py run tests/ui/scenarios/diagnostic_tour.yaml
 python3 tools/watch_control.py live --screenshot-after
+
+python3 tools/watch_control.py socket-path        # and 'socket-path tw' for the second
+#   the one command that connects to nothing: it prints where this user's
+#   simulator socket goes, which is what --debug-socket above is given
 ```
 
 `press` and `release` are deliberately absent from that list. Each invocation
@@ -143,8 +169,11 @@ non-zero on failure. Every image's **absolute path** is printed, because the
 image is the deliverable.
 
 By default the tool looks for a simulator socket at `./.attadipa-sim.sock` and
-`/tmp/attadipa-sim.sock`. `--socket <path>` says where; `--port <device>` is for
-a serial device.
+then at the per-user path `socket-path` prints — which is the same path
+[the simulator was started on](#getting-a-screen-to-look-at), and the reason it
+prints one instead of everybody sharing a name under `/tmp`. `--socket <path>`
+says where; `--port <device>` is for a serial device. `no watch found` lists
+both places it looked.
 
 ### What `duration` measures
 

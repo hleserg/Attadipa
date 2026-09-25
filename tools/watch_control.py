@@ -34,7 +34,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from watch import protocol as p            # noqa: E402
 from watch import scenario as scenario_mod  # noqa: E402
 from watch.client import (Watch, WatchError, WatchIdsExhausted,  # noqa: E402
-                          _duration_seconds, connect)
+                          _duration_seconds, connect, default_socket_path,
+                          socket_candidates)
 from flash.ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = os.path.join("artifacts", "watch")
@@ -127,6 +128,28 @@ def print_shots(args, shots: list[dict]) -> None:
 
 
 # --- commands -------------------------------------------------------------
+
+def cmd_socket_path(args) -> int:
+    """Print the socket path this tool looks in, for the simulator to bind.
+
+    The one command here that takes no device, because it is the question you
+    ask *before* there is one: `docs/testing/WATCH_CONTROL.md` starts the
+    simulator with `--debug-socket "$(... socket-path)"` so that the path the
+    simulator binds and the path this tool searches are the same string from
+    the same function. They used to be one conventional name written out in
+    both places -- `/tmp/attadipa-sim.sock` -- which is shared with every other
+    user on the host, and the claim file the simulator leaves beside it is
+    0600 and permanent. One clean run took the documented path away from
+    everybody else on the machine until its owner or root deleted the claim
+    (issue #657).
+
+    The name argument is for the second board: the guide runs both every time,
+    and two simulators need two paths.
+    """
+    path = default_socket_path(args.name)
+    emit(args, {"path": path, "name": args.name, "candidates": list(socket_candidates())}, path)
+    return 0
+
 
 def cmd_info(watch: Watch, args) -> int:
     caps = watch.capabilities
@@ -690,6 +713,13 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--interval", type=seconds, default=0.2)
         return sub
 
+    where = subparsers.add_parser(
+        "socket-path",
+        help="print the simulator socket path this tool looks in, and connect to nothing")
+    where.add_argument("name", nargs="?", default="sim",
+                       help="which simulator; the guide uses 'sim' and 'tw' for the two boards")
+    where.set_defaults(func=cmd_socket_path)
+
     info = subparsers.add_parser("info", help="what the device says it is")
     info.set_defaults(func=cmd_info)
 
@@ -813,6 +843,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    # Answered before the serial lookup and without a connection, because it is
+    # the question asked when nothing is listening yet -- the simulator command
+    # in the guide substitutes it to decide where to bind. Everything below
+    # this line needs a device; this needs to know where one would be.
+    if args.func is cmd_socket_path:
+        try:
+            return cmd_socket_path(args)
+        except WatchError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
     if not args.port and not args.socket_path:
         # Naming a device and getting a different one is the failure this
         # guards. `resolve_port` raises SystemExit with the precise reason --

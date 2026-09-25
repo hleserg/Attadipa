@@ -39,7 +39,7 @@ sys.path.insert(0, str(HERE.parent))
 
 from watch import protocol as p             # noqa: E402
 from watch import scenario as scenario_mod  # noqa: E402
-from watch.client import WatchError, connect  # noqa: E402
+from watch.client import WatchError, connect, default_socket_path  # noqa: E402
 
 failures: list[str] = []
 skipped: list[str] = []
@@ -477,11 +477,121 @@ def _a_cleanup_that_failed_is_not_a_cleanup(simulator: str, board: str) -> None:
             os.chmod(sealed, 0o700)
 
 
+def _the_default_endpoint_is_this_logins_own(simulator: str, board: str) -> None:
+    """A claim somebody else left behind is not on the path the tool resolves.
+
+    Issue #657. The claim beside a socket is 0600 and is never removed -- that
+    is deliberate, and `PathClaim` says why -- so on a path two logins can both
+    name, one clean run leaves the second one a file they can neither open nor,
+    in a sticky directory, delete. The simulator was documented and
+    auto-discovered on exactly such a path, so a run that finished hours ago
+    took it away from everybody else on the machine.
+
+    Two halves, because the fix is not "stop leaving the claim":
+
+      * a path shaped like the old one, with a claim on it that cannot be
+        opened, still refuses -- and now says whose it is, since
+        `Permission denied` alone sends the reader hunting for a mistake in
+        their own invocation that is not there;
+      * the path nobody typed is unaffected by that, because it is not in a
+        shared directory at all, or carries the UID in its name when there is
+        no private directory to be in.
+
+    `/tmp` is reproduced here rather than used: a sticky, world-writable
+    directory has the semantics this is about, and planting an unopenable file
+    at the repository's former documented pathname would stall a simulator
+    somebody else is running on it.
+
+    NOT EXECUTED: the second UID. This runner maps one, so what is proved
+    about the refusal is that an unopenable claim stops the start-up and names
+    the owner -- with the owner being us. That the owner is *another* login in
+    the real case follows from `open(2)`: an `O_CREAT` file belongs to the
+    effective UID that created it, and a 0600 file denies everybody else.
+    """
+    environment = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    with tempfile.TemporaryDirectory() as workdir:
+        shared = os.path.join(workdir, "shared")
+        os.mkdir(shared)
+        os.chmod(shared, 0o1777)  # what /tmp is: everybody writes, only owners remove
+        theirs = os.path.join(shared, "attadipa-sim.sock")
+        os.close(os.open(theirs + ".lock", os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o000))
+
+        if os.geteuid() == 0:
+            skip("a claim that cannot be opened stops the start-up and names its owner",
+                 "root opens a mode-0000 file, which is what this case is built from")
+        else:
+            code, said = _refusal(simulator, board, theirs, environment)
+            check(code != 0, "a claim that cannot be opened stops the start-up")
+            check("cannot claim" in said, f"and says that is what failed: {said[-300:]!r}")
+            check(f"owned by uid {os.geteuid()}" in said,
+                  f"and says who owns the claim, which is the fact that ends the search: "
+                  f"{said[-300:]!r}")
+            check("socket-path" in said,
+                  f"and where to get a path of one's own: {said[-300:]!r}")
+
+    # The obstruction above went with the temporary directory, and the second
+    # half is that it never reached this at all: the path nobody types is not
+    # in a directory a stranger can leave anything in. Named per process so two
+    # boards running at once do not meet on it.
+    resolved = default_socket_path(f"e2e-{os.getpid()}")
+    check(default_socket_path() != "/tmp/attadipa-sim.sock",
+          f"the path nobody typed is not the one everybody shared ({default_socket_path()})")
+    check(_private_enough(resolved),
+          f"and it is namespaced by user, by its directory or by its name ({resolved})")
+
+    log_path = resolved + ".log"
+    with open(log_path, "wb") as log:
+        alone = subprocess.Popen(
+            [simulator, "--board", board, "--debug-socket", resolved],
+            stdout=log, stderr=subprocess.STDOUT, env=environment)
+        try:
+            listening = _within(30, lambda: os.path.exists(resolved))
+            check(listening and alone.poll() is None,
+                  f"a simulator starts on the resolved default: "
+                  f"{Path(log_path).read_text(errors='replace')[-300:]!r}")
+            if listening:
+                mode = os.lstat(resolved).st_mode
+                check(stat.S_ISSOCK(mode), "which is a socket")
+                check(not mode & (stat.S_IRWXG | stat.S_IRWXO),
+                      "that nobody but its owner may reach")
+                check(os.path.exists(resolved + ".lock"),
+                      "and the claim is beside it, in the same private place")
+        finally:
+            alone.terminate()
+            try:
+                alone.wait(timeout=10)
+            except subprocess.TimeoutExpired:      # pragma: no cover
+                alone.kill()
+            for leftover in (resolved, resolved + ".lock", log_path):
+                try:
+                    os.unlink(leftover)
+                except OSError:
+                    pass
+
+
+def _private_enough(path: str) -> bool:
+    """True if `path` cannot collide with another login's.
+
+    Either because the directory holding it admits nobody else, or because the
+    UID is in the name. Those are the two answers `default_socket_path` gives,
+    and this asks the question of the *filesystem* rather than re-deriving the
+    rule -- a resolver that agreed with itself would prove nothing.
+    """
+    try:
+        holder = os.stat(os.path.dirname(path))
+    except OSError:
+        return False
+    private = (holder.st_uid == os.geteuid()
+               and not holder.st_mode & (stat.S_IRWXG | stat.S_IRWXO))
+    return private or f"-{os.geteuid()}." in os.path.basename(path)
+
+
 def run(simulator: str, board: str = "waveshare-amoled-206") -> int:
     print("socket path")
     _socket_path_is_not_a_scratch_pad(simulator, board)
     _one_stale_socket_has_one_recoverer(simulator, board)
     _a_cleanup_that_failed_is_not_a_cleanup(simulator, board)
+    _the_default_endpoint_is_this_logins_own(simulator, board)
 
     with tempfile.TemporaryDirectory() as workdir:
         socket_path = os.path.join(workdir, "sim.sock")

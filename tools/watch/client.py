@@ -23,6 +23,7 @@ import socket
 import stat
 import struct
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 
@@ -36,12 +37,11 @@ DEFAULT_TIMEOUT = 10.0
 # replies nobody will ever ask for, not a queue depth.
 kMaxPending = 256
 
-# Where a simulator is likely to be listening if nobody said. Not a search of
-# the whole filesystem: two conventional places, in order.
-SOCKET_CANDIDATES = (
-    "./.attadipa-sim.sock",
-    "/tmp/attadipa-sim.sock",
-)
+# The working tree's own socket, tried before the runtime directory. A relative
+# path is already per-user in any arrangement where two people do not share one
+# checkout, and it is the one an operator sitting in the repository can name
+# without asking anything.
+LOCAL_SOCKET = "./.attadipa-sim.sock"
 
 
 class WatchError(RuntimeError):
@@ -154,6 +154,80 @@ class SerialTransport(Transport):
         return f"serial:{self._port}"
 
 
+def _private_runtime_dir() -> str | None:
+    """A directory for our sockets that no other user can reach, or None.
+
+    This is the whole of issue #657, and the part that matters is not the
+    socket -- it is the file beside it. The simulator claims a socket path by
+    taking an exclusive ``flock`` on ``<path>.lock``, creates that file 0600,
+    and **deliberately never removes it**, because a lock file that is deleted
+    lets the next two contenders lock two different inodes and both believe
+    they hold it. So one clean run leaves a permanent owner-only file at the
+    path it used. While that path was the conventional ``/tmp/attadipa-sim.sock``
+    the file was left in a directory every user shares: the next user's
+    ``open(O_RDWR|O_CREAT)`` on it gets ``EACCES``, and in a sticky ``/tmp``
+    they cannot remove it either. A simulator that exited cleanly hours ago
+    took the documented path away from everybody else on the machine.
+
+    ``$XDG_RUNTIME_DIR`` fixes that by construction rather than by convention:
+    the socket and the claim beside it land somewhere no other user can reach,
+    so there is nothing to collide over and nothing to clean up.
+
+    **The ownership and mode check is load bearing, not hygiene.** Container
+    images and minimal CI shells set ``XDG_RUNTIME_DIR=/tmp`` -- taking the
+    variable at its word would resolve this straight back to the shared
+    directory the function exists to leave, and it would do it silently, on
+    exactly the multi-user hosts the defect lives on. A runtime directory this
+    does not recognise as ours alone is not one.
+
+    The fallback puts the UID in the *name* instead of trusting a directory:
+    two UIDs get two names, so neither can take the other's. What it does not
+    buy is protection from somebody who creates that name first -- nothing
+    placed in a shared directory can, and the simulator refuses and says so
+    rather than using it. That is a local user choosing to obstruct another,
+    not the outcome of a normal run, which is the distinction this function is
+    for.
+    """
+    named = os.environ.get("XDG_RUNTIME_DIR")
+    if named and os.path.isabs(named) and _is_private_dir(named):
+        return named
+    return None
+
+
+def default_socket_path(name: str = "sim") -> str:
+    """Where a simulator listens when the operator did not say.
+
+    One function, and the documentation calls it too -- see
+    `docs/testing/WATCH_CONTROL.md` -- because the failure this replaces was
+    two places naming one path and only one of them being per-user. The
+    simulator itself still has no default and still listens only when given
+    ``--debug-socket``; it is handed this path rather than computing it, so
+    there is one resolver in the repository instead of one per language.
+    """
+    if not name or not all(ch.isalnum() or ch in "-_" for ch in name):
+        raise WatchError(
+            f"{name!r} is not a socket name: letters, digits, '-' and '_', and at "
+            f"least one of them. It becomes a filename")
+    private = _private_runtime_dir()
+    if private is not None:
+        return os.path.join(private, f"attadipa-{name}.sock")
+    # The temporary directory is shared with every other user on the host, so
+    # the UID goes in the name. Inside a private runtime directory it would be
+    # noise: nothing else can get there to collide.
+    return os.path.join(tempfile.gettempdir(), f"attadipa-{name}-{os.geteuid()}.sock")
+
+
+def socket_candidates() -> tuple[str, ...]:
+    """Where a simulator is likely to be listening if nobody said.
+
+    Not a search of the whole filesystem: two conventional places, in order.
+    Resolved on every call rather than once at import, because the answer
+    depends on the environment and on who is asking, and a tuple frozen at
+    import time is a stale answer that looks like a constant.
+    """
+    return (LOCAL_SOCKET, default_socket_path())
+
+
 def discover_socket() -> str | None:
     """The documented default, and nothing else.
 
@@ -162,10 +236,28 @@ def discover_socket() -> str | None:
     lying around -- and driving their interface. Auto-discovery that guesses
     across ownership boundaries is not a convenience. ``--socket`` is one flag.
     """
-    for candidate in SOCKET_CANDIDATES:
+    for candidate in socket_candidates():
         if os.path.exists(candidate) and _is_ours(candidate):
             return candidate
     return None
+
+
+def _is_private_dir(path: str) -> bool:
+    """True if `path` is a directory this user owns and nobody else may enter.
+
+    Asked of the resolved target, not of the name: a symbolic link to our own
+    runtime directory is still our own runtime directory, and what the question
+    is about is who can reach what ends up inside.
+    """
+    try:
+        info = os.stat(path)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return False
+    if info.st_uid != os.geteuid():
+        return False
+    return not info.st_mode & (stat.S_IRWXG | stat.S_IRWXO)
 
 
 def _is_ours(path: str) -> bool:
@@ -1002,7 +1094,7 @@ def connect(port: str | None = None, socket_path: str | None = None,
                 "no watch found. The simulator listens only when started with "
                 "--debug-socket <path>; pass --socket <path> to say where, or "
                 "--port <device> for a serial device. Looked in: "
-                + ", ".join(SOCKET_CANDIDATES))
+                + ", ".join(socket_candidates()))
         transport = SocketTransport(path)
 
     watch = Watch(transport, timeout)
