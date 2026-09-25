@@ -328,46 +328,83 @@ void a_torn_sentence_is_dropped_whole()
 
 void a_field_that_defeats_the_overflow_guard_is_not_a_position()
 {
-    // kosma/minmea#104, open, and the reason the reuse ledger says a field is
-    // present when `scale > 0` and **never** when `scale != 0`.
+    // kosma/minmea#104, open. minmea's `f` scanner guards `value` but not
+    // `scale`: `scale *= 10` runs on every fractional digit, so leading zeros
+    // keep `value` at 0 while `scale` overflows a signed int on the tenth
+    // digit. That is undefined behaviour, and it is where it happens -- inside
+    // minmea -- so no check on the *result* can undo it. Twelve zeros wrapped
+    // negative on the bench compiler; #577 found an input that wraps positive
+    // and was published as a coordinate 2.4 km off.
     //
-    // The defeat: `value = 10 * value + digit` never grows past the guard while
-    // the digits are zeros, but `scale *= 10` runs on every one of them, so a
-    // long enough run of leading zeros overflows `scale` into a negative
-    // number while `value` is still 0. Reproduced against the vendored copy —
-    // twelve fractional zeros give `scale == -727379968`.
-    //
-    // Under `scale != 0` that field divides by a negative scale and yields
-    // latitude 0, longitude 0: null island, on the equator off the coast of
-    // Ghana, rendered as a fix. Under `scale > 0` there is no position, which
-    // is the truth — and the watch says NoFix instead of pointing somewhere.
+    // So the sentence is refused before minmea scans it, and refused whole: a
+    // field no receiver writes says nothing trustworthy about its neighbours.
     gnss::NmeaReceiver receiver;
     core::PositionSample sample;
 
     g_now.ms += 1000;
     deliver(receiver, "$GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
-    deliver(receiver,
-            "$GPGGA,140000.00,0.000000000000,N,0.000000000000,E,1,08,1.00,10.0,M,25.0,M,,*56");
+    deliver_body(receiver,
+                 "GPGGA,140000.00,0.000000000000,N,0.000000000000,E,1,08,1.00,10.0,M,25.0,M,,");
     deliver(receiver, "$GNRMC,140001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V*13");
 
-    // The sentence itself is well formed — a correct checksum, a quality of 1 —
-    // so it is not discarded. It is *believed*, and what it says about the
-    // coordinate is nothing.
-    CHECK(receiver.discarded() == 0);
+    CHECK(receiver.discarded() == 1);
     CHECK(receiver.sample(sample));
 
-    // The RMC in the same epoch stated a real coordinate, so that is what
-    // survives: GGA is preferred when it has one, and here it has none.
+    // The RMC in the same epoch stated a real coordinate, so that survives.
     CHECK(sample.observation.position.has_value());
     CHECK(sample.observation.position->latitude_e7 == 5000006);
     CHECK(sample.observation.position->longitude_e7 == 10000006);
 
-    // The altitude *does* survive, and the two are separate on purpose: the
-    // GGA's quality was 1 and its altitude field parsed, so the height is a
-    // number the receiver stated. Only the coordinate was unreadable, and only
-    // the coordinate is refused. Rejecting one field does not condemn the
-    // sentence around it.
-    CHECK(sample.observation.altitude_msl_mm.has_value());
+    // The GGA went whole, so its altitude went with it: RMC carries none.
+    CHECK(!sample.observation.altitude_msl_mm.has_value());
+}
+
+void a_scale_that_wraps_positive_is_not_a_position()
+{
+    // #577's own sentence: 81 bytes on the wire, inside NMEA's 82, checksum
+    // valid. Before the preflight it parsed, `scale` wrapped *positive*, and
+    // the receiver published latitude_e7 = 215352.
+    gnss::NmeaReceiver receiver;
+    core::PositionSample sample;
+
+    g_now.ms += 1000;
+    deliver_body(receiver,
+                 "GNRMC,120000.00,A,0.00000000002147483647,N,00000.00000,E,0.0,0.0,010126,,,A");
+    g_now.ms += 1000;
+    deliver_body(receiver, "GNRMC,120001.00,V,,,,,,,010126,,,N");
+
+    CHECK(receiver.discarded() == 1);
+    CHECK(!receiver.sample(sample) || !sample.observation.position.has_value());
+}
+
+void nine_fractional_digits_fit_and_ten_do_not()
+{
+    // The boundary: nine digits take `scale` to 10^9, which fits; the tenth
+    // is the multiplication that overflows. Checked on a coordinate and on a
+    // field that is not one, because the preflight covers every `f` field.
+    struct Case {
+        const char* body;
+        bool        kept;
+        const char* why;
+    };
+    const Case cases[] = {
+        {"GPGGA,140000.00,0030.000000000,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,", true,
+         "nine digits in a latitude fit"},
+        {"GPGGA,140000.00,0030.0000000000,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,", false,
+         "ten digits in a latitude do not"},
+        {"GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.000000000,M,25.0,M,,", true,
+         "nine digits in an altitude fit"},
+        {"GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.0000000000,M,25.0,M,,", false,
+         "ten digits in an altitude do not"},
+        {"GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.0000000001,,040926,,,D,V", false,
+         "ten digits in a speed do not"},
+    };
+    for (const Case& c : cases) {
+        gnss::NmeaReceiver receiver;
+        g_now.ms += 1000;
+        deliver_body(receiver, c.body);
+        check(receiver.discarded() == (c.kept ? 0U : 1U), c.why, __LINE__);
+    }
 }
 
 void two_altitudes_that_each_fit_and_do_not_together()
@@ -1178,6 +1215,8 @@ int main()
     a_real_epoch_arrives_whole();
     a_torn_sentence_is_dropped_whole();
     a_field_that_defeats_the_overflow_guard_is_not_a_position();
+    a_scale_that_wraps_positive_is_not_a_position();
+    nine_fractional_digits_fit_and_ten_do_not();
     two_altitudes_that_each_fit_and_do_not_together();
     one_sentence_saying_no_fix_is_enough();
     a_clock_before_a_fix_is_a_clock_the_receiver_does_not_vouch_for();

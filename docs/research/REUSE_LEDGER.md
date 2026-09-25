@@ -552,9 +552,12 @@ arrive as a version bump rather than a merge.
   heading was displayed as 0°, due north. *Fixed 2024-01-21,
   `2044b2c51e91ab4cd8cc93b15e40658cd808dd06`.* → This single issue is why minmea
   was chosen over the more popular library.
-- **minmea's own overflow guard can be defeated, producing a negative scale.**
-  *kosma/minmea issue #104, open, filed 2026-07-19.* → Validity is
-  `field.scale > 0`. **Never** `scale != 0`.
+- **minmea's own overflow guard can be defeated, overflowing the scale.**
+  *kosma/minmea issue #104, open, filed 2026-07-19.* The overflow is signed,
+  so it is undefined behaviour and can wrap positive (#577). → A sentence with
+  more than nine fractional digits in any field is refused before minmea scans
+  it (`fractions_fit()` in `gnss/src/nmea_receiver.cpp`). Validity is still
+  `field.scale > 0`, **never** `scale != 0`, as the second line.
 - **A direction field arrives as a sign, and a sign has forgotten the axis.**
   minmea's `d` scanner maps `N` and `E` alike to `+1` and `S` and `W` alike to
   `-1` (`gnss/vendor/minmea/minmea.c:138` — "            case 'd': { // Single character direction field (int)."),

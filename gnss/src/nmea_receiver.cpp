@@ -18,7 +18,8 @@ using core::Position;
 // A field is present when its scale is **positive**, never when it is merely
 // non-zero. minmea's overflow guard can be defeated into producing a negative
 // scale (kosma/minmea#104, open, recorded in the reuse ledger), and
-// `scale != 0` would read that as a value.
+// `scale != 0` would read that as a value. `fractions_fit()` now refuses that
+// defeat before minmea runs; this check is the second line, not the first.
 constexpr bool present(const minmea_float& f)
 {
     return f.scale > 0;
@@ -149,6 +150,29 @@ bool millimetres(const minmea_float& f, std::int32_t& out)
     return true;
 }
 
+// kosma/minmea#104, checked before the scan rather than after it. minmea's
+// `f` scanner guards `value` but runs `scale *= 10` on every fractional digit,
+// so leading zeros keep `value` small while `scale` reaches 10^9 on the ninth
+// digit and overflows a signed 32-bit int on the tenth. That is undefined
+// behaviour, and the wrap can land positive: a false coordinate `present()`
+// cannot see. No receiver sends ten fractional digits, so a sentence that does
+// is refused whole. Stricter than needed for the `T` time field, whose own
+// loop is bounded; at the two or three digits receivers send, that costs nothing.
+bool fractions_fit(const char* line)
+{
+    int digits = -1;
+    for (; *line != '\0'; ++line) {
+        if (*line == '.') {
+            digits = 0;
+        } else if (digits >= 0 && *line >= '0' && *line <= '9') {
+            if (++digits > 9) return false;
+        } else {
+            digits = -1;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 void NmeaReceiver::feed(const std::uint8_t* bytes, std::size_t count, MonotonicTime now)
@@ -220,6 +244,11 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 
     heard_ = true;
     last_sentence_ = now;
+
+    if (!fractions_fit(line_)) {
+        ++discarded_;
+        return;
+    }
 
     switch (minmea_sentence_id(line_, false)) {
     case MINMEA_SENTENCE_RMC: {
