@@ -6,7 +6,7 @@
 # runs: `.github/tests/review-invalidate-workflow-test.sh` sat in the tree from
 # #277 with 104 assertions and no `run:` line anywhere, and the directory read
 # as coverage the whole time. `shellcheck -x` at
-# `.github/workflows/ci.yml:233` -- "run: shellcheck -x .github/scripts/*.sh .github/tests/*.sh"
+# `.github/workflows/ci.yml:237` -- "run: shellcheck -x .github/scripts/*.sh .github/tests/*.sh"
 # -- is what let it hide: a suite nobody runs still parses, and a green lint
 # reads as a green test.
 #
