@@ -50,9 +50,9 @@ covers them.
 framed it.** `avail ready` is not reachable without one, because the flag it
 reads is set only past a strict checksum:
 
-- `gnss/src/nmea_receiver.cpp:241` — "if (!minmea_check(line_, true)) {"
-- `gnss/src/nmea_receiver.cpp:246` — "heard_ = true;"
-- `gnss/src/nmea_receiver.cpp:505` — "if (!heard_) return Availability::Unreachable;"
+- `gnss/src/nmea_receiver.cpp:300` — "if (!minmea_check(line_, true)) {"
+- `gnss/src/nmea_receiver.cpp:305` — "heard_ = true;"
+- `gnss/src/nmea_receiver.cpp:572` — "if (!heard_) return Availability::Unreachable;"
 
 **At least two `RMC` sentences were parsed by `minmea`, not merely framed.** The
 published state carries `src LocalGnss`. In the image the bench ran, that field
@@ -62,9 +62,9 @@ nothing else. Since [#664](https://github.com/hleserg/Attadipa/issues/664) a
 refused `RMC` opens and closes an epoch too, through `refuse()`, and publishes
 it as no fix; on a newer image `src LocalGnss` alone no longer proves a parse:
 
-- `gnss/src/nmea_receiver.cpp:426` — "open_.source = core::PositionSource::LocalGnss;"
-- `gnss/src/nmea_receiver.cpp:263` — "close_epoch();"
-- `gnss/src/nmea_receiver.cpp:413` — "close_epoch();"
+- `gnss/src/nmea_receiver.cpp:493` — "open_.source = core::PositionSource::LocalGnss;"
+- `gnss/src/nmea_receiver.cpp:322` — "close_epoch();"
+- `gnss/src/nmea_receiver.cpp:476` — "close_epoch();"
 
 **The timing agrees with a 1 Hz `RMC` against a 1 s tick.** The three state
 lines are 1000 ms apart, which is the tick's period, and the epoch closes one
@@ -106,8 +106,8 @@ separate them: the silence timeout is measured against a clock the tick itself
 hands in, so a stopped tick freezes `now_` and `last_sentence_` together and
 `Ready` survives a dead line exactly as it survives a live one.
 
-- `gnss/src/nmea_receiver.cpp:506` — "core::elapsed(last_sentence_, now_) < silence_after_"
-- `gnss/src/nmea_receiver.cpp:182` — "now_ = now;"
+- `gnss/src/nmea_receiver.cpp:573` — "core::elapsed(last_sentence_, now_) < silence_after_"
+- `gnss/src/nmea_receiver.cpp:241` — "now_ = now;"
 - `firmware/main/local_gnss.cpp:381` — "// Still tell the receiver what time it is: its silence timeout is"
 
 The 64 `alive` lines are not the missing witness, and it is worth saying why

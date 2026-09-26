@@ -174,6 +174,65 @@ bool fractions_fit(const char* line)
     return true;
 }
 
+// Which of the three sentences this driver reads, or none, from the address
+// alone. **THE ONE PLACE THE HEADER IS INTERPRETED**, because two places is how
+// #683 happened: `minmea_sentence_id()` decided what to parse and `refuse()`
+// re-read `line_ + 3` to decide what a refusal cost, and both were the same
+// wrong reading of the same bytes.
+//
+// NMEA 0183 writes an address two ways and only one of them is `$ttXXX`. A
+// *standard* sentence is a two-character talker plus a three-character type. A
+// **proprietary** one begins `$P`, and what follows is a manufacturer mnemonic
+// and a message identifier whose length is the manufacturer's business — so its
+// characters do not line up with the standard layout and the type position
+// holds whatever happens to sit there. `$PGRMC` is Garmin's `P` + `GRM` + `C`,
+// a sensor-configuration message; read as `$ttXXX` it is a talker `PG` sending
+// an `RMC`, and nothing downstream can tell that apart from a real one.
+//
+// That is what minmea does, by design and unchanged here:
+// `gnss/vendor/minmea/minmea.c:249` — "                for (int f=0; f<5; f++)"
+// copies five address characters and calls the last three the sentence id, and
+// `minmea_parse_gga`/`_gsa` then re-check *that* id, so a proprietary body whose
+// address ends `GGA` is not merely dispatched as a GGA, it is accepted as one
+// and its fields latch onto the open epoch. The vendored copy stays
+// byte-identical to upstream —
+// `docs/research/REUSE_LEDGER.md:532` — "**Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at"
+// — so the boundary is drawn on this side of it, before any epoch meaning is
+// attached to a sentence.
+//
+// `minmea_isfield()` is minmea's own idea of an address character, used here so
+// that what this accepts as standard is what minmea's `t` scanner accepts, and
+// the two cannot drift apart. `minmea_check()` has already passed by the time
+// anything calls this, which is what makes the bytes printable; this decides
+// the *shape*, not the hygiene.
+//
+// The separator is checked because it is the other half of "the address is five
+// characters". `next_field()` walks to the next comma
+// (`gnss/vendor/minmea/minmea.c:103` — "        while (minmea_isfield(*sentence)) \"),
+// so a six-character address such as `$GNRMCX` is consumed whole and every
+// field after it parses as an ordinary RMC — the same aliasing, one character
+// further along. Five and then `,` or `*`, or this is not a sentence with a
+// standard type.
+enum class Sentence : std::uint8_t { Other, Rmc, Gga, Gsa };
+
+Sentence classify(const char* line)
+{
+    if (std::strlen(line) < 7) return Sentence::Other;  // `$`, five, a separator
+    if (line[0] != '$') return Sentence::Other;
+    if (line[1] == 'P') return Sentence::Other;  // proprietary; `P` is no talker
+
+    for (std::size_t i = 1; i <= 5; ++i) {
+        if (!minmea_isfield(line[i])) return Sentence::Other;
+    }
+    if (line[6] != ',' && line[6] != '*') return Sentence::Other;
+
+    const char* type = line + 3;
+    if (std::memcmp(type, "RMC", 3) == 0) return Sentence::Rmc;
+    if (std::memcmp(type, "GGA", 3) == 0) return Sentence::Gga;
+    if (std::memcmp(type, "GSA", 3) == 0) return Sentence::Gsa;
+    return Sentence::Other;
+}
+
 }  // namespace
 
 void NmeaReceiver::feed(const std::uint8_t* bytes, std::size_t count, MonotonicTime now)
@@ -251,8 +310,8 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         return;
     }
 
-    switch (minmea_sentence_id(line_, false)) {
-    case MINMEA_SENTENCE_RMC: {
+    switch (classify(line_)) {
+    case Sentence::Rmc: {
         minmea_sentence_rmc frame{};
         if (!minmea_parse_rmc(&frame, line_)) {
             refuse(now);
@@ -302,7 +361,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         }
         break;
     }
-    case MINMEA_SENTENCE_GGA: {
+    case Sentence::Gga: {
         if (!open_valid_) return;  // no epoch open yet; wait for the first RMC
         minmea_sentence_gga frame{};
         if (!minmea_parse_gga(&frame, line_)) {
@@ -359,7 +418,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         }
         break;
     }
-    case MINMEA_SENTENCE_GSA: {
+    case Sentence::Gsa: {
         if (!open_valid_) return;
         minmea_sentence_gsa frame{};
         if (!minmea_parse_gsa(&frame, line_)) {
@@ -386,10 +445,13 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         }
         break;
     }
-    default:
-        // VTG, GLL, GSV and the rest. Read past deliberately: the issue's scope
-        // is RMC, GGA and GSA, and every field they would add is already here
-        // or is one this parser refuses to guess at.
+    case Sentence::Other:
+        // VTG, GLL, GSV and the rest, and every proprietary `$P…` sentence with
+        // them. Read past deliberately: the issue's scope is RMC, GGA and GSA,
+        // and every field they would add is already here or is one this parser
+        // refuses to guess at. Not counted in `discarded()` either, which is
+        // the same answer this branch has always given — a sentence this driver
+        // does not read is not a sentence it threw away.
         break;
     }
 }
@@ -401,21 +463,26 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 // nothing refused (#664); without that close, the last fix went on publishing
 // as current for the whole of `stale_after` while every RMC said V. The epoch
 // it opens is latched, because what that RMC said is exactly what is unknown.
-// Any other type is read past anyway, so refusing it costs the epoch nothing.
-// The type is read from the bytes, not by minmea, so no refused sentence
-// reaches a minmea scanner.
+// Any other type is read past anyway, so refusing it costs the epoch nothing —
+// and a proprietary sentence is one of those others however its address ends
+// (#683). The type is `classify()`'s answer, the same one dispatch acted on a
+// moment ago, so no refused sentence reaches a minmea scanner and no sentence
+// is one type on the way in and another on the way out.
 void NmeaReceiver::refuse(MonotonicTime now)
 {
     ++discarded_;
-    if (length_ < 6) return;  // "$GNRMC": talker at 1, type at 3
-    const char* type = line_ + 3;
-    if (std::memcmp(type, "RMC", 3) == 0) {
+    switch (classify(line_)) {
+    case Sentence::Rmc:
         close_epoch();
         open_epoch(now);
         refused_in_epoch_ = true;
-    } else if (open_valid_ &&
-               (std::memcmp(type, "GGA", 3) == 0 || std::memcmp(type, "GSA", 3) == 0)) {
-        refused_in_epoch_ = true;
+        break;
+    case Sentence::Gga:
+    case Sentence::Gsa:
+        if (open_valid_) refused_in_epoch_ = true;
+        break;
+    case Sentence::Other:
+        break;
     }
 }
 

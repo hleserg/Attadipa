@@ -568,6 +568,20 @@ arrive as a version bump rather than a merge.
   validates them as written: the letter against **its own axis**, the magnitude
   nonnegative, the minutes under 60. Never from minmea's signed result — the
   evidence has been spent by then. *Found in Attadipa, issue #472.*
+- **A proprietary address is read as a standard one, and the type it lands on
+  is real.** NMEA 0183 writes `$P` plus a manufacturer mnemonic and a message
+  identifier of the manufacturer's own length, which does not line up with
+  `$ttXXX`; minmea splits the first five address characters either way
+  (`gnss/vendor/minmea/minmea.c:249` — "                for (int f=0; f<5; f++)"),
+  so Garmin's `$PGRMC` arrives as a talker `PG` sending an `RMC`. Worse for the
+  other two: `minmea_parse_gga`/`_gsa` re-check *that* id, so a proprietary body
+  whose address ends `GGA` is accepted as a GGA rather than merely dispatched as
+  one. Not an upstream defect — the library claims no ability to read
+  proprietary sentences — but a boundary every caller inherits, and a silent
+  one. → The wrapper classifies the address itself before any epoch meaning is
+  attached, in **one** place used by both the dispatch and the refusal, and
+  reads every `$P…` sentence past as it already reads VTG and GSV past. *Found
+  in Attadipa, issue #683.*
 - **`isnan()` is not a safe validity test.** Compiled twice here against the same
   source: with `-ffast-math`, `isnan()` returns 0 on an actual NaN, and so does
   `x != x`. → `-ffast-math` is a correctness hazard in this subsystem, not a
