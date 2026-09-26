@@ -1848,11 +1848,14 @@ void test_cli_data_is_neither_a_message_nor_a_coordinate()
     std::uint8_t cli[16 + sizeof(cli_text)]{};
     cli[0] = 16;
     cli[1] = static_cast<std::uint8_t>(-40);
-    std::memcpy(&cli[4], peer.id.public_key.data(), 6);
+    // From a prefix no contact matches, so a sender written before the CLI
+    // check would clear the name on screen rather than repeat it (#678).
+    for (std::size_t i = 0; i < 6; ++i) cli[4 + i] = 0xEE;
     cli[11] = 1;  // TXT_TYPE_CLI_DATA
     std::memcpy(&cli[16], cli_text, sizeof(cli_text) - 1);
     CHECK(client.receive(cli, sizeof(cli) - 1, at(12)));
     CHECK(std::strcmp(client.status().last_message.data(), "Human") == 0);
+    CHECK(std::strcmp(client.status().last_sender.data(), "Peer") == 0);
     CHECK(client.status().snr_quarter_db == 0);
     core::MeshPeerId who{};
     core::Position position{};
@@ -1876,11 +1879,12 @@ void test_cli_data_is_neither_a_message_nor_a_coordinate()
 
     std::uint8_t legacy_cli[13 + sizeof(cli_text)]{};
     legacy_cli[0] = 7;
-    std::memcpy(&legacy_cli[1], peer.id.public_key.data(), 6);
+    for (std::size_t i = 0; i < 6; ++i) legacy_cli[1 + i] = 0xEE;
     legacy_cli[8] = 1;  // TXT_TYPE_CLI_DATA
     std::memcpy(&legacy_cli[13], cli_text, sizeof(cli_text) - 1);
     CHECK(client.receive(legacy_cli, sizeof(legacy_cli) - 1, at(14)));
     CHECK(std::strcmp(client.status().last_message.data(), "OneHop") == 0);
+    CHECK(std::strcmp(client.status().last_sender.data(), "Peer") == 0);
     CHECK(!client.remote_position(who, position, arrived));
     CHECK(client.malformed_frames() == 0);
     CHECK(client.cli_frames() == 2);
