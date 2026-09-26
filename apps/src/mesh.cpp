@@ -39,7 +39,7 @@ bool is_terminal(const MeshStatus& status) {
 // BUT NOT OVER A TERMINAL ONE, because there the refusal is history and the
 // fault is now. `MeshCoreCompanion::reset_session()` deliberately keeps the pin
 // and the refusal across a disconnect
-// (`link/src/meshcore_companion.cpp:180` — "    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared"),
+// (`link/src/meshcore_companion.cpp:184` — "    // `status_.pinned_id` and `status_.refused_id` are deliberately NOT cleared"),
 // which is right, and it means a refusal latched at any point in the past is
 // still latched after the transport later faults. Ranked first, it answered
 // `TurnedAway` there -- telling the wearer to go and select a different node,

@@ -193,6 +193,8 @@ public:
     core::ReceiverPresence node_receiver() const { return node_receiver_; }
 
     std::uint32_t malformed_frames() const { return malformed_frames_; }
+    // Remote CLI output consumed without being shown (#627).
+    std::uint32_t cli_frames() const { return cli_frames_; }
     std::uint8_t firmware_version_code() const { return firmware_version_code_; }
 
     // Whether a send is still being tracked. There is exactly one slot, and
@@ -429,6 +431,7 @@ private:
     // names is the one `status_.request_id` reports.
     std::uint32_t request_seq_ = 0;
     std::uint32_t malformed_frames_ = 0;
+    std::uint32_t cli_frames_ = 0;
     std::uint8_t firmware_version_code_ = 0;
     bool device_info_seen_ = false;
     bool self_info_seen_ = false;

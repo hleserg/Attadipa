@@ -692,6 +692,27 @@ and it is not interchangeable with plain text: the handler **discards the app's
 timestamp** and substitutes the node's own RTC (`MyMesh.cpp:1103`), commented
 upstream as replay-protection avoidance.
 
+Inbound, a contact message typed 1 has one producer at the pinned revision:
+a `PAYLOAD_TYPE_TXT_MSG` whose flags byte, shifted right by two, is
+`TXT_TYPE_CLI_DATA` goes to `onCommandDataRecv()` (`BaseChatMesh.cpp:256-257`)
+with no ACK (`:258`), and that queues it under the same type
+(`MyMesh.cpp:534`). The sender built it with `sendCommandData()`
+(`BaseChatMesh.cpp:467`), which is what `CMD_SEND_TXT_MSG` with type 1 calls
+(`MyMesh.cpp:1104`). So an app that marks a person's text 1 has sent it on
+the CLI channel: unacknowledged, and stamped with its node's clock.
+
+`queueMessage()` (`MyMesh.cpp:435-457`) lays out both contact-message
+shapes the same way after their header; byte offsets:
+
+| Field | Code 7 | Code 16 |
+|---|---|---|
+| SNR ×4, then two reserved bytes | — | 1–3 |
+| sender key prefix, 6 bytes | 1–6 | 4–9 |
+| `path_len` (`0xFF` unless flood-routed) | 7 | 10 |
+| `txt_type` | 8 | 11 |
+| sender timestamp, 4 bytes | 9–12 | 12–15 |
+| text, after a 4-byte prefix when signed | 13 | 16 |
+
 The three text types above share the **absence of structured position fields
 recorded in §4.4**. This is an enumerated absence: all three definitions in
 `TxtDataHelpers.h:6-8` were read, so it is not an `UNKNOWN`. A coordinate sent
