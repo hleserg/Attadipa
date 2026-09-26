@@ -55,10 +55,10 @@ enum class PasskeyOutcome : std::uint8_t {
     // faulted; the passkey is not stored either, because the worker never
     // reaches the write.
     Refused,
-    // Armed for this boot only: an NVS write refused. The next boot does not
-    // arm these digits -- flash keeps what it held before, or the replay gate
-    // that forbids replay (`persist_passkey()`) -- which is not something a
-    // person can be left to discover from a node that stops answering.
+    // Armed for this boot only: an NVS write refused. The next boot arms the
+    // previous digits or nothing, and these only if the refusal was the last
+    // erase and it landed anyway (`persist_passkey()`) -- which is not something
+    // a person can be left to discover from a node that stops answering.
     NotStored,
 };
 

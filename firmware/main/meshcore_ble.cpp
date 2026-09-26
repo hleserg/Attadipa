@@ -273,6 +273,9 @@ constexpr const char* kNodeKeyNvsKey    = "node";
 // the watch (ADR-0018, fact 2). Plain NVS, like the pin and the bonds.
 constexpr const char* kPasskeyNvsKey    = "passkey";
 constexpr const char* kReprovisionNvsKey = "reprovision";
+// Up while a passkey write is in flight (#648). Its own key, so that a forget
+// rolling back its marker cannot lower it.
+constexpr const char* kPasskeyPendingNvsKey = "pkpending";
 
 // The address of the peer this session is with, and the address of the last one
 // refused, packed as type<<48 | the six address bytes. Atomics rather than a
@@ -396,6 +399,48 @@ attadipa::firmware::StoredPasskey load_passkey(std::uint32_t& out)
     return StoredPasskey::Found;
 }
 
+// A durable u8 flag: absent is down, 1 is up, anything else is unreadable.
+enum class NvsGate : std::uint8_t { Down, Up, Unreadable };
+
+NvsGate load_nvs_gate(nvs_handle_t handle, const char* key)
+{
+    std::uint8_t value = 0;
+    const esp_err_t err = nvs_get_u8(handle, key, &value);
+    if (err == ESP_ERR_NVS_NOT_FOUND) return NvsGate::Down;
+    if (err != ESP_OK || value != 1) {
+        ESP_LOGE(kTag, "NVS gate %s is unreadable or invalid", key);
+        return NvsGate::Unreadable;
+    }
+    return NvsGate::Up;
+}
+
+bool raise_nvs_gate(const char* key)
+{
+    nvs_handle_t handle{};
+    if (nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
+    esp_err_t err = nvs_set_u8(handle, key, 1);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+// A refusal here is ambiguous: the erase may have landed anyway, and this boot
+// cannot read back which (VERIFIED_FACTS, "A failed erase may already have
+// erased").
+bool lower_nvs_gate(const char* key)
+{
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return true;
+    if (opened != ESP_OK) return false;
+    esp_err_t err = nvs_erase_key(handle, key);
+    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+// Replay needs both gates down: the forget-node one and the passkey write's.
 attadipa::firmware::PasskeyReplay load_replay_permission()
 {
     using attadipa::firmware::PasskeyReplay;
@@ -407,38 +452,14 @@ attadipa::firmware::PasskeyReplay load_replay_permission()
                  esp_err_to_name(opened));
         return PasskeyReplay::Unreadable;
     }
-    std::uint8_t pending = 0;
-    const esp_err_t err = nvs_get_u8(handle, kReprovisionNvsKey, &pending);
+    const NvsGate forget = load_nvs_gate(handle, kReprovisionNvsKey);
+    const NvsGate write = load_nvs_gate(handle, kPasskeyPendingNvsKey);
     nvs_close(handle);
-    if (err == ESP_ERR_NVS_NOT_FOUND) return PasskeyReplay::Allowed;
-    if (err != ESP_OK || pending != 1) {
-        ESP_LOGE(kTag, "MeshCore replay gate is unreadable or invalid");
+    if (forget == NvsGate::Unreadable || write == NvsGate::Unreadable)
         return PasskeyReplay::Unreadable;
-    }
-    return PasskeyReplay::Inhibited;
-}
-
-bool mark_reprovision_pending()
-{
-    nvs_handle_t handle{};
-    if (nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
-    esp_err_t err = nvs_set_u8(handle, kReprovisionNvsKey, 1);
-    if (err == ESP_OK) err = nvs_commit(handle);
-    nvs_close(handle);
-    return err == ESP_OK;
-}
-
-bool clear_reprovision_pending()
-{
-    nvs_handle_t handle{};
-    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle);
-    if (opened == ESP_ERR_NVS_NOT_FOUND) return true;
-    if (opened != ESP_OK) return false;
-    esp_err_t err = nvs_erase_key(handle, kReprovisionNvsKey);
-    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
-    if (err == ESP_OK) err = nvs_commit(handle);
-    nvs_close(handle);
-    return err == ESP_OK;
+    if (forget == NvsGate::Up || write == NvsGate::Up)
+        return PasskeyReplay::Inhibited;
+    return PasskeyReplay::Allowed;
 }
 
 bool store_passkey(std::uint32_t passkey)
@@ -451,12 +472,27 @@ bool store_passkey(std::uint32_t passkey)
     return err == ESP_OK;
 }
 
-// `persist_passkey()`'s NVS. The replay gate is the forget-node one: both mean
-// "flash may hold digits nobody entered for this node".
+// `persist_passkey()`'s NVS. Stored digits are entered digits, so a finished
+// write lowers the forget-node gate too -- first, so that the write's own gate
+// is the last thing to come down.
 struct PersistOps {
-    bool inhibit_replay() { return mark_reprovision_pending(); }
+    bool inhibit_replay()
+    {
+        if (raise_nvs_gate(kPasskeyPendingNvsKey)) return true;
+        ESP_LOGE(kTag, "MeshCore passkey: write gate not raised; the next boot "
+                       "arms the previous passkey, if any");
+        return false;
+    }
     bool store(std::uint32_t passkey) { return store_passkey(passkey); }
-    bool allow_replay() { return clear_reprovision_pending(); }
+    bool allow_replay()
+    {
+        if (lower_nvs_gate(kReprovisionNvsKey) &&
+            lower_nvs_gate(kPasskeyPendingNvsKey))
+            return true;
+        ESP_LOGE(kTag, "MeshCore passkey: write gate not lowered; the next boot "
+                       "arms nothing, or these digits if that erase landed anyway");
+        return false;
+    }
 };
 
 // The off switch. Before the passkey outlived a boot, a power cycle was one;
@@ -1489,14 +1525,14 @@ struct RealForgetOps {
     }
     bool mark_reprovision()
     {
-        if (mark_reprovision_pending()) return true;
+        if (raise_nvs_gate(kReprovisionNvsKey)) return true;
         ESP_LOGE(kTag,
                  "forget-node: recovery marker was not stored; trust kept");
         return false;
     }
     bool cancel_reprovision()
     {
-        const bool cleared = clear_reprovision_pending();
+        const bool cleared = lower_nvs_gate(kReprovisionNvsKey);
         if (!cleared) {
             ESP_LOGE(kTag,
                      "forget-node: recovery marker could not be rolled back; "
@@ -1682,9 +1718,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:207` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1754` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1790` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:957` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:993` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1768,17 +1804,17 @@ void mesh_task(void*)
                 // Stored after the stack has taken it and before the session
                 // is told, so that what flash holds is a passkey this image
                 // accepted. A refused write is this boot's problem only: the
-                // watch is configured, and says it will not be next time --
-                // and now says it to the screen as well, because "it will be
-                // gone at the next boot" is not a fact a serial log can carry
-                // to somebody holding the watch.
+                // watch is configured, and says the digits were not stored --
+                // to the screen as well, because a serial log cannot carry
+                // that to somebody holding the watch. What the next boot arms
+                // depends on the step that refused; `PersistOps` logs it.
                 PersistOps persist_ops;
                 const bool stored = !event.persist_passkey ||
                     attadipa::firmware::persist_passkey(persist_ops, event.passkey);
                 if (!stored) {
                     ESP_LOGE(kTag,
-                             "MeshCore passkey armed for this boot only; the "
-                             "next boot will not arm it");
+                             "MeshCore passkey armed for this boot only; "
+                             "not stored");
                 }
                 configured.store(true);
                 reconnect_allowed.store(true);

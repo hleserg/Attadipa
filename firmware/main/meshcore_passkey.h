@@ -80,9 +80,19 @@ bool request_passkey(Ops& ops, std::uint32_t passkey)
 // A refused NVS write is not a write that did nothing (#648): replacing a
 // stored value writes the new entry before it erases the old one, and reports
 // that erase failing as a failure. So the gate goes up before the digits are
-// touched and comes down only after they are stored. Whichever step refuses,
-// the next boot does not arm these digits: flash still holds what it held
-// before, gate included, or the gate is up. False is `NotStored`.
+// touched and comes down only after they are stored. What the next boot arms:
+//
+//   inhibit_replay() refuses -- the previous digits, if any; or, if the gate
+//                               went up anyway, nothing
+//   store() refuses          -- nothing: the gate is up
+//   allow_replay() refuses   -- nothing, or these digits: a refused erase may
+//                               have erased, and this boot cannot read back
+//                               which (VERIFIED_FACTS, "A failed erase may
+//                               already have erased")
+//
+// Power lost between the first and the last step also leaves the gate up, so
+// the next boot arms nothing and the owner enters the digits again. False is
+// `NotStored`.
 template <typename Ops>
 bool persist_passkey(Ops& ops, std::uint32_t passkey)
 {

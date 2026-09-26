@@ -140,7 +140,15 @@ void test_restore()
 // with one fault armed at a time. `Durable` is ESP-IDF's replace reporting
 // failure after the new entry is already written (VERIFIED_FACTS).
 struct FakeNvs {
-    enum class Fault { None, Inhibit, StoreNothing, StoreDurable, Allow };
+    enum class Fault {
+        None,
+        Inhibit,
+        InhibitDurable,
+        StoreNothing,
+        StoreDurable,
+        Allow,
+        AllowDurable,
+    };
 
     bool gate = false;
     bool has_value = false;
@@ -155,7 +163,7 @@ struct FakeNvs {
     {
         if (fault == Fault::Inhibit) return false;
         gate = true;
-        return true;
+        return fault != Fault::InhibitDurable;
     }
     bool store(std::uint32_t passkey)
     {
@@ -169,7 +177,7 @@ struct FakeNvs {
     {
         if (fault == Fault::Allow) return false;
         gate = false;
-        return true;
+        return fault != Fault::AllowDurable;
     }
 
     PasskeyReplay replay_permission() const
@@ -215,13 +223,15 @@ void test_persist_then_boot()
     CHECK(restore_passkey(nvs) == PasskeyRestore::Restored && nvs.armed == kNew);
 
     // A refused write never lets the next boot arm the new digits -- above all
-    // the one that did land (#648). What it may arm is what it armed before.
+    // the one that did land (#648) -- with one exception, below. What it may
+    // arm is what it armed before.
     struct Case {
         Fault fault;
         PasskeyRestore boot;
     };
     const Case cases[] = {
         {Fault::Inhibit, PasskeyRestore::Restored},  // nothing touched: old
+        {Fault::InhibitDurable, PasskeyRestore::ReplayInhibited},
         {Fault::StoreNothing, PasskeyRestore::ReplayInhibited},
         {Fault::StoreDurable, PasskeyRestore::ReplayInhibited},
         {Fault::Allow, PasskeyRestore::ReplayInhibited},
@@ -234,6 +244,16 @@ void test_persist_then_boot()
         CHECK(restore_passkey(faulty) == c.boot);
         CHECK(faulty.armed != kNew);
     }
+
+    // The exception, and the residual `persist_passkey()` documents: the last
+    // erase refused and landed anyway. This boot cannot tell, so the next one
+    // arms the new digits although this one reported them not stored.
+    FakeNvs landed = holding_old();
+    landed.fault = Fault::AllowDurable;
+    CHECK(!persist_passkey(landed, kNew));
+    landed.fault = Fault::None;
+    CHECK(restore_passkey(landed) == PasskeyRestore::Restored);
+    CHECK(landed.armed == kNew);
 
     // The digits are not touched once the gate refused to go up.
     FakeNvs refused = holding_old();

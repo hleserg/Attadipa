@@ -50,10 +50,10 @@ namespace attadipa::core {
 // `core/include/attadipa/core/transport_state.h:27` — "Attached,    // it exists and is powered"
 // — and the firmware is why: one `case` arm brings the stack up and starts
 // scanning in the same breath,
-// `firmware/main/meshcore_ble.cpp:1327` — "provider.begin(now());"
-// followed immediately by `firmware/main/meshcore_ble.cpp:1328` — "if (configured.load()) start_scan();",
+// `firmware/main/meshcore_ble.cpp:1363` — "provider.begin(now());"
+// followed immediately by `firmware/main/meshcore_ble.cpp:1364` — "if (configured.load()) start_scan();",
 // and that scan is neither passive nor bounded —
-// `firmware/main/meshcore_ble.cpp:608` — "params.passive = 0;" and `:612`
+// `firmware/main/meshcore_ble.cpp:644` — "params.passive = 0;" and `:648`
 // — "const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER, &params,".
 // So the ordinary state of a configured watch with no node in range is
 // `Attached` with the radio actively scanning forever. A declaration that
@@ -79,12 +79,12 @@ namespace attadipa::core {
 // does hold the fact and the fact says the radio can still be on. The phase is
 // "it failed, and needs a reset rather than a retry", and the fault taken when
 // the stack refuses the passkey cancels nothing —
-// `firmware/main/meshcore_ble.cpp:1765` — "                    provider.fault(now());"
+// `firmware/main/meshcore_ble.cpp:1801` — "                    provider.fault(now());"
 // — nor does the lifecycle's fault step,
-// `firmware/main/meshcore_ble.cpp:1330` — "        case SessionStep::Fault:".
+// `firmware/main/meshcore_ble.cpp:1366` — "        case SessionStep::Fault:".
 // Every `ble_gap_disc_cancel()` in that file sits on a path that is not a fault
 // — a matched advertisement, forget-node, deconfigure — so the unbounded scan
-// started at `firmware/main/meshcore_ble.cpp:1328` — "if (configured.load())
+// started at `firmware/main/meshcore_ble.cpp:1364` — "if (configured.load())
 // start_scan();" — can outlive the phase that dropped the lease. Released
 // anyway, and deliberately: `Faulted` needs a reset rather than a retry, so a
 // declaration that held through it would refuse every sleep until that reset

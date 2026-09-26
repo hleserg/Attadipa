@@ -595,7 +595,7 @@ The frame a re-read must have before it may commit is the one the bench dropped
 re-read landed on 2026-09-18 and no bench session has ever contained a second
 `CMD_GET_CONTACTS`, so that an attempt two loses the same frame is **inferred**
 from the burst being identical, not measured. The measurement is:
-`firmware/main/meshcore_ble.cpp:1036` — "            // sessions out of three -- it is the last frame of the burst, so it".
+`firmware/main/meshcore_ble.cpp:1072` — "            // sessions out of three -- it is the last frame of the burst, so it".
 A re-read is the same 234-frame burst, so a dirty walk there spends both
 attempts and ends `degraded` with the older list every time. Row 20's "a second
 attempt ten seconds later" is therefore not the unlucky branch on that node; it
