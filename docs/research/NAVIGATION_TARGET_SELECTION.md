@@ -598,10 +598,10 @@ avoid.
 **Confidence.**
 
 - **HIGH** — that a separate target-selection contract is needed; that one slot
-  is insufficient; that the deletion arm is unpaid; that "recent senders" is a
-  subset of the retained window rather than a second source; that the send and
-  receive paths disagree about who exists after #600. All five are read directly
-  off the code cited above.
+  is insufficient; that the deletion arm was unpaid and is now paid by
+  `7b10884`; that "recent senders" is a subset of the retained window rather
+  than a second source; that the send and receive paths disagree about who
+  exists after #600. All five are read directly off the code cited above.
 - **MEDIUM** — the cache size, the persistence shape, and whether the browse is
   needed. These rest on M39–M41, which are measurements nobody has taken.
 - **UNKNOWN / NOT EXECUTED — HARDWARE REQUIRED** — every claim about what two
