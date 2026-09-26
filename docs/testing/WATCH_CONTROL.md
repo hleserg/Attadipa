@@ -450,7 +450,7 @@ time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:2354` "bool configure_meshcore_ble") had exactly one caller,
+(`meshcore_ble.cpp:2394` "bool configure_meshcore_ble") had exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:660`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
@@ -467,15 +467,15 @@ per-boot RAM:
 `configured` and `reconnect_allowed` are `std::atomic_bool{false}`
 (`meshcore_ble.cpp:206` "std::atomic_bool configured", `meshcore_ble.cpp:208`
 "std::atomic_bool reconnect_allowed"), the `Configure` event is the only thing
-that sets `configured` **true** (`meshcore_ble.cpp:1819`
-"configured.store(true)", `meshcore_ble.cpp:1820`
+that sets `configured` **true** (`meshcore_ble.cpp:1848`
+"configured.store(true)", `meshcore_ble.cpp:1849`
 "reconnect_allowed.store(true)" — every other write clears them), and
-`start_scan()` returns unless both are true (`meshcore_ble.cpp:637`
+`start_scan()` returns unless both are true (`meshcore_ble.cpp:664`
 "void start_scan()"). `CONFIG_BT_NIMBLE_NVS_PERSIST=y` persists bonds, and a
 bond buys nothing without a scan.
 
 One other event re-arms `reconnect_allowed`: `ForgetBond`
-(`meshcore_ble.cpp:1820` "reconnect_allowed.store(true)"), which is #325's
+(`meshcore_ble.cpp:1849` "reconnect_allowed.store(true)"), which is #325's
 recovery from a stale bond. It changes nothing here — it is reached only
 through `MeshForgetBond`, inside the same `#if`, and it re-arms a scan that
 `configured` still gates. A product image cannot reach it and would gain
@@ -485,13 +485,13 @@ When this boundary was drawn, that was the whole of it: provisioning over the
 HIL image did not survive a power cycle of the HIL image, let alone being
 flashed away, which is what showed the round trip never existed. #356's first
 change added the one thing that persists: an accepted six-digit passkey is
-written to NVS by the worker (`meshcore_ble.cpp:1813`
+written to NVS by the worker (`meshcore_ble.cpp:1842`
 "attadipa::firmware::persist_passkey(persist_ops, event.passkey);") and boot replays it through the same
-`Configure` event (`meshcore_ble.cpp:2321` "restore_passkey();"). The zero of
+`Configure` event (`meshcore_ble.cpp:2361` "restore_passkey();"). The zero of
 `--unpaired-probe` is not a passkey and is not written: it turns pairing and
 link encryption off for one session, and a boot must not do that on its own.
 `mesh-disconnect` is the way back: its `Deconfigure` erases the key
-(`meshcore_ble.cpp:1861` "if (!erase_passkey()) {"), so a watch told to stop
+(`meshcore_ble.cpp:1890` "if (!erase_passkey()) {"), so a watch told to stop
 stays stopped across a power cycle, where before this change the power cycle
 was itself the off switch. So the MeshCore round trip now exists the way the
 clock's does — flash the HIL image, configure, flash back, and the product
@@ -509,9 +509,9 @@ scans without showing that it does.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:326` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:2117` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:2146` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:2138` "xTaskCreate(mesh_task") for a subsystem that scans
+(`meshcore_ble.cpp:2167` "xTaskCreate(mesh_task") for a subsystem that scans
 only once a passkey is on flash — left by a HIL image, or, since #356's second
 change, typed on the entry screen. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
@@ -519,7 +519,7 @@ gating the BLE start is a change to what the product does, and this change is
 about the USB control plane.
 
 The scan itself is the part nobody has priced. A restored or typed passkey
-starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:648` —
+starts an active scan with no deadline (`firmware/main/meshcore_ble.cpp:675` —
 "BLE_HS_FOREVER"), and `maybe_sleep()` (`firmware/main/physical_input.cpp:170` —
 "void maybe_sleep() {") enters Light-sleep under it through the power owner
 (`firmware/main/board_power.cpp:498` — "esp_light_sleep_start();") without a PM

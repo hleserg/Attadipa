@@ -516,13 +516,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:2124`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:2153`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
   ([`firmware/main/meshcore_ble.cpp:207`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1790`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1819`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -556,9 +556,9 @@ reader ends up citing the one that was not updated.
   `espressif/esp-idf@v5.5.5` records for
   `components/bt/host/nimble/nimble`.
 - **Source (this repository):** the watch is the central and takes that branch
-  from [`firmware/main/meshcore_ble.cpp:993`](../../firmware/main/meshcore_ble.cpp)
+  from [`firmware/main/meshcore_ble.cpp:1020`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1820`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1849`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on
@@ -577,16 +577,16 @@ reader ends up citing the one that was not updated.
   the HIL image or the debug protocol erases that pin. The only recovery is
   `idf.py erase-flash`, which takes the bonds and the time metadata with it.
 - **Source (this repository):** the refusal is
-  [`firmware/main/meshcore_node_pin.h:194`](../../firmware/main/meshcore_node_pin.h)
+  [`firmware/main/meshcore_node_pin.h:213`](../../firmware/main/meshcore_node_pin.h)
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
-  [`firmware/main/meshcore_node_pin.h:200`](../../firmware/main/meshcore_node_pin.h)
+  [`firmware/main/meshcore_node_pin.h:219`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
   [`link/src/meshcore_companion.cpp:1345`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
-  is [`firmware/main/meshcore_ble.cpp:519`](../../firmware/main/meshcore_ble.cpp)
+  is [`firmware/main/meshcore_ble.cpp:536`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
   the passkey instead —
-  [`firmware/main/meshcore_ble.cpp:508`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:504`](../../firmware/main/meshcore_ble.cpp)
   "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". The mesh opcode
   block ends at
   [`debug/include/attadipa/debug/protocol.h:94`](../../debug/include/attadipa/debug/protocol.h)
@@ -2777,6 +2777,17 @@ ones that heading states.
   (`nvs_api.cpp:522`-`:524`), and a larger buffer returns the stored size in
   `*length` (`:526`), which is what lets a reader reject a blob of another
   schema by size.
+- **Consequence for the node pin (#647):** a refused pin write may have
+  replaced the stored key, so boot must not trust whatever blob it finds. A
+  durable gate goes up before the write and comes down after it —
+  `firmware/main/meshcore_node_pin.h:207` —
+  "if (!(ops.begin_pin_write() && ops.store(seen) && ops.end_pin_write()))" —
+  and boot reads the blob only with the gate down. Two states it cannot
+  exclude: a raise refused with nothing written leaves whatever blob was
+  already there, which after a forget whose erase refused is the old key; and
+  the gate's own erase refused and landed anyway pins the key this session
+  read. The second refusal is logged; see "A failed erase may already have
+  erased".
 
 ### A failed scalar replace may already have replaced the value
 
@@ -3075,7 +3086,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2985` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2996` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3132,7 +3143,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3056` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3067` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3173,7 +3184,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3010` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3021` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3259,7 +3270,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2933` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2944` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3454,7 +3465,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3059` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3070` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has

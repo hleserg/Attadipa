@@ -51,9 +51,12 @@ using attadipa::link::SessionPhase;
 using attadipa::link::SessionStep;
 using attadipa::firmware::classify_write_failure;
 using attadipa::firmware::kRefusedNodeCooldownMs;
+using attadipa::firmware::PinGate;
 using attadipa::firmware::PinnedSession;
 using attadipa::firmware::PinOutcome;
+using attadipa::firmware::PinRead;
 using attadipa::firmware::refusal_active;
+using attadipa::firmware::restore_node_pin;
 using attadipa::firmware::settle_node_pin;
 using attadipa::firmware::WriteOutcome;
 
@@ -1418,11 +1421,13 @@ struct FakePin {
         return true;
     }
     bool wrong_node() const { return wrong; }
+    bool begin_pin_write() { return true; }
     bool store(const attadipa::core::MeshPeerId&)
     {
         stored = store_ok;
         return store_ok;
     }
+    bool end_pin_write() { return true; }
     void adopt(const attadipa::core::MeshPeerId&) { adopted = true; }
     PinnedSession session()
     {
@@ -1540,6 +1545,173 @@ void a_handshake_with_no_key_settles_nothing()
     CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::NoIdentity);
     CHECK(!ops.stored);
     CHECK(ops.session_reads == 0);
+}
+
+// What `attadipa_mesh` holds for the pin, as the next boot reads it (#647).
+struct PinFlash {
+    bool gate = false;
+    bool gate_unreadable = false;
+    enum class Blob : std::uint8_t { Absent, Key, WrongSize } blob = Blob::Absent;
+    attadipa::core::MeshPeerId key{};
+
+    PinGate pin_gate() const
+    {
+        if (gate_unreadable) return PinGate::Unreadable;
+        return gate ? PinGate::Up : PinGate::Down;
+    }
+    PinRead load(attadipa::core::MeshPeerId& out) const
+    {
+        switch (blob) {
+        case Blob::Absent: return PinRead::Unpinned;
+        case Blob::WrongSize: return PinRead::Unreadable;
+        case Blob::Key: break;
+        }
+        out = key;
+        return PinRead::Pinned;
+    }
+};
+
+// Where one adoption's three writes fail, and what each failure leaves on
+// flash. ESP-IDF v5.5.5 replaces a blob by writing the new one before erasing
+// the old, and reports that erase failing: `StoreDurable`. A failed erase of
+// the gate is the same indeterminacy one key over: `LowerLanded`.
+enum class PinFault : std::uint8_t {
+    None,
+    GateRefused,   // refused, nothing written
+    GateLanded,    // refused, gate up anyway
+    StoreNothing,  // refused, old blob kept
+    StoreDurable,  // refused, new blob on flash
+    LowerRefused,  // refused, gate still up
+    LowerLanded,   // refused, gate down anyway
+};
+
+// FakePin whose writes go to a PinFlash. `steps` is the power: the process
+// dies after that many writes and none after it runs.
+struct GatedPin : FakePin {
+    PinFlash flash;
+    PinFault fault = PinFault::None;
+    int steps = 3;
+
+    bool power() { return steps-- > 0; }
+    bool begin_pin_write()
+    {
+        if (!power()) return false;
+        if (fault == PinFault::GateRefused) return false;
+        flash.gate = true;
+        return fault != PinFault::GateLanded;
+    }
+    bool store(const attadipa::core::MeshPeerId& id)
+    {
+        if (!power()) return false;
+        if (fault == PinFault::StoreNothing) return false;
+        flash.blob = PinFlash::Blob::Key;
+        flash.key = id;
+        return fault != PinFault::StoreDurable;
+    }
+    bool end_pin_write()
+    {
+        if (!power()) return false;
+        if (fault == PinFault::LowerRefused) return false;
+        flash.gate = false;
+        return fault != PinFault::LowerLanded;
+    }
+};
+
+// Every failure point, from each state an unpinned watch can start an
+// adoption in: nothing on flash, a stale pin a refused forget left
+// (ForgetNodeOutcome::PinOnFlash), and a blob of the wrong size. The claim
+// under test is the AdoptFailed line's: the watch stays unpinned, and so does
+// the next boot -- unless the gate's own erase is what refused.
+void a_pin_write_that_did_not_finish_is_not_trusted_at_the_next_boot()
+{
+    const attadipa::core::MeshPeerId stale = node_key_of(0xAA);
+    const attadipa::core::MeshPeerId fresh = node_key_of(0x5C);
+    for (const auto start : {PinFlash::Blob::Absent, PinFlash::Blob::Key,
+                             PinFlash::Blob::WrongSize}) {
+        // What boot finds when the adoption wrote nothing.
+        const PinRead untouched = start == PinFlash::Blob::Absent ? PinRead::Unpinned
+                                : start == PinFlash::Blob::Key    ? PinRead::Pinned
+                                                                  : PinRead::Unreadable;
+        const struct {
+            PinFault fault;
+            PinRead boot;
+        } rows[] = {
+            {PinFault::None, PinRead::Pinned},
+            {PinFault::GateRefused, untouched},
+            {PinFault::GateLanded, PinRead::Unfinished},
+            {PinFault::StoreNothing, PinRead::Unfinished},
+            {PinFault::StoreDurable, PinRead::Unfinished},
+            {PinFault::LowerRefused, PinRead::Unfinished},
+            {PinFault::LowerLanded, PinRead::Pinned},
+        };
+        for (const auto& row : rows) {
+            GatedPin ops;
+            ops.node = fresh;
+            ops.flash.blob = start;
+            ops.flash.key = stale;
+            ops.fault = row.fault;
+            attadipa::core::MeshPeerId seen{};
+            attadipa::core::MeshPeerId expected{};
+            const PinOutcome outcome = settle_node_pin(ops, seen, expected);
+            const bool clean = row.fault == PinFault::None;
+            CHECK(outcome == (clean ? PinOutcome::Adopted : PinOutcome::AdoptFailed));
+            CHECK(ops.adopted == clean);
+
+            attadipa::core::MeshPeerId booted{};
+            CHECK(restore_node_pin(ops.flash, booted) == row.boot);
+            // A boot that pins, pins either what was there or what was read --
+            // and the new key only where the log said this key may come back.
+            if (row.boot == PinRead::Pinned) {
+                const bool wrote = clean || row.fault == PinFault::LowerLanded;
+                CHECK(booted == (wrote ? fresh : stale));
+            }
+        }
+    }
+}
+
+// A power cut after each write instead of a refusal.
+void a_restart_between_the_pin_writes_leaves_the_watch_unpinned()
+{
+    const PinRead expected_boot[] = {
+        PinRead::Pinned,      // nothing written: the stale pin, as PinOnFlash said
+        PinRead::Unfinished,  // gate up
+        PinRead::Unfinished,  // gate up, new blob
+        PinRead::Pinned,      // all three: the new key
+    };
+    for (int steps = 0; steps <= 3; ++steps) {
+        GatedPin ops;
+        ops.node = node_key_of(0x5C);
+        ops.flash.blob = PinFlash::Blob::Key;
+        ops.flash.key = node_key_of(0xAA);
+        ops.steps = steps;
+        attadipa::core::MeshPeerId seen{};
+        attadipa::core::MeshPeerId expected{};
+        settle_node_pin(ops, seen, expected);
+        attadipa::core::MeshPeerId booted{};
+        CHECK(restore_node_pin(ops.flash, booted) == expected_boot[steps]);
+        if (steps == 3) CHECK(booted == ops.node);
+    }
+}
+
+// A raised gate is lowered by the next adoption that finishes, in this boot or
+// a later one; and a gate boot cannot read is not a gate that is down.
+void the_next_finished_adoption_clears_the_gate()
+{
+    GatedPin ops;
+    ops.node = node_key_of(0x5C);
+    ops.fault = PinFault::StoreDurable;
+    attadipa::core::MeshPeerId seen{};
+    attadipa::core::MeshPeerId expected{};
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::AdoptFailed);
+    ops.fault = PinFault::None;
+    ops.steps = 3;
+    CHECK(settle_node_pin(ops, seen, expected) == PinOutcome::Adopted);
+    attadipa::core::MeshPeerId booted{};
+    CHECK(restore_node_pin(ops.flash, booted) == PinRead::Pinned);
+    CHECK(booted == ops.node);
+
+    ops.flash.gate_unreadable = true;
+    CHECK(restore_node_pin(ops.flash, booted) == PinRead::Unreadable);
 }
 
 void an_unarmed_or_expired_refusal_never_comes_back_into_force()
@@ -1710,6 +1882,9 @@ int main()
     another_node_is_cooled_down_and_disconnected_and_nothing_is_written();
     a_refusal_for_a_session_that_is_over_touches_nothing();
     a_handshake_with_no_key_settles_nothing();
+    a_pin_write_that_did_not_finish_is_not_trusted_at_the_next_boot();
+    a_restart_between_the_pin_writes_leaves_the_watch_unpinned();
+    the_next_finished_adoption_clears_the_gate();
     an_unarmed_or_expired_refusal_never_comes_back_into_force();
     two_wrong_nodes_in_range_stop_the_loop_one_slot_could_not();
 

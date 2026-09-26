@@ -276,6 +276,10 @@ constexpr const char* kReprovisionNvsKey = "reprovision";
 // Up while a passkey write is in flight (#648). Its own key, so that a forget
 // rolling back its marker cannot lower it.
 constexpr const char* kPasskeyPendingNvsKey = "pkpending";
+// Up while the pin blob is being written, so a boot never trusts a blob whose
+// write did not finish (#647). Its own key: `reprovision` is the passkey's
+// gate, and `cancel_reprovision()` lowers it on paths that never touch the pin.
+constexpr const char* kPinGateNvsKey    = "pinpend";
 
 // The address of the peer this session is with, and the address of the last one
 // refused, packed as type<<48 | the six address bytes. Atomics rather than a
@@ -336,18 +340,10 @@ void node_key_prefix(const attadipa::core::MeshPeerId& id, char (&out)[9])
 }
 
 // The pin is read once, before the worker starts, and written only by the
-// worker. Nothing else touches NVS in this file, so no lock is involved.
-//
-// THREE ANSWERS, NOT TWO. "Nothing is stored" is the ordinary state of a watch
-// out of the box and it is not a fault; "NVS would not answer" is a fault, and
-// a watch that reported it as the first one would silently adopt the next node
-// it met -- which is the defect #304 exists to remove, reappearing through the
-// storage layer.
-enum class PinRead : std::uint8_t {
-    Pinned,
-    Unpinned,
-    Unreadable,
-};
+// worker. Nothing else touches NVS in this file, so no lock is involved. What
+// the answers mean is in meshcore_node_pin.h; this reads the blob alone, and
+// `restore_node_pin()` decides whether the gate lets boot trust it.
+using attadipa::firmware::PinRead;
 
 PinRead load_node_pin(attadipa::core::MeshPeerId& out)
 {
@@ -512,6 +508,27 @@ bool erase_passkey()
     return err == ESP_OK;
 }
 
+// The pin's gate, on the passkey's helpers.
+attadipa::firmware::PinGate load_pin_gate()
+{
+    using attadipa::firmware::PinGate;
+    nvs_handle_t handle{};
+    const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READONLY, &handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return PinGate::Down;
+    if (opened != ESP_OK) {
+        ESP_LOGE(kTag, "MeshCore pin gate: nvs_open: %s", esp_err_to_name(opened));
+        return PinGate::Unreadable;
+    }
+    const NvsGate gate = load_nvs_gate(handle, kPinGateNvsKey);
+    nvs_close(handle);
+    switch (gate) {
+    case NvsGate::Down: return PinGate::Down;
+    case NvsGate::Up: return PinGate::Up;
+    case NvsGate::Unreadable: break;
+    }
+    return PinGate::Unreadable;
+}
+
 bool store_node_pin(const attadipa::core::MeshPeerId& id)
 {
     nvs_handle_t handle{};
@@ -521,6 +538,16 @@ bool store_node_pin(const attadipa::core::MeshPeerId& id)
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
     return err == ESP_OK;
+}
+
+// The one refusal of the three that can still leave the next boot pinned, so
+// it is the one that says so.
+bool lower_pin_gate()
+{
+    if (lower_nvs_gate(kPinGateNvsKey)) return true;
+    ESP_LOGE(kTag, "MeshCore pin stored, but its gate could not be lowered; "
+                   "the next boot pins this key only if that erase landed anyway");
+    return false;
 }
 
 // The pin's eraser, `erase_passkey()`'s shape on the other key. Its job is
@@ -1623,7 +1650,9 @@ struct RealPinOps {
         return provider.pinned(out);
     }
     bool wrong_node() const { return provider.wrong_node(); }
+    bool begin_pin_write() { return raise_nvs_gate(kPinGateNvsKey); }
     bool store(const attadipa::core::MeshPeerId& id) { return store_node_pin(id); }
+    bool end_pin_write() { return lower_pin_gate(); }
     void adopt(const attadipa::core::MeshPeerId& id) { provider.pin(id); }
 
     // Liveness, handle and peer address in ONE critical section. Read
@@ -1718,9 +1747,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:207` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1790` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1819` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:993` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1020` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2291,7 +2320,11 @@ esp_err_t start_meshcore_ble()
     // worker-owned from the moment the task starts, and a pin written from
     // here afterwards would be a second writer.
     attadipa::core::MeshPeerId pinned{};
-    switch (load_node_pin(pinned)) {
+    struct {
+        attadipa::firmware::PinGate pin_gate() { return load_pin_gate(); }
+        PinRead load(attadipa::core::MeshPeerId& out) { return load_node_pin(out); }
+    } pin_ops;
+    switch (attadipa::firmware::restore_node_pin(pin_ops, pinned)) {
     case PinRead::Pinned: {
         provider.pin(pinned);
         char want[9];
@@ -2310,6 +2343,13 @@ esp_err_t start_meshcore_ble()
         // to take the write.
         ESP_LOGE(kTag,
                  "MeshCore pin could not be read; this watch stays unpinned and "
+                 "will attach to whichever node answers first");
+        break;
+    case PinRead::Unfinished:
+        // The same promise the AdoptFailed line made before the restart.
+        ESP_LOGE(kTag,
+                 "MeshCore pin write did not finish before the last restart; "
+                 "the stored key is not trusted, this watch stays unpinned and "
                  "will attach to whichever node answers first");
         break;
     }
