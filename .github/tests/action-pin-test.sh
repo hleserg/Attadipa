@@ -165,6 +165,15 @@ EOF
     esac
   done < <(printf '%s\n' "$tree_refs" | sed 's/@.*//' | sort -u)
 
+  # The diff record beside the privileged row ends at the commit that row pins
+  # (#663): a bump that moves the pin and keeps the previous record attributes
+  # an old diff review to the code that now runs.
+  sha=$(printf '%s\n' "$rows" | awk -F'\t' '$2 == "anthropics/claude-code-action" { print $1 }')
+  if [ -n "$sha" ] && ! grep '^\*\*What the upstream diff' "$2" | grep -qF "→ \`${sha:0:8}"; then
+    printf 'no upstream-diff record ends at the pinned %s\n' "${sha:0:8}"
+    rc=1
+  fi
+
   return "$rc"
 }
 
@@ -366,7 +375,7 @@ plant_workflows() {  # sha for the three claude steps, sha for the third alone
 # sources, appear in no workflow, and must not be read as actions. The LVGL row
 # is the one a heading bound gets wrong -- `### Where the resolved graph lives`
 # is a *sub*-section, so a scan that stops at the next `## ` swallows it whole.
-plant_ledger() {  # sha recorded for the action
+plant_ledger() {  # sha recorded for the action, sha its diff record ends at
   cat >"$lfix/ledger.md" <<LEDGER
 ## Decided
 
@@ -380,6 +389,9 @@ plant_ledger() {  # sha recorded for the action
 |---|---|---|---|---|
 | **\`actions/checkout\`** | \`$CHECKOUT_SHA\`, 2026-07-17 | \`v7\` | MIT | as below |
 | **\`anthropics/claude-code-action\`** | \`$1\`, 2026-09-04 | \`v1\` | MIT | read the diff |
+
+**What the upstream diff between the two pinned commits contains**, \`0000000\` → \`${2:-$1}\`,
+and the prose that follows it.
 
 ### Where the resolved graph lives
 
@@ -445,6 +457,13 @@ plant_ledger "$RUN_SHA"
 sed -i 's/^| Action | Pinned at |/| Action name | Pinned at |/' "$lfix/ledger.md"
 ledger_case "a table the parser can no longer find is rejected, not passed over" 1 \
   "no inventory row names it"
+
+# 7. The half of a bump #663 found: pin and table moved, the diff record beside
+#    them still describes the bump before.
+plant_workflows "$RUN_SHA"
+plant_ledger "$RUN_SHA" "$LEDGER_SHA"
+ledger_case "a diff record that ends at the previous pin is rejected" 1 \
+  "no upstream-diff record ends at the pinned ${RUN_SHA:0:8}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

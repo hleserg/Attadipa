@@ -121,7 +121,8 @@ was 5. Under limit 2 the manual step is closing (§3). Whether to exempt bot PRs
 **5. Who writes the second half.** Today, and under every candidate here, the
 second half is written by **the owner or an agent session running on the owner's
 token**. It covers the `DEPENDENCIES.md` row, the pinned-commit date, the
-upstream diff read for the Claude action, and the check that every occurrence
+upstream diff read for the Claude action -- a record `action-pin-test.sh` refuses
+unless it ends at the new pin -- and the check that every occurrence
 moved. Workflow files need owner-capable credentials, so no hosted agent can
 push them. Nothing is automated, and nothing should be until a trust boundary
 for it is proven. That was ruled out in #562's non-goals too. This is the courier

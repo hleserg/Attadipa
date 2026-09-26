@@ -134,15 +134,19 @@ three workflow lines and this row in one commit — the check described above is
 what makes doing only half of it impossible, and Dependabot's #558 arrived
 doing exactly that half, red on `action-pin-test.sh` until this row moved.
 
-**What the upstream diff between the two pinned commits contains**, read on
-2026-09-14 because this row's own rule says to read it: six commits, six files,
-`+24 −24`, and every substantive line is a version string — `CLAUDE_CODE_VERSION`
-`2.1.261` → `2.1.269` in `base-action/action.yml` and in `src/entrypoints/run.ts`,
-`@anthropic-ai/claude-agent-sdk` `^0.3.261` → `^0.3.269` in both `package.json`
+**What the upstream diff between the two pinned commits contains**, `56cf60fd` → `cfc3eb22`
+(release `v1.0.222` → `v1.0.231`), read from the compare API on 2026-09-25
+because this row's own rule says to read it: nine commits, six files, `+24 −24`,
+and every substantive line is a version string — `CLAUDE_CODE_VERSION`
+`2.1.269` → `2.1.278` in `base-action/action.yml` and in `src/entrypoints/run.ts`,
+`@anthropic-ai/claude-agent-sdk` `^0.3.269` → `^0.3.278` in both `package.json`
 files, and the two `bun.lock` files that follow them. No change to the action's
 inputs, permissions, entrypoint or network behaviour. **That is a diff review,
 not an audit of the published bundle**, which is built from these sources and
-was not itself examined.
+was not itself examined, and it is not an audit of Claude Code or the Agent SDK
+it pulls in. The first line of this paragraph names the endpoint, and
+`action-pin-test.sh` refuses a row whose commit it does not name: a bump that
+moves the pin and keeps the previous diff record is red (#663).
 
 Reviewed to the extent claimed and no further: the release, its commit, the tag
 dereference and the MIT licence were read from the canonical repository. That is
