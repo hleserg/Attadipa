@@ -164,7 +164,7 @@ that has it and on one that does not.
 - **On the one node this project has measured, the upper bound of that cost is
   the normal case, not the worst one.** Decision 1b lets a re-read commit only
   on the node's own `RESP_CODE_END_OF_CONTACTS`, and that is the frame the
-  measured bench drops — `firmware/main/meshcore_ble.cpp:1072` — "            // sessions out of three -- it is the last frame of the burst, so it"
+  measured bench drops — `firmware/main/meshcore_ble.cpp:1099` — "            // sessions out of three -- it is the last frame of the burst, so it"
   — because it is the last frame of a 234-frame burst and the overrun reaches
   the end of a burst first. A re-read is the same burst again. So on that node
   a dirty walk spends attempt one, spends attempt two, and ends `degraded` with

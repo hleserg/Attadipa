@@ -2709,7 +2709,7 @@ is still open with no comments. What the entry did not say is where its output
 stops. A factory-reset node also has a **new public key**, so once
 `mesh-forget-bond` has deleted the bond and the watch has paired afresh, the
 node is refused on the pin instead:
-[`../../firmware/main/meshcore_node_pin.h:194`](../../firmware/main/meshcore_node_pin.h)
+[`../../firmware/main/meshcore_node_pin.h:213`](../../firmware/main/meshcore_node_pin.h)
 — "if (!ops.wrong_node()) return PinOutcome::Pinned;" falls through to
 [`:200`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;".
 No image can clear that pin. So this entry is `USE AS-IS` for what it covers and
@@ -2737,7 +2737,7 @@ code under its own licence — no new dependency, no new licence surface:
   instance. This slot stays the HIL bridge's, its bond-shaped names
   (`Deleted`, `Refused`, `Nothing`) intact.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:1890`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:1919`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. #411 put its
@@ -3242,7 +3242,7 @@ numbers — keeps the result and keeps the constants tracking Kconfig, without
 touching the toolchain or the build. What this costs is stated rather than
 hidden: the port's static `host_task_h` is now never set, so
 `nimble_port_freertos_deinit()` would delete nothing, and this image's host task
-ends itself instead — `firmware/main/meshcore_ble.cpp:2101` — "    vTaskDelete(nullptr);".
+ends itself instead — `firmware/main/meshcore_ble.cpp:2130` — "    vTaskDelete(nullptr);".
 When the pin moves to a release with candidate 2 in it, this becomes a call to
 `nimble_port_freertos_init()` again with its `esp_err_t` checked, and the
 ordering rule in `meshcore_boot.h` stays exactly as it is.

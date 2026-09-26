@@ -25,8 +25,10 @@ enum class PinOutcome : std::uint8_t {
     // This watch had no pin and now has one: the key was written to NVS and
     // handed to the provider.
     Adopted,
-    // Same node, but the write failed. The watch stays unpinned rather than
-    // pretending to a pin it could not store, so the next session adopts again.
+    // Same node, but the write did not finish. The watch stays unpinned rather
+    // than pretending to a pin it could not store, so the next session adopts
+    // again. What the next boot pins depends on which step refused; see the
+    // table above `settle_node_pin()`.
     AdoptFailed,
     // The node this watch is pinned to. Nothing is written and nothing is torn
     // down.
@@ -89,7 +91,7 @@ inline bool refusal_active(std::uint64_t until_ms, std::uint64_t now_ms)
 // What the transport remembers about refused nodes, and the two decisions over
 // it. Pure, so both are host-testable: the firmware holds the three fields as
 // atomics and marshals them in and out
-// (`firmware/main/meshcore_ble.cpp:319` -- "bool addr_is_refused(const ble_addr_t& addr)").
+// (`firmware/main/meshcore_ble.cpp:323` -- "bool addr_is_refused(const ble_addr_t& addr)").
 //
 // One address, plus a floor, and it has to be both.
 //
@@ -167,7 +169,9 @@ struct PinnedSession {
 //   bool node_id(core::MeshPeerId&)     -- the key this session read, if any
 //   bool pinned(core::MeshPeerId&)      -- the key this watch is pinned to, if any
 //   bool wrong_node()                   -- the provider's verdict on the two
+//   bool begin_pin_write()              -- raise the durable pin gate
 //   bool store(const core::MeshPeerId&) -- write the pin to NVS
+//   bool end_pin_write()                -- lower it
 //   void adopt(const core::MeshPeerId&) -- hand the provider its pin
 //   PinnedSession session()             -- see above; read once, on the refuse path
 //   void cool_down(std::uint64_t peer_addr)
@@ -179,6 +183,20 @@ struct PinnedSession {
 // later would be unpinned for no reason. Refusing is not: it writes a cooldown
 // keyed on an address and terminates a handle, and both belong to a connection
 // that may already be somebody else's.
+//
+// A refused NVS write is not a write that did nothing (#647): replacing a
+// stored blob writes the new one before it erases the old, and reports that
+// erase failing as a failure. So the gate goes up before the blob is touched
+// and comes down only after it is stored, and `restore_node_pin()` trusts the
+// blob only with the gate down. What the next boot pins when a step refuses:
+//
+//   begin_pin_write() refuses -- whatever blob was there before: none, or the
+//                                old key a forget could not erase
+//                                (`ForgetNodeOutcome::PinOnFlash`); or, if the
+//                                gate went up anyway, nothing
+//   store() refuses           -- nothing: the gate is up
+//   end_pin_write() refuses   -- nothing, or this key if that erase landed
+//                                anyway; the firmware logs the refusal
 template <typename Ops>
 PinOutcome settle_node_pin(Ops& ops, core::MeshPeerId& seen,
                            core::MeshPeerId& expected)
@@ -186,7 +204,8 @@ PinOutcome settle_node_pin(Ops& ops, core::MeshPeerId& seen,
     if (!ops.node_id(seen)) return PinOutcome::NoIdentity;
 
     if (!ops.pinned(expected)) {
-        if (!ops.store(seen)) return PinOutcome::AdoptFailed;
+        if (!(ops.begin_pin_write() && ops.store(seen) && ops.end_pin_write()))
+            return PinOutcome::AdoptFailed;
         ops.adopt(seen);
         return PinOutcome::Adopted;
     }
@@ -198,6 +217,41 @@ PinOutcome settle_node_pin(Ops& ops, core::MeshPeerId& seen,
     if (live.peer_addr != 0) ops.cool_down(live.peer_addr);
     if (live.has_connection) ops.disconnect(live.connection);
     return PinOutcome::Refused;
+}
+
+// What boot finds. THREE ANSWERS, NOT TWO, and a fourth for the gate. "Nothing
+// is stored" is the ordinary state of a watch out of the box and it is not a
+// fault; "NVS would not answer" is a fault, and a watch that reported it as the
+// first one would silently adopt the next node it met -- which is the defect
+// #304 exists to remove, reappearing through the storage layer.
+enum class PinRead : std::uint8_t {
+    Pinned,
+    Unpinned,
+    Unreadable,
+    // The gate is up: a pin write, or its gate's erase, did not finish, so
+    // whatever blob is on flash is not the pin (#647).
+    Unfinished,
+};
+
+enum class PinGate : std::uint8_t {
+    Down,
+    Up,
+    Unreadable,
+};
+
+// `Ops` supplies:
+//
+//   PinGate pin_gate()
+//   PinRead load(core::MeshPeerId&)     -- the blob, unchecked by the gate
+template <typename Ops>
+PinRead restore_node_pin(Ops& ops, core::MeshPeerId& out)
+{
+    switch (ops.pin_gate()) {
+    case PinGate::Up: return PinRead::Unfinished;
+    case PinGate::Unreadable: return PinRead::Unreadable;
+    case PinGate::Down: break;
+    }
+    return ops.load(out);
 }
 
 }  // namespace attadipa::firmware

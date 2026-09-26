@@ -3679,7 +3679,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // `pin()` is public and takes no view of where the session has got to, so this
 // ordering is the class's contract, not a path the firmware walks today: it
 // adopts a key on the frame that first carries one (`settle_node_pin()` in
-// firmware/main/meshcore_node_pin.h:190 -- "        ops.adopt(seen);") and a
+// firmware/main/meshcore_node_pin.h:209 -- "        ops.adopt(seen);") and a
 // mismatch there stops the handshake before CMD_GET_CONTACTS ever goes out.
 void test_a_refused_session_keeps_its_quiet_window()
 {
