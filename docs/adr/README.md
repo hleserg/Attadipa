@@ -58,6 +58,7 @@ What this makes easier, what it makes harder, and what it commits us to.
 | [0021](0021-remote-target-from-a-message.md) | A remote target's coordinate arrives in a message, and the contact record is the fallback | **accepted** — implements OD-30 |
 | [0022](0022-contact-snapshot-consistency.md) | A finished contact stream and a true contact snapshot are two observations | **accepted** — decided by research, implemented separately |
 | [0023](0023-unconfirmed-is-not-failed.md) | A message nobody acknowledged is unconfirmed, and this product will not call it failed | **accepted** — decided by research, implemented separately |
+| [0024](0024-an-unknown-answer-is-not-a-malformed-one.md) | An answer this build cannot read is not a broken one, and the queue behind it is not the node's to keep | **accepted** — decided by research, implemented separately |
 
 ### What the statuses mean here
 
