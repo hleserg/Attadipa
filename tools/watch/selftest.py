@@ -577,6 +577,18 @@ def discovery_skips_a_file_that_is_not_a_socket() -> None:
 
 # --- the command line ------------------------------------------------------
 
+def _unix_stream_only(make):
+    """A fake `socket.socket` that still pins what the transport asks for.
+
+    A real one did: `connect(path)` on another family raises TypeError (#680).
+    """
+    def fake(family=None, kind=None, *_args, **_kwargs):
+        check(family == socket.AF_UNIX and kind == socket.SOCK_STREAM,
+              "the transport asks for an AF_UNIX stream socket")
+        return make()
+    return fake
+
+
 def the_tool_fails_loudly_with_no_device() -> None:
     """Exit code, and a message that says what to do.
 
@@ -595,7 +607,7 @@ def the_tool_fails_loudly_with_no_device() -> None:
 
     stderr = io.StringIO()
     real_socket, real_stderr = socket.socket, sys.stderr
-    socket.socket, sys.stderr = (lambda *_args, **_kwargs: Absent()), stderr
+    socket.socket, sys.stderr = _unix_stream_only(Absent), stderr
     try:
         code = watch_control.main(["--socket", "/nonexistent/attadipa.sock", "info"])
     finally:
@@ -611,7 +623,7 @@ def a_socket_the_os_refuses_is_the_same_clean_failure() -> None:
     import watch_control  # noqa: PLC0415
     from watch import client  # noqa: PLC0415
 
-    def refuse(*_args, **_kwargs):
+    def refuse():
         raise PermissionError(1, "Operation not permitted")
 
     closed = []
@@ -625,18 +637,18 @@ def a_socket_the_os_refuses_is_the_same_clean_failure() -> None:
 
     stderr = io.StringIO()
     real_socket, real_stderr = socket.socket, sys.stderr
-    socket.socket, sys.stderr = refuse, stderr
+    socket.socket, sys.stderr = _unix_stream_only(refuse), stderr
     try:
         code = watch_control.main(["--socket", "/nonexistent/attadipa.sock", "info"])
-        socket.socket = lambda *_args, **_kwargs: Unreachable()
+        socket.socket = _unix_stream_only(Unreachable)
         check_raises(client.WatchError, "a failed connect is a WatchError",
                      lambda: client.SocketTransport("/nonexistent/attadipa.sock"))
     finally:
         socket.socket, sys.stderr = real_socket, real_stderr
 
     check(code == 2, "a refused socket is the documented exit 2, not a traceback")
-    check("could not connect to /nonexistent/attadipa.sock" in stderr.getvalue(),
-          "and the message names the endpoint")
+    check("could not open a socket" in stderr.getvalue(),
+          "and the message says no socket was made, not that the path is wrong")
     check("Operation not permitted" in stderr.getvalue(), "and keeps the OS cause")
     check(closed == [True], "and a socket that did not connect is closed")
 
@@ -2068,7 +2080,11 @@ def run() -> int:
     try:
         for case in CASES:
             before = len(failures)
-            case()
+            # A group that raises is its own failure, not the end of the run.
+            try:
+                case()
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{case.__name__} raised {exc!r}")
             mark = "ok  " if len(failures) == before else "FAIL"
             print(f"  {mark} {case.__name__.replace('_', ' ')}")
     finally:
