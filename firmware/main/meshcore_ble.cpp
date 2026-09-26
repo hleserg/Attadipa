@@ -2346,7 +2346,7 @@ esp_err_t start_meshcore_ble()
                  "will attach to whichever node answers first");
         break;
     case PinRead::Unfinished:
-        // The same promise the AdoptFailed line made before the restart.
+        // The promise the AdoptFailed or gate line made before the restart.
         ESP_LOGE(kTag,
                  "MeshCore pin write did not finish before the last restart; "
                  "the stored key is not trusted, this watch stays unpinned and "

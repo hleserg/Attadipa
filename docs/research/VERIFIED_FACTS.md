@@ -577,9 +577,9 @@ reader ends up citing the one that was not updated.
   the HIL image or the debug protocol erases that pin. The only recovery is
   `idf.py erase-flash`, which takes the bonds and the time metadata with it.
 - **Source (this repository):** the refusal is
-  [`firmware/main/meshcore_node_pin.h:213`](../../firmware/main/meshcore_node_pin.h)
+  [`firmware/main/meshcore_node_pin.h:217`](../../firmware/main/meshcore_node_pin.h)
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
-  [`firmware/main/meshcore_node_pin.h:219`](../../firmware/main/meshcore_node_pin.h)
+  [`firmware/main/meshcore_node_pin.h:223`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
   [`link/src/meshcore_companion.cpp:1354`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
@@ -2780,14 +2780,15 @@ ones that heading states.
 - **Consequence for the node pin (#647):** a refused pin write may have
   replaced the stored key, so boot must not trust whatever blob it finds. A
   durable gate goes up before the write and comes down after it —
-  `firmware/main/meshcore_node_pin.h:207` —
-  "if (!(ops.begin_pin_write() && ops.store(seen) && ops.end_pin_write()))" —
+  `firmware/main/meshcore_node_pin.h:210` —
+  "if (!(ops.begin_pin_write() && ops.store(seen)))" —
   and boot reads the blob only with the gate down. Two states it cannot
   exclude: a raise refused with nothing written leaves whatever blob was
   already there, which after a forget whose erase refused is the old key; and
   the gate's own erase refused and landed anyway pins the key this session
   read. The second refusal is logged; see "A failed erase may already have
-  erased".
+  erased". A stored key pins the current boot whatever that erase answers
+  (#676): it is only the next boot the gate is in doubt about.
 
 ### A failed scalar replace may already have replaced the value
 
@@ -3086,7 +3087,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2996` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2997` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3143,7 +3144,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3067` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3068` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3184,7 +3185,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3021` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3022` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3270,7 +3271,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2944` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2945` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3465,7 +3466,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3070` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3071` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has

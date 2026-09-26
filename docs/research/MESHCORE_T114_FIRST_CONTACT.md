@@ -767,7 +767,7 @@ section rest on. So after `mesh-forget-bond` — and a `Configure` carrying the
 node's current digits, since a reset node shows new ones at every boot — the
 watch pairs afresh, completes
 the handshake, reads a key that is not the one it is pinned to, and refuses the
-node: [`../../firmware/main/meshcore_node_pin.h:219`](../../firmware/main/meshcore_node_pin.h)
+node: [`../../firmware/main/meshcore_node_pin.h:223`](../../firmware/main/meshcore_node_pin.h)
 — "return PinOutcome::Refused;". Nothing in any image erases the pin — the sole
 writer is [`../../firmware/main/meshcore_ble.cpp:536`](../../firmware/main/meshcore_ble.cpp)
 — "nvs_set_blob(handle, kNodeKeyNvsKey" and there is no eraser beside it — so

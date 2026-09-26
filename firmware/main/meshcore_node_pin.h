@@ -23,9 +23,10 @@ namespace attadipa::firmware {
 
 enum class PinOutcome : std::uint8_t {
     // This watch had no pin and now has one: the key was written to NVS and
-    // handed to the provider.
+    // handed to the provider. Whether the next boot has it too depends on the
+    // gate's erase; see the table above `settle_node_pin()`.
     Adopted,
-    // Same node, but the write did not finish. The watch stays unpinned rather
+    // Same node, but the key was not stored. The watch stays unpinned rather
     // than pretending to a pin it could not store, so the next session adopts
     // again. What the next boot pins depends on which step refused; see the
     // table above `settle_node_pin()`.
@@ -196,7 +197,9 @@ struct PinnedSession {
 //                                gate went up anyway, nothing
 //   store() refuses           -- nothing: the gate is up
 //   end_pin_write() refuses   -- nothing, or this key if that erase landed
-//                                anyway; the firmware logs the refusal
+//                                anyway; the firmware logs the refusal. This
+//                                boot is pinned regardless: the key is stored,
+//                                and only the gate is in doubt (#676)
 template <typename Ops>
 PinOutcome settle_node_pin(Ops& ops, core::MeshPeerId& seen,
                            core::MeshPeerId& expected)
@@ -204,8 +207,9 @@ PinOutcome settle_node_pin(Ops& ops, core::MeshPeerId& seen,
     if (!ops.node_id(seen)) return PinOutcome::NoIdentity;
 
     if (!ops.pinned(expected)) {
-        if (!(ops.begin_pin_write() && ops.store(seen) && ops.end_pin_write()))
+        if (!(ops.begin_pin_write() && ops.store(seen)))
             return PinOutcome::AdoptFailed;
+        ops.end_pin_write();
         ops.adopt(seen);
         return PinOutcome::Adopted;
     }

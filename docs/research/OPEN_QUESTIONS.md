@@ -452,7 +452,7 @@ is the record of what was true at `144459f` and what changed it:
   the other is the **pin**, which no image can clear at all. Deleting the bond
   re-arms one pairing; given the node's current digits the watch then pairs,
   reads the reset node's new public key, and
-  `firmware/main/meshcore_node_pin.h:219` — "return PinOutcome::Refused;" turns
+  `firmware/main/meshcore_node_pin.h:223` — "return PinOutcome::Refused;" turns
   it away for good. The single writer of that key is
   `firmware/main/meshcore_ble.cpp:536` — "nvs_set_blob(handle, kNodeKeyNvsKey"
   and there is no eraser; the file's one `nvs_erase_key` names the passkey

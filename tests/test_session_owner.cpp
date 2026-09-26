@@ -1620,8 +1620,9 @@ struct GatedPin : FakePin {
 // Every failure point, from each state an unpinned watch can start an
 // adoption in: nothing on flash, a stale pin a refused forget left
 // (ForgetNodeOutcome::PinOnFlash), and a blob of the wrong size. The claim
-// under test is the AdoptFailed line's: the watch stays unpinned, and so does
-// the next boot -- unless the gate's own erase is what refused.
+// under test: a key that was not stored leaves the watch unpinned in this boot
+// and the next; a stored one pins this boot whatever the gate's erase answers
+// (#676), and the next boot only if that erase landed.
 void a_pin_write_that_did_not_finish_is_not_trusted_at_the_next_boot()
 {
     const attadipa::core::MeshPeerId stale = node_key_of(0xAA);
@@ -1654,8 +1655,10 @@ void a_pin_write_that_did_not_finish_is_not_trusted_at_the_next_boot()
             attadipa::core::MeshPeerId expected{};
             const PinOutcome outcome = settle_node_pin(ops, seen, expected);
             const bool clean = row.fault == PinFault::None;
-            CHECK(outcome == (clean ? PinOutcome::Adopted : PinOutcome::AdoptFailed));
-            CHECK(ops.adopted == clean);
+            const bool stored = clean || row.fault == PinFault::LowerRefused ||
+                                row.fault == PinFault::LowerLanded;
+            CHECK(outcome == (stored ? PinOutcome::Adopted : PinOutcome::AdoptFailed));
+            CHECK(ops.adopted == stored);
 
             attadipa::core::MeshPeerId booted{};
             CHECK(restore_node_pin(ops.flash, booted) == row.boot);
