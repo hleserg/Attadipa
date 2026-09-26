@@ -85,6 +85,30 @@ ForgetTransportTermination terminate_forget_session(
     return result;
 }
 
+// Stopping everything the GAP layer may be doing for this transport: reconnect
+// disarmed first, so a discovery report already on the host task cannot start
+// a connection after the cancels below; then the scan, a pending connection,
+// and the live session. Forgetting a node and faulting on a refused passkey
+// (#628) both need exactly this and nothing more.
+//
+// `Ops`:
+//   void disarm();                          reconnect_allowed <- false
+//   bool discovering();                     ble_gap_disc_active()
+//   bool cancel_discovery();                accepted or already over
+//   bool connecting();                      ble_gap_conn_active()
+//   bool cancel_connect();                  accepted or already over
+//   ForgetTransportTermination end_session();  terminate_forget_session()
+template <typename Ops>
+ForgetTransportTermination quiesce_gap(Ops& ops)
+{
+    ops.disarm();
+    if (ops.discovering() && !ops.cancel_discovery())
+        return ForgetTransportTermination::Refused;
+    if (ops.connecting() && !ops.cancel_connect())
+        return ForgetTransportTermination::Refused;
+    return ops.end_session();
+}
+
 // `Ops` is the board:
 //   void disarm();                          reconnect_allowed <- false
 //   bool terminate();                       end the live session, if any

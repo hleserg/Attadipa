@@ -1040,7 +1040,7 @@ void test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one()
 // The sentence a person reads BEFORE the destructive key, held against what
 // the key does. It used to promise "its bond and its passkey, both" and the
 // operation does neither unconditionally: the passkey is kept on purpose --
-// `firmware/main/meshcore_node_forget.h:108` — "    // The passkey itself is deliberately retained. This marker is therefore" --
+// `firmware/main/meshcore_node_forget.h:132` — "    // The passkey itself is deliberately retained. This marker is therefore" --
 // and a bond goes only where `take_forget()` had one recorded stale (#504).
 // Consent given to the old sentence was consent to a different operation.
 //
