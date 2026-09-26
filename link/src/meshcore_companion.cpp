@@ -45,7 +45,7 @@ constexpr std::uint8_t kResponseDeviceInfo = 13;
 constexpr std::uint8_t kResponseContactMessageV3 = 16;
 constexpr std::uint8_t kResponseChannelMessageV3 = 17;
 // `txt_type` of a contact message; upstream defines exactly three:
-// `docs/research/MESHCORE_COMPANION_PROTOCOL.md:676` — "`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`"
+// `docs/research/MESHCORE_COMPANION_PROTOCOL.md:689` — "`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`"
 constexpr std::uint8_t kTextCliData = 1;
 constexpr std::uint8_t kTextSignedPlain = 2;
 // THE FOUR PUSH CODES THAT MOVE THE NODE'S CONTACT TABLE, classified from the
@@ -176,6 +176,7 @@ void MeshCoreCompanion::reset_session()
     invalidate_node_battery();
     battery_identity_blocked_ = false;
     battery_errors_ambiguous_ = false;
+    battery_reply_unaccounted_ = false;
     battery_polled_ = false;
     battery_due_ = false;
     battery_started_ = {};
@@ -247,6 +248,7 @@ void MeshCoreCompanion::reset_session()
     retries_left_ = kSnapshotRetries;
     retry_armed_ = false;
     retry_unanswered_ = false;
+    retry_start_ruled_out_ = false;
     retry_open_ = false;
     retry_swept_ = false;
     retry_since_ = {};
@@ -465,6 +467,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
             --retries_left_;
             retry_armed_ = true;
             retry_unanswered_ = true;
+            retry_start_ruled_out_ = false;
             retry_since_ = now;
             contacts_seq_ = tx_seq_;
             status_.snapshot = core::MeshSnapshot::RetryPending;
@@ -564,7 +567,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1357` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1361` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -649,6 +652,7 @@ bool MeshCoreCompanion::next_tx(MeshCoreFrame& out)
         const std::uint8_t request[] = {kGetBatteryAndStorage};
         if (enqueue(request, sizeof(request))) {
             battery_request_ = BatteryRequest::Queued;
+            battery_seq_ = tx_seq_;
         }
     }
     if (tx_size_ == 0) {
@@ -1056,7 +1060,7 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
         return false;
     }
     // Remote CLI output shares the offline queue and was written by no person:
-    // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:690` — "`TXT_TYPE_CLI_DATA` is a remote-CLI channel rather than a message for a person,"
+    // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:703` — "`TXT_TYPE_CLI_DATA` is a remote-CLI channel rather than a message for a person,"
     // It is counted and consumed, so the drain goes on, and it replaces
     // neither the message on screen nor a contact's coordinate (#627).
     if (data[text_type] == kTextCliData) { ++cli_frames_; return true; }
@@ -1470,7 +1474,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         // AND A BOUNDARY FRAME BELONGS TO NOBODY WHEN NO WALK IS OPEN. The
         // rule is the one `accept_contact()` applies --
-        // `link/src/meshcore_companion.cpp:695` -- "    if (retry_swept_ && !retry_open_) {"
+        // `link/src/meshcore_companion.cpp:699` -- "    if (retry_swept_ && !retry_open_) {"
         // -- a frame of a walk that is over belongs to nobody -- and it was
         // applied to the rows and not to the frame that ends them.
         //
@@ -1484,7 +1488,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // every flag false and fell through. Both are the same mistake, and
         // `!contacts_open_` is the form that covers all three walks. A walk the
         // node opens afterwards sets it again, including the node's own --
-        // `link/src/meshcore_companion.cpp:1429` -- "        contacts_open_ = true;"
+        // `link/src/meshcore_companion.cpp:1433` -- "        contacts_open_ = true;"
         // -- so a later walk owns its frames.
         //
         // Every shape of it is wrong about a walk that is already over. With a
@@ -1595,6 +1599,20 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             ++malformed_frames_;
             fail_battery_request(false); // typed answer; preserve prior ambiguity
             return false;
+        }
+        // A POLL ASKED AFTER THE RE-READ ANSWERS THE RE-READ'S QUESTION TOO:
+        // with no START before this reply, none is coming, so the fetch stops
+        // waiting for one (#603). Why, and when it cannot be trusted:
+        // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:674` --
+        // "**A battery reply after an unanswered contacts re-read, 2026-09-26.**"
+        // Below the size check, because a malformed frame proves nothing
+        // about order.
+        // ponytail: after the first poll-side ambiguity of a session this
+        // never fires again and the old session-long refusal is back; a tagged
+        // request would lift that, and the protocol has none.
+        if (retry_unanswered_ && !battery_errors_ambiguous_ &&
+            !battery_reply_unaccounted_ && battery_seq_ > contacts_seq_) {
+            retry_start_ruled_out_ = true;
         }
         const auto millivolts = static_cast<std::uint16_t>(
             static_cast<unsigned>(data[1]) |
@@ -1794,7 +1812,12 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         const bool drain_was_active = draining_;
         draining_ = false;
         if (battery_request_ == BatteryRequest::Waiting) {
-            if (!drain_was_active) fail_battery_request(false);
+            if (!drain_was_active) {
+                fail_battery_request(false);
+                // This error may be another command's, and then the poll's own
+                // reply is still owed and could answer the next poll (#603).
+                battery_reply_unaccounted_ = true;
+            }
             break;
         }
         // Including the login. MESHCORE_COMPANION_PROTOCOL.md §5: a defined
@@ -2012,7 +2035,8 @@ core::MeshSendResult MeshCoreCompanion::send_private(const core::MeshPeerId& pee
     // the middle of one is a frame two readers both have a claim on. Refusing
     // the fetch is a wait the caller can be told about; guessing which reader a
     // frame belongs to is not.
-    if (contacts_open_ || retry_open_ || retry_armed_ || retry_unanswered_) {
+    if (contacts_open_ || retry_open_ || retry_armed_ ||
+        (retry_unanswered_ && !retry_start_ruled_out_)) {
         return {0, core::MeshSendRefusal::ContactsBusy};
     }
     std::array<std::uint8_t, 1 + core::kMeshPublicKeyBytes> frame{};

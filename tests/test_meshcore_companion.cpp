@@ -3769,7 +3769,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1410` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1414` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3833,7 +3833,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1314` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1318` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3881,7 +3881,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:746` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:750` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -5051,6 +5051,149 @@ void test_a_fetch_waits_for_a_re_read_too()
     CHECK(service.status().delivery == MeshDelivery::None);
 }
 
+// #603. A RE-READ THE NODE NEVER ANSWERS used to keep a fetch refused for the
+// session. The node writes CONTACTS_START inside its CMD_GET_CONTACTS handler
+// and answers in order, so a battery reply to a poll asked *after* the re-read,
+// with no START before it, is the proof that none is coming. The three rows are
+// the three terms: the order (a, b) and the ambiguity a timed-out poll leaves
+// (c), each of which fails alone if its term is deleted.
+namespace {
+// `open_a_dirty_walk()` with the ring drained and the handshake's drain and
+// receiver hint answered, so the battery poll is withheld by nothing but time
+// and the re-read -- the two answers `test_an_expired_claim_...` found it needs.
+void settle_a_dirty_walk(MeshCoreCompanion& client)
+{
+    open_a_dirty_walk(client, true);
+    MeshCoreFrame frame{};
+    while (client.next_tx(frame)) {
+    }
+    const std::uint8_t drained[] = {10};
+    CHECK(client.receive(drained, sizeof(drained), at(8 + 1)));
+    const std::uint8_t vars[] = {21};
+    CHECK(client.receive(vars, sizeof(vars), at(8 + 2)));
+}
+
+// Drains the ring and counts the battery polls in it.
+int drain_counting_polls(MeshCoreCompanion& client)
+{
+    MeshCoreFrame frame{};
+    int polled = 0;
+    while (client.next_tx(frame)) {
+        if (frame.size == 1 && frame.bytes[0] == 20) ++polled;
+    }
+    return polled;
+}
+
+const std::uint8_t kVoltage[] = {12, 0x74, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0};
+
+bool fetch_is_busy(MeshService& service)
+{
+    return service.send_private(absent_key(0x88), "hi", WallTime{1000}).refusal ==
+           core::MeshSendRefusal::ContactsBusy;
+}
+}  // namespace
+
+void test_a_poll_answered_after_an_unanswered_re_read_frees_the_fetch()
+{
+    MeshCoreCompanion client;
+    settle_a_dirty_walk(client);
+    MeshService service(client);
+
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    // The claim's deadline frees the poll; the command is still outstanding.
+    client.tick(at(8 + 10001 + 15001));
+    CHECK(drain_counting_polls(client) == 1);
+    CHECK(fetch_is_busy(service));
+
+    CHECK(client.receive(kVoltage, sizeof(kVoltage), at(8 + 10001 + 15002)));
+    const auto after = service.send_private(absent_key(0x88), "hi", WallTime{1000});
+    CHECK(after.accepted());
+
+    // A START that turns up anyway is still the re-read's, not a first walk:
+    // the retained list and its completeness stand (decision 7a).
+    const auto retained = client.status().peers_retained;
+    CHECK(retained != 0);
+    const std::uint8_t late_start[] = {2, 2, 0, 0, 0};
+    CHECK(client.receive(late_start, sizeof(late_start), at(8 + 10001 + 15003)));
+    CHECK(client.status().peers_retained == retained);
+    CHECK(client.status().peers_complete);
+}
+
+// A frame too short to be a reply proves nothing about order.
+void test_a_malformed_battery_reply_does_not_free_the_fetch()
+{
+    MeshCoreCompanion client;
+    settle_a_dirty_walk(client);
+    MeshService service(client);
+
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    client.tick(at(8 + 10001 + 15001));
+    CHECK(drain_counting_polls(client) == 1);
+    const std::uint8_t short_reply[] = {12};
+    CHECK(!client.receive(short_reply, sizeof(short_reply), at(8 + 10001 + 15002)));
+    CHECK(fetch_is_busy(service));
+}
+
+// The poll left first, so its reply says nothing about the re-read behind it.
+void test_a_poll_asked_before_the_re_read_does_not_free_the_fetch()
+{
+    MeshCoreCompanion client;
+    settle_a_dirty_walk(client);
+    MeshService service(client);
+
+    client.tick(at(8 + 9000));
+    CHECK(drain_counting_polls(client) == 1);
+    client.tick(at(8 + 10001));  // the re-read queues behind the waiting poll
+    CHECK(client.receive(kVoltage, sizeof(kVoltage), at(8 + 10002)));
+    CHECK(drain_counting_re_reads(client) == 1);
+    // Past the claim's deadline, so only the outstanding re-read holds it.
+    client.tick(at(8 + 10001 + 15001));
+    CHECK(fetch_is_busy(service));
+}
+
+// `poll A -> timeout -> re-read -> poll B -> type 12`: the reply may be A's,
+// asked before the re-read, and nothing on the wire says which.
+void test_a_reply_after_a_poll_timeout_does_not_free_the_fetch()
+{
+    MeshCoreCompanion client;
+    settle_a_dirty_walk(client);
+    MeshService service(client);
+
+    client.tick(at(8 + 3));
+    CHECK(drain_counting_polls(client) == 1);  // poll A, never answered
+    client.tick(at(8 + 10001));                // A times out; the re-read goes
+    CHECK(drain_counting_re_reads(client) == 1);
+    client.tick(at(8 + 10001 + 15001));
+    client.tick(at(8 + 3 + 60000));
+    CHECK(drain_counting_polls(client) == 1);  // poll B
+    CHECK(client.receive(kVoltage, sizeof(kVoltage), at(8 + 3 + 60001)));
+    CHECK(fetch_is_busy(service));
+}
+
+// `poll A -> untagged ERR -> re-read -> poll B -> type 12`: the ERR closed A
+// with no drain to own it, but it may have been another command's, and then
+// A's own reply is still owed and may be the one that arrives.
+void test_a_reply_after_an_err_closed_poll_does_not_free_the_fetch()
+{
+    MeshCoreCompanion client;
+    settle_a_dirty_walk(client);
+    MeshService service(client);
+
+    client.tick(at(8 + 3));
+    CHECK(drain_counting_polls(client) == 1);  // poll A
+    const std::uint8_t err[] = {1, 4};
+    CHECK(client.receive(err, sizeof(err), at(8 + 4)));
+    client.tick(at(8 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    client.tick(at(8 + 10001 + 15001));
+    client.tick(at(8 + 3 + 60000));
+    CHECK(drain_counting_polls(client) == 1);  // poll B
+    CHECK(client.receive(kVoltage, sizeof(kVoltage), at(8 + 3 + 60001)));
+    CHECK(fetch_is_busy(service));
+}
+
 // The node looked and does not have it. That is an answer to give the owner,
 // not a reason to widen the search -- §8.3's third refusal.
 void test_a_key_the_node_does_not_hold_is_refused()
@@ -5397,6 +5540,11 @@ int main()
     test_a_fetched_contact_does_not_enter_the_retained_window();
     test_a_fetched_contact_that_is_not_a_chat_contact_is_refused();
     test_a_fetch_waits_for_a_re_read_too();
+    test_a_poll_answered_after_an_unanswered_re_read_frees_the_fetch();
+    test_a_malformed_battery_reply_does_not_free_the_fetch();
+    test_a_reply_after_an_err_closed_poll_does_not_free_the_fetch();
+    test_a_poll_asked_before_the_re_read_does_not_free_the_fetch();
+    test_a_reply_after_a_poll_timeout_does_not_free_the_fetch();
     test_a_key_the_node_does_not_hold_is_refused();
     test_a_fetch_the_node_never_answers_expires_refused();
     test_a_fetch_the_link_drops_under_is_refused();

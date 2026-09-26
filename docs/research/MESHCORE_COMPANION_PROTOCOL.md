@@ -671,6 +671,19 @@ by its type. Its public timestamp denotes arrival, not source-sample age or
 proof that the latest poll produced it. These are source and protocol limits;
 no physical transport-order or timing result is claimed.
 
+**A battery reply after an unanswered contacts re-read, 2026-09-26.** The pinned
+[`CMD_GET_CONTACTS` branch](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/MyMesh.cpp#L1191-L1209)
+writes either `ERR_CODE_BAD_STATE` or `RESP_CODE_CONTACTS_START` inside the
+handler, before the next command is read. So when a type-12 reply to a poll
+submitted after the re-read arrives with no `CONTACTS_START` before it, the
+node either never received the re-read or its synchronous answer was lost,
+and neither leaves a START to come. The
+companion (#603) then stops refusing fetches for that re-read but keeps
+reading a late START as the re-read's. It does not apply this after either
+poll-side ambiguity: a timeout, as above, or an untagged ERR charged to a
+poll with no drain to own it, which may have been another command's while
+the poll's own reply is still owed. Source reading only; not bench-tested.
+
 ### 5.2 Text message types — three defined, and no command accepts all three
 
 `src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`

@@ -478,6 +478,10 @@ private:
     // the very wipe decision 7a forbids.
     bool retry_armed_ = false;
     bool retry_unanswered_ = false;
+    // A battery reply ordered behind the re-read has shown its START is not
+    // coming (#603). Only the fetch gate reads this: `retry_unanswered_` keeps
+    // meaning "a START is still owed", so a late one is still the re-read's.
+    bool retry_start_ruled_out_ = false;
     bool retry_open_ = false;
     // AND A FOURTH, WHICH IS ABOUT THE FRAMES THAT COME AFTER THE END. Closing a
     // re-read does not stop the node sending it: the quiet sweep fires on a
@@ -517,6 +521,9 @@ private:
     // ERR carries no request id. After a timeout, typed responses and the
     // existing send deadline decide delivery until the connection resets.
     bool battery_errors_ambiguous_ = false;
+    // An untagged ERR closed a poll with no drain to own it, so that poll's
+    // own reply may still be owed; the #603 rule then cannot trust ordering.
+    bool battery_reply_unaccounted_ = false;
     // A CMD_SYNC_NEXT_MESSAGE is outstanding, so the node is already going
     // to hand over what it has and a second ask would only fill the ring
     // with commands whose answers are on their way. Cleared by
@@ -593,13 +600,14 @@ private:
     // and no flag combination to infer it from; what is left is that the node
     // answers in the order it was asked, and this queue is FIFO, so the order
     // it was asked in is the order `enqueue()` handed out. `tx_seq_` records
-    // it, and the two stamps below are the only frames whose place in it we
-    // ever need. Neither stamp is read unless its own flag says that command is
-    // still outstanding, so a stale one from a finished operation is never
+    // it, and the stamps below are the only frames whose place in it we ever
+    // need. No stamp is read unless its own flag says that command is still
+    // outstanding, so a stale one from a finished operation is never
     // compared against anything.
     std::uint32_t tx_seq_ = 0;
     std::uint32_t custom_vars_seq_ = 0;
     std::uint32_t op_seq_ = 0;
+    std::uint32_t battery_seq_ = 0;
     bool awaiting_send_ = false;
     // The half of a send that used to have no state at all. `awaiting_send_`
     // ends at `RESP_CODE_SENT`; the operation does not, because the ack bytes
