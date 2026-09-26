@@ -71,7 +71,7 @@ recorded here so that no option is credited with paying them.
    Since #648 a second durable gate stands while new digits are written, so
    power lost mid-write leaves a watch that arms nothing at the next boot
    until the owner enters the digits again, or `Deconfigure` erases them and
-   lowers that gate (#674).
+   lowers that gate and the node-forget marker (#674).
    `Deconfigure` is reached only from the HIL
    image's `mesh-disconnect`, so a product image cannot revoke on its own: it
    can be given another passkey, or be flashed over with the HIL image and

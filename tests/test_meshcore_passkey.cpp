@@ -314,6 +314,14 @@ void test_erase_then_boot()
     CHECK(restore_passkey(stuck) == PasskeyRestore::Absent);
     CHECK(stuck.armed == 0);
 
+    // The same for a forgotten node: the forget gate goes with the digits, so
+    // the boot reports nothing stored rather than a retained passkey withheld.
+    FakeNvs forgotten = holding_old();
+    forgotten.forget_gate = true;
+    CHECK(erase_passkey(forgotten));
+    CHECK(!forgotten.forget_gate);
+    CHECK(restore_passkey(forgotten) == PasskeyRestore::Absent);
+
     // Digits first: a refused erase leaves the gate up, so the digits it did
     // not take are still not replayed.
     FakeNvs refused = holding_old();
@@ -321,9 +329,21 @@ void test_erase_then_boot()
     refused.fault = Fault::Erase;
     CHECK(!erase_passkey(refused));
     CHECK(refused.write_gate);
+    refused.forget_gate = true;
+    CHECK(!erase_passkey(refused));
+    CHECK(refused.forget_gate);
     refused.fault = Fault::None;
     CHECK(restore_passkey(refused) == PasskeyRestore::ReplayInhibited);
     CHECK(refused.armed == 0);
+
+    // Forget gate before write gate: a refused forget lower leaves both up.
+    FakeNvs stuck_forget = holding_old();
+    stuck_forget.forget_gate = true;
+    stuck_forget.write_gate = true;
+    stuck_forget.fault = Fault::ForgetLower;
+    CHECK(!erase_passkey(stuck_forget));
+    CHECK(stuck_forget.forget_gate);
+    CHECK(stuck_forget.write_gate);
 }
 
 // --- The answer slot ------------------------------------------------------

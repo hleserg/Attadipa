@@ -202,7 +202,7 @@ indefinitely. Mesh does not come back.
 "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". `Deconfigure` calls
 that one — [`firmware/main/meshcore_ble.cpp:1993`](../../firmware/main/meshcore_ble.cpp) —
 "if (!attadipa::firmware::erase_passkey(persist_ops)) {" — which also lowers
-the passkey's write gate, and touches neither the bond nor the pin. There is
+the passkey's write gate and its node-forget marker, and touches neither the bond nor the pin. There is
 no opcode for it: the debug protocol's mesh block is `MeshConfigure`,
 `MeshSend`, `MeshRoomSend`, `MeshDisconnect`, `MeshForgetBond` and stops there
 ([`debug/include/attadipa/debug/protocol.h:94`](../../debug/include/attadipa/debug/protocol.h) —

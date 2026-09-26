@@ -109,12 +109,14 @@ bool persist_passkey(Ops& ops, std::uint32_t passkey)
            ops.lower_forget_gate() && ops.lower_write_gate();
 }
 
-// `Deconfigure`'s off switch: the digits go, then the write gate. With no
-// digits on flash the gate guards nothing, and leaving it up would leave the
-// one reset a watch has short of erasing NVS unable to clear it (#674). The
-// order is the point: a gate lowered over digits that would not erase would
-// arm the very digits `Deconfigure` was asked to stop. `Ops` supplies `erase()`
-// and `lower_write_gate()`. False: the next boot may still scan.
+// `Deconfigure`'s off switch: the digits go, then both gates. With no digits
+// on flash a gate guards nothing, and leaving one up would leave the one reset
+// a watch has short of erasing NVS unable to clear it (#674) -- and a forget
+// gate left up makes the next boot report a retained passkey that this erased.
+// The order is the point: a gate lowered over digits that would not erase would
+// arm the very digits `Deconfigure` was asked to stop. `Ops` supplies `erase()`,
+// `lower_forget_gate()` and `lower_write_gate()`. False: the next boot may
+// still scan.
 //
 // `Deconfigure` is reached only from the HIL. On a product image a store NVS
 // refuses every time still leaves each boot arming nothing, and the owner
@@ -122,7 +124,7 @@ bool persist_passkey(Ops& ops, std::uint32_t passkey)
 template <typename Ops>
 bool erase_passkey(Ops& ops)
 {
-    return ops.erase() && ops.lower_write_gate();
+    return ops.erase() && ops.lower_forget_gate() && ops.lower_write_gate();
 }
 
 // The boot side. A value this image would not have stored is refused rather
