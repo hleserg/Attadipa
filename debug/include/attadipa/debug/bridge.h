@@ -174,11 +174,11 @@ public:
     virtual TimeSinkResult synchronize(const TimeSyncBody& request) = 0;
 };
 
-// `Pending` is answered by `forget_bond` alone, and it means "the request was
-// taken and the answer is not known yet". Every other operation here is
-// answered by the sink synchronously, so `Accepted` still means what it says
-// for them -- and for a forget-bond sink that really is synchronous, which is
-// why this is a fourth value rather than a redefinition of `Accepted`.
+// `Pending` is answered by `forget_bond`, `send` and `send_room` (#598), and it
+// means "the request was taken and the answer is not known yet". Every other
+// operation here is answered by the sink synchronously, so `Accepted` still
+// means what it says for them -- and for a sink that really is synchronous,
+// which is why this is a fourth value rather than a redefinition of `Accepted`.
 enum class MeshSinkResult : std::uint8_t { Accepted, Rejected, Failed, Pending, Busy };
 
 // The array extents below are a contract, not a constraint: an array parameter
@@ -253,6 +253,13 @@ public:
                                      const char* password, std::size_t password_length,
                                      const char* text, std::size_t text_length,
                                      std::int64_t utc_seconds) = 0;
+
+    // The answer to a `Pending` send or send_room, or `Pending` while the worker
+    // has not asked the provider yet (#598). `Accepted` means the provider took
+    // the message and it now exists; anything else means it does not.
+    // Consuming, and without a default, for the reasons `forget_bond_outcome()`
+    // gives.
+    virtual MeshSinkResult send_outcome() = 0;
 };
 
 class Bridge {
@@ -365,10 +372,12 @@ private:
     // request is refused here rather than queued into a correlation this cannot
     // make. #344's rule against a lifecycle framework for one bootstrap reads
     // the same way for one operation.
-    struct PendingForget {
+    struct PendingAnswer {
         bool          active = false;
         std::uint16_t req_id = 0;
     } forget_{};
+    // And the one send, since #598: the watch has one send claim.
+    PendingAnswer send_{};
 
     struct Transfer {
         bool          active   = false;

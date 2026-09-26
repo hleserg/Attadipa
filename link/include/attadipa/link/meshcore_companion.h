@@ -232,20 +232,20 @@ public:
     // refusal is not a delivery state -- decision 3. Nothing that failed to
     // become an operation may write to `status_` at all.
     //
-    // AND THAT IS NOT THE CALLER WHO ASKED. The one send path the product has
-    // crosses a queue: the debug bridge is answered `Accepted` one call before
-    // the worker ever reaches this object, so the worker holds the refusal and
-    // the operator holds a promise made without it. The row on the panel then
-    // keeps the *previous* message's verdict, which can be `Confirmed` --
-    // **доставлено** about a message that never left the watch. That is
-    // [#598](https://github.com/hleserg/Attadipa/issues/598), and it is not
-    // fixed here: this change removes the refusal the deleted function's own
-    // comment called the shipping one -- a recipient outside the retained
-    // sixteen, which is now a question for the node rather than a refusal --
-    // and leaves `BodyNotUtf8`, `RingFull` and `ContactsBusy` reachable with
-    // the link up. Restoring `send_abandoned()` is not the answer to it;
-    // `status_.request_id` is the field that already knows which message a
-    // verdict is about, and nothing carries it across the queue yet.
+    // AND THAT WAS NOT THE CALLER WHO ASKED, until #598. The one send path the
+    // product has crosses a queue, and the debug bridge used to be answered
+    // `Accepted` one call before the worker reached this object, so the
+    // operator held a promise made without the refusal. The bridge now holds
+    // the request open: the worker completes a ticket with the provider's own
+    // verdict (`SendOutcome`, firmware/main/meshcore_send_request.h), and only
+    // then is the operator told `MeshOk` or an error. A body cut through a code
+    // point is refused before the queue, as bad input. After a refusal the row
+    // on the panel still keeps the previous message's verdict, and that is
+    // true rather than stale: it is about the last message that exists, and a
+    // refusal is not a delivery state -- decision 3. Restoring
+    // `send_abandoned()` is still not the answer; `status_.request_id` is the
+    // field that knows which message a verdict is about, and the bridge's own
+    // req_id is what carries the refusal back to the caller who asked.
 
 private:
     static constexpr std::size_t kRetainedPeers = 16;

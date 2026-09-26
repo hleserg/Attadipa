@@ -167,6 +167,12 @@ void the_text_predicate_is_the_one_both_of_them_use()
     CHECK(!mesh_text_sendable(one_over.data(), one_over.size()));
     CHECK(!mesh_text_sendable(nullptr, 1));
     CHECK(!mesh_text_sendable("Hello", 0));
+
+    // #598: a body cut through a code point is refused here, as bad input,
+    // and not on the worker after the host has already been answered.
+    CHECK(mesh_text_sendable("a\xd0\xb0", 3));
+    CHECK(!mesh_text_sendable("a\xd0\xb0", 2));
+    CHECK(!mesh_text_sendable("\xff", 1));
 }
 
 }  // namespace

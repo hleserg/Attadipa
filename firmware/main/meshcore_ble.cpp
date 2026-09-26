@@ -614,6 +614,10 @@ attadipa::firmware::PasskeyOperation passkey_op;
 attadipa::firmware::TicketedOperation<attadipa::firmware::ForgetNodeOutcome>
     forget_node_op;
 
+// And for the debug bridge's sends, so the host hears whether the provider
+// took the message rather than whether the queue did (#598).
+attadipa::firmware::TicketedOperation<attadipa::firmware::SendOutcome> send_op;
+
 attadipa::core::MonotonicTime now()
 {
     return {static_cast<std::uint64_t>(esp_timer_get_time() / 1000)};
@@ -1499,9 +1503,10 @@ bool handle_send(const Event& event)
     //
     // Nothing is published about it. A refusal is an answer to the call and not
     // a statement about a message, because no message exists -- ADR-0023
-    // decision 3, which is why `send_abandoned()` is gone rather than moved: a
-    // caller that wants to know whether the verdict on the screen is its own
-    // compares `MeshStatus::request_id` against the id it was given.
+    // decision 3, which is why `send_abandoned()` is gone rather than moved.
+    // The caller hears it through `send_op` instead: the worker loop completes
+    // the ticket with `Refused`, and the bridge turns that into an error for
+    // the host that asked (#598).
     ESP_LOGW(kTag, "the provider refused the send (%s); it is not in flight",
              attadipa::core::to_string(result.refusal));
     return false;
@@ -1811,9 +1816,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1902` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1907` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1056` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1060` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2139,13 +2144,19 @@ void mesh_task(void*)
                 break;
             }
             case EventKind::Send:
-                if (handle_send(event)) send_owned = true;
+            case EventKind::SendRoom: {
+                // Answered before the claim is released, so the next send
+                // cannot reserve over an answer still owed to this one.
+                const bool taken = event.kind == EventKind::Send
+                                       ? handle_send(event)
+                                       : handle_send_room(event);
+                send_op.complete(event.ticket,
+                                 taken ? attadipa::firmware::SendOutcome::Sent
+                                       : attadipa::firmware::SendOutcome::Refused);
+                if (taken) send_owned = true;
                 else send_claimed.store(false);
                 break;
-            case EventKind::SendRoom:
-                if (handle_send_room(event)) send_owned = true;
-                else send_claimed.store(false);
-                break;
+            }
             }
         }
         // Every pass, not only an idle one. A node that posts anything at all
@@ -2620,33 +2631,51 @@ bool stop_meshcore_ble()
 
 bool meshcore_ble_send(
     const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& peer_key,
-    std::string_view text, attadipa::core::WallTime timestamp)
+    std::string_view text, attadipa::core::WallTime timestamp,
+    std::uint32_t& ticket)
 {
     if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
     if (!claim_send()) return false;
+    std::uint32_t reserved = 0;
+    if (!send_op.reserve(reserved)) {
+        send_claimed.store(false);
+        return false;
+    }
     Event event{EventKind::Send};
     event.peer.public_key = peer_key;
     event.timestamp = timestamp;
+    event.ticket = reserved;
     std::memcpy(event.text.data(), text.data(), text.size());
     event.text[text.size()] = '\0';
     const bool posted = post(event);
-    if (!posted) send_claimed.store(false);
-    return posted;
+    if (!posted) {
+        send_op.release(reserved);
+        send_claimed.store(false);
+        return false;
+    }
+    ticket = reserved;
+    return true;
 }
 
 bool meshcore_ble_send_room(
     const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& room,
     std::string_view password, std::string_view text,
-    attadipa::core::WallTime timestamp)
+    attadipa::core::WallTime timestamp, std::uint32_t& ticket)
 {
     if (password.empty() || password.size() > 15 || text.empty() ||
         text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
     if (!claim_send()) return false;
+    std::uint32_t reserved = 0;
+    if (!send_op.reserve(reserved)) {
+        send_claimed.store(false);
+        return false;
+    }
     Event event{EventKind::SendRoom};
+    event.ticket = reserved;
     event.room = room;
     event.password_length = static_cast<std::uint8_t>(password.size());
     std::memcpy(event.password.data(), password.data(), password.size());
@@ -2655,8 +2684,18 @@ bool meshcore_ble_send_room(
     event.text[text.size()] = '\0';
     const bool accepted = post(event);
     std::fill(event.password.begin(), event.password.end(), '\0');
-    if (!accepted) send_claimed.store(false);
-    return accepted;
+    if (!accepted) {
+        send_op.release(reserved);
+        send_claimed.store(false);
+        return false;
+    }
+    ticket = reserved;
+    return true;
+}
+
+attadipa::firmware::SendOutcome meshcore_ble_send_outcome(std::uint32_t ticket)
+{
+    return send_op.take(ticket);
 }
 
 esp_err_t meshcore_ble_forget_bond()

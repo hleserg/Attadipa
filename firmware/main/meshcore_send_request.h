@@ -4,7 +4,7 @@
 // which it refuses on the spot -- and nothing else.
 //
 // #609: `BoardMeshSink::send()` bounded the text at a literal 160 while
-// `meshcore_ble.cpp:2625` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
+// `meshcore_ble.cpp:2637` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
 // -- refuses anything past 128. The 32 bytes in between were accepted by the
 // adapter, refused synchronously one call deeper before the send slot was
 // claimed or anything was queued, and reached the operator as
@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string_view>
 
 #include "attadipa/core/mesh_service.h"
 
@@ -47,11 +48,18 @@ namespace attadipa::firmware {
 // The NUL is not pedantry: the worker copies this into a fixed C string and
 // terminates it, so a NUL inside the span would ship a silently truncated
 // message rather than the one that was typed.
+//
+// Whole code points too, and for #598: the provider refuses a body cut through
+// one (`MeshSendRefusal::BodyNotUtf8`), but it refuses on the worker, after the
+// bridge has let the request go. Checked here it is bad input the host is told
+// about, with the same `core::utf8_prefix_length()` the provider uses.
 inline bool mesh_text_sendable(const char* text, std::size_t length)
 {
     return text != nullptr && length != 0 &&
            length <= attadipa::core::kMeshTextBytes &&
-           std::memchr(text, '\0', length) == nullptr;
+           std::memchr(text, '\0', length) == nullptr &&
+           attadipa::core::utf8_prefix_length(std::string_view(text, length),
+                                              length) == length;
 }
 
 // The wire carries a signed 64-bit second count and the worker takes a
@@ -78,7 +86,7 @@ inline bool mesh_send_arguments_ok(const std::uint8_t* peer_key,
 }
 
 // 15 password bytes is the Room Server's own bound and stays a literal here
-// because it is one: `meshcore_ble.cpp:2644` -- "    if (password.empty() ||
+// because it is one: `meshcore_ble.cpp:2667` -- "    if (password.empty() ||
 // password.size() > 15 || text.empty() ||" -- is the check this one guards, and
 // giving it a name in this file alone would create the second source of truth
 // the text bound above exists to avoid.
@@ -94,5 +102,18 @@ inline bool mesh_room_send_arguments_ok(const std::uint8_t* room,
            mesh_text_sendable(text, text_length) &&
            mesh_timestamp_sendable(utc_seconds);
 }
+
+// How a send that passed all of the above ended on the worker (#598). The
+// bridge used to answer `MeshOk` the moment the request was queued, so a send
+// the provider then refused -- no session, a send still in flight, a contacts
+// walk owning the reply -- had already been reported as sent. The worker now
+// answers through a `TicketedOperation` over this, the word the passkey and
+// forget-node answers already cross the same two tasks in.
+enum class SendOutcome : std::uint8_t {
+    Idle,      // nothing queued, or the answer was already taken
+    InFlight,  // queued, and the worker has not looked yet
+    Sent,      // the provider took it: a message now exists and has an id
+    Refused,   // the provider refused it; no message exists
+};
 
 }  // namespace attadipa::firmware

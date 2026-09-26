@@ -645,6 +645,8 @@ public:
         text.assign(incoming_text, length);
         utc_seconds = incoming_utc;
         ++send_calls;
+        // A new request clears the old answer, as `forget_bond()` above does.
+        if (result == MeshSinkResult::Pending) send_answer = MeshSinkResult::Pending;
         return result;
     }
 
@@ -658,7 +660,17 @@ public:
         text.assign(incoming_text, text_length);
         utc_seconds = incoming_utc;
         ++room_calls;
+        if (result == MeshSinkResult::Pending) send_answer = MeshSinkResult::Pending;
         return result;
+    }
+
+    MeshSinkResult send_outcome() override
+    {
+        ++send_polls;
+        // Consumed, as `forget_bond_outcome()` above is.
+        const MeshSinkResult answer = send_answer;
+        if (answer != MeshSinkResult::Pending) send_answer = MeshSinkResult::Pending;
+        return answer;
     }
 
     MeshSinkResult result = MeshSinkResult::Accepted;
@@ -671,6 +683,8 @@ public:
     unsigned outcome_polls = 0;
     unsigned send_calls = 0;
     unsigned room_calls = 0;
+    MeshSinkResult send_answer = MeshSinkResult::Pending;
+    unsigned send_polls = 0;
     std::uint8_t key[32]{};
     std::uint8_t room[32]{};
     std::string password;
@@ -2180,6 +2194,125 @@ void a_new_hello_drops_the_previous_hosts_forget_correlation()
     CHECK(last_req_id(rig.sink) == 3);
 }
 
+// #598: `MeshOk` for a send used to mean "queued", and the worker could still
+// refuse the message after the host had been told it went. A send is now
+// answered the way forget-bond is: nothing until the worker has looked, then
+// the provider's own verdict against the req_id that asked.
+constexpr std::size_t kSendBodyBytes = 32 + 8 + 5;
+
+void fill_send_body(std::uint8_t (&body)[kSendBodyBytes])
+{
+    for (std::size_t i = 0; i < 32; ++i) body[i] = static_cast<std::uint8_t>(i + 1);
+    std::memset(body + 32, 0, 8);
+    std::memcpy(body + 40, "Hello", 5);
+}
+
+void a_pending_send_is_not_answered_until_the_provider_has_looked()
+{
+    FakeMeshSink mesh;
+    mesh.result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+    std::uint8_t body[kSendBodyBytes];
+    fill_send_body(body);
+
+    rig.send(request(Opcode::MeshSend, 21, body, sizeof(body)), 1000);
+    CHECK(mesh.send_calls == 1);
+    CHECK(rig.sink.messages.empty());
+
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(mesh.send_polls == 1);
+    CHECK(rig.sink.messages.empty());
+
+    mesh.send_answer = MeshSinkResult::Accepted;
+    rig.bridge.tick(1200, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 21);
+
+    // One answer per request: a later outcome belongs to nobody.
+    mesh.send_answer = MeshSinkResult::Accepted;
+    rig.bridge.tick(1300, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+}
+
+void a_send_the_provider_refused_is_an_error_and_not_meshok()
+{
+    FakeMeshSink mesh;
+    mesh.result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+    std::uint8_t body[kSendBodyBytes];
+    fill_send_body(body);
+
+    rig.send(request(Opcode::MeshSend, 22, body, sizeof(body)), 1000);
+    mesh.send_answer = MeshSinkResult::Failed;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(!rig.sink.last_is(Opcode::MeshOk));
+    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
+    CHECK(last_req_id(rig.sink) == 22);
+
+    // The room opcode takes the same path.
+    std::uint8_t room[32 + 1 + 4 + 8 + 5]{};
+    room[32] = 4;
+    std::memcpy(room + 33, "pass", 4);
+    std::memcpy(room + 45, "Hello", 5);
+    rig.sink.clear();
+    rig.send(request(Opcode::MeshRoomSend, 23, room, sizeof(room)), 2000);
+    CHECK(mesh.room_calls == 1);
+    CHECK(rig.sink.messages.empty());
+    mesh.send_answer = MeshSinkResult::Failed;
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.last_error() == ErrorCode::OperationFailed);
+    CHECK(last_req_id(rig.sink) == 23);
+}
+
+void a_second_send_over_one_in_flight_is_busy_and_not_correlated()
+{
+    FakeMeshSink mesh;
+    mesh.result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+    std::uint8_t body[kSendBodyBytes];
+    fill_send_body(body);
+
+    rig.send(request(Opcode::MeshSend, 24, body, sizeof(body)), 1000);
+    rig.send(request(Opcode::MeshSend, 25, body, sizeof(body)), 1010);
+    // The sink is not even asked: the first send's answer must not be handed
+    // to the second request.
+    CHECK(mesh.send_calls == 1);
+    CHECK(rig.sink.last_error() == ErrorCode::Busy);
+    CHECK(last_req_id(rig.sink) == 25);
+
+    mesh.send_answer = MeshSinkResult::Accepted;
+    rig.sink.clear();
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.size() == 1);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 24);
+}
+
+void a_host_that_left_is_not_answered_its_send()
+{
+    FakeMeshSink mesh;
+    mesh.result = MeshSinkResult::Pending;
+    Rig rig(40, 30, PixelFormat::Rgb888, true, nullptr, &mesh);
+    std::uint8_t body[kSendBodyBytes];
+    fill_send_body(body);
+
+    rig.send(request(Opcode::MeshSend, 26, body, sizeof(body)), 1000);
+    rig.bridge.on_disconnect(1050);
+    mesh.send_answer = MeshSinkResult::Accepted;
+    rig.bridge.tick(1100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.messages.empty());
+
+    // And the slot is not held by the dead request.
+    rig.send(request(Opcode::MeshSend, 27, body, sizeof(body)), 2000);
+    CHECK(mesh.send_calls == 2);
+    mesh.send_answer = MeshSinkResult::Accepted;
+    rig.bridge.tick(2100, &Collector::emit, &rig.sink);
+    CHECK(rig.sink.last_is(Opcode::MeshOk));
+    CHECK(last_req_id(rig.sink) == 27);
+}
+
 int main()
 {
     an_envelope_survives_a_round_trip();
@@ -2205,6 +2338,10 @@ int main()
     a_host_that_left_is_not_answered_and_does_not_wedge_the_next_one();
     an_uncollected_outcome_does_not_answer_the_request_after_it();
     a_new_hello_drops_the_previous_hosts_forget_correlation();
+    a_pending_send_is_not_answered_until_the_provider_has_looked();
+    a_send_the_provider_refused_is_an_error_and_not_meshok();
+    a_second_send_over_one_in_flight_is_busy_and_not_correlated();
+    a_host_that_left_is_not_answered_its_send();
     an_unknown_opcode_is_answered_with_a_typed_error();
     a_wrong_version_is_answered_rather_than_ignored();
     a_handshake_at_the_wrong_version_still_says_what_this_device_is();
