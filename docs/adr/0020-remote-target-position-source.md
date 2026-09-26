@@ -225,7 +225,7 @@ than a map, for the reason `NODE_POSITION_FROM_MESHCORE.md` §6 already gives.
 
 **A ceiling on enumeration, and only on enumeration.** This watch retains
 sixteen peers —
-`link/include/attadipa/link/meshcore_companion.h:249` — "    static constexpr std::size_t kRetainedPeers = 16;" —
+`link/include/attadipa/link/meshcore_companion.h:251` — "    static constexpr std::size_t kRetainedPeers = 16;" —
 against a contact table that is 350 on the T114 build. It does **not** gate the
 read: `accept_contact` parses the whole 148-byte frame and copies key and name
 out before the cap is consulted at all, and the cap then decides storage alone —

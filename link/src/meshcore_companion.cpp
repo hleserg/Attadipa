@@ -1057,9 +1057,9 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
     }
     // Remote CLI output shares the offline queue and was written by no person:
     // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:690` — "`TXT_TYPE_CLI_DATA` is a remote-CLI channel rather than a message for a person,"
-    // It is consumed, so the drain goes on, and it replaces neither the
-    // message on screen nor a contact's coordinate (#627).
-    if (data[text_type] == kTextCliData) return true;
+    // It is counted and consumed, so the drain goes on, and it replaces
+    // neither the message on screen nor a contact's coordinate (#627).
+    if (data[text_type] == kTextCliData) { ++cli_frames_; return true; }
     if (data[text_type] == kTextSignedPlain) {
         if (size < text + 4) {
             ++malformed_frames_;

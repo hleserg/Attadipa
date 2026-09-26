@@ -1859,6 +1859,31 @@ void test_cli_data_is_neither_a_message_nor_a_coordinate()
     core::MonotonicTime arrived{};
     CHECK(!client.remote_position(who, position, arrived));
     CHECK(client.malformed_frames() == 0);
+    CHECK(client.cli_frames() == 1);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    // The legacy shape, code 7: `path_len` at 7, `txt_type` at 8. A one-hop
+    // message has `path_len` 1, so a type read one byte early would drop it.
+    std::uint8_t legacy[32]{};
+    legacy[0] = 7;
+    std::memcpy(&legacy[1], peer.id.public_key.data(), 6);
+    legacy[7] = 1;
+    std::memcpy(&legacy[13], "OneHop", 6);
+    CHECK(client.receive(legacy, 19, at(13)));
+    CHECK(std::strcmp(client.status().last_message.data(), "OneHop") == 0);
+    CHECK(client.next_tx(frame));
+
+    std::uint8_t legacy_cli[13 + sizeof(cli_text)]{};
+    legacy_cli[0] = 7;
+    std::memcpy(&legacy_cli[1], peer.id.public_key.data(), 6);
+    legacy_cli[8] = 1;  // TXT_TYPE_CLI_DATA
+    std::memcpy(&legacy_cli[13], cli_text, sizeof(cli_text) - 1);
+    CHECK(client.receive(legacy_cli, sizeof(legacy_cli) - 1, at(14)));
+    CHECK(std::strcmp(client.status().last_message.data(), "OneHop") == 0);
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.cli_frames() == 2);
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
 }

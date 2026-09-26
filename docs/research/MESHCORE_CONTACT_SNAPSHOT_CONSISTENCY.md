@@ -290,7 +290,7 @@ acted on.
 
 | Kind | Cause | Whose limit | Detectable how |
 |---|---|---|---|
-| **Retention truncation** | the watch keeps 16 — `link/include/attadipa/link/meshcore_companion.h:249` — "static constexpr std::size_t kRetainedPeers = 16;" — and drops every contact whose advert type is not `ADV_TYPE_CHAT` — `link/src/meshcore_companion.cpp:681` — "if (size < 148 || data[33] != kAdvertTypeChat) {" | **ours** | `peers_retained < peers_reported`, already rendered — `apps/src/mesh.cpp:284` — "if (status.peers_complete && retained < reported) {" |
+| **Retention truncation** | the watch keeps 16 — `link/include/attadipa/link/meshcore_companion.h:251` — "static constexpr std::size_t kRetainedPeers = 16;" — and drops every contact whose advert type is not `ADV_TYPE_CHAT` — `link/src/meshcore_companion.cpp:681` — "if (size < 148 || data[33] != kAdvertTypeChat) {" | **ours** | `peers_retained < peers_reported`, already rendered — `apps/src/mesh.cpp:284` — "if (status.peers_complete && retained < reported) {" |
 | **Snapshot inconsistency** | the table moved under the cursor (§2.2) | **the node's** | an invalidating push inside the stream — and *not always*, per §3.2 |
 | **Staleness** | the snapshot was true and the world moved on | nobody's | only a re-read |
 
@@ -478,7 +478,7 @@ copy of the retained set and to latch the three flags until the re-read either
 completes or is abandoned — not to rely on the accumulator being left alone,
 because it is not. The cost is bounded and small: sixteen slots of
 `core::MeshPeer`, the same array the client already carries —
-`link/include/attadipa/link/meshcore_companion.h:249` — "    static constexpr std::size_t kRetainedPeers = 16;".
+`link/include/attadipa/link/meshcore_companion.h:251` — "    static constexpr std::size_t kRetainedPeers = 16;".
 **An implementation that skips the shadow copy does not implement decision 7**,
 and §7.5's `previous kept` row is the line that would silently be untrue.
 

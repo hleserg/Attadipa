@@ -45,7 +45,7 @@ what two nodes do to each other in a product flow is
 **NOT EXECUTED — HARDWARE REQUIRED**.
 
 **One gap in an earlier document is narrowed here.** The open row
-`docs/research/MESHCORE_COMPANION_PROTOCOL.md:764` — "Whether the first-party JS and Python clients agree with this reading"
+`docs/research/MESHCORE_COMPANION_PROTOCOL.md:785` — "Whether the first-party JS and Python clients agree with this reading"
 stood because the two first-party clients had never been read against that
 document. They are read in §2.2 and §2.3 below and they agree with the firmware
 on both send frames. That settles `RESP_CODE_SENT` and
@@ -159,7 +159,7 @@ reads the ack and stops — are a millisecond count:
 two frames earlier,
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:296` — "06 00 38 66 6c b8 66 09 00 00",
 carries `66 09 00 00` = **2406 ms** of estimate, which
-`link/include/attadipa/link/meshcore_companion.h:270` — "static constexpr core::Millis kMaxAckWait{15000};"
+`link/include/attadipa/link/meshcore_companion.h:272` — "static constexpr core::Millis kMaxAckWait{15000};"
 already records in its own comment.
 
 **What decoding them adds, and what it does not.** The bytes were `MEASURED`
@@ -582,7 +582,7 @@ sides in one change.
 them are `DATA_TYPE_RESERVED` and `DATA_TYPE_DEV`, a developer namespace for
 *group/channel* datagrams. `CMD_SEND_TXT_MSG` accepts 0 or 1 and nothing else.
 There is no private-message position type, and
-`docs/research/MESHCORE_COMPANION_PROTOCOL.md:696` — "This is an enumerated absence: all three definitions in" says so
+`docs/research/MESHCORE_COMPANION_PROTOCOL.md:717` — "This is an enumerated absence: all three definitions in" says so
 from a reading of all three definitions rather than from a failure to find a
 fourth.
 
@@ -641,7 +641,7 @@ blocker.
 
 ### 8.1 The window is a cache, and the node is the address book
 
-`link/include/attadipa/link/meshcore_companion.h:249` — "static constexpr std::size_t kRetainedPeers = 16;"
+`link/include/attadipa/link/meshcore_companion.h:251` — "static constexpr std::size_t kRetainedPeers = 16;"
 is what the watch keeps. What the node holds, at the pin, on the T114 companion
 environment, is **350 slots** — `variants/heltec_t114/platformio.ini` sets
 `-D MAX_CONTACTS=350` for all four `Heltec_t114*_companion_radio_*` envs,
