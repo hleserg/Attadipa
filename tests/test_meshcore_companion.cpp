@@ -1822,6 +1822,47 @@ void test_signed_message_does_not_render_signature_as_text()
     CHECK(std::strcmp(client.status().last_message.data(), "Text") == 0);
 }
 
+// Remote CLI output (#627): consumed so the drain continues, but neither shown
+// as the last message nor read for a coordinate, even one in the grammar.
+void test_cli_data_is_neither_a_message_nor_a_coordinate()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    MeshCoreFrame frame{};
+
+    const std::uint8_t waiting[] = {0x83};
+    CHECK(client.receive(waiting, sizeof(waiting), at(10)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+
+    std::uint8_t human[32]{};
+    human[0] = 16;
+    std::memcpy(&human[4], peer.id.public_key.data(), 6);
+    std::memcpy(&human[16], "Human", 5);
+    CHECK(client.receive(human, 21, at(11)));
+    CHECK(client.next_tx(frame));
+
+    const char cli_text[] = "status @12.3456,65.4321";
+    std::uint8_t cli[16 + sizeof(cli_text)]{};
+    cli[0] = 16;
+    cli[1] = static_cast<std::uint8_t>(-40);
+    std::memcpy(&cli[4], peer.id.public_key.data(), 6);
+    cli[11] = 1;  // TXT_TYPE_CLI_DATA
+    std::memcpy(&cli[16], cli_text, sizeof(cli_text) - 1);
+    CHECK(client.receive(cli, sizeof(cli) - 1, at(12)));
+    CHECK(std::strcmp(client.status().last_message.data(), "Human") == 0);
+    CHECK(client.status().snr_quarter_db == 0);
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(client.malformed_frames() == 0);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+}
+
 void test_channel_message_is_rendered_without_a_contact_prefix()
 {
     MeshCoreCompanion client;
@@ -3605,7 +3646,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1406` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1415` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3669,7 +3710,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1310` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1319` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3717,7 +3758,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:742` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:746` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -5100,6 +5141,7 @@ int main()
     test_an_old_node_refusing_opcode_40_does_not_fail_a_queued_send();
     test_an_answered_login_does_not_take_a_later_opcode_40s_error();
     test_signed_message_does_not_render_signature_as_text();
+    test_cli_data_is_neither_a_message_nor_a_coordinate();
     test_channel_message_is_rendered_without_a_contact_prefix();
     test_a_queued_backlog_is_drained_to_the_end();
     test_a_reconnect_starts_a_new_drain();

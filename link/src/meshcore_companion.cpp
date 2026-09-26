@@ -44,6 +44,10 @@ constexpr std::uint8_t kResponseCustomVars = 21;
 constexpr std::uint8_t kResponseDeviceInfo = 13;
 constexpr std::uint8_t kResponseContactMessageV3 = 16;
 constexpr std::uint8_t kResponseChannelMessageV3 = 17;
+// `txt_type` of a contact message; upstream defines exactly three:
+// `docs/research/MESHCORE_COMPANION_PROTOCOL.md:676` — "`src/helpers/TxtDataHelpers.h:6-8` defines exactly three: `TXT_TYPE_PLAIN`"
+constexpr std::uint8_t kTextCliData = 1;
+constexpr std::uint8_t kTextSignedPlain = 2;
 // THE FOUR PUSH CODES THAT MOVE THE NODE'S CONTACT TABLE, classified from the
 // callback behind each one rather than from its name:
 // `docs/research/MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md:188` — "| Code | Raised by | Table change | Invalidates a walk in progress? |"
@@ -560,7 +564,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1353` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1362` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -1051,7 +1055,12 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
         ++malformed_frames_;
         return false;
     }
-    if (data[text_type] == 2) {
+    // Remote CLI output shares the offline queue and was written by no person:
+    // `docs/research/MESHCORE_COMPANION_PROTOCOL.md:690` — "`TXT_TYPE_CLI_DATA` is a remote-CLI channel rather than a message for a person,"
+    // It is consumed, so the drain goes on, and it replaces neither the
+    // message on screen nor a contact's coordinate (#627).
+    if (data[text_type] == kTextCliData) return true;
+    if (data[text_type] == kTextSignedPlain) {
         if (size < text + 4) {
             ++malformed_frames_;
             return false;
@@ -1466,7 +1475,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         // AND A BOUNDARY FRAME BELONGS TO NOBODY WHEN NO WALK IS OPEN. The
         // rule is the one `accept_contact()` applies --
-        // `link/src/meshcore_companion.cpp:691` -- "    if (retry_swept_ && !retry_open_) {"
+        // `link/src/meshcore_companion.cpp:695` -- "    if (retry_swept_ && !retry_open_) {"
         // -- a frame of a walk that is over belongs to nobody -- and it was
         // applied to the rows and not to the frame that ends them.
         //
@@ -1480,7 +1489,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // every flag false and fell through. Both are the same mistake, and
         // `!contacts_open_` is the form that covers all three walks. A walk the
         // node opens afterwards sets it again, including the node's own --
-        // `link/src/meshcore_companion.cpp:1425` -- "        contacts_open_ = true;"
+        // `link/src/meshcore_companion.cpp:1434` -- "        contacts_open_ = true;"
         // -- so a later walk owns its frames.
         //
         // Every shape of it is wrong about a walk that is already over. With a
