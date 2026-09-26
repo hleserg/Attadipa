@@ -1474,7 +1474,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // -- a frame of a walk that is over belongs to nobody -- and it was
         // applied to the rows and not to the frame that ends them.
         //
-        // `contacts_open_` is the whole test, and the two flags that look like
+        // `contacts_open_` is the test, and the two flags that look like
         // candidates are both narrower than the defect. `retry_open_` is false
         // by the time control reaches here, because the arm above returns on
         // it. `retry_swept_` is set by `finish_retry()` alone, so it names the
@@ -1500,9 +1500,23 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // NOT COUNTED MALFORMED, for the same reason the dropped rows are not:
         // the node is answering a question this client asked and then stopped
         // trusting, or answering it twice.
-        if (!contacts_open_) {
+        //
+        // EXCEPT A FIRST WALK THAT NEVER ENDED. A lost or short `START` leaves
+        // `contacts_open_` down for the whole first walk, and the quiet sweep
+        // reads the same flag, so this `END` is the only thing left that can
+        // spend the session's CMD_SYNC_NEXT_MESSAGE (#602). Every walk above
+        // is over only once `contacts_complete_` is set, so that flag is what
+        // separates them; a re-read never lowers it. Before DEVICE_INFO the
+        // walk has not been asked for, so an `END` then is nobody's.
+        //
+        // AND IT IS DIRTY. The push arms read `contacts_open_` too, so no
+        // invalidation could have been counted on it; `Consistent` would be
+        // the strongest claim on the least evidence. One bounded re-read, with
+        // its own `START`, settles it.
+        if ((!contacts_open_ && contacts_complete_) || !device_info_seen_) {
             break;
         }
+        if (!contacts_open_) snapshot_dirty_ = true;
         status_.peers_complete = true;
         if (!end_contacts(now)) {
             ++malformed_frames_;

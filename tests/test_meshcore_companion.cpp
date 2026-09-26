@@ -2415,6 +2415,85 @@ void test_a_lost_contacts_end_still_asks_for_messages()
     CHECK(!client.next_tx(frame));
 }
 
+// AND A LOST `START` STILL ENDS ON `END` (#602). Without the frame that opens
+// the walk, neither the boundary guard nor the quiet sweep sees one, and the
+// session would never ask for its messages.
+int drain_counting_re_reads(MeshCoreCompanion& client);
+
+void test_a_first_walk_whose_start_was_lost_still_ends_on_end()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    CHECK(client.next_tx(frame));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 4);
+    CHECK(!client.next_tx(frame));
+
+    // No `START`: the first frame of the walk is a contact.
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(5)));
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(6)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().peers_retained == 1);
+    CHECK(client.malformed_frames() == 0);
+
+    // No push arm could count an invalidation on it, so it is not
+    // `Consistent`: one bounded re-read, with a `START` of its own.
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    client.tick(at(6 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+}
+
+// An `END` before DEVICE_INFO answers a walk nobody asked for, and ends
+// nothing: no messages fetched, no list claimed complete.
+void test_an_end_before_the_walk_was_asked_for_ends_nothing()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    while (client.next_tx(frame)) {
+    }
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(4)));
+    CHECK(!client.next_tx(frame));
+    CHECK(!client.status().peers_complete);
+    CHECK(client.malformed_frames() == 0);
+}
+
 // Handshake far enough that CMD_GET_CONTACTS has gone out and the node has
 // begun answering it: one contact in, the stream live, the quiet window armed
 // at `at(6)`. Frames are left in the ring unless `drain` says otherwise --
@@ -5233,6 +5312,8 @@ int main()
     test_attached_node_battery_uses_the_live_queue_and_public_status();
     test_handshake_contacts_and_service_boundary();
     test_a_lost_contacts_end_still_asks_for_messages();
+    test_a_first_walk_whose_start_was_lost_still_ends_on_end();
+    test_an_end_before_the_walk_was_asked_for_ends_nothing();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
     test_a_confirmation_mid_walk_confirms_without_dirtying();
