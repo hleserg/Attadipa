@@ -465,7 +465,7 @@ def time_sync_encode(utc_seconds: int, timezone_offset_minutes: int,
 #
 # 160 is upstream's `MAX_TEXT_LEN` and was this encoder's bound until #609, at
 # which point the host accepted 32 bytes the watch would never send:
-# `firmware/main/meshcore_ble.cpp:2506` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
+# `firmware/main/meshcore_ble.cpp:2534` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
 # refuses them before anything is queued. `docs/research/OUTBOUND_MESHCORE_MESSAGES.md:552`
 # -- "So: 128 out, 128 in, one number, and the asymmetry with upstream's 160 is"
 # -- is the decision that 128 is deliberate rather than an oversight to correct.
