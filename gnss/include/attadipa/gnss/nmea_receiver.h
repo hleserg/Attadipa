@@ -68,6 +68,18 @@
 // nothing would ever close, and the watch would show "waiting" for a receiver
 // that is powered, talking, and correctly reporting that it cannot see the sky.
 //
+// AND ONLY A *STANDARD* RMC BOUNDS IT. NMEA 0183 writes an address two ways:
+// `$` plus a two-character talker plus a three-character type, or `$P` plus a
+// manufacturer mnemonic and a message identifier of the manufacturer's own
+// length. The second shape does not line up with the first, so its characters
+// fall into the type position by accident — `$PGRMC` is Garmin's `P` + `GRM` +
+// `C`, and read as a standard address it is a talker `PG` sending an `RMC`
+// (#683). This driver separates the two before any epoch meaning is attached to
+// a sentence, in one place used by both the dispatch and the refusal, so a
+// proprietary sentence never opens or closes an epoch, never latches a GGA
+// quality or a GSA mode, and is not counted against the receiver: it is read
+// past, exactly like VTG and GSV.
+//
 // ponytail: an RMC lost to a bad checksum merges two epochs into one. The
 // fields latch rather than accumulate, so the result is one observation with
 // the later epoch's values and the earlier epoch's `observed_at` — up to a

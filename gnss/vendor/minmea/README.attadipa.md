@@ -28,17 +28,24 @@ document it grants *from* and the text it grants *to*.
 ## What the wrapper owns, and why there is one
 
 Upstream parses one NUL-terminated sentence at a time and stops there. Line
-assembly, the 82-byte cap, strict checksum verification and every value check
-are Attadipa's — `gnss/src/nmea_receiver.cpp` — which is the same split the
-reuse ledger asked for, and it matters: the ledger's own upstream-issue list
-records a checksum computed from a fixed offset rather than from the located
-`$`, in a project whose assembler was the buggy part.
+assembly, the 82-byte cap, strict checksum verification, deciding *which*
+sentence this is, and every value check are Attadipa's —
+`gnss/src/nmea_receiver.cpp` — which is the same split the reuse ledger asked
+for, and it matters: the ledger's own upstream-issue list records a checksum
+computed from a fixed offset rather than from the located `$`, in a project
+whose assembler was the buggy part.
 
-Two rules the wrapper follows that come straight from that list:
+Three rules the wrapper follows that come straight from that list:
 
 - **A field is present only when `scale > 0`**, never `scale != 0`. minmea's
   overflow guard can be defeated into producing a negative scale
   (kosma/minmea#104, open).
+- **The sentence type is the wrapper's answer, not `minmea_sentence_id()`'s.**
+  Upstream splits five address characters as a two-character talker plus a
+  three-character type whether or not the address is standard, so a proprietary
+  `$PGRMC` reads as a talker `PG` sending an `RMC` (#683). The wrapper tells the
+  `$P` shape from the `$ttXXX` one first, and nothing proprietary reaches an
+  epoch.
 - **`-ffast-math` is a correctness hazard here**, not a performance knob. This
   tree never enables it and this parser is one of the reasons.
 
