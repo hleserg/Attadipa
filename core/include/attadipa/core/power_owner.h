@@ -340,6 +340,13 @@ struct SleepReport {
     bool hardware_known = true;
 
     constexpr bool slept() const { return outcome == SleepOutcome::Woken; }
+
+    // Whether `source` woke an episode that counts as a wake. A refused or
+    // failed one -- even one that slept and then reported failure -- was rolled
+    // back, so it reports no cause, whatever the word holds (#635).
+    constexpr bool woke_by(WakeSource source) const {
+        return slept() && (wake_causes & wake_bit(source)) != 0;
+    }
 };
 
 // The owner.
