@@ -27,4 +27,8 @@ if(NOT PROJECT_VER)
 endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+# LVGL's assertion handler is `abort();`, set in a header rather than here: a
+# definition cannot carry the `;` it needs, which CMake splits off (#653).
+idf_build_set_property(COMPILE_DEFINITIONS
+  "LV_ASSERT_HANDLER_INCLUDE=<${CMAKE_CURRENT_LIST_DIR}/lv_assert_abort.h>" APPEND)
 project(attadipa)

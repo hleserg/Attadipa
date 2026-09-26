@@ -820,3 +820,12 @@ add_test(NAME lvgl_pin_refusal
                  -DREPO_DIR=${PROJECT_SOURCE_DIR}
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/lvgl_pin_refusal.cmake)
 set_tests_properties(lvgl_pin_refusal PROPERTIES LABELS supply-chain)
+
+if(ATTADIPA_BUILD_SIMULATOR)
+    # An exhausted LVGL pool ends the process instead of spinning (#653).
+    add_executable(test_sim_lvgl_oom_aborts test_sim_lvgl_oom_aborts.cpp)
+    target_link_libraries(test_sim_lvgl_oom_aborts PRIVATE attadipa_sim_screens)
+    add_test(NAME sim_lvgl_oom_aborts COMMAND test_sim_lvgl_oom_aborts)
+    set_tests_properties(sim_lvgl_oom_aborts
+                         PROPERTIES LABELS "simulator" TIMEOUT 60)
+endif()
