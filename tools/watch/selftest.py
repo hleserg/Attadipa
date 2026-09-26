@@ -586,12 +586,20 @@ def the_tool_fails_loudly_with_no_device() -> None:
     sys.path.insert(0, str(HERE.parent))
     import watch_control  # noqa: PLC0415
 
+    class Absent:
+        def connect(self, _path):
+            raise FileNotFoundError(2, "No such file or directory")
+
+        def close(self):
+            pass
+
     stderr = io.StringIO()
-    real_stderr, sys.stderr = sys.stderr, stderr
+    real_socket, real_stderr = socket.socket, sys.stderr
+    socket.socket, sys.stderr = (lambda *_args, **_kwargs: Absent()), stderr
     try:
         code = watch_control.main(["--socket", "/nonexistent/attadipa.sock", "info"])
     finally:
-        sys.stderr = real_stderr
+        socket.socket, sys.stderr = real_socket, real_stderr
 
     check(code != 0, "a missing device is a non-zero exit")
     check("could not connect" in stderr.getvalue(), "and the message names the cause")
@@ -631,6 +639,7 @@ def a_socket_the_os_refuses_is_the_same_clean_failure() -> None:
           "and the message names the endpoint")
     check("Operation not permitted" in stderr.getvalue(), "and keeps the OS cause")
     check(closed == [True], "and a socket that did not connect is closed")
+
 
 def serial_disconnects_are_reported_without_tracebacks() -> None:
     from watch.client import SerialTransport, WatchError  # noqa: PLC0415
@@ -2047,11 +2056,23 @@ CASES = (
 
 
 def run() -> int:
-    for case in CASES:
-        before = len(failures)
-        case()
-        mark = "ok  " if len(failures) == before else "FAIL"
-        print(f"  {mark} {case.__name__.replace('_', ' ')}")
+    # The closing line promises no socket was needed; refusing one for the
+    # whole run makes that true by construction (#638).
+    real_socket = socket.socket
+
+    def no_socket(*_args, **_kwargs):
+        failures.append("a group opened a socket, and this suite needs none")
+        raise PermissionError(1, "the watch selftest opens no socket")
+
+    socket.socket = no_socket
+    try:
+        for case in CASES:
+            before = len(failures)
+            case()
+            mark = "ok  " if len(failures) == before else "FAIL"
+            print(f"  {mark} {case.__name__.replace('_', ' ')}")
+    finally:
+        socket.socket = real_socket
 
     if failures:
         print(f"\nwatch selftest FAILED ({len(failures)}):\n", file=sys.stderr)
