@@ -1,8 +1,8 @@
 // The passkey rule in `firmware/main/meshcore_passkey.h`, driven by a fake
 // store. This is the production sequence and not a copy of it:
-// `meshcore_ble.cpp` instantiates the same two templates with NVS and its
-// event queue. What it does not reach is the worker that writes the flash when
-// `persist` is true, or erases it on `Deconfigure` -- those run on a board.
+// `meshcore_ble.cpp` instantiates the same templates with NVS and its event
+// queue. What it does not reach is NVS itself, or the erase on `Deconfigure`
+// -- those run on a board.
 
 //
 // The second half of the file is the slot the answer comes back in --
@@ -134,6 +134,122 @@ void test_restore()
     CHECK(store.configures == 1);
 }
 
+// --- The worker's write, and the boot after it (#648) ---------------------
+
+// NVS as the two templates share it: the replay gate and the stored digits,
+// with one fault armed at a time. `Durable` is ESP-IDF's replace reporting
+// failure after the new entry is already written (VERIFIED_FACTS).
+struct FakeNvs {
+    enum class Fault { None, Inhibit, StoreNothing, StoreDurable, Allow };
+
+    bool gate = false;
+    bool has_value = false;
+    std::uint32_t value = 0;
+    Fault fault = Fault::None;
+    unsigned stores = 0;
+
+    // Configure's queue, for the boot side.
+    std::uint32_t armed = 0;
+
+    bool inhibit_replay()
+    {
+        if (fault == Fault::Inhibit) return false;
+        gate = true;
+        return true;
+    }
+    bool store(std::uint32_t passkey)
+    {
+        ++stores;
+        if (fault == Fault::StoreNothing) return false;
+        has_value = true;
+        value = passkey;
+        return fault != Fault::StoreDurable;
+    }
+    bool allow_replay()
+    {
+        if (fault == Fault::Allow) return false;
+        gate = false;
+        return true;
+    }
+
+    PasskeyReplay replay_permission() const
+    {
+        return gate ? PasskeyReplay::Inhibited : PasskeyReplay::Allowed;
+    }
+    StoredPasskey load(std::uint32_t& out)
+    {
+        if (!has_value) return StoredPasskey::Absent;
+        out = value;
+        return StoredPasskey::Found;
+    }
+    bool configure(std::uint32_t passkey, bool)
+    {
+        armed = passkey;
+        return true;
+    }
+};
+
+constexpr std::uint32_t kOld = 111111;
+constexpr std::uint32_t kNew = 222222;
+
+FakeNvs holding_old()
+{
+    FakeNvs nvs;
+    nvs.has_value = true;
+    nvs.value = kOld;
+    return nvs;
+}
+
+void test_persist_then_boot()
+{
+    using attadipa::firmware::persist_passkey;
+    using attadipa::firmware::restore_passkey;
+    using Fault = FakeNvs::Fault;
+
+    // First provisioning, then a replacement: each boot arms the last digits.
+    FakeNvs nvs;
+    CHECK(persist_passkey(nvs, kOld));
+    CHECK(restore_passkey(nvs) == PasskeyRestore::Restored && nvs.armed == kOld);
+    CHECK(persist_passkey(nvs, kNew));
+    CHECK(!nvs.gate);
+    CHECK(restore_passkey(nvs) == PasskeyRestore::Restored && nvs.armed == kNew);
+
+    // A refused write never lets the next boot arm the new digits -- above all
+    // the one that did land (#648). What it may arm is what it armed before.
+    struct Case {
+        Fault fault;
+        PasskeyRestore boot;
+    };
+    const Case cases[] = {
+        {Fault::Inhibit, PasskeyRestore::Restored},  // nothing touched: old
+        {Fault::StoreNothing, PasskeyRestore::ReplayInhibited},
+        {Fault::StoreDurable, PasskeyRestore::ReplayInhibited},
+        {Fault::Allow, PasskeyRestore::ReplayInhibited},
+    };
+    for (const Case& c : cases) {
+        FakeNvs faulty = holding_old();
+        faulty.fault = c.fault;
+        CHECK(!persist_passkey(faulty, kNew));
+        faulty.fault = Fault::None;
+        CHECK(restore_passkey(faulty) == c.boot);
+        CHECK(faulty.armed != kNew);
+    }
+
+    // The digits are not touched once the gate refused to go up.
+    FakeNvs refused = holding_old();
+    refused.fault = Fault::Inhibit;
+    CHECK(!persist_passkey(refused, kNew));
+    CHECK(refused.stores == 0 && refused.value == kOld);
+
+    // A forgotten node's gate is what an owner-entered replacement lowers.
+    FakeNvs forgotten = holding_old();
+    forgotten.gate = true;
+    CHECK(restore_passkey(forgotten) == PasskeyRestore::ReplayInhibited);
+    CHECK(persist_passkey(forgotten, kNew));
+    CHECK(restore_passkey(forgotten) == PasskeyRestore::Restored);
+    CHECK(forgotten.armed == kNew);
+}
+
 // --- The answer slot ------------------------------------------------------
 
 using attadipa::firmware::PasskeyOperation;
@@ -256,6 +372,7 @@ int main()
 {
     test_request();
     test_restore();
+    test_persist_then_boot();
     test_slot_is_not_answered_until_the_worker_answers();
     test_slot_carries_both_failures();
     test_one_operation_at_a_time();

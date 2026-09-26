@@ -451,6 +451,14 @@ bool store_passkey(std::uint32_t passkey)
     return err == ESP_OK;
 }
 
+// `persist_passkey()`'s NVS. The replay gate is the forget-node one: both mean
+// "flash may hold digits nobody entered for this node".
+struct PersistOps {
+    bool inhibit_replay() { return mark_reprovision_pending(); }
+    bool store(std::uint32_t passkey) { return store_passkey(passkey); }
+    bool allow_replay() { return clear_reprovision_pending(); }
+};
+
 // The off switch. Before the passkey outlived a boot, a power cycle was one;
 // now `Deconfigure` has to be, or `mesh-disconnect` lasts until the next boot
 // and a provisioned watch cannot be told to stop scanning without
@@ -1674,9 +1682,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:207` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1746` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1754` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:949` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:957` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1764,12 +1772,13 @@ void mesh_task(void*)
                 // and now says it to the screen as well, because "it will be
                 // gone at the next boot" is not a fact a serial log can carry
                 // to somebody holding the watch.
+                PersistOps persist_ops;
                 const bool stored = !event.persist_passkey ||
-                    (store_passkey(event.passkey) && clear_reprovision_pending());
+                    attadipa::firmware::persist_passkey(persist_ops, event.passkey);
                 if (!stored) {
                     ESP_LOGE(kTag,
-                             "MeshCore passkey armed but durable provisioning "
-                             "did not finish; boot replay stays disabled");
+                             "MeshCore passkey armed for this boot only; the "
+                             "next boot will not arm it");
                 }
                 configured.store(true);
                 reconnect_allowed.store(true);
@@ -2192,7 +2201,8 @@ void restore_passkey()
         break;
     case PasskeyRestore::ReplayInhibited:
         ESP_LOGW(kTag,
-                 "MeshCore node was forgotten; retained passkey is not replayed");
+                 "MeshCore node forgotten or passkey write unfinished; "
+                 "retained passkey is not replayed");
         break;
     case PasskeyRestore::ReplayUnreadable:
         ESP_LOGE(kTag,
