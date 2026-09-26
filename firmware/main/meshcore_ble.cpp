@@ -67,6 +67,21 @@ constexpr char kTag[] = "attadipa_mesh_ble";
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
+// How many passes in a row the worker may start with the queue already
+// non-empty before it blocks for one tick (#630). Under a backlog the receive
+// below returns at once, and a priority-3 task that never blocks starves the
+// idle task of its core -- the task watchdog's five seconds, the same class
+// `gnss_bridge.cpp` hit -- and LVGL at priority 1 with it. `taskYIELD()` would
+// not help: it yields only to equal priority.
+//
+// Chosen, not derived. One tick is 10 ms at `CONFIG_FREERTOS_HZ=100`, and a
+// contact walk delivers a record about every 10 ms at p99
+// (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:644` -- "are contact to
+// contact: median 0 ms, p99 10 ms, largest-but-one **70 ms** — and"),
+// so one break lasts about one record gap at p99, against 48 slots of
+// `kEventDepth`. A worker that keeps up empties the queue and never takes one; a peer that
+// floods costs at most one tick in sixteen passes.
+constexpr std::uint32_t kBacklogPasses = 16;
 
 static_assert(BLE_HS_CONN_HANDLE_NONE == attadipa::link::kNoSessionHandle,
               "the session record's no-connection value must be NimBLE's");
@@ -1779,11 +1794,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:207` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:222` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1853` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1884` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1031` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1046` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1839,7 +1854,23 @@ void mesh_task(void*)
     // the operation. A claim released on any earlier pass would let a second
     // request in while the first was still sitting in the queue.
     bool send_owned = false;
+    std::uint32_t backlog_passes = 0;
+    std::uint32_t fairness_breaks = 0;
     for (;;) {
+        if (uxQueueMessagesWaiting(event_queue) == 0) {
+            backlog_passes = 0;
+        } else if (++backlog_passes >= kBacklogPasses) {
+            backlog_passes = 0;
+            ++fairness_breaks;
+            // Powers of two only: this runs exactly while the transport is
+            // overloaded, so one line per break would add to the overload.
+            if ((fairness_breaks & (fairness_breaks - 1)) == 0) {
+                ESP_LOGW(kTag, "MeshCore backlog: worker blocked a tick %" PRIu32
+                               " times so lower priorities run",
+                         fairness_breaks);
+            }
+            vTaskDelay(1);
+        }
         const bool received =
             xQueueReceive(event_queue, &event, kPollTicks) == pdTRUE;
         const SessionCatchUp catch_up = apply_lifecycle(applied);
