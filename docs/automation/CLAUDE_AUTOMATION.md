@@ -171,11 +171,18 @@ reviewer should check:
   record lists — issue comments, reviews, inline comments — and appending them
   one after another put a maintainer's correction above the instruction it
   reverses, because the agent reads the bundle top to bottom. Every record is
-  sorted on the timestamp GitHub gave it, with the id breaking a tie.
+  sorted on the timestamp GitHub gave it, with the id breaking a tie. A record
+  with no timestamp cannot be placed and the run holds, naming its id; an
+  unpublished `PENDING` review is that shape, and an empty key sorted it
+  first. The lists are counted as they are accumulated, so a short append
+  holds too instead of reaching the sort already short.
 - **A record says what it was about.** A review carries the `state` a
   maintainer left it in, so one that was **dismissed** cannot read as a live
   instruction; an inline comment carries the file and line, without which it
-  says nothing. Both were dropped until #616.
+  says nothing. Both were dropped until #616. The file is named only when the
+  branch is this repository's: on a fork's branch the filename is text whoever
+  pushed there chose, so the record says "a file of a fork's branch" and keeps
+  the line (#621).
 - **A bot is decided by attestation, not by spelling.** `user.type` is what
   GitHub says about the account and the account does not choose it. The
   self-body exemption needs **both**: the attestation to say it is an App, the
