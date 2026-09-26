@@ -28,6 +28,7 @@ import struct
 import sys
 import tempfile
 import time
+import traceback
 import zlib
 from pathlib import Path
 
@@ -614,7 +615,8 @@ def the_tool_fails_loudly_with_no_device() -> None:
         socket.socket, sys.stderr = real_socket, real_stderr
 
     check(code != 0, "a missing device is a non-zero exit")
-    check("could not connect" in stderr.getvalue(), "and the message names the cause")
+    check("could not connect to /nonexistent/attadipa.sock" in stderr.getvalue(),
+          "and the message names the endpoint")
 
 
 def a_socket_the_os_refuses_is_the_same_clean_failure() -> None:
@@ -2083,8 +2085,8 @@ def run() -> int:
             # A group that raises is its own failure, not the end of the run.
             try:
                 case()
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"{case.__name__} raised {exc!r}")
+            except Exception:  # noqa: BLE001
+                failures.append(f"{case.__name__} raised:\n{traceback.format_exc()}")
             mark = "ok  " if len(failures) == before else "FAIL"
             print(f"  {mark} {case.__name__.replace('_', ' ')}")
     finally:
