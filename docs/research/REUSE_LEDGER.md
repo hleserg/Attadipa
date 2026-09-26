@@ -3358,8 +3358,9 @@ the cited lines on 2026-09-24.
 
 **Attadipa integration:** none in this issue, which is research-only. Where the
 selected key would live, and which of it is the owner's decision, is §3 and §9
-of the report; the two prerequisites that no owner answer changes are §2.4 and
-§6.
+of the report; the two prerequisites that no owner answer changes are §6's
+keyed cache and §7's tri-state parser verdict. §2.4 was a third until
+`7b10884` (#650, #688) paid ADR-0021 decision 7's deletion arm on 2026-09-26.
 
 **Tests required:** when an implementation issue opens — §11 of the report. The
 one worth naming here is the one Meshtastic's own merged fix

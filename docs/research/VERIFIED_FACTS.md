@@ -504,12 +504,12 @@ reader ends up citing the one that was not updated.
   sixteen are a cache: `send_private()` takes a full 32-byte key, and a key the
   cache does not hold is fetched from the node with `CMD_GET_CONTACT_BY_KEY`
   (30), whose reply is taken above the list walk and deliberately never enters
-  the cache — `link/src/meshcore_companion.cpp:2000` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
+  the cache — `link/src/meshcore_companion.cpp:2068` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
   **Inbound**, a message's coordinate is attributed by resolving its six-byte
   sender prefix against that same cache and nothing else —
-  `link/src/meshcore_companion.cpp:720` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+  `link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
   and a seventeenth contact never enters it —
-  `link/src/meshcore_companion.cpp:710` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
+  `link/src/meshcore_companion.cpp:718` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
   So a message may be sent to contact 200 of 233, and a coordinate arriving from
   contact 200 resolves to no peer, carries no target under
   [ADR-0021](../adr/0021-remote-target-from-a-message.md) decision 2, and raises
@@ -3133,7 +3133,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2997` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3043` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3190,7 +3190,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3068` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3114` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3231,7 +3231,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3022` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3068` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3317,7 +3317,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2945` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2991` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3512,7 +3512,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3071` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3117` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has
