@@ -486,34 +486,39 @@ bool store_passkey(std::uint32_t passkey)
     return err == ESP_OK;
 }
 
-// `persist_passkey()`'s NVS. Stored digits are entered digits, so a finished
-// write lowers the forget-node gate too -- first, so that the write's own gate
-// is the last thing to come down.
+// `persist_passkey()`'s and `erase_passkey()`'s NVS: which key each gate is.
+// The order they are touched in is the header's (#674).
 struct PersistOps {
-    bool inhibit_replay()
+    bool raise_write_gate()
     {
         if (raise_nvs_gate(kPasskeyPendingNvsKey)) return true;
         ESP_LOGE(kTag, "MeshCore passkey: write gate not raised; the next boot "
-                       "arms the previous passkey, if any");
+                       "arms what it armed before");
         return false;
     }
     bool store(std::uint32_t passkey) { return store_passkey(passkey); }
-    bool allow_replay()
+    bool lower_forget_gate()
     {
-        if (lower_nvs_gate(kReprovisionNvsKey) &&
-            lower_nvs_gate(kPasskeyPendingNvsKey))
-            return true;
+        if (lower_nvs_gate(kReprovisionNvsKey)) return true;
+        ESP_LOGE(kTag, "MeshCore passkey: forget gate not lowered; the next "
+                       "boot arms nothing");
+        return false;
+    }
+    bool lower_write_gate()
+    {
+        if (lower_nvs_gate(kPasskeyPendingNvsKey)) return true;
         ESP_LOGE(kTag, "MeshCore passkey: write gate not lowered; the next boot "
                        "arms nothing, or these digits if that erase landed anyway");
         return false;
     }
+    bool erase();
 };
 
 // The off switch. Before the passkey outlived a boot, a power cycle was one;
 // now `Deconfigure` has to be, or `mesh-disconnect` lasts until the next boot
 // and a provisioned watch cannot be told to stop scanning without
 // `erase-flash`, which takes the bonds, the pin and the time metadata too.
-bool erase_passkey()
+bool erase_stored_passkey()
 {
     nvs_handle_t handle{};
     const esp_err_t opened = nvs_open(kMeshNvsNamespace, NVS_READWRITE, &handle);
@@ -525,6 +530,8 @@ bool erase_passkey()
     nvs_close(handle);
     return err == ESP_OK;
 }
+
+bool PersistOps::erase() { return erase_stored_passkey(); }
 
 // The pin's gate, on the passkey's helpers.
 attadipa::firmware::PinGate load_pin_gate()
@@ -568,7 +575,7 @@ bool lower_pin_gate()
     return false;
 }
 
-// The pin's eraser, `erase_passkey()`'s shape on the other key. Its job is
+// The pin's eraser, `erase_stored_passkey()`'s shape on the other key. Its job is
 // narrower than it looks: the next adoption overwrites the key anyway
 // (`store_node_pin` is a set), so what this covers is a restart in the window
 // between a forget and that adoption, which would otherwise put the old key
@@ -1804,9 +1811,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1895` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1902` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1049` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1056` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1982,9 +1989,10 @@ void mesh_task(void*)
             case EventKind::Deconfigure: {
                 configured.store(false);
                 reconnect_allowed.store(false);
-                if (!erase_passkey()) {
+                PersistOps persist_ops;
+                if (!attadipa::firmware::erase_passkey(persist_ops)) {
                     ESP_LOGE(kTag,
-                             "MeshCore passkey not erased; the watch will "
+                             "MeshCore passkey not erased; the watch may "
                              "scan again at the next boot");
                 }
                 scan_stop_owed.store(false);

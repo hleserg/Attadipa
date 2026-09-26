@@ -516,13 +516,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:2294`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:2302`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
   ([`firmware/main/meshcore_ble.cpp:223`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1895`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1902`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -556,9 +556,9 @@ reader ends up citing the one that was not updated.
   `espressif/esp-idf@v5.5.5` records for
   `components/bt/host/nimble/nimble`.
 - **Source (this repository):** the watch is the central and takes that branch
-  from [`firmware/main/meshcore_ble.cpp:1049`](../../firmware/main/meshcore_ble.cpp)
+  from [`firmware/main/meshcore_ble.cpp:1056`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1935`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1942`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on
@@ -583,10 +583,10 @@ reader ends up citing the one that was not updated.
   "return PinOutcome::Refused;", latched by
   [`link/src/meshcore_companion.cpp:1349`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
-  is [`firmware/main/meshcore_ble.cpp:554`](../../firmware/main/meshcore_ble.cpp)
+  is [`firmware/main/meshcore_ble.cpp:561`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
   the passkey instead —
-  [`firmware/main/meshcore_ble.cpp:522`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:527`](../../firmware/main/meshcore_ble.cpp)
   "esp_err_t err = nvs_erase_key(handle, kPasskeyNvsKey);". The mesh opcode
   block ends at
   [`debug/include/attadipa/debug/protocol.h:94`](../../debug/include/attadipa/debug/protocol.h)
@@ -2808,9 +2808,9 @@ ones that heading states.
   leave an entry a later boot reads. Nothing here depends on it.
 - **Checked:** 2026-09-26, against v5.5.5. An ESP-IDF upgrade re-reads it.
 - **Consequence:** the MeshCore passkey is not rewritten while boot may replay
-  it: `firmware/main/meshcore_passkey.h` — "return ops.inhibit_replay() &&
-  ops.store(passkey) && ops.allow_replay();" — raises the durable replay gate
-  first and lowers it only after the write succeeded (#648). Lowering it is an
+  it: `firmware/main/meshcore_passkey.h` — "return ops.raise_write_gate() &&
+  ops.store(passkey) &&" — raises the durable write gate first and lowers it
+  only after the write succeeded (#648), and the forget gate before it (#674). Lowering it is an
   erase, and a refused erase is ambiguous too: see the next entry.
 
 ### A failed erase may already have erased, and the same boot cannot tell
@@ -2847,7 +2847,7 @@ ones that heading states.
 - **Checked:** 2026-09-26, against v5.5.5. An ESP-IDF upgrade re-reads it.
 - **Consequence:** the last step of any gate-write-gate sequence is an erase
   whose refusal is ambiguous. For the passkey (#648), a refusal of the final
-  `allow_replay()` leaves the next boot arming nothing or the new digits, and
+  `lower_write_gate()` leaves the next boot arming nothing or the new digits, and
   the firmware's log of that refusal says both.
 
 ### A second `nvs_flash_init()` cannot change the first one's verdict

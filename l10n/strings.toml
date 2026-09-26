@@ -514,7 +514,7 @@ ru = "Далее — к коду узла"
 # of anything the owner can do with it — the marker exists so those digits are
 # never replayed, and a node that has been reset shows new ones after every
 # power cycle:
-# `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:340` — "**Must be replaced, not erased:**"
+# `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:341` — "**Must be replaced, not erased:**"
 # So the line says what the next screen says, one press earlier, instead of
 # reassuring the owner out of the six digits they are about to need.
 #
