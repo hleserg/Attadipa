@@ -2447,7 +2447,7 @@ void open_a_dirty_walk(MeshCoreCompanion& client, bool drain)
 
     // PUSH_CODE_CONTACT_DELETED, inside the walk: the node compacted its table
     // under its own iterator and the rows this walk has not reached moved.
-    const std::uint8_t deleted[] = {0x8F};
+    const std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
     CHECK(client.receive(deleted, sizeof(deleted), at(7)));
 
     const std::uint8_t end[] = {4, 0, 0, 0, 0};
@@ -2548,7 +2548,7 @@ void test_where_a_push_lands_decides_whether_it_is_dirt()
         while (client.next_tx(frame)) {
         }
 
-        const std::uint8_t deleted[] = {0x8F};
+        const std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
         if (c.position == 0) CHECK(client.receive(deleted, sizeof(deleted), at(5)));
 
         const std::uint8_t start[] = {2, 2, 0, 0, 0};
@@ -2647,7 +2647,7 @@ void test_a_disconnect_leaves_no_half_finished_snapshot()
     contact[33] = 1;
     std::memcpy(&contact[100], "Peer", 4);
     CHECK(second.receive(contact, sizeof(contact), at(base + 5)));
-    const std::uint8_t deleted[] = {0x8F};
+    const std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
     CHECK(second.receive(deleted, sizeof(deleted), at(base + 6)));
     const std::uint8_t end[] = {4, 0, 0, 0, 0};
     CHECK(second.receive(end, sizeof(end), at(base + 7)));
@@ -2789,7 +2789,7 @@ void test_a_deletion_after_the_end_is_staleness_not_inconsistency()
     CHECK(client.receive(end, sizeof(end), at(7)));
     CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
 
-    const std::uint8_t deleted[] = {0x8F};
+    const std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
     CHECK(client.receive(deleted, sizeof(deleted), at(8)));
     CHECK(client.malformed_frames() == 0);
     CHECK(client.status().snapshot == core::MeshSnapshot::Consistent);
@@ -2903,7 +2903,7 @@ void test_a_table_that_moves_under_every_re_read_ends_degraded()
         contact[33] = 1;
         std::memcpy(&contact[100], "Peer", 4);
         CHECK(client.receive(contact, sizeof(contact), at(++when)));
-        const std::uint8_t deleted[] = {0x8F};
+        const std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
         CHECK(client.receive(deleted, sizeof(deleted), at(++when)));
         const std::uint8_t end[] = {4, 0, 0, 0, 0};
         CHECK(client.receive(end, sizeof(end), at(++when)));
@@ -2956,7 +2956,10 @@ void test_which_pushes_dirty_a_walk_and_which_only_look_it()
     for (const Case& c : cases) {
         MeshCoreCompanion client;
         open_a_contact_stream(client, true);
-        const std::uint8_t push[] = {c.code};
+        // Full length for every code: `0x8F` refuses anything shorter than its
+        // key, and the others read nothing past the code.
+        std::uint8_t push[1 + core::kMeshPublicKeyBytes]{};
+        push[0] = c.code;
         CHECK(client.receive(push, sizeof(push), at(7)));
         const std::uint8_t end[] = {4, 0, 0, 0, 0};
         CHECK(client.receive(end, sizeof(end), at(8)));
@@ -3671,7 +3674,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1415` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1410` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3735,7 +3738,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1319` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1314` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -4196,6 +4199,64 @@ void test_forgetting_the_node_withdraws_a_contact_coordinate()
     client.pin(client.status().node_id);
     CHECK(client.unpin());
     CHECK(!client.remote_position(who, position, arrived));
+}
+
+// A CONTACT THE NODE DELETES TAKES ITS COORDINATE WITH IT (#650, ADR-0021
+// decision 7): discarded, not aged. The key compared is the whole 32 bytes, so
+// a deletion of a key sharing the held one's first 31 leaves the slot alone.
+void test_a_deleted_contact_takes_its_coordinate()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    deliver_message(client, peer, "@12.3456,65.4321", 100);
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(client.remote_position(who, position, arrived));
+
+    std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
+    std::memcpy(&deleted[1], peer.id.public_key.data(), core::kMeshPublicKeyBytes);
+    deleted[core::kMeshPublicKeyBytes] ^= 0x01;
+    CHECK(client.receive(deleted, sizeof(deleted), at(110)));
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == peer.id);
+
+    deleted[core::kMeshPublicKeyBytes] ^= 0x01;
+    CHECK(client.receive(deleted, sizeof(deleted), at(120)));
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(client.malformed_frames() == 0);
+}
+
+// A SHORT DELETE IS NOT A DELETE. `0x8F` is `[opcode][pub_key x32]`; a frame
+// one byte short, or the opcode alone, is refused and counted before any key is
+// compared -- and the frames are exact-sized stack arrays, so an arm that
+// trusted its length would over-read them.
+void test_a_short_contact_deleted_push_is_malformed()
+{
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    deliver_message(client, peer, "@12.3456,65.4321", 100);
+
+    std::uint8_t short_by_one[core::kMeshPublicKeyBytes] = {0x8F};
+    std::memcpy(&short_by_one[1], peer.id.public_key.data(),
+                core::kMeshPublicKeyBytes - 1);
+    CHECK(!client.receive(short_by_one, sizeof(short_by_one), at(110)));
+    CHECK(client.malformed_frames() == 1);
+
+    const std::uint8_t opcode_alone[] = {0x8F};
+    CHECK(!client.receive(opcode_alone, sizeof(opcode_alone), at(120)));
+    CHECK(client.malformed_frames() == 2);
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(client.remote_position(who, position, arrived));
+    CHECK(who == peer.id);
 }
 
 // ROWS 1-4 OF THE RESEARCH REPORT'S SECTION 11.1: THE CAP REFUSES AT THE BYTE.
@@ -5143,6 +5204,8 @@ int main()
     test_an_unchanged_coordinate_is_not_re_stamped();
     test_a_reconnect_does_not_inherit_a_contact_coordinate();
     test_forgetting_the_node_withdraws_a_contact_coordinate();
+    test_a_deleted_contact_takes_its_coordinate();
+    test_a_short_contact_deleted_push_is_malformed();
     test_a_misfired_sweep_publishes_a_partial_pair();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();

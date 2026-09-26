@@ -564,7 +564,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1362` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1357` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -1119,16 +1119,11 @@ bool MeshCoreCompanion::accept_message(const std::uint8_t* data,
 // `peers_`, so `find_peer_prefix()` cannot resolve a sender to one and decision
 // 2 drops the message before this function runs.
 //
-// The fourth is **not** implemented on this branch:
+// The fourth is paid in `receive()`, on the `PUSH_CODE_CONTACT_DELETED` arm:
 // `docs/adr/0021-remote-target-from-a-message.md:163` — "slot; and a contact the node has deleted is discarded rather than aged."
-// A key this session keeps a coordinate for can be deleted on the node while
-// the coordinate stays published under it. The mechanism that would close it is
-// small and specific -- on `PUSH_CODE_CONTACT_DELETED` whose key equals
-// `remote_position_id_`, clear `has_remote_position_` -- and it is deliberately
-// not added here, because this branch adds no push arm at all and a half-arm
-// that only notices the deletion is worse than none. `remote_position()` still
-// refuses on `wrong_node_`, which is a different disowning: the whole node,
-// not one contact in it.
+// A deletion whose full key equals `remote_position_id_` empties the slot
+// (#650). `remote_position()` also refuses on `wrong_node_`, which is a
+// different disowning: the whole node, not one contact in it.
 void MeshCoreCompanion::adopt_remote_position(const core::MeshPeer* sender,
                                               core::MonotonicTime now)
 {
@@ -1489,7 +1484,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // every flag false and fell through. Both are the same mistake, and
         // `!contacts_open_` is the form that covers all three walks. A walk the
         // node opens afterwards sets it again, including the node's own --
-        // `link/src/meshcore_companion.cpp:1434` -- "        contacts_open_ = true;"
+        // `link/src/meshcore_companion.cpp:1429` -- "        contacts_open_ = true;"
         // -- so a later walk owns its frames.
         //
         // Every shape of it is wrong about a walk that is already over. With a
@@ -1526,10 +1521,32 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     // on which contact moved. Knowing *which* row changed would not help --
     // `0x80` covers both "a field you already read changed" and "a row you may
     // not reach appeared", and the second is invisible to any per-row check.
+    //
+    // `0x8F` is the one of the four that reads past its code, so it is the one
+    // with a length guard: `[opcode][pub_key x32]`, written by upstream
+    // `MyMesh::onContactOverwrite()` as `1 + PUB_KEY_SIZE` bytes. A shorter one
+    // is refused before anything is compared -- a short delete must not become
+    // a delete -- and dirties nothing (#650).
+    //
+    // What it adds is ADR-0021 decision 7's fourth refusal: the coordinate held
+    // under the deleted key is discarded, not aged, because the record it was
+    // attributed through is gone. The comparison is the whole key; a deletion
+    // of any other contact leaves the slot alone.
+    case kPushContactDeleted:
+        if (size < 1 + core::kMeshPublicKeyBytes) {
+            ++malformed_frames_;
+            return false;
+        }
+        if (has_remote_position_ &&
+            std::memcmp(&data[1], remote_position_id_.public_key.data(),
+                        core::kMeshPublicKeyBytes) == 0) {
+            has_remote_position_ = false;
+            remote_position_id_ = core::MeshPeerId{};
+        }
+        [[fallthrough]];
     case kPushAdvert:
     case kPushPathUpdated:
     case kPushPathDiscovery:
-    case kPushContactDeleted:
         if (contacts_open_ || retry_open_) {
             snapshot_dirty_ = true;
         }

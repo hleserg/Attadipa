@@ -52,7 +52,7 @@ whichever path fetched it, the coordinate is the last one the receiver solved.
 
 **2. Path C's bytes are already in a frame this repository parses and
 discards.** `RESP_CODE_CONTACT` is 148 bytes and the session already demands all
-148 — `link/src/meshcore_companion.cpp:1438` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+148 — `link/src/meshcore_companion.cpp:1433` — "        if (size < 148) { ++malformed_frames_; return false; }" —
 then reads the key and the name and drops bytes 132–147, which are the advert
 timestamp, the coordinate at ×10⁶, and a modification stamp.
 
@@ -193,11 +193,11 @@ each carry their own guard**. All four exist at head, where ADR-0022 decision 4
 put them so that a push this build understands is not counted as a parse
 failure, and all four read nothing past the opcode; a guard is what each needs
 the moment it starts reading a payload, because the
-dispatcher owns no shared one — `link/src/meshcore_companion.cpp:1306` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
+dispatcher owns no shared one — `link/src/meshcore_companion.cpp:1301` — "    if (data == nullptr || size == 0 || size > kMeshCoreFrameBytes ||" — rejects
 only an empty or over-long frame, and nothing after it inherits a bound: an arm
 that reads a fixed-size field checks its own length, the one arm with no
 fixed-size field at all passes the length through instead —
-`link/src/meshcore_companion.cpp:1545` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
+`link/src/meshcore_companion.cpp:1562` — "        accept_custom_vars(&data[1], size - 1);" — and an arm
 that reads nothing past the opcode checks nothing.
 `REMOTE_TARGET_POSITION_FROM_MESHCORE.md` §9.1 states all four bounds and §12.1
 tests them. It costs no
