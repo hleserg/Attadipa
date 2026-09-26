@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -423,27 +424,41 @@ void forget_termination_invalidates_only_an_accepted_disconnect()
 // that read it armed would start a connection the fault can never use.
 using attadipa::firmware::ForgetTransportTermination;
 
+// One fake radio for both halves of the ownership decision, deliberately:
+// `quiesce_gap()` and `start_discovery()` have to agree about the same
+// `reconnect` flag and the same scan, and two fakes could agree with nothing.
+// `preempt` is the seam the race needs -- it runs between the gate the start
+// read and the start itself, which is where the worker gets in on the board.
 struct FakeGapOps {
-    bool armed = true;
+    bool reconnect = true;
     bool scanning = true;
     bool dialing = true;
     bool cancel_ok = true;
+    bool start_ok = true;
     bool armed_at_first_cancel = true;
+    bool stop_owed = false;
     std::vector<std::string> calls;
+    std::function<void()> preempt;
     ForgetTransportTermination ended = ForgetTransportTermination::Pending;
 
     void disarm()
     {
         calls.push_back("disarm");
-        armed = false;
+        reconnect = false;
     }
     bool discovering() { return scanning; }
     bool cancel_discovery()
     {
         calls.push_back("cancel_discovery");
-        armed_at_first_cancel = armed;
-        if (cancel_ok) scanning = false;
-        return cancel_ok;
+        armed_at_first_cancel = reconnect;
+        if (cancel_ok) {
+            scanning = false;
+            return true;
+        }
+        // What the firmware's stop_discovery() does with a refusal: the scan
+        // is still running and the worker's pass owes the retry (#685).
+        stop_owed = true;
+        return false;
     }
     bool connecting() { return dialing; }
     bool cancel_connect()
@@ -456,6 +471,26 @@ struct FakeGapOps {
     {
         calls.push_back("end_session");
         return ended;
+    }
+
+    // The start's half. `armed()` is the firmware's stack-up, configured and
+    // reconnect-allowed read; nothing else here can lower it, so the fake
+    // carries the one flag `disarm()` also writes.
+    bool armed()
+    {
+        calls.push_back("armed");
+        return reconnect;
+    }
+    bool begin()
+    {
+        if (preempt) {
+            const std::function<void()> once = preempt;
+            preempt = nullptr;
+            once();
+        }
+        calls.push_back("begin");
+        if (start_ok) scanning = true;
+        return start_ok;
     }
 };
 
@@ -484,13 +519,116 @@ void gap_quiesce_disarms_before_it_cancels()
     refused.cancel_ok = false;
     CHECK(quiesce_gap(refused) == ForgetTransportTermination::Refused);
     CHECK((refused.calls == std::vector<std::string>{"disarm", "cancel_discovery"}));
-    CHECK(!refused.armed);
+    CHECK(!refused.reconnect);
 
     FakeGapOps refused_connect;
     refused_connect.scanning = false;
     refused_connect.cancel_ok = false;
     CHECK(quiesce_gap(refused_connect) == ForgetTransportTermination::Refused);
     CHECK((refused_connect.calls == std::vector<std::string>{"disarm", "cancel_connect"}));
+}
+
+// THE HALF THE DISARM CANNOT REACH (#628, the follow-up review).
+//
+// A disarm stops the entries that have not happened yet. It does nothing about
+// a start already past its gate, and `quiesce_gap()` asking `discovering()`
+// once finds nothing to cancel because the scan does not exist yet -- so the
+// fault is published and the unbounded scan begins behind it. The start
+// therefore reads the gate again after the stack has taken it.
+//
+// `preempt` runs the *production* teardown between the two, on the same fake
+// radio: that is the interleaving, not an imitation of it.
+void a_start_that_a_disarm_overtook_takes_its_own_scan_back()
+{
+    using attadipa::firmware::ScanStart;
+    using attadipa::firmware::quiesce_gap;
+    using attadipa::firmware::start_discovery;
+
+    FakeGapOps ops;
+    ops.scanning = false;
+    ops.dialing = false;
+    ops.ended = ForgetTransportTermination::Absent;
+    ops.preempt = [&] { CHECK(quiesce_gap(ops) == ForgetTransportTermination::Absent); };
+
+    CHECK(start_discovery(ops) == ScanStart::Stopped);
+    // The teardown saw no scan to cancel, exactly as the board does: its only
+    // cancel is the one the start made for itself, after the start.
+    CHECK((ops.calls == std::vector<std::string>{
+        "armed", "disarm", "end_session", "begin", "armed", "cancel_discovery"}));
+    // The whole of the finding: nothing is scanning behind the fault.
+    CHECK(!ops.scanning);
+    CHECK(!ops.reconnect);
+    CHECK(!ops.stop_owed);
+}
+
+// The same interleaving with a cancel the stack refuses. The scan is still
+// running, and that is now a debt the worker's pass retries rather than a
+// silence -- the one thing that must not happen is claiming it stopped.
+void a_late_start_the_stack_will_not_cancel_owes_the_stop()
+{
+    using attadipa::firmware::ScanStart;
+    using attadipa::firmware::quiesce_gap;
+    using attadipa::firmware::start_discovery;
+
+    FakeGapOps ops;
+    ops.scanning = false;
+    ops.dialing = false;
+    ops.cancel_ok = false;
+    ops.ended = ForgetTransportTermination::Absent;
+    ops.preempt = [&] { (void)quiesce_gap(ops); };
+
+    CHECK(start_discovery(ops) == ScanStart::StopOwed);
+    CHECK(ops.scanning);
+    CHECK(ops.stop_owed);
+}
+
+// And the ordinary path, which the fence must not cost anything: an armed
+// watch scans, and one that is already scanning is not started twice.
+void an_armed_start_scans_and_asks_the_stack_once()
+{
+    using attadipa::firmware::ScanStart;
+    using attadipa::firmware::start_discovery;
+
+    FakeGapOps ops;
+    ops.scanning = false;
+    CHECK(start_discovery(ops) == ScanStart::Scanning);
+    CHECK((ops.calls == std::vector<std::string>{"armed", "begin", "armed"}));
+    CHECK(ops.scanning);
+
+    // Already running: the gate is read, the stack is not asked.
+    ops.calls.clear();
+    CHECK(start_discovery(ops) == ScanStart::Skipped);
+    CHECK((ops.calls == std::vector<std::string>{"armed"}));
+
+    // A watch a fault disarmed does not start one, and the subsystem restart
+    // that re-arms it does -- the recovery path stays what it was.
+    FakeGapOps after_fault;
+    after_fault.scanning = false;
+    after_fault.dialing = false;
+    after_fault.ended = ForgetTransportTermination::Absent;
+    CHECK(attadipa::firmware::quiesce_gap(after_fault) ==
+          ForgetTransportTermination::Absent);
+    CHECK(start_discovery(after_fault) == ScanStart::Skipped);
+    CHECK(!after_fault.scanning);
+    after_fault.reconnect = true;
+    CHECK(start_discovery(after_fault) == ScanStart::Scanning);
+    CHECK(after_fault.scanning);
+}
+
+// A start the stack refuses cancels nothing: there is no scan to take back,
+// and asking for one would be a cancel against a stack that just failed.
+void a_start_the_stack_refused_cancels_nothing()
+{
+    using attadipa::firmware::ScanStart;
+    using attadipa::firmware::start_discovery;
+
+    FakeGapOps ops;
+    ops.scanning = false;
+    ops.start_ok = false;
+    CHECK(start_discovery(ops) == ScanStart::Refused);
+    CHECK((ops.calls == std::vector<std::string>{"armed", "begin"}));
+    CHECK(!ops.scanning);
+    CHECK(!ops.stop_owed);
 }
 
 // ---------------------------------------------------------------------------
@@ -1921,6 +2059,10 @@ int main()
     ending_a_session_clears_everything_stamped_with_it();
     forget_termination_invalidates_only_an_accepted_disconnect();
     gap_quiesce_disarms_before_it_cancels();
+    a_start_that_a_disarm_overtook_takes_its_own_scan_back();
+    a_late_start_the_stack_will_not_cancel_owes_the_stop();
+    an_armed_start_scans_and_asks_the_stack_once();
+    a_start_the_stack_refused_cancels_nothing();
     a_worker_that_keeps_up_is_told_each_transition_once();
     a_starved_worker_is_told_where_the_session_actually_got_to();
     a_session_that_never_established_is_not_replayed_as_ready();

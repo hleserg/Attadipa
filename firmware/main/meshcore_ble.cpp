@@ -697,29 +697,78 @@ void publish(const SessionSnapshot& session)
 
 int gap_event(ble_gap_event* event, void* arg);
 
-void start_scan()
+// Stopping a scan, in one place and with one rule for what "stopped" means:
+// NimBLE's already-over answer counts, because there is nothing left to stop,
+// and any other refusal is logged and left owed to the worker's retry pass
+// (#685). `who` names the operation in the log. Deconfigure, a forget, a
+// refused passkey and a late start all stop a scan; before #628 they each
+// spelled out what a refusal meant, which is three chances to spell it
+// differently.
+bool stop_discovery(const char* who)
 {
-    if (session_snapshot().stack_readies == 0 || !configured.load() ||
-        !reconnect_allowed.load() || ble_gap_disc_active()) {
-        return;
+    const int rc = ble_gap_disc_cancel();
+    if (rc == 0 || rc == BLE_HS_EALREADY) return true;
+    ESP_LOGE(kTag, "%s: scan cancel refused (rc=%d)", who, rc);
+    scan_stop_owed.store(true);
+    return false;
+}
+
+// The production instantiation of `start_discovery()`; the fakes are in
+// tests/test_session_owner.cpp. Reached from the NimBLE host task as well as
+// from the worker, and the worker can disarm between any two lines of it --
+// which is the whole reason the gate is read on both sides of the start.
+struct ScanStartOps {
+    bool armed() const
+    {
+        return session_snapshot().stack_readies != 0 && configured.load() &&
+               reconnect_allowed.load();
     }
-    ble_gap_disc_params params{};
-    params.passive = 0;
-    // An active scan may receive the MeshCore name or service UUID only in the
-    // scan response. Do not discard it after the preceding advertisement.
-    params.filter_duplicates = 0;
-    const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER, &params,
-                                gap_event, nullptr);
-    if (rc != 0) {
+    bool discovering() const { return ble_gap_disc_active() != 0; }
+    bool begin() const
+    {
+        ble_gap_disc_params params{};
+        params.passive = 0;
+        // An active scan may receive the MeshCore name or service UUID only in
+        // the scan response. Do not discard it after the preceding
+        // advertisement.
+        params.filter_duplicates = 0;
+        const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER,
+                                    &params, gap_event, nullptr);
+        if (rc == 0) return true;
         ESP_LOGE(kTag, "start scan failed: %d", rc);
         {
             SessionGuard guard;
             owner.fault();
         }
         wake_worker();
-    } else {
+        return false;
+    }
+    bool cancel_discovery() const { return stop_discovery("late scan start"); }
+};
+
+void start_scan()
+{
+    using attadipa::firmware::ScanStart;
+    ScanStartOps ops;
+    switch (attadipa::firmware::start_discovery(ops)) {
+    case ScanStart::Skipped:
+        // Nothing was asked of the stack: not armed, or already scanning.
+        break;
+    case ScanStart::Refused:
+        // Reported, and the session is already faulted: a scan the stack will
+        // not start is the stack failing, and begin() is where that is known.
+        break;
+    case ScanStart::Scanning:
         scan_report_seen.store(false);
         ESP_LOGI(kTag, "scanning for MeshCore Companion service");
+        break;
+    case ScanStart::Stopped:
+    case ScanStart::StopOwed:
+        // The gate went down while this start was in flight. Nothing is left
+        // running, or the retry pass owes the cancel; either way this is the
+        // interleaving that used to leave an unbounded scan behind a fault.
+        ESP_LOGW(kTag, "a scan started after the local stop, and was taken back");
+        break;
     }
 }
 
@@ -1564,12 +1613,9 @@ struct GapQuiesceOps {
 
     void disarm() { reconnect_allowed.store(false); }
     bool discovering() { return ble_gap_disc_active() != 0; }
-    bool cancel_discovery()
-    {
-        if (accepted(ble_gap_disc_cancel(), "scan cancel")) return true;
-        scan_stop_owed.store(true);  // the worker's pass retries it (#685)
-        return false;
-    }
+    // Shared with the start's own fence, so the two halves of #628 cannot
+    // disagree about what a refused cancel leaves behind.
+    bool cancel_discovery() { return stop_discovery(who); }
     bool connecting() { return ble_gap_conn_active() != 0; }
     bool cancel_connect() { return accepted(ble_gap_conn_cancel(), "connection cancel"); }
     attadipa::firmware::ForgetTransportTermination end_session()
@@ -1816,9 +1862,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1907` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1953` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1060` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1109` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2001,16 +2047,10 @@ void mesh_task(void*)
                              "scan again at the next boot");
                 }
                 scan_stop_owed.store(false);
-                if (ble_gap_disc_active()) {
-                    if (const int rc = ble_gap_disc_cancel();
-                        rc != 0 && rc != BLE_HS_EALREADY) {
-                        // The worker's next pass retries it (#685).
-                        scan_stop_owed.store(true);
-                        ESP_LOGE(kTag,
-                                 "MeshCore stopped, but its scan would not "
-                                 "stop (rc=%d)", rc);
-                    }
-                }
+                // The refusal log and the owed retry are stop_discovery()'s,
+                // which is the same rule the fault teardown and a late start
+                // use (#685, #628).
+                if (ble_gap_disc_active()) (void)stop_discovery("MeshCore stopped");
                 const std::uint16_t connection = session_snapshot().connection;
                 if (connection == attadipa::link::kNoSessionHandle) {
                     provider.begin(now());
@@ -2169,15 +2209,28 @@ void mesh_task(void*)
         // has no work.
         provider.tick(now());
         // A scan cancel NimBLE refused -- Deconfigure, forget-node, a refused
-        // passkey -- is retried here with no advertiser needed, so a stopped
-        // watch does not scan until reboot (#685). A pass follows every frame,
-        // so the retry is spaced by kPollTicks itself. Only the worker sets or
-        // clears the flag, and each re-armer clears it.
-        if (scan_stop_owed.load() &&
-            xTaskGetTickCount() - scan_stop_tried >= kPollTicks) {
-            scan_stop_tried = xTaskGetTickCount();
-            const int rc = ble_gap_disc_cancel();
-            if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);
+        // passkey, a start that raced a disarm -- is retried here with no
+        // advertiser needed, so a stopped watch does not scan until reboot
+        // (#685). A pass follows every frame, so the retry is spaced by
+        // kPollTicks itself. Each re-armer clears the flag.
+        //
+        // The last of those setters is the NimBLE host task rather than this
+        // one (#628), so the debt can now outlive the stop that incurred it:
+        // an arm that lands between the refused cancel and this pass makes the
+        // running scan the wanted one, and cancelling it here would leave a
+        // watch that wants a scan without one until something disconnected. An
+        // owed stop an arm has overtaken is therefore dropped, not paid -- and
+        // "wants a scan" is asked of the gate the start itself reads, so the
+        // two cannot drift apart. A stopped watch is not armed, which is why
+        // #685's case still pays.
+        if (scan_stop_owed.load()) {
+            if (ScanStartOps{}.armed()) {
+                scan_stop_owed.store(false);
+            } else if (xTaskGetTickCount() - scan_stop_tried >= kPollTicks) {
+                scan_stop_tried = xTaskGetTickCount();
+                const int rc = ble_gap_disc_cancel();
+                if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);
+            }
         }
         // AND THE POSITION, ON THE SAME PASS AND WITH NO CLOCK OF ITS OWN.
         //
