@@ -621,6 +621,13 @@ bool session_owns(std::uint32_t generation)
     return owner.live(generation);
 }
 
+// Zero and "already terminating" start a disconnect, and "not connected" has
+// had one; anything else is NimBLE refusing, and no disconnect is coming.
+bool terminate_refused(int rc)
+{
+    return rc != 0 && rc != BLE_HS_EALREADY && rc != BLE_HS_ENOTCONN;
+}
+
 // Residual, named rather than engineered around (#316): xQueueSend byte-copies
 // the whole Event into the queue's own storage, and a SendRoom Event carries the
 // Room Server password by value. Both copies either side of the queue are
@@ -1233,7 +1240,11 @@ struct FrameScrub {
 
 void pump_tx(const SessionSnapshot& session)
 {
-    if (session.phase != SessionPhase::Ready || session.write_in_flight ||
+    // `configured` as well as the session: Deconfigure clears it before its
+    // terminate, and a terminate NimBLE refuses leaves the session Ready, so
+    // without it a watch told "stopped" went on sending (#629).
+    if (!configured.load() || session.phase != SessionPhase::Ready ||
+        session.write_in_flight ||
         session.connection == attadipa::link::kNoSessionHandle ||
         session.rx_handle == 0) {
         return;
@@ -1492,10 +1503,12 @@ void settle_node_identity(std::uint32_t generation);
 
 void handle_frame(const Event& event)
 {
-    if (!session_owns(event.generation)) {
+    if (!session_owns(event.generation) || !configured.load()) {
         // It was captured on a connection that has since ended. Feeding it to
         // the provider now would mix a dead session's bytes into a live one's
-        // handshake, so it is dropped and counted with the rest.
+        // handshake, so it is dropped and counted with the rest. Or the watch
+        // was stopped and NimBLE would not end the connection, which pump_tx()
+        // answers the same way (#629).
         SessionGuard guard;
         owner.frame_dropped();
         return;
@@ -1881,10 +1894,9 @@ void mesh_task(void*)
                 // request asked for has happened. What is left below is the
                 // transport's own reconnection, which is not what the person
                 // typing a passkey is waiting to hear.
-                passkey_op.complete(
-                    event.ticket,
+                attadipa::firmware::PasskeyOutcome outcome =
                     stored ? attadipa::firmware::PasskeyOutcome::Armed
-                           : attadipa::firmware::PasskeyOutcome::NotStored);
+                           : attadipa::firmware::PasskeyOutcome::NotStored;
                 // A Configure that lands on a live session is a
                 // reconfiguration, and it cannot be applied to the session it
                 // would reconfigure: the passkey above governs pairing, and
@@ -1904,14 +1916,24 @@ void mesh_task(void*)
                 // place that calls provider.begin() when a reconnect will be
                 // attempted. The new session then reaches Ready through the
                 // ordinary route, which is what re-sends CMD_APP_START.
+                //
+                // A terminate NimBLE refuses ends nothing, and that session
+                // still runs under the previous pairing, so the answer is
+                // LinkKept rather than a success the recycle never started
+                // (#629).
                 const std::uint16_t connection = session_snapshot().connection;
-                if (connection != attadipa::link::kNoSessionHandle) {
-                    (void)ble_gap_terminate(connection,
-                                            BLE_ERR_REM_USER_CONN_TERM);
-                    break;
+                if (connection == attadipa::link::kNoSessionHandle) {
+                    provider.begin(now());
+                    if (session_snapshot().stack_readies != 0) start_scan();
+                } else if (const int rc = ble_gap_terminate(
+                               connection, BLE_ERR_REM_USER_CONN_TERM);
+                           terminate_refused(rc)) {
+                    ESP_LOGE(kTag,
+                             "MeshCore passkey armed, but the live session "
+                             "would not end (rc=%d)", rc);
+                    outcome = attadipa::firmware::PasskeyOutcome::LinkKept;
                 }
-                provider.begin(now());
-                if (session_snapshot().stack_readies != 0) start_scan();
+                passkey_op.complete(event.ticket, outcome);
                 break;
             }
             case EventKind::Deconfigure: {
@@ -1924,10 +1946,16 @@ void mesh_task(void*)
                 }
                 if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
                 const std::uint16_t connection = session_snapshot().connection;
-                if (connection != attadipa::link::kNoSessionHandle) {
-                    (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
-                } else {
+                if (connection == attadipa::link::kNoSessionHandle) {
                     provider.begin(now());
+                } else if (const int rc = ble_gap_terminate(
+                               connection, BLE_ERR_REM_USER_CONN_TERM);
+                           terminate_refused(rc)) {
+                    // Still up, and inert: pump_tx() and handle_frame() stop
+                    // at `configured` (#629).
+                    ESP_LOGE(kTag,
+                             "MeshCore stopped, but its connection would not "
+                             "end (rc=%d); nothing moves on it", rc);
                 }
                 break;
             }

@@ -531,7 +531,7 @@ public:
       passkey_ticket_ = 0;
       return attadipa::core::ProvisionOutcome::Accepted;
     default:
-      // Refused, NotStored, and Idle with them. Idle means the answer was
+      // Refused, NotStored, LinkKept, and Idle with them. Idle means the answer was
       // already taken or the ticket is not this slot's any more, so there is
       // no operation left to wait for; reporting that as Pending would hold
       // the screen open for an answer that is never coming.

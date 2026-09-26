@@ -292,11 +292,12 @@ void test_slot_is_not_answered_until_the_worker_answers()
     CHECK(op.take(ticket) == PasskeyOutcome::Idle);
 }
 
-// Both worker failures survive the crossing, and neither is Armed.
+// Every worker failure survives the crossing, and none is Armed.
 void test_slot_carries_both_failures()
 {
     const PasskeyOutcome bad[] = {PasskeyOutcome::Refused,
-                                  PasskeyOutcome::NotStored};
+                                  PasskeyOutcome::NotStored,
+                                  PasskeyOutcome::LinkKept};
     for (const PasskeyOutcome outcome : bad) {
         PasskeyOperation op;
         std::uint32_t ticket = 0;

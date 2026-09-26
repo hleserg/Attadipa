@@ -60,6 +60,11 @@ enum class PasskeyOutcome : std::uint8_t {
     // erase and it landed anyway (`persist_passkey()`) -- which is not something
     // a person can be left to discover from a node that stops answering.
     NotStored,
+    // Armed, but a session was live and NimBLE refused to end it (#629). That
+    // session paired under the previous passkey and still runs, so the new one
+    // is applied to nothing yet; running the command again retries the
+    // recycle.
+    LinkKept,
 };
 
 // One operation at a time, with its answer and the ticket it belongs to.
