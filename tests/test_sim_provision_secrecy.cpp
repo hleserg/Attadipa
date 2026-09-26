@@ -251,14 +251,14 @@ std::string on_screen() {
 // regression in the shipping entry screen would arrive as an undiagnosable
 // crash instead of a named failure.
 //
-// An `LV_ASSERT` is the same failure and not the same signal. This build halts
-// on one -- `sim/lv_conf_simulator.h:553` — "#define LV_ASSERT_HANDLER while(1);     /**< Halt by default */"
-// -- so it raises nothing, spins with both descriptors still redirected, and
-// waits for ctest to `SIGKILL` it, which no handler catches. `LV_USE_ASSERT_OBJ`
-// is on and this walk hands raw `lv_obj_t *` to LVGL, so the trigger is real.
-// `alarm()` is what turns that halt back into a signal: the walk is a few
-// hundred milliseconds of frames, so a minute of it is a hang by any reading,
-// and `SIGALRM` arrives at the same handler as the deaths that do raise one.
+// An `LV_ASSERT` is the same failure, and since #653 the same signal: this
+// build aborts on one -- `sim/lv_conf_simulator.h:555` — "#define LV_ASSERT_HANDLER abort();"
+// -- where it used to spin with both descriptors still redirected until ctest
+// sent the `SIGKILL` no handler catches. `LV_USE_ASSERT_OBJ` is on and this
+// walk hands raw `lv_obj_t *` to LVGL, so the trigger is real. `alarm()` is
+// kept for any other halt: the walk is a few hundred milliseconds of frames,
+// so a minute of it is a hang by any reading, and `SIGALRM` arrives at the
+// same handler as the deaths that do raise one.
 //
 // So a handler puts the real stderr back and pours the capture into it before
 // the default disposition runs. Only `dup2`, `lseek`, `read`, `write`,

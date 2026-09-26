@@ -1,9 +1,20 @@
 #include "attadipa/ui/status_frame.h"
 
 #include <cstring>
+#include <string_view>
 
 #include "attadipa/ui/tokens.h"
+#include "attadipa/version.h"
 #include "attadipa_fonts.h"
+
+// An LVGL assertion must end the process, not spin (#653). Its likeliest
+// trigger is an allocation the pool could not serve, and LVGL asserts before
+// the caller can see the null; the default handler, `while(1);`, then holds
+// the LVGL lock forever. The firmware sets `abort()` in
+// `firmware/lv_assert_abort.h` and the simulator in `sim/lv_conf_simulator.h`;
+// this file is built by both, so either losing it stops the build here.
+static_assert(std::string_view(ATTADIPA_STRINGIFY(LV_ASSERT_HANDLER)) == "abort();",
+              "LV_ASSERT_HANDLER must be abort(); -- see #653");
 
 namespace attadipa::ui {
 namespace {

@@ -179,7 +179,7 @@ void NavFace::build(lv_obj_t *screen, const NavFaceConfig &config,
     lv_obj_set_size(scrim_, width, height / 2);
     scrim_grad_.dir = LV_GRAD_DIR_VER;
     // TWO STOPS, AND THAT IS THE WHOLE ARRAY. `LV_GRADIENT_MAX_STOPS` is 2 in
-    // both configurations — `sim/lv_conf_simulator.h:594` —
+    // both configurations — `sim/lv_conf_simulator.h:596` —
     // "#define LV_GRADIENT_MAX_STOPS   2" — and a third assignment is a write
     // one element past `stops[]`, straight into `stops_count` and `dir`. It
     // renders as a bright vertical stripe down the object, which is a much

@@ -1990,7 +1990,7 @@ the pinned `lvgl@85aa60d1` (v9.5.0, [`REUSE_LEDGER`](REUSE_LEDGER.md))
 at `:935`, which un-swaps as it blends — `:966` mixes
 `lv_color_swap_16(src_buf_u16[x])` into a native destination, and the opaque
 fast path at `:955-956` copies the line and then runs
-`lv_draw_sw_rgb565_swap()` over it. `sim/lv_conf_simulator.h:216` —
+`lv_draw_sw_rgb565_swap()` over it. `sim/lv_conf_simulator.h:218` —
 "LV_DRAW_SW_SUPPORT_RGB565_SWAPPED" — compiles that path in. So a pre-swapped asset renders correctly and merely pays a conversion
 per blend that a native-order one does not — which is a reason not to emit one,
 not a colour bug. The other half of the old claim stands and needed no

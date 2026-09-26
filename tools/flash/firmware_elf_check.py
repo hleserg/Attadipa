@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -184,6 +185,32 @@ def binding_fault(elf: Path, variant: str = "flash") -> tuple[str | None, str]:
                 f"its descriptor records {recorded} and {elf.name} hashes to "
                 f"{linked}. One of the two is stale."), ""
     return None, f"{app.name} beside it is bound to it by the build"
+
+
+def assert_handler_fault(elf: Path) -> tuple[str | None, str]:
+    """Was LVGL's own C in this build compiled with the abort() handler?
+
+    `ui/lvgl/status_frame.cpp` proves the handler in the one unit that checks
+    it; what expands `LV_ASSERT_HANDLER` at runtime is LVGL's C in the managed
+    component, joined to it only by a build-wide definition (#653). Scope that
+    definition to the app and the check there still passes while every LVGL
+    object spins again, so this asks the build what `lv_timer.c` was given.
+    """
+    commands = elf.with_name("compile_commands.json")
+    if not commands.is_file():
+        return None, (f"there is no {commands.name} beside it, so LVGL's "
+                      "assertion handler was not checked")
+    timer = [entry for entry in json.loads(commands.read_text())
+             if entry["file"].endswith("/lv_timer.c")]
+    if not timer:
+        return None, ("no lv_timer.c was compiled, so LVGL's assertion "
+                      "handler was not checked")
+    line = timer[0].get("command") or " ".join(timer[0].get("arguments", []))
+    if "-DLV_ASSERT_HANDLER_INCLUDE=" not in line:
+        return (f"{timer[0]['file']} was compiled without "
+                "LV_ASSERT_HANDLER_INCLUDE: an LVGL assertion in this image "
+                "spins with the port lock held instead of aborting (#653)"), ""
+    return None, "LVGL's lv_timer.c was compiled with the abort() handler"
 
 
 def board_fault(nm_output: str, variant: str = "flash") -> str | None:
@@ -372,6 +399,49 @@ def self_test() -> int:
             return 1
         cases += 1
 
+        # The assertion handler, from a compile database in the shape
+        # ESP-IDF writes, with the definition and without it.
+        commands = Path(scratch) / "compile_commands.json"
+        timer = {"file": "/idf/managed_components/lvgl__lvgl/src/misc/lv_timer.c"}
+        for define, faults in (("-DLV_ASSERT_HANDLER_INCLUDE=<x.h> ", False),
+                               ("", True)):
+            commands.write_text(json.dumps([dict(timer, command=f"gcc {define}-c")]))
+            wrong, said = assert_handler_fault(elf)
+            if (wrong is not None) != faults:
+                print(f"FAIL: lv_timer.c compiled with '{define}' was "
+                      f"{'accepted' if faults else 'refused'}")
+                return 1
+            cases += 1
+
+        # Every check above passes with its call in `main()` deleted, so drive
+        # `main()` itself, with an `nm` that prints a flash image's symbols.
+        # The first run proves nothing else refuses them; each later one is
+        # then refused by the check it names or not at all (#608).
+        flash = complete + f"\n40390000 T {BOARD_SYMBOLS[VARIANT_BOARD['flash']]}"
+        if VARIANT_ENDPOINT["flash"] != "absent":
+            flash += f"\n40380000 T {DEBUG_ENDPOINT_SYMBOL}"
+        symbols = Path(scratch) / "symbols"
+        symbols.write_text(flash + "\n")
+        nm = Path(scratch) / "nm"
+        nm.write_text(f"#!/bin/sh\nexec cat '{symbols}'\n")
+        nm.chmod(0o755)
+        good = json.dumps([dict(timer, command="gcc -DLV_ASSERT_HANDLER_INCLUDE=<x.h> -c")])
+        bad = json.dumps([dict(timer, command="gcc -c")])
+        for image, database, code, marker in (
+                (bound, good, 0, "bound to it"),
+                (descriptor, good, 1, "different ELF"),
+                (bound, bad, 1, "spins with the port lock held")):
+            app.write_bytes(bytes(image))
+            commands.write_text(database)
+            run = subprocess.run(
+                [sys.executable, __file__, "--nm", str(nm), str(elf)],
+                capture_output=True, text=True)
+            if run.returncode != code or marker not in run.stdout:
+                print(f"FAIL: main() exited {run.returncode} without "
+                      f"'{marker}': {run.stdout.strip()}")
+                return 1
+            cases += 1
+
     print(f"firmware ELF checker self-test: {cases} cases passed")
     return 0
 
@@ -404,11 +474,13 @@ def main() -> int:
     fault = endpoint_fault(result.stdout, args.variant)
     board = board_fault(result.stdout, args.variant)
     binding, bound = binding_fault(args.elf, args.variant)
-    if missing or fault is not None or board is not None or binding is not None:
+    handler, handled = assert_handler_fault(args.elf)
+    if (missing or fault is not None or board is not None or binding is not None
+            or handler is not None):
         for library in missing:
             print(f"firmware ELF has no required symbol from {library}: "
                   f"{REQUIRED_SYMBOLS[library]}")
-        for message in (fault, board, binding):
+        for message in (fault, board, binding, handler):
             if message is not None:
                 print(message)
         return 1
@@ -420,6 +492,7 @@ def main() -> int:
           f"{VARIANT_ENDPOINT[args.variant]} as that variant requires"
           f"{board_line}: {args.elf}")
     print(f"  {bound}")
+    print(f"  {handled}")
     return 0
 
 

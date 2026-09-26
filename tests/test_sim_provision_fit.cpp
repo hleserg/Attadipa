@@ -312,7 +312,7 @@ lv_color_t pressed_colour(lv_obj_t *button) {
 }
 
 // WHAT THE PANEL CAN ACTUALLY SHOW, which is not what the style holds.
-// `sim/lv_conf_simulator.h:69` — "#define LV_COLOR_DEPTH 16" — so a difference
+// `sim/lv_conf_simulator.h:71` — "#define LV_COLOR_DEPTH 16" — so a difference
 // under one bucket of `r >> 3`, `g >> 2`, `b >> 3` is drawn as no difference at
 // all. A pressed fill two parts from the resting one is a press nobody sees.
 std::uint16_t as_pixel(lv_color_t colour) { return lv_color_to_u16(colour); }
