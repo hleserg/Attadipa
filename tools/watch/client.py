@@ -69,11 +69,12 @@ class SocketTransport(Transport):
     def __init__(self, path: str) -> None:
         self._path = path
         # Creating the socket can fail too -- EPERM in a restricted runner, no
-        # descriptors left -- and is reported the same way, with its cause (#638).
+        # descriptors left (#638). Nothing was connected to yet, so the message
+        # does not name the path: that sentence means "wrong path" (#680).
         try:
             self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         except OSError as exc:
-            raise WatchError(f"could not connect to {path}: {exc}") from exc
+            raise WatchError(f"could not open a socket: {exc}") from exc
         try:
             self._sock.connect(path)
         except OSError as exc:

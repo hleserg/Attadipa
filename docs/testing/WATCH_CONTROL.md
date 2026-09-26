@@ -338,6 +338,7 @@ the expectation would move together.
 |---|---|---|
 | `no watch found` | nothing is listening | start the simulator **with** `--debug-socket`; the feature is off by default |
 | `could not connect to …` | the path is wrong, or the simulator died | check the path; `ls -l` the socket |
+| `could not open a socket: …` | the OS refused the socket itself — a sandbox, or no descriptors left. Not the path, not the simulator | run where sockets are allowed; the OS cause after the colon says which |
 | `the device did not answer within 10.0s` | the device is wedged — or, for `mesh-forget-bond`, the deletion outlived the timeout: since #378 it runs on the mesh worker and answers when it finishes, which can be after the tool has given up | `--timeout` to wait longer. For forget-bond the deletion is still running, not lost: a re-run answers `already running` until it completes. This is **not** what a second client sees — see the next row |
 | `the device closed the connection…` | the simulator exited, or it already had a client | only one is served at a time; close the other. The refusal is immediate, not a timeout |
 | `that input is impossible from the current state` | a release with nothing held, or a button this board lacks | `input-reset`, then re-read `info`. A `release` in its own invocation always lands here: the previous one released it on exit |
