@@ -583,10 +583,14 @@ def _a_clean_exit_unlinks_its_own_socket_and_nothing_else(simulator: str, board:
         # The control. Without it the case below passes against a `close()`
         # that unlinks nothing at all.
         plain = os.path.join(workdir, "plain.sock")
-        done = subprocess.run(
-            [simulator, "--board", board, "--frames", "20", "--debug-socket", plain],
-            capture_output=True, text=True, env=environment, timeout=60)
-        check(done.returncode == 0, f"a --frames run exits cleanly: {done.stdout[-200:]!r}")
+        try:
+            done = subprocess.run(
+                [simulator, "--board", board, "--frames", "20", "--debug-socket", plain],
+                capture_output=True, text=True, env=environment, timeout=60)
+            code, said = done.returncode, done.stdout + done.stderr
+        except subprocess.TimeoutExpired:
+            code, said = None, "still running after 60 s"
+        check(code == 0, f"a --frames run exits cleanly: {said[-200:]!r}")
         check(not os.path.lexists(plain), "and removes the socket it bound")
 
         bound = os.path.join(workdir, "bound.sock")
@@ -596,18 +600,30 @@ def _a_clean_exit_unlinks_its_own_socket_and_nothing_else(simulator: str, board:
             process = subprocess.Popen(
                 [simulator, "--board", board, "--frames", "400", "--debug-socket", bound],
                 stdout=log, stderr=subprocess.STDOUT, env=environment)
+            said = lambda: Path(log_path).read_text(errors="replace")
             try:
-                check(_within(30, lambda: os.path.exists(bound)), "the simulator listens")
+                # `listening on` is printed after `listen` recorded the inode
+                # `close()` compares against; the entry alone exists before it.
+                _within(30, lambda: process.poll() is not None or "listening on" in said())
+                listening = process.poll() is None and "listening on" in said()
+                check(listening, f"the simulator listens: {said()[-200:]!r}")
+                if not listening:
+                    return
                 os.rename(bound, moved)
                 os.symlink(moved, bound)
                 check(process.poll() is None, "and is still running when a link takes the name")
-                check(process.wait(timeout=120) == 0,
-                      f"then exits cleanly: {Path(log_path).read_text(errors='replace')[-200:]!r}")
+                try:
+                    code = process.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    code = None
+                check(code == 0, f"then exits cleanly: {said()[-200:]!r}")
             finally:
                 if process.poll() is None:
                     process.kill()
                     process.wait()
         check(os.path.islink(bound), "and the link to its own socket is not unlinked")
+        check(os.path.exists(moved) and stat.S_ISSOCK(os.lstat(moved).st_mode),
+              "nor the socket it names")
 
 
 def _private_enough(path: str) -> bool:
