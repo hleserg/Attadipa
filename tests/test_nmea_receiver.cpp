@@ -524,6 +524,81 @@ void only_a_sentence_that_could_veto_the_fix_costs_it()
     }
 }
 
+void a_proprietary_sentence_is_not_the_standard_one_it_ends_with()
+{
+    // #683. NMEA 0183 writes an address two ways and only one of them is
+    // `$ttXXX`. A **proprietary** sentence begins `$P` and carries a
+    // manufacturer mnemonic plus a message identifier — `$PGRMC` is Garmin's
+    // `P` + `GRM` + `C`, a sensor-configuration message, not a talker `PG`
+    // sending an RMC. Split as a standard address, its last three characters
+    // are the type of a sentence this driver bounds its epoch on, and that
+    // split was made twice: once by `minmea_sentence_id()` for dispatch and
+    // once by `refuse()` reading `line_ + 3` on its own account.
+    //
+    // The three bodies below are the three ways that cost a fix. Only the first
+    // is a sentence anybody ships; the `GGA` and `GSA` addresses are
+    // constructed, because the point is the shape that collides and not a
+    // vendor — a proprietary address whose fifth character lands on `A` puts
+    // `GGA` or `GSA` in the type position exactly as `PGRMC` puts `RMC` there.
+    // Those two are the worse half: `minmea_parse_gga`/`_gsa` re-check the
+    // sentence id, which is the colliding three characters, so they *accept*
+    // the proprietary body and the epoch adopts its fields as fix state without
+    // anything being discarded at all.
+    struct Case {
+        const char* body;
+        const char* why;
+    };
+    const Case cases[] = {
+        // The issue's own body. Field 2 is `A` where a standard RMC carries
+        // UTC, so `minmea_parse_rmc` refuses it and `refuse()` used to read the
+        // address a second time, close the good epoch, and open a latched one.
+        {"PGRMC,A,6371000.0,285.0,1,-2.3,0.0,100.0,2.0,1.0,0", "$PGRMC is not an RMC"},
+        // Shaped like the no-fix GGA a cold receiver sends: quality 0, which
+        // vetoes the fix of whatever epoch is open.
+        {"PAGGA,,,,,,0,00,99.99,,,,,,", "$PAGGA is not a GGA"},
+        // Mode 1, which vetoes it the other way.
+        {"PAGSA,A,1,,,,,,,,,,,,,99.0,99.0,99.0", "$PAGSA is not a GSA"},
+    };
+    for (const Case& c : cases) {
+        gnss::NmeaReceiver   receiver;
+        core::PositionSample sample;
+
+        g_now.ms += 1000;
+        const std::uint64_t solved = g_now.ms;
+        deliver(receiver, "$GNRMC,140000.00,A,0030.00004,N,00100.00004,E,0.085,,040926,,,D,V*12");
+        deliver_body(receiver,
+                     "GPGGA,140000.00,0030.00004,N,00100.00004,E,1,08,1.00,10.0,M,25.0,M,,");
+        deliver_body(receiver, "GNGSA,A,3,21,22,30,05,09,14,,,,,,,2.42,1.58,1.83,1");
+
+        // A second apart, so an epoch boundary invented here is visible in the
+        // stamp rather than hidden behind the good one.
+        g_now.ms += 1000;
+        deliver_body(receiver, c.body);
+        g_now.ms += 1000;
+        deliver(receiver, "$GNRMC,140001.00,A,0030.00005,N,00100.00005,E,0.085,,040926,,,D,V*13");
+
+        // What publishes is the epoch the three standard sentences built, at
+        // the tick they built it on, with the fix and the coordinate they
+        // stated. The proprietary sentence is between them and changes none of
+        // it.
+        check(receiver.sample(sample), c.why, __LINE__);
+        check(sample.observation.observed_at.ms == solved, c.why, __LINE__);
+        check(sample.observation.fix_type == core::FixType::ThreeD, c.why, __LINE__);
+        check(sample.observation.position.has_value(), c.why, __LINE__);
+        check(sample.observation.position.has_value() &&
+                  sample.observation.position->latitude_e7 == 5000006 &&
+                  sample.observation.position->longitude_e7 == 10000006,
+              c.why, __LINE__);
+
+        // And it is not counted against the receiver either. `discarded()` is
+        // for a framed sentence thrown away — a bad checksum, an over-long
+        // line, a field that would not parse — and a proprietary sentence is
+        // none of those, any more than the `VTG` and `GSV` this driver has
+        // always read past without counting.
+        check(receiver.discarded() == 0, c.why, __LINE__);
+    }
+}
+
 void two_altitudes_that_each_fit_and_do_not_together()
 {
     // Each field passes `millimetres()` on its own — 2 000 000 m is 2e9 mm,
@@ -1388,6 +1463,7 @@ int main()
     a_refused_sentence_cannot_vouch_for_the_fix();
     a_refused_rmc_still_closes_the_epoch_before_it();
     only_a_sentence_that_could_veto_the_fix_costs_it();
+    a_proprietary_sentence_is_not_the_standard_one_it_ends_with();
     two_altitudes_that_each_fit_and_do_not_together();
     one_sentence_saying_no_fix_is_enough();
     the_worst_gsa_of_an_epoch_stands_in_any_order();
