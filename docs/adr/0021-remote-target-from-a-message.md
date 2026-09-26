@@ -256,7 +256,7 @@ itself.** Decision 2 attributes through `find_peer_prefix`, which searches only
 the peers this companion retains, and that table holds sixteen —
 `link/src/meshcore_companion.cpp:714` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it." —
 against a contact table the T114 build sizes at 350. Under ADR-0020 that cap did
-not reach the position: `docs/adr/0020-remote-target-position-source.md:229` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
+not reach the position: `docs/adr/0020-remote-target-position-source.md:230` — "against a contact table that is 350 on the T114 build. It does **not** gate the" —
 and that sentence is **falsified by this ADR**, in a paragraph the clause table
 cannot reach because it is Consequences rather than a numbered decision. It is
 named here instead. A person past the sixteenth retained peer sends a

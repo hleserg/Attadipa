@@ -10,7 +10,7 @@ pushes describe a change to the very table being read.
 This report answers what a client may conclude when the stream ends. The short
 answer is that `RESP_CODE_END_OF_CONTACTS` proves the node finished walking its
 array and proves nothing else, and that Attadipa currently converts that syntactic
-fact into a semantic claim — `link/src/meshcore_companion.cpp:1511` —
+fact into a semantic claim — `link/src/meshcore_companion.cpp:1506` —
 "status_.peers_complete = true;" — that the evidence does not support.
 
 It is a research document. No production code changed for it, and the contract in
@@ -304,7 +304,7 @@ boolean is asked to: `core/include/attadipa/core/mesh_service.h:216` —
 ## 6. What Attadipa does today, at `main@1531cee`
 
 1. `RESP_CODE_CONTACTS_START` records the node's count, clears the retained
-   peers and clears both completion flags — `link/src/meshcore_companion.cpp:1432` —
+   peers and clears both completion flags — `link/src/meshcore_companion.cpp:1427` —
    "status_.peers_complete = false;".
 2. Each `RESP_CODE_CONTACT` is length-checked and accepted into the 16-entry
    window, de-duplicated by public key so a repeated row updates rather than
@@ -327,7 +327,7 @@ boolean is asked to: `core/include/attadipa/core/mesh_service.h:216` —
    `link/src/meshcore_companion.cpp:60` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
 6. Every other valid push — including all four invalidating ones — reaches the
    `default:` arm, where it is counted and refused —
-   `link/src/meshcore_companion.cpp:1872` — "// A response code this build does not know is a frame we did not".
+   `link/src/meshcore_companion.cpp:1893` — "// A response code this build does not know is a frame we did not".
    The link is deliberately left up, which is right and is why this is a
    correctness gap rather than an outage.
 7. `contacts_complete_` also gates `Availability::Ready` and the battery poll.
@@ -456,7 +456,7 @@ standing.
 **Keeping it is not the same as doing nothing, and this is the part that was
 missing.** A re-read is a second `CMD_GET_CONTACTS`, so it opens with a second
 `RESP_CODE_CONTACTS_START`, and that handler is not inert — it wipes the live
-set: `link/src/meshcore_companion.cpp:1430` — "        peer_count_ = 0;" — and with
+set: `link/src/meshcore_companion.cpp:1425` — "        peer_count_ = 0;" — and with
 it `peers_retained`, `peers_complete` and `contacts_complete_` on the three lines
 below. For the whole duration of a retry the contract claims changes nothing,
 four things change:
