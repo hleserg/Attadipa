@@ -48,16 +48,17 @@ enum class PasskeyOutcome : std::uint8_t {
     // second reservation.
     InFlight,
     // `ble_sm_configure_static_passkey()` took it and, where the passkey had to
-    // outlive the boot, `store_passkey()` returned true. This is the *only*
+    // outlive the boot, `persist_passkey()` returned true. This is the *only*
     // value that may become "the watch is set up".
     Armed,
     // The stack refused the passkey. Nothing is armed and the transport is
     // faulted; the passkey is not stored either, because the worker never
     // reaches the write.
     Refused,
-    // Armed for this boot and not on flash: the NVS write refused. A power
-    // cycle unprovisions the watch, which is not something a person can be
-    // left to discover from a node that stops answering.
+    // Armed for this boot only: an NVS write refused. The next boot arms the
+    // previous digits or nothing, and these only if the refusal was the last
+    // erase and it landed anyway (`persist_passkey()`) -- which is not something
+    // a person can be left to discover from a node that stops answering.
     NotStored,
 };
 

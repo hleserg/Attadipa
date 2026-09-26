@@ -34,7 +34,8 @@ enum class StoredPasskey : std::uint8_t {
 
 // A retained passkey is normally replayed at boot. Forgetting a node keeps
 // those digits for the holder to replace, so a separate durable gate prevents
-// a reboot in between from arming them on an unpinned watch.
+// a reboot in between from arming them on an unpinned watch. A passkey write
+// that did not finish leaves the same gate up; see `persist_passkey()`.
 enum class PasskeyReplay : std::uint8_t {
     Allowed,
     Inhibited,
@@ -47,7 +48,8 @@ enum class PasskeyRestore : std::uint8_t {
     Unreadable,
     Refused,    // on flash, and not a pairing passkey: the probe zero, or junk
     NotQueued,  // a pairing passkey was on flash and the worker's queue is full
-    ReplayInhibited,  // a completed forget still awaits new owner-entered digits
+    ReplayInhibited,  // a completed forget, or an unfinished passkey write,
+                      // still awaits new owner-entered digits
     ReplayUnreadable, // the durable replay gate could not be read; fail closed
 };
 
@@ -67,6 +69,34 @@ bool request_passkey(Ops& ops, std::uint32_t passkey)
 {
     if (passkey > kPasskeyMax) return false;
     return ops.configure(passkey, is_pairing_passkey(passkey));
+}
+
+// The worker's write, once the stack has taken the digits. `Ops` supplies:
+//
+//   bool inhibit_replay()           -- raise the durable replay gate
+//   bool store(std::uint32_t passkey)
+//   bool allow_replay()             -- lower it
+//
+// A refused NVS write is not a write that did nothing (#648): replacing a
+// stored value writes the new entry before it erases the old one, and reports
+// that erase failing as a failure. So the gate goes up before the digits are
+// touched and comes down only after they are stored. What the next boot arms:
+//
+//   inhibit_replay() refuses -- the previous digits, if any; or, if the gate
+//                               went up anyway, nothing
+//   store() refuses          -- nothing: the gate is up
+//   allow_replay() refuses   -- nothing, or these digits: a refused erase may
+//                               have erased, and this boot cannot read back
+//                               which (VERIFIED_FACTS, "A failed erase may
+//                               already have erased")
+//
+// Power lost between the first and the last step also leaves the gate up, so
+// the next boot arms nothing and the owner enters the digits again. False is
+// `NotStored`.
+template <typename Ops>
+bool persist_passkey(Ops& ops, std::uint32_t passkey)
+{
+    return ops.inhibit_replay() && ops.store(passkey) && ops.allow_replay();
 }
 
 // The boot side. A value this image would not have stored is refused rather
