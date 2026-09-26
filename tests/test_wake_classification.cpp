@@ -13,7 +13,9 @@
 // whether the latch was touched at all, because a route that reads the register
 // and stays silent is the failure and it is invisible in the causes alone.
 
+#include <cstddef>
 #include <cstdio>
+#include <vector>
 
 #include "wake_classification.h"
 
@@ -33,6 +35,7 @@ using attadipa::core::WakeCauses;
 using attadipa::core::WakeSource;
 using attadipa::core::wake_bit;
 using attadipa::firmware::classify_wake;
+using attadipa::firmware::sleep_until_reported;
 using attadipa::firmware::WakeVerdict;
 
 // The AXP2101 latch, and a count of how often it was asked.
@@ -144,11 +147,10 @@ void test_an_unarmed_cause_is_reported_without_spending_the_latch()
 }
 
 // But only *alone*. An unarmed cause riding in with an armed one is not
-// reported here and does not survive the descent: `classify_wake` is handed
-// causes rather than the wake plan, so `Timer` armed and `Timer` unarmed look
-// identical to it, and the caller assigns `from_soc` on the next wake rather
-// than accumulating it. This row exists so the limit is pinned rather than
-// rediscovered -- the header says the same thing in prose.
+// reported here: `classify_wake` is handed causes rather than the wake plan,
+// so `Timer` armed and `Timer` unarmed look identical to it. The loop, which
+// has the plan, keeps the bits across the descent; the episode rows below
+// prove that (#623).
 void test_an_unarmed_cause_beside_an_armed_one_goes_back_down()
 {
     WakeCauses causes;
@@ -160,8 +162,7 @@ void test_an_unarmed_cause_beside_an_armed_one_goes_back_down()
     CHECK(causes.derived == 0);
     // Spent, unlike the unarmed-alone row above: the poll route reads it.
     CHECK(latch.reads == 1);
-    // Untouched *by this function*. The loss happens one level up, on the
-    // re-arm, and that is the point of the row.
+    // Untouched by this function.
     CHECK(causes.from_soc == (kTimer | kUsb));
     CHECK(causes.unmapped_from_soc == 0x8000'0000u);
 }
@@ -242,6 +243,129 @@ void test_the_socs_own_word_is_never_edited()
     CHECK(causes.derived == kButton);
 }
 
+// The loop's ESP-IDF half, scripted: one entry of `wakes` per descent, read
+// by assignment exactly as `soc_causes_to_wake_sources` does.
+struct Episode {
+    std::vector<WakeCauses> wakes;
+    Latch latch;
+    std::size_t fail_descent = 0;  // 1-based; 0 = never
+    std::size_t fail_rearm = 0;
+    std::size_t descents = 0;
+    std::size_t rearms = 0;
+
+    bool descend() { return ++descents != fail_descent; }
+    void read(WakeCauses& causes)
+    {
+        causes.from_soc = wakes.at(descents - 1).from_soc;
+        causes.unmapped_from_soc = wakes.at(descents - 1).unmapped_from_soc;
+    }
+    bool consume_power_edge() { return latch.consume(); }
+    bool rearm() { return ++rearms != fail_rearm; }
+};
+
+constexpr std::uint16_t kArmed = kTimer | kTouch;
+
+WakeCauses wake(std::uint16_t soc, std::uint32_t unmapped = 0)
+{
+    WakeCauses causes;
+    causes.from_soc = soc;
+    causes.unmapped_from_soc = unmapped;
+    return causes;
+}
+
+// #623. Usb and a raw bit ride in on a poll, the next poll is pure Timer, and
+// the episode ends on a touch: the report still names both, and not Timer.
+void test_unarmed_evidence_survives_the_next_poll()
+{
+    Episode ep;
+    ep.wakes = {wake(kTimer | kUsb, 0x8000'0000u), wake(kTimer), wake(kTouch)};
+    WakeCauses causes;
+
+    CHECK(sleep_until_reported(causes, false, kArmed, ep));
+    CHECK(causes.from_soc == (kTouch | kUsb));
+    CHECK(causes.unmapped_from_soc == 0x8000'0000u);
+    CHECK(causes.derived == 0);
+    CHECK(ep.descents == 3 && ep.rearms == 2);
+    CHECK(ep.latch.reads == 3);
+}
+
+// Three thousand polls are five minutes of sleep, and none of them is why it
+// ended.
+void test_polls_do_not_add_timer_to_the_report()
+{
+    Episode ep;
+    ep.wakes.assign(3000, wake(kTimer));
+    ep.wakes.push_back(wake(kTouch));
+    WakeCauses causes;
+
+    CHECK(sleep_until_reported(causes, false, kArmed, ep));
+    CHECK(causes.from_soc == kTouch);
+    CHECK(causes.unmapped_from_soc == 0);
+    CHECK(ep.rearms == 3000);
+    CHECK(ep.latch.reads == 3001);
+}
+
+// What is kept is decided by `armed`, not by the bit's name: a source the
+// plan asked for is a poll like Timer, not evidence.
+void test_what_is_kept_follows_the_plan()
+{
+    Episode ep;
+    ep.wakes = {wake(kTimer | kUsb), wake(kTimer | kUsb), wake(kTouch)};
+    WakeCauses causes;
+
+    CHECK(sleep_until_reported(causes, false, kTimer | kUsb, ep));
+    CHECK(causes.from_soc == kTouch);
+}
+
+// The owner reads `causes` after a refusal too, so a refusal is not where the
+// evidence may go missing either.
+void test_a_refused_rearm_still_reports_what_was_kept()
+{
+    Episode ep;
+    ep.wakes = {wake(kTimer | kUsb, 0x40u), wake(kTimer)};
+    ep.fail_rearm = 2;
+    WakeCauses causes;
+
+    CHECK(!sleep_until_reported(causes, false, kArmed, ep));
+    CHECK(causes.from_soc == (kTimer | kUsb));
+    CHECK(causes.unmapped_from_soc == 0x40u);
+}
+
+void test_a_refused_descent_still_reports_what_was_kept()
+{
+    Episode ep;
+    ep.wakes = {wake(kTimer | kUsb, 0x40u), wake(kTimer)};
+    ep.fail_descent = 3;
+    WakeCauses causes;
+
+    CHECK(!sleep_until_reported(causes, false, kArmed, ep));
+    CHECK(causes.from_soc == (kTimer | kUsb));
+    CHECK(causes.unmapped_from_soc == 0x40u);
+    CHECK(ep.rearms == 2);
+}
+
+// Unchanged by the loop: a press is read once, on the wake that found it, and
+// the debug descent is over on its first timer wake without the latch.
+void test_the_loop_keeps_the_latch_and_debug_rules()
+{
+    Episode press;
+    press.wakes = {wake(kTimer | kUsb)};
+    press.latch.edge = true;
+    WakeCauses causes;
+    CHECK(sleep_until_reported(causes, false, kArmed, press));
+    CHECK(causes.derived == kButton);
+    CHECK(causes.from_soc == (kTimer | kUsb));
+    CHECK(press.latch.reads == 1 && press.rearms == 0);
+
+    Episode debug;
+    debug.wakes = {wake(kTimer)};
+    debug.latch.edge = true;
+    WakeCauses quiet;
+    CHECK(sleep_until_reported(quiet, true, kArmed, debug));
+    CHECK(quiet.derived == 0);
+    CHECK(debug.latch.reads == 0 && debug.latch.edge);
+}
+
 }  // namespace
 
 int main()
@@ -258,6 +382,12 @@ int main()
     test_a_debug_descent_that_ends_on_a_touch_still_reports_the_press();
     test_a_failed_read_derives_nothing();
     test_the_socs_own_word_is_never_edited();
+    test_unarmed_evidence_survives_the_next_poll();
+    test_polls_do_not_add_timer_to_the_report();
+    test_what_is_kept_follows_the_plan();
+    test_a_refused_rearm_still_reports_what_was_kept();
+    test_a_refused_descent_still_reports_what_was_kept();
+    test_the_loop_keeps_the_latch_and_debug_rules();
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
