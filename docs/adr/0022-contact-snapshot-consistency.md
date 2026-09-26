@@ -19,7 +19,7 @@ the same transport. The node's contact iterator is a raw index into the live
 compacted underneath the cursor while the walk runs — research report §2.
 
 Attadipa converts the end of that stream into a claim about its content:
-`link/src/meshcore_companion.cpp:1506` — "status_.peers_complete = true;" is set
+`link/src/meshcore_companion.cpp:1513` — "status_.peers_complete = true;" is set
 unconditionally on `RESP_CODE_END_OF_CONTACTS`. The stream ending is a syntactic
 fact. That the list matches the node's table is a semantic one, and the wire does
 not carry it.
@@ -66,6 +66,13 @@ another attempt, then `degraded` with the older list. That is not a second
 rule. It is decision 7 read on the one end the sweep can produce, and the
 implementation that read it the other way is
 [#586](https://github.com/hleserg/Attadipa/issues/586).
+
+**1c. A boundary frame no walk owns ends nothing.** An `END` after the walk
+that sent it is already over — swept, ended once, or re-read — is dropped, not
+counted malformed, and moves no retry clock. The one `END` with no open walk
+that still counts is a first walk's whose `START` was lost: that walk has not
+ended, and no sweep can end it, so the boundary frame is its only end
+([#602](https://github.com/hleserg/Attadipa/issues/602)).
 
 **2. Snapshot consistency is a separate observation**, carried alongside it:
 consistent, dirty, retry pending, or degraded. A snapshot is *consistent* when the

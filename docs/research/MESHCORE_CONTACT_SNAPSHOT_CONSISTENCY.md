@@ -10,7 +10,7 @@ pushes describe a change to the very table being read.
 This report answers what a client may conclude when the stream ends. The short
 answer is that `RESP_CODE_END_OF_CONTACTS` proves the node finished walking its
 array and proves nothing else, and that Attadipa currently converts that syntactic
-fact into a semantic claim — `link/src/meshcore_companion.cpp:1506` —
+fact into a semantic claim — `link/src/meshcore_companion.cpp:1513` —
 "status_.peers_complete = true;" — that the evidence does not support.
 
 It is a research document. No production code changed for it, and the contract in
@@ -327,7 +327,7 @@ boolean is asked to: `core/include/attadipa/core/mesh_service.h:216` —
    `link/src/meshcore_companion.cpp:60` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
 6. Every other valid push — including all four invalidating ones — reaches the
    `default:` arm, where it is counted and refused —
-   `link/src/meshcore_companion.cpp:1893` — "// A response code this build does not know is a frame we did not".
+   `link/src/meshcore_companion.cpp:1900` — "// A response code this build does not know is a frame we did not".
    The link is deliberately left up, which is right and is why this is a
    correctness gap rather than an outage.
 7. `contacts_complete_` also gates `Availability::Ready` and the battery poll.
@@ -569,6 +569,8 @@ asserts that unrelated events survived.
 | 21 | the swept walk's `END` arriving late, with a budget left | the next attempt is still ten seconds from the **sweep**, not from the stale frame: a walk this client wrote off may not move the clock the walk that replaces it is measured from |
 | 22 | the swept walk's `END` arriving after the last attempt is armed and before the node answers it | the snapshot stays `retry pending`; `degraded` is the right end for the session and not the right end *yet*, and the attempt still in the air may still commit |
 | 23 | the node volunteers a `START` after the budget is spent | that walk owns its own frames: the swept bit is cleared by any `START`, so its rows and its `END` are a first walk's in every sense |
+| 24 | a first walk's `END`, then the same `END` again, no sweep | the duplicate ends nothing: the next attempt is still ten seconds from the **first** `END`, and `malformed_frames` unchanged |
+| 25 | a first walk whose `START` was lost: `A → END` | the walk still ends on its `END`: `peers_complete`, `CMD_SYNC_NEXT_MESSAGE` and `CMD_GET_CUSTOM_VARS` sent, `malformed_frames` unchanged |
 
 Case 14 is the regression risk the whole design has to be checked against: the
 retry adds a command to a queue whose error attribution is order-based, and
