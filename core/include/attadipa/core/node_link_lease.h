@@ -50,8 +50,8 @@ namespace attadipa::core {
 // `core/include/attadipa/core/transport_state.h:27` — "Attached,    // it exists and is powered"
 // — and the firmware is why: one `case` arm brings the stack up and starts
 // scanning in the same breath,
-// `firmware/main/meshcore_ble.cpp:1390` — "provider.begin(now());"
-// followed immediately by `firmware/main/meshcore_ble.cpp:1391` — "if (configured.load()) start_scan();",
+// `firmware/main/meshcore_ble.cpp:1394` — "provider.begin(now());"
+// followed immediately by `firmware/main/meshcore_ble.cpp:1395` — "if (configured.load()) start_scan();",
 // and that scan is neither passive nor bounded —
 // `firmware/main/meshcore_ble.cpp:671` — "params.passive = 0;" and `:675`
 // — "const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER, &params,".
@@ -75,22 +75,18 @@ namespace attadipa::core {
 // exactly that axis: a future plan that gates a rail on `NodeLink` needs a
 // controller-level fact this file does not have.
 //
-// `Faulted` is the third release and it is not that case, because here the tree
-// does hold the fact and the fact says the radio can still be on. The phase is
-// "it failed, and needs a reset rather than a retry", and the fault taken when
-// the stack refuses the passkey cancels nothing —
-// `firmware/main/meshcore_ble.cpp:1830` — "                    provider.fault(now());"
-// — nor does the lifecycle's fault step,
-// `firmware/main/meshcore_ble.cpp:1393` — "        case SessionStep::Fault:".
-// Every `ble_gap_disc_cancel()` in that file sits on a path that is not a fault
-// — a matched advertisement, forget-node, deconfigure — so the unbounded scan
-// started at `firmware/main/meshcore_ble.cpp:1391` — "if (configured.load())
-// start_scan();" — can outlive the phase that dropped the lease. Released
-// anyway, and deliberately: `Faulted` needs a reset rather than a retry, so a
-// declaration that held through it would refuse every sleep until that reset
-// arrived, on a watch whose power key is the thing asking. The defect is the
-// transport not cancelling discovery when it faults; the first plan that gates
-// a rail on `NodeLink` needs that fixed rather than this predicate widened.
+// `Faulted` is the third release. The phase is "it failed, and needs a reset
+// rather than a retry", and the transport stops its own GAP work before it
+// publishes it: the fault taken when the stack refuses the passkey first
+// disarms reconnect and cancels the scan, a pending connection and the live
+// session (`firmware/main/meshcore_ble.cpp:1859` — "(void)attadipa::firmware::quiesce_gap(gap);"),
+// and the lifecycle's fault step is reached only on paths where no scan is
+// running (`firmware/main/meshcore_ble.cpp:1397` — "case SessionStep::Fault:").
+// That is a claim about what the transport asked NimBLE for, not about the
+// controller, and it has one gap: a cancel NimBLE refuses is logged and the
+// fault stands anyway. Released regardless: a declaration that held through
+// `Faulted` would refuse every sleep until the reset arrived, on a watch whose
+// power key is the thing asking.
 constexpr bool node_link_wants_power(TransportPhase phase)
 {
     return phase == TransportPhase::Attached || phase == TransportPhase::Connecting ||

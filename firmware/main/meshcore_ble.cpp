@@ -1012,7 +1012,11 @@ int gap_event(ble_gap_event* event, void* arg)
             (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
             return 0;
         }
-        if (!configured.load()) {
+        // A discovery report can pass its gate just before the worker
+        // disarms, and reach ble_gap_connect() after the worker has found
+        // nothing to cancel (#628). The disarm is what this connection
+        // answers to.
+        if (!configured.load() || !reconnect_allowed.load()) {
             ESP_LOGI(kTag, "closing connection after local stop");
             (void)ble_gap_terminate(conn, BLE_ERR_REM_USER_CONN_TERM);
             return 0;
@@ -1391,6 +1395,15 @@ SessionCatchUp apply_lifecycle(SessionMark& applied)
             if (configured.load()) start_scan();
             break;
         case SessionStep::Fault:
+            // No scan or pending connection outlives this step, so there is
+            // nothing to quiesce here (#628). A NimBLE reset ends both before
+            // on_reset() runs: ble_hs_reset() calls ble_gap_reset_state(),
+            // which fails the master discovery or connect operation, ahead of
+            // reset_cb (ESP-IDF v5.5.5, nimble/host/src/ble_hs.c). A scan
+            // that would not start, or an address that would not configure,
+            // never started one; disconnect_fault() disarms and terminates
+            // itself. Reconnect stays armed on purpose: StackReady does not
+            // re-arm it, and it is what brings the link back after a reset.
             provider.fault(now());
             break;
         case SessionStep::PeerArriving:
@@ -1500,6 +1513,46 @@ void handle_frame(const Event& event)
     }
 }
 
+// The production instantiation of `quiesce_gap()`; the fakes are in
+// tests/test_session_owner.cpp. `who` names the operation in its refusals.
+// Runs on the worker, and calls NimBLE outside the session lock.
+struct GapQuiesceOps {
+    const char* who;
+
+    void disarm() { reconnect_allowed.store(false); }
+    bool discovering() { return ble_gap_disc_active() != 0; }
+    bool cancel_discovery() { return accepted(ble_gap_disc_cancel(), "scan cancel"); }
+    bool connecting() { return ble_gap_conn_active() != 0; }
+    bool cancel_connect() { return accepted(ble_gap_conn_cancel(), "connection cancel"); }
+    attadipa::firmware::ForgetTransportTermination end_session()
+    {
+        using attadipa::firmware::ForgetTransportTermination;
+        return attadipa::firmware::terminate_forget_session(
+            [] { return session_snapshot(); },
+            [this](std::uint16_t connection) {
+                const int rc =
+                    ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+                if (rc == 0 || rc == BLE_HS_EALREADY) {
+                    return ForgetTransportTermination::Pending;
+                }
+                if (rc == BLE_HS_ENOTCONN) return ForgetTransportTermination::Gone;
+                ESP_LOGE(kTag, "%s: disconnect refused (rc=%d)", who, rc);
+                return ForgetTransportTermination::Refused;
+            },
+            [](std::uint32_t generation) {
+                SessionGuard guard;
+                (void)owner.ended(generation);
+            }, attadipa::link::kNoSessionHandle);
+    }
+
+    bool accepted(int rc, const char* what) const
+    {
+        if (rc == 0 || rc == BLE_HS_EALREADY) return true;
+        ESP_LOGE(kTag, "%s: %s refused (rc=%d)", who, what, rc);
+        return false;
+    }
+};
+
 // The production instantiation of `forget_node()`; the other one is in
 // tests/test_provisioning.cpp, and the sequence is in the header both compile.
 // Runs on the worker, which owns `provider` and is the only task that may
@@ -1508,42 +1561,10 @@ struct RealForgetOps {
     void disarm() { reconnect_allowed.store(false); }
     bool terminate()
     {
-        if (ble_gap_disc_active()) {
-            const int rc = ble_gap_disc_cancel();
-            if (rc != 0 && rc != BLE_HS_EALREADY) {
-                ESP_LOGE(kTag, "forget-node: scan cancel refused (rc=%d)", rc);
-                return false;
-            }
-        }
-        if (ble_gap_conn_active()) {
-            const int rc = ble_gap_conn_cancel();
-            if (rc != 0 && rc != BLE_HS_EALREADY) {
-                ESP_LOGE(kTag,
-                         "forget-node: connection cancel refused (rc=%d)", rc);
-                return false;
-            }
-        }
         using attadipa::firmware::ForgetTransportTermination;
+        GapQuiesceOps gap{"forget-node"};
         const ForgetTransportTermination result =
-            attadipa::firmware::terminate_forget_session(
-                [] { return session_snapshot(); },
-                [](std::uint16_t connection) {
-                    const int rc = ble_gap_terminate(
-                        connection, BLE_ERR_REM_USER_CONN_TERM);
-                    if (rc == 0 || rc == BLE_HS_EALREADY) {
-                        return ForgetTransportTermination::Pending;
-                    }
-                    if (rc == BLE_HS_ENOTCONN) {
-                        return ForgetTransportTermination::Gone;
-                    }
-                    ESP_LOGE(kTag,
-                             "forget-node: disconnect refused (rc=%d)", rc);
-                    return ForgetTransportTermination::Refused;
-                },
-                [](std::uint32_t generation) {
-                    SessionGuard guard;
-                    (void)owner.ended(generation);
-                }, attadipa::link::kNoSessionHandle);
+            attadipa::firmware::quiesce_gap(gap);
         if (result == ForgetTransportTermination::Absent) {
             // No disconnect callback will reset the provider in this case.
             provider.begin(now());
@@ -1747,9 +1768,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:207` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1819` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1840` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1020` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1024` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1827,6 +1848,15 @@ void mesh_task(void*)
                     passkey_op.complete(
                         event.ticket,
                         attadipa::firmware::PasskeyOutcome::Refused);
+                    // Faulted is terminal until the subsystem restarts, so
+                    // nothing may go on scanning or connecting behind it
+                    // (#628): a reconfiguration arrives with the scan of the
+                    // previous Configure still running. Unlike a forget, no
+                    // provider.begin() on an absent session -- Faulted is
+                    // where this ends. A refused cancel is logged, and the
+                    // fault stands either way.
+                    GapQuiesceOps gap{"passkey refused"};
+                    (void)attadipa::firmware::quiesce_gap(gap);
                     provider.fault(now());
                     break;
                 }

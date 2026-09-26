@@ -417,6 +417,82 @@ void forget_termination_invalidates_only_an_accepted_disconnect()
     CHECK(!arriving_owner.connected(arriving_generation, 11));
 }
 
+// A refused passkey faults the transport for good, so nothing may go on
+// scanning or connecting behind it (#628). Reconnect goes down before the first
+// cancel: a discovery report already on the host task reads that flag, and one
+// that read it armed would start a connection the fault can never use.
+using attadipa::firmware::ForgetTransportTermination;
+
+struct FakeGapOps {
+    bool armed = true;
+    bool scanning = true;
+    bool dialing = true;
+    bool cancel_ok = true;
+    bool armed_at_first_cancel = true;
+    std::vector<std::string> calls;
+    ForgetTransportTermination ended = ForgetTransportTermination::Pending;
+
+    void disarm()
+    {
+        calls.push_back("disarm");
+        armed = false;
+    }
+    bool discovering() { return scanning; }
+    bool cancel_discovery()
+    {
+        calls.push_back("cancel_discovery");
+        armed_at_first_cancel = armed;
+        if (cancel_ok) scanning = false;
+        return cancel_ok;
+    }
+    bool connecting() { return dialing; }
+    bool cancel_connect()
+    {
+        calls.push_back("cancel_connect");
+        if (cancel_ok) dialing = false;
+        return cancel_ok;
+    }
+    ForgetTransportTermination end_session()
+    {
+        calls.push_back("end_session");
+        return ended;
+    }
+};
+
+void gap_quiesce_disarms_before_it_cancels()
+{
+    using attadipa::firmware::quiesce_gap;
+
+    FakeGapOps ops;
+    CHECK(quiesce_gap(ops) == ForgetTransportTermination::Pending);
+    CHECK((ops.calls == std::vector<std::string>{
+        "disarm", "cancel_discovery", "cancel_connect", "end_session"}));
+    CHECK(!ops.armed_at_first_cancel);
+    CHECK(!ops.scanning);
+    CHECK(!ops.dialing);
+
+    // Already stopped -- the second request, or NimBLE's EALREADY mapped to
+    // accepted -- cancels nothing and still ends the session.
+    ops.calls.clear();
+    ops.ended = ForgetTransportTermination::Absent;
+    CHECK(quiesce_gap(ops) == ForgetTransportTermination::Absent);
+    CHECK((ops.calls == std::vector<std::string>{"disarm", "end_session"}));
+
+    // A refused cancel is reported, not papered over: the session is left
+    // alone and the caller hears Refused. Reconnect stays down regardless.
+    FakeGapOps refused;
+    refused.cancel_ok = false;
+    CHECK(quiesce_gap(refused) == ForgetTransportTermination::Refused);
+    CHECK((refused.calls == std::vector<std::string>{"disarm", "cancel_discovery"}));
+    CHECK(!refused.armed);
+
+    FakeGapOps refused_connect;
+    refused_connect.scanning = false;
+    refused_connect.cancel_ok = false;
+    CHECK(quiesce_gap(refused_connect) == ForgetTransportTermination::Refused);
+    CHECK((refused_connect.calls == std::vector<std::string>{"disarm", "cancel_connect"}));
+}
+
 // ---------------------------------------------------------------------------
 // The catch-up. This is the half that replaces a lifecycle queue.
 
@@ -1844,6 +1920,7 @@ int main()
     a_previous_generation_cannot_write_the_current_ones_handles();
     ending_a_session_clears_everything_stamped_with_it();
     forget_termination_invalidates_only_an_accepted_disconnect();
+    gap_quiesce_disarms_before_it_cancels();
     a_worker_that_keeps_up_is_told_each_transition_once();
     a_starved_worker_is_told_where_the_session_actually_got_to();
     a_session_that_never_established_is_not_replayed_as_ready();
