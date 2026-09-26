@@ -428,6 +428,8 @@ void test_a_clean_cycle_suspends_arms_sleeps_and_unwinds_in_reverse()
     CHECK(report.slept());
     CHECK(report.hardware_known);
     CHECK(report.wake_causes == wake_bit(WakeSource::Touch));
+    CHECK(report.woke_by(WakeSource::Touch));
+    CHECK(!report.woke_by(WakeSource::Timer));
     CHECK(report.unexpected_causes == 0);
     CHECK(owner.cycles() == 1);
     CHECK(owner.state() == PowerState::Active);
@@ -785,10 +787,16 @@ void test_a_failed_sleep_still_disarms_and_still_resumes()
 {
     FakeHardware hw;
     hw.sleep_succeeds = false;
+    hw.soc_causes     = wake_bit(WakeSource::Touch);
     PowerOwner owner(hw);
 
     const SleepReport report = owner.sleep(light_sleep_plan(), kNow);
     CHECK(report.outcome == SleepOutcome::FailedSleep);
+    // The cause is reported, and it is still not a wake: the input layer arms
+    // its wake-touch swallow on `woke_by()`, and a sleep that failed is not one
+    // to swallow a tap for (#635).
+    CHECK(report.wake_causes == wake_bit(WakeSource::Touch));
+    CHECK(!report.woke_by(WakeSource::Touch));
     CHECK(report.hardware_known);
     CHECK(hw.logged("disarm:Touch"));
     CHECK(hw.logged("disarm:Timer"));

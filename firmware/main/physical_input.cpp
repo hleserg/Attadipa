@@ -253,7 +253,11 @@ private:
     // that knows a wake happened; a page cannot tell that press from any
     // other. LVGL is reset as well: it may be holding a press of its own from
     // before the sleep, and that one has no lift coming either.
-    swallow_wake_touch_ = true;
+    //
+    // Only when a touch is what ended it (#635). A sleep that was refused or
+    // failed never happened, and one the timer or the button ended had no
+    // finger: arming the swallow there eats the next real tap whole.
+    swallow_wake_touch_ = report.woke_by(attadipa::core::WakeSource::Touch);
     physical_pressed_ = false;
     lv_indev_reset(nullptr, nullptr);
 
