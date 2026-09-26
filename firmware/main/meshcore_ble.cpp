@@ -223,6 +223,8 @@ std::atomic_bool configured{false};
 std::atomic_bool secure_pairing{false};
 std::atomic_bool reconnect_allowed{false};
 std::atomic_bool scan_report_seen{false};
+// A scan cancel NimBLE refused; the worker retries it every pass (#685).
+std::atomic_bool scan_stop_owed{false};
 
 // One outstanding mesh send, claimed where the caller can still be told.
 //
@@ -1550,7 +1552,12 @@ struct GapQuiesceOps {
 
     void disarm() { reconnect_allowed.store(false); }
     bool discovering() { return ble_gap_disc_active() != 0; }
-    bool cancel_discovery() { return accepted(ble_gap_disc_cancel(), "scan cancel"); }
+    bool cancel_discovery()
+    {
+        if (accepted(ble_gap_disc_cancel(), "scan cancel")) return true;
+        scan_stop_owed.store(true);  // the worker's pass retries it (#685)
+        return false;
+    }
     bool connecting() { return ble_gap_conn_active() != 0; }
     bool cancel_connect() { return accepted(ble_gap_conn_cancel(), "connection cancel"); }
     attadipa::firmware::ForgetTransportTermination end_session()
@@ -1797,9 +1804,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1887` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1894` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1047` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1049` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -1923,6 +1930,7 @@ void mesh_task(void*)
                              "not stored");
                 }
                 configured.store(true);
+                scan_stop_owed.store(false);
                 reconnect_allowed.store(true);
                 // Armed and, where it had to be, on flash: everything the
                 // request asked for has happened. What is left below is the
@@ -1978,7 +1986,17 @@ void mesh_task(void*)
                              "MeshCore passkey not erased; the watch will "
                              "scan again at the next boot");
                 }
-                if (ble_gap_disc_active()) (void)ble_gap_disc_cancel();
+                scan_stop_owed.store(false);
+                if (ble_gap_disc_active()) {
+                    if (const int rc = ble_gap_disc_cancel();
+                        rc != 0 && rc != BLE_HS_EALREADY) {
+                        // The worker's next pass retries it (#685).
+                        scan_stop_owed.store(true);
+                        ESP_LOGE(kTag,
+                                 "MeshCore stopped, but its scan would not "
+                                 "stop (rc=%d)", rc);
+                    }
+                }
                 const std::uint16_t connection = session_snapshot().connection;
                 if (connection == attadipa::link::kNoSessionHandle) {
                     provider.begin(now());
@@ -2027,8 +2045,24 @@ void mesh_task(void*)
                 // the other end of this one is the peer whose keys are gone.
                 const std::uint16_t connection = session_snapshot().connection;
                 if (connection != attadipa::link::kNoSessionHandle) {
-                    (void)ble_gap_terminate(connection,
-                                            BLE_ERR_REM_USER_CONN_TERM);
+                    if (const int rc = ble_gap_terminate(
+                            connection, BLE_ERR_REM_USER_CONN_TERM);
+                        terminate_refused(rc)) {
+                        // The session stays up, so the bond stays too, and
+                        // the answer is the refusal: nothing is begun or
+                        // scanned over a live link (#685).
+                        ESP_LOGE(kTag,
+                                 "forget-bond: the connection would not end "
+                                 "(rc=%d); the bond is kept -- run "
+                                 "mesh-forget-bond again", rc);
+                        {
+                            SessionGuard guard;
+                            recovery.record(peer);
+                        }
+                        forget_op.complete(
+                            attadipa::firmware::ForgetOutcome::Refused);
+                        break;
+                    }
                 }
                 ble_addr_t address{};
                 address.type = peer.type;
@@ -2069,6 +2103,7 @@ void mesh_task(void*)
                 // forget-bond with no new conflict is refused. This mirrors the
                 // successful arm of EventKind::Configure -- reconnect was
                 // disabled by disconnect_fault when the conflict was recorded.
+                scan_stop_owed.store(false);
                 reconnect_allowed.store(true);
                 provider.begin(now());
                 if (session_snapshot().stack_readies != 0) start_scan();
@@ -2111,6 +2146,14 @@ void mesh_task(void*)
         // It costs nothing: liveness is disabled on this link, so link_.tick()
         // has no work.
         provider.tick(now());
+        // A scan cancel NimBLE refused -- Deconfigure, forget-node, a refused
+        // passkey -- is retried here, at the pass rate and with no advertiser
+        // needed, so a stopped watch does not scan until reboot (#685). Only
+        // the worker sets or clears the flag, and each re-armer clears it.
+        if (scan_stop_owed.load()) {
+            const int rc = ble_gap_disc_cancel();
+            if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);
+        }
         // AND THE POSITION, ON THE SAME PASS AND WITH NO CLOCK OF ITS OWN.
         //
         // The line is logged only when it changes, which on this input means
