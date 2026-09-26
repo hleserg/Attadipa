@@ -35,7 +35,7 @@ the range on the device, so over an empty range it proves nothing and still
 succeeds: the digests of no bytes match on both sides, and the stub answers
 `RESPONSE_SUCCESS` rather than refusing. That qualification belongs to the
 command rather than to this tool and its provenance is in the evidence index —
-`docs/research/VERIFIED_FACTS.md:2078` — "- **What makes `Verification
+`docs/research/VERIFIED_FACTS.md:2124` — "- **What makes `Verification
 successful` evidence is that the range is not" — which names both esptool
 versions, the stub commit, and the one half that is still `UNKNOWN`. A
 zero-length read therefore assembled an empty image, verified it, and published

@@ -3268,3 +3268,103 @@ nothing fallible may follow it.
 `boot_meshcore()` template, not a copy of it. What they cannot cover is the
 FreeRTOS half: that `xTaskCreatePinnedToCore` with these arguments produces a
 working NimBLE host is **NOT EXECUTED — HARDWARE REQUIRED**.
+
+---
+
+### Choosing which contact the arrow points at, and stopping when the wearer leaves
+
+**Problem:** [ADR-0021](../adr/0021-remote-target-from-a-message.md) decides
+whose coordinate arrived and explicitly refuses to decide which one the wearer
+is walking to. #488 asks for the other half: an explicit, full-key target
+selection with a lifecycle, and a picker that does not silently make the first
+sixteen contacts the only ones that exist. Researched under
+[#488](https://github.com/hleserg/Attadipa/issues/488); the reading is
+[NAVIGATION_TARGET_SELECTION](NAVIGATION_TARGET_SELECTION.md). This record is
+the reuse half only.
+
+**Projects investigated:** `meshtastic/Meshtastic-Android`, the mature
+selected-node compass · `espruino/BangleApps`, `gpsnav` and `waypointer`, watch
+prior art for explicit commit and sensor lifetime · `meshcore-dev/meshcore.js`,
+re-read for how a first-party client names a contact.
+
+**Useful implementation:** three ideas, no code.
+
+- **Meshtastic-Android**, `feature/node/src/commonMain/kotlin/org/meshtastic/feature/node/`:
+  `navigation/NodesNavigation.kt` passes a node number out of a typed route into
+  the detail screen; `detail/NodeDetailScreens.kt` carries it in a
+  `Compass(val nodeNum: Int, …)` overlay and re-checks it against the node
+  before starting anything; `compass/CompassViewModel.kt` snapshots the target,
+  cancels the previous job on every change, and stops on leaving. The selection
+  is never inferred from a display name, a discovery order or the last packet.
+- **BangleApps `gpsnav`**: a visible `NONE` waypoint, a press to enter selection,
+  browse, and a second press to commit — the README's own words are *"The
+  waypoint choice is fixed by pressing BTN2 [touch / BTN] again."*
+- **BangleApps `waypointer`**: `nextwp()` browses and `doselect()` commits behind
+  one flag, and the `kill` handler powers the compass and the GPS down on exit
+  rather than leaving them to a garbage collector.
+
+**Licence:** GPL-3.0 for Meshtastic-Android, compatible with this repository's
+`GPL-3.0-or-later`; MIT for BangleApps and `meshcore.js`. Nothing is copied from
+any of them, so the compatibility matters only for the reading.
+
+**Strengths:** two independent implementations of a wrist-sized "point at a
+chosen thing", one of them with a merged lifecycle bug fix to learn from, and
+one of them not mesh at all — which is why it is here: `waypointer` has no
+identity problem to solve, so its interaction is visible without the protocol
+noise.
+
+**Weaknesses**, and these are the reason this is a `READ` and not a `PORT`:
+
+- **Meshtastic's route argument defaults.** `NodesNavigation.kt` resolves the
+  route's node number as `args.destNum ?: 0`, so a missing argument becomes node
+  **0** rather than no target. A default identity is the failure mode
+  ADR-0021 decision 2 refuses in this product; `REJECT` that half specifically,
+  rather than adapting the file as a unit.
+- **Meshtastic's freshness rests on a field this wire does not have.**
+  `CompassViewModel.start()` fills `targetPositionTimeSec` from
+  `node.position.timestamp`. MeshCore offers no equivalent on either wire this
+  product reads, and both ADRs forbid inventing one from arrival. Recorded as a
+  fact in [VERIFIED_FACTS](VERIFIED_FACTS.md).
+- **`waypointer`'s identity is an array index** into a RAM-loaded file whose
+  entries the app also renames in place, with no deletion, no truncation, no
+  sender and no source age. Its own ChangeLog carries a past `wpindex = 0`
+  defect. The interaction is the reusable part; the identity model is not.
+- **`meshcore.js` names contacts by display name or by key prefix.**
+  `connection.js::findContactByName` returns the first exact `advName` match out
+  of a full `getContacts()`, and `findContactByPublicKeyPrefix` the first prefix
+  match. Both are fine as host conveniences and both are refused here: names are
+  not unique, a 48-bit prefix can collide, and the full-table read is the ~52 kB
+  walk the report prices.
+
+**Decision:** `INSPIRE ARCHITECTURE` from Meshtastic-Android (explicit identity
+in the navigation context, one owner of start and stop, identity re-checked at
+the point of use) and from BangleApps (`None → browsing → committed`, and sensor
+shutdown as an explicit action). `REJECT` Meshtastic's defaulted route argument,
+its timestamp-based freshness, `waypointer`'s index identity, and every
+`meshcore.js` contact lookup. No dependency is proposed and none could be: one
+is Android and Compose, one is Espruino JavaScript, one is Node.
+
+**Reason.** What this product needs from all three is an *interaction contract*
+and a *lifecycle*, both of which are portable, and neither of which needs a line
+of their code. The identity model is the part that is not portable, because it
+is the part that depends on what the wire can prove — and on this wire the only
+thing that can be proved is a full 32-byte key.
+
+**Source revision:** `meshtastic/Meshtastic-Android@6499b0f7579685d57c51c7d1b40088c4f71d5642`
+(2026-09-16) · `espruino/BangleApps@6061fb46ba069dd2346ff619d905e68df87082bd`
+(2026-09-12) · `meshcore.js@9e76c51409c13c3ed0183ee1e9c1b380e671a038` (v1.15.0).
+Nothing cloned — the named files were fetched at those exact commits and read at
+the cited lines on 2026-09-24.
+
+**Attadipa integration:** none in this issue, which is research-only. Where the
+selected key would live, and which of it is the owner's decision, is §3 and §9
+of the report; the two prerequisites that no owner answer changes are §6's
+keyed cache and §7's tri-state parser verdict. §2.4 was a third until
+`7b10884` (#650, #688) paid ADR-0021 decision 7's deletion arm on 2026-09-26.
+
+**Tests required:** when an implementation issue opens — §11 of the report. The
+one worth naming here is the one Meshtastic's own merged fix
+([PR #6620](https://github.com/meshtastic/Meshtastic-Android/pull/6620)) is the
+precedent for: leaving the readout must stop heading and location work *without*
+changing the selected identity, and a test that asserts only the first half
+passes on the code that gets the second half wrong.

@@ -497,6 +497,52 @@ reader ends up citing the one that was not updated.
   starting. Whether a node in the field can hold a `lastmod == 0` contact depends
   on its RTC when that contact was created and is **M34**.
 
+### A contact this watch can send to is not necessarily one it can hear a coordinate from
+
+- **Claim:** since [#600](https://github.com/hleserg/Attadipa/pull/600) the two
+  directions disagree about which contacts exist. **Outbound**, the retained
+  sixteen are a cache: `send_private()` takes a full 32-byte key, and a key the
+  cache does not hold is fetched from the node with `CMD_GET_CONTACT_BY_KEY`
+  (30), whose reply is taken above the list walk and deliberately never enters
+  the cache — `link/src/meshcore_companion.cpp:2068` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
+  **Inbound**, a message's coordinate is attributed by resolving its six-byte
+  sender prefix against that same cache and nothing else —
+  `link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+  and a seventeenth contact never enters it —
+  `link/src/meshcore_companion.cpp:718` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
+  So a message may be sent to contact 200 of 233, and a coordinate arriving from
+  contact 200 resolves to no peer, carries no target under
+  [ADR-0021](../adr/0021-remote-target-from-a-message.md) decision 2, and raises
+  no flag. Fetching that contact in order to send to it does not change the
+  inbound answer.
+- **Source:** this repository's own code at `ca4b64d`, read 2026-09-24 under
+  [#488](https://github.com/hleserg/Attadipa/issues/488).
+- **Why it is here:** ADR-0021's Consequences names the cap as gating the
+  coordinate, and that is still true — but it was written when the cap gated the
+  send as well, so a reader reasonably infers one rule where there are now two.
+  The asymmetry is what a target-selection interface has to be honest about:
+  [NAVIGATION_TARGET_SELECTION](NAVIGATION_TARGET_SELECTION.md) §2.2.
+
+### Meshtastic's selected-node compass rests on a position timestamp this wire does not carry
+
+- **Claim:** `meshtastic/Meshtastic-Android@6499b0f` names a compass target by an
+  integer node number carried in the navigation route and re-checked before the
+  compass starts — `feature/node/…/detail/NodeDetailScreens.kt` holds the
+  target in `data class Compass(val nodeNum: Int, …)` and starts nothing unless
+  `node.num` equals it — which is the identity discipline worth adapting. Its
+  **freshness** is a different matter: `CompassViewModel.start()` fills
+  `targetPositionTimeSec` from `node.position.timestamp`, falling back to
+  `node.position.time`. MeshCore has no such field on either wire this product
+  reads: an advert's timestamps are on the sender's clock and forbidden from
+  reaching `age_at_source_ms`, and a message carries no timestamp this
+  repository reads at all.
+- **Source:** the three files at that commit, fetched and read at the cited
+  lines on 2026-09-24. Licence GPL-3.0, compatible; nothing is copied.
+- **Why it is here:** the identity half and the freshness half of that screen
+  look like one design and are not. Porting the readout would import a promise
+  about age that [ADR-0020](../adr/0020-remote-target-position-source.md)
+  decision 4 and ADR-0021 decision 5 both forbid this product from making.
+
 ### A wrong MeshCore node's bond evicts the pinned node's
 
 - **Claim:** with a passkey armed, a MeshCore node that this watch is *not*
@@ -1026,7 +1072,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2310`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2356`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -2285,7 +2331,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:1009`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:1055`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
@@ -3087,7 +3133,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:2997` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3043` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3121,7 +3167,7 @@ ones that heading states.
   wrong prior for a powered-off reading.** They fix no order of magnitude for a
   *VBUS-side* residual, because the table nowhere records which side of the PMU
   it was taken on, and this tree already says what such rows are worth —
-  `docs/research/VERIFIED_FACTS.md:891` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
+  `docs/research/VERIFIED_FACTS.md:937` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
   Its neighbouring rows read as battery-side figures —
   `docs/research/HARDWARE_MATRIX.md:337` — "| Deep sleep | PWR + BOOT, backup off | 460 µA |" —
   and 460 µA of deep sleep is not what an inline USB meter returns with a
@@ -3144,7 +3190,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3068` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3114` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3160,7 +3206,7 @@ ones that heading states.
   (`firmware/main/board_power.cpp:640` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
   2026-09-05 and recorded above
-  (`docs/research/VERIFIED_FACTS.md:799` — "Claim, on the bench unit, MEASURED 2026-09-05"),
+  (`docs/research/VERIFIED_FACTS.md:845` — "Claim, on the bench unit, MEASURED 2026-09-05"),
   and this image raises that rail on purpose
   (`firmware/main/twatch_board.cpp:981` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
   So for the whole 45 minutes a receiver was powered, and **nothing here
@@ -3170,7 +3216,7 @@ ones that heading states.
   (below). So the GNSS share is unmeasured in size *and* unbounded in
   direction; this entry claims only that it is inside the 778.9 mW. The rail is named, not gated: this
   entry does not claim that clearing BLDO1 would turn the module off:
-  `docs/research/VERIFIED_FACTS.md:813` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
+  `docs/research/VERIFIED_FACTS.md:859` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
   says why nothing here could show that.
 - **The LoRa radio rail was down for the run.** Bit 3 of that same byte is
   `aldo4 enable`, read off the register's own bit map — AXP2101 datasheet
@@ -3185,7 +3231,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3022` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3068` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3245,7 +3291,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:718` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:732` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3271,7 +3317,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2945` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:2991` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3466,7 +3512,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3071` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3117` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has
