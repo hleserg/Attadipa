@@ -2728,7 +2728,7 @@ code under its own licence — no new dependency, no new licence surface:
   by design (`pairing_succeeded()`), and the state where the pin refuses a
   re-made bond needs a record of the refused peer that nothing writes today —
   [MESHCORE_NODE_RESET_RECOVERY.md](MESHCORE_NODE_RESET_RECOVERY.md) §6.1.
-- [`../../firmware/main/meshcore_forget_outcome.h:59`](../../firmware/main/meshcore_forget_outcome.h)
+- [`../../firmware/main/meshcore_forget_outcome.h:60`](../../firmware/main/meshcore_forget_outcome.h)
   — "class ForgetBondOperation {" — `ADAPT`, revised to `NOT REUSED` by #411:
   the request comes from the same cancellable screen as the passkey and needs
   its *ticket*, so the passkey slot became a template
@@ -2737,7 +2737,7 @@ code under its own licence — no new dependency, no new licence surface:
   instance. This slot stays the HIL bridge's, its bond-shaped names
   (`Deleted`, `Refused`, `Nothing`) intact.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:2029`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:2030`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. #411 put its
@@ -3242,7 +3242,7 @@ numbers — keeps the result and keeps the constants tracking Kconfig, without
 touching the toolchain or the build. What this costs is stated rather than
 hidden: the port's static `host_task_h` is now never set, so
 `nimble_port_freertos_deinit()` would delete nothing, and this image's host task
-ends itself instead — `firmware/main/meshcore_ble.cpp:2265` — "    vTaskDelete(nullptr);".
+ends itself instead — `firmware/main/meshcore_ble.cpp:2271` — "    vTaskDelete(nullptr);".
 When the pin moves to a release with candidate 2 in it, this becomes a call to
 `nimble_port_freertos_init()` again with its `esp_err_t` checked, and the
 ordering rule in `meshcore_boot.h` stays exactly as it is.

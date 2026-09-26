@@ -1804,7 +1804,7 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1894` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1895` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
         // `firmware/main/meshcore_ble.cpp:1049` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
@@ -1863,6 +1863,7 @@ void mesh_task(void*)
     // request in while the first was still sitting in the queue.
     bool send_owned = false;
     TickType_t backlog_since = xTaskGetTickCount();
+    TickType_t scan_stop_tried = 0;
     std::uint32_t fairness_breaks = 0;
     for (;;) {
         if (uxQueueMessagesWaiting(event_queue) == 0) {
@@ -2103,7 +2104,9 @@ void mesh_task(void*)
                 // forget-bond with no new conflict is refused. This mirrors the
                 // successful arm of EventKind::Configure -- reconnect was
                 // disabled by disconnect_fault when the conflict was recorded.
-                scan_stop_owed.store(false);
+                // Only a configured watch wants the scan back; on a stopped one
+                // the owed cancel stands (#685).
+                if (configured.load()) scan_stop_owed.store(false);
                 reconnect_allowed.store(true);
                 provider.begin(now());
                 if (session_snapshot().stack_readies != 0) start_scan();
@@ -2147,10 +2150,13 @@ void mesh_task(void*)
         // has no work.
         provider.tick(now());
         // A scan cancel NimBLE refused -- Deconfigure, forget-node, a refused
-        // passkey -- is retried here, at the pass rate and with no advertiser
-        // needed, so a stopped watch does not scan until reboot (#685). Only
-        // the worker sets or clears the flag, and each re-armer clears it.
-        if (scan_stop_owed.load()) {
+        // passkey -- is retried here with no advertiser needed, so a stopped
+        // watch does not scan until reboot (#685). A pass follows every frame,
+        // so the retry is spaced by kPollTicks itself. Only the worker sets or
+        // clears the flag, and each re-armer clears it.
+        if (scan_stop_owed.load() &&
+            xTaskGetTickCount() - scan_stop_tried >= kPollTicks) {
+            scan_stop_tried = xTaskGetTickCount();
             const int rc = ble_gap_disc_cancel();
             if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);
         }

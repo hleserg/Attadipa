@@ -40,7 +40,8 @@ enum class ForgetOutcome : std::uint8_t {
     // may become a terminal `MeshOk`.
     Deleted,
     // The worker finished and the bond is still there: the store refused to
-    // delete it.
+    // delete it, or NimBLE refused to end the session and the store was never
+    // asked (#685).
     Refused,
     // The worker found no conflict record to act on, so no bond was touched
     // and none is left behind. Its own value, not a `Refused`: the honest

@@ -79,7 +79,7 @@ namespace attadipa::core {
 // rather than a retry", and the transport stops its own GAP work before it
 // publishes it: the fault taken when the stack refuses the passkey first
 // disarms reconnect and cancels the scan, a pending connection and the live
-// session (`firmware/main/meshcore_ble.cpp:1913` — "(void)attadipa::firmware::quiesce_gap(gap);"),
+// session (`firmware/main/meshcore_ble.cpp:1914` — "(void)attadipa::firmware::quiesce_gap(gap);"),
 // and the lifecycle's fault step is reached only on paths where no scan is
 // running (`firmware/main/meshcore_ble.cpp:1426` — "case SessionStep::Fault:").
 // That is a claim about what the transport asked NimBLE for, not about the
