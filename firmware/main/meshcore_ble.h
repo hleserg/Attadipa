@@ -9,6 +9,7 @@
 #include "meshcore_forget_outcome.h"
 #include "meshcore_node_forget.h"
 #include "meshcore_passkey_outcome.h"
+#include "meshcore_send_request.h"
 #include "esp_err.h"
 
 esp_err_t start_meshcore_ble();
@@ -43,13 +44,18 @@ attadipa::firmware::PasskeyOutcome
 meshcore_ble_passkey_outcome(std::uint32_t ticket);
 
 bool stop_meshcore_ble();
+// Queued, not sent: `ticket` names the answer, which
+// meshcore_ble_send_outcome() reads once the worker has asked the provider
+// (#598). False when nothing was queued, and `ticket` is then untouched.
 bool meshcore_ble_send(
     const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& peer_key,
-    std::string_view text, attadipa::core::WallTime timestamp);
+    std::string_view text, attadipa::core::WallTime timestamp,
+    std::uint32_t& ticket);
 bool meshcore_ble_send_room(
     const std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes>& room,
     std::string_view password, std::string_view text,
-    attadipa::core::WallTime timestamp);
+    attadipa::core::WallTime timestamp, std::uint32_t& ticket);
+attadipa::firmware::SendOutcome meshcore_ble_send_outcome(std::uint32_t ticket);
 // Asks for the bond of the peer whose stale-bond failure faulted the transport
 // to be deleted, and one fresh pairing armed.
 //

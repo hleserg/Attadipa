@@ -727,9 +727,11 @@ public:
     }
     std::array<std::uint8_t, attadipa::core::kMeshPublicKeyBytes> key{};
     std::memcpy(key.data(), peer_key, key.size());
+    // Queued is not sent: the provider decides on the worker, and
+    // send_outcome() below carries its answer back (#598).
     return meshcore_ble_send(key, std::string_view(text, text_length),
-                             attadipa::core::WallTime{utc_seconds})
-               ? attadipa::debug::MeshSinkResult::Accepted
+                             attadipa::core::WallTime{utc_seconds}, send_ticket_)
+               ? attadipa::debug::MeshSinkResult::Pending
                : attadipa::debug::MeshSinkResult::Failed;
   }
 
@@ -745,10 +747,27 @@ public:
     std::memcpy(key.data(), room, key.size());
     return meshcore_ble_send_room(key, std::string_view(password, password_length),
                                   std::string_view(text, text_length),
-                                  attadipa::core::WallTime{utc_seconds})
-               ? attadipa::debug::MeshSinkResult::Accepted
+                                  attadipa::core::WallTime{utc_seconds},
+                                  send_ticket_)
+               ? attadipa::debug::MeshSinkResult::Pending
                : attadipa::debug::MeshSinkResult::Failed;
   }
+
+  attadipa::debug::MeshSinkResult send_outcome() override {
+    switch (meshcore_ble_send_outcome(send_ticket_)) {
+    case attadipa::firmware::SendOutcome::Sent:
+      return attadipa::debug::MeshSinkResult::Accepted;
+    case attadipa::firmware::SendOutcome::InFlight:
+      return attadipa::debug::MeshSinkResult::Pending;
+    default:
+      // Refused, and Idle with it, for the reason forget_bond_outcome() gives:
+      // Idle has no answer left to wait for.
+      return attadipa::debug::MeshSinkResult::Failed;
+    }
+  }
+
+private:
+  std::uint32_t send_ticket_ = 0;
 };
 
 BoardMeshSink mesh_sink;

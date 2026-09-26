@@ -21,7 +21,7 @@ constexpr std::size_t kChunkBytes = kMaxBody - 4;
 // more than one cause: the store refused the deletion, and the worker's queue
 // refused the request. The host may say the bond survived; it may not say
 // which end is at fault, because this code does not carry that.
-ErrorCode forget_bond_error(MeshSinkResult result)
+ErrorCode mesh_error(MeshSinkResult result)
 {
     switch (result) {
     case MeshSinkResult::Busy:     return ErrorCode::Busy;
@@ -288,7 +288,7 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
             return;
         }
         if (result != MeshSinkResult::Accepted) {
-            send_error(envelope.req_id, forget_bond_error(result), emit, ctx);
+            send_error(envelope.req_id, mesh_error(result), emit, ctx);
             return;
         }
         Envelope reply;
@@ -314,16 +314,28 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         for (std::size_t i = 0; i < 8; ++i) {
             raw_timestamp |= static_cast<std::uint64_t>(body[32 + i]) << (8 * i);
         }
+        // One send at a time, as with forget-bond above: the watch has one
+        // send claim, and a second request here would be refused by it anyway.
+        if (send_.active) {
+            send_error(envelope.req_id, ErrorCode::Busy, emit, ctx);
+            return;
+        }
         const MeshSinkResult result = mesh_sink_->send(
             body, reinterpret_cast<const char*>(body + kHeader),
             envelope.body_len - kHeader,
             static_cast<std::int64_t>(raw_timestamp));
+        if (result == MeshSinkResult::Pending) {
+            // Answered from `tick` once the worker has asked the provider
+            // (#598). Until then nobody knows whether a message exists, and
+            // `MeshOk` here told the host one did before the provider could
+            // refuse it. No deadline, for forget-bond's reason: the worker
+            // answers every send it dequeues.
+            send_.active = true;
+            send_.req_id = envelope.req_id;
+            return;
+        }
         if (result != MeshSinkResult::Accepted) {
-            send_error(envelope.req_id,
-                       result == MeshSinkResult::Rejected
-                           ? ErrorCode::BadInput
-                           : ErrorCode::OperationFailed,
-                       emit, ctx);
+            send_error(envelope.req_id, mesh_error(result), emit, ctx);
             return;
         }
         Envelope reply;
@@ -354,16 +366,22 @@ void Bridge::handle(const std::uint8_t* payload, std::size_t length, std::uint32
         for (std::size_t i = 0; i < 8; ++i) {
             raw_timestamp |= static_cast<std::uint64_t>(body[kRoomBytes + 1 + password_length + i]) << (8 * i);
         }
+        // The same send claim and the same answer as `MeshSend` above.
+        if (send_.active) {
+            send_error(envelope.req_id, ErrorCode::Busy, emit, ctx);
+            return;
+        }
         const MeshSinkResult result = mesh_sink_->send_room(
             body, reinterpret_cast<const char*>(body + kRoomBytes + 1), password_length,
             reinterpret_cast<const char*>(body + header), envelope.body_len - header,
             static_cast<std::int64_t>(raw_timestamp));
+        if (result == MeshSinkResult::Pending) {
+            send_.active = true;
+            send_.req_id = envelope.req_id;
+            return;
+        }
         if (result != MeshSinkResult::Accepted) {
-            send_error(envelope.req_id,
-                       result == MeshSinkResult::Rejected
-                           ? ErrorCode::BadInput
-                           : ErrorCode::OperationFailed,
-                       emit, ctx);
+            send_error(envelope.req_id, mesh_error(result), emit, ctx);
             return;
         }
         Envelope reply;
@@ -844,7 +862,22 @@ void Bridge::tick(std::uint32_t now_ms, Emit emit, void* ctx)
                 // was already gone leaves nothing to forget, which is the same
                 // answer the synchronous refusal above gives and so carries the
                 // same code.
-                send_error(forget_.req_id, forget_bond_error(outcome), emit, ctx);
+                send_error(forget_.req_id, mesh_error(outcome), emit, ctx);
+            }
+        }
+    }
+    // The late half of a send, picked up here for the same reason (#598).
+    if (send_.active && mesh_sink_ != nullptr) {
+        const MeshSinkResult outcome = mesh_sink_->send_outcome();
+        if (outcome != MeshSinkResult::Pending) {
+            send_.active = false;
+            if (outcome == MeshSinkResult::Accepted) {
+                Envelope reply;
+                reply.req_id = send_.req_id;
+                reply.op     = Opcode::MeshOk;
+                send(reply, nullptr, 0, emit, ctx);
+            } else {
+                send_error(send_.req_id, mesh_error(outcome), emit, ctx);
             }
         }
     }
@@ -914,6 +947,9 @@ void Bridge::on_disconnect(std::uint32_t now_ms)
     // worker and the bond is the owner's, not the connection's; the sink's slot
     // is reclaimed by the next request rather than held by this dead one.
     forget_.active = false;
+    // Likewise a send: the message, if the provider took it, is still the
+    // owner's and still goes out.
+    send_.active = false;
 }
 
 }  // namespace attadipa::debug

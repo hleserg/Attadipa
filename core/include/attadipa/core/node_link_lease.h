@@ -50,10 +50,10 @@ namespace attadipa::core {
 // `core/include/attadipa/core/transport_state.h:27` — "Attached,    // it exists and is powered"
 // — and the firmware is why: one `case` arm brings the stack up and starts
 // scanning in the same breath,
-// `firmware/main/meshcore_ble.cpp:1430` — "provider.begin(now());"
-// followed immediately by `firmware/main/meshcore_ble.cpp:1431` — "if (configured.load()) start_scan();",
+// `firmware/main/meshcore_ble.cpp:1434` — "provider.begin(now());"
+// followed immediately by `firmware/main/meshcore_ble.cpp:1435` — "if (configured.load()) start_scan();",
 // and that scan is neither passive nor bounded —
-// `firmware/main/meshcore_ble.cpp:703` — "params.passive = 0;" and `:707`
+// `firmware/main/meshcore_ble.cpp:707` — "params.passive = 0;" and `:711`
 // — "const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER, &params,".
 // So the ordinary state of a configured watch with no node in range is
 // `Attached` with the radio actively scanning forever. A declaration that
@@ -79,9 +79,9 @@ namespace attadipa::core {
 // rather than a retry", and the transport stops its own GAP work before it
 // publishes it: the fault taken when the stack refuses the passkey first
 // disarms reconnect and cancels the scan, a pending connection and the live
-// session (`firmware/main/meshcore_ble.cpp:1921` — "(void)attadipa::firmware::quiesce_gap(gap);"),
+// session (`firmware/main/meshcore_ble.cpp:1926` — "(void)attadipa::firmware::quiesce_gap(gap);"),
 // and the lifecycle's fault step is reached only on paths where no scan is
-// running (`firmware/main/meshcore_ble.cpp:1433` — "case SessionStep::Fault:").
+// running (`firmware/main/meshcore_ble.cpp:1437` — "case SessionStep::Fault:").
 // That is a claim about what the transport asked NimBLE for, not about the
 // controller, and it has one gap: a cancel NimBLE refuses is logged and the
 // fault stands anyway. Released regardless: a declaration that held through
