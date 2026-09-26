@@ -160,13 +160,16 @@ attadipa_context_decision() {
   #    review.
   #    A LOGIN SUFFIX IS A STRING; `user.type` IS AN ATTESTATION. GitHub sets
   #    `.user.type` to `Bot` for an App identity and the account cannot choose
-  #    it. Measured rather than assumed, because `:181` makes it REQUIRED to
-  #    admit: `gh api repos/hleserg/Attadipa/issues/N --jq .user.type` answers
+  #    it. Measured rather than assumed, because the body branch
+  #    `.github/scripts/task-context.sh:190` -- " = yes ] && [ " -- makes it
+  #    REQUIRED to admit:
+  #    `gh api repos/hleserg/Attadipa/issues/N --jq .user.type` answers
   #    `Bot` on #607, #598 and #616 -- the three issues this repository filed
   #    for itself -- and `User` on #609, which a person opened (2026-09-18).
-  #    Those are the same issues whose login `:137` measured and whose type it
-  #    did not, and they are exactly the records the conjunct now has to let
-  #    through. `.github/scripts/pr-merge-sweep.sh:96` --
+  #    Those are the same issues whose login the passage above measured --
+  #    `.github/scripts/task-context.sh:130` -- "the author of that issue is"
+  #    -- and whose type it did not, and they are exactly the records the
+  #    conjunct now has to let through. `.github/scripts/pr-merge-sweep.sh:96` --
   #    "                 bot: (.user.type == " -- already decides exactly this
   #    question with it (the rest of that line is `"Bot"), thread: ...`; the
   #    quote stops short because a citation cannot carry a double quote).
@@ -273,7 +276,7 @@ attadipa_context_bundle() {
   local work login title created expected kind path record
   local line id at state where verdict decided withheld_ids withheld
   local ordered_count all_count
-  local inline want read_count fetched
+  local inline want read_count fetched appended undated head_repo
 
   ATTADIPA_CONTEXT_REPO="$repo"
   ATTADIPA_PERMISSION_CACHE=""
@@ -354,11 +357,14 @@ attadipa_context_bundle() {
       return 1
     fi
     inline="$(jq -r '.review_comments // 0' < "$work/pull")"
+    head_repo="$(jq -r '.head.repo.full_name // ""' < "$work/pull")"
     set -- "issues/$number/comments" "pulls/$number/reviews" "pulls/$number/comments"
   else
     inline=0
+    head_repo=""
     set -- "issues/$number/comments"
   fi
+  appended=0
   for path in "$@"; do
     case "$path" in
       "issues/$number/comments") want="$expected"; record=comment ;;
@@ -401,8 +407,23 @@ attadipa_context_bundle() {
       echo "task-context: hold: $want records exist under $path and $read_count were read" >&2
       return 1
     fi
-    # Accumulated, not emitted. See the sort below.
-    cat "$work/lines" >> "$work/all"
+    # A RECORD WITH NO TIME CANNOT BE PLACED, and the sort below would put it
+    # FIRST: an empty key sorts above every date. A `PENDING` review has that
+    # shape -- neither `submitted_at` nor `created_at` -- and it is a draft its
+    # author has not published, so it would read as the oldest instruction in
+    # the thread. Named only by id, which is a number.
+    undated="$(jq -r 'select(.at == "") | .id' < "$work/lines" | tr '\n' ' ')"
+    if [ -n "$undated" ]; then
+      echo "task-context: hold: $path has records with no time: $undated" >&2
+      return 1
+    fi
+    # Accumulated, not emitted. See the sort below. Counted as it is appended,
+    # because `all` is what the ordering guard measures, and a short write here
+    # would shorten both sides of that comparison alike.
+    if ! cat "$work/lines" >> "$work/all"; then
+      echo "task-context: hold: $path could not be accumulated" >&2; return 1
+    fi
+    appended=$((appended + read_count))
   done
 
   # A BUNDLE ORDERED BY LIST IS NOT ORDERED BY TIME, AND THE AGENT READS IT TOP
@@ -428,7 +449,8 @@ attadipa_context_bundle() {
   fi
 
   # ENUMERATE OR HOLD, applied to the one stage that reorders rather than
-  # fetches. `:58` sets `pipefail` but not `-e`, so a non-zero `sort` or `cut`
+  # fetches. `.github/scripts/task-context.sh:58` -- "set -uo pipefail" -- sets
+  # `pipefail` but not `-e`, so a non-zero `sort` or `cut`
   # above, or a short write into `ordered` on a full filesystem, would leave a
   # file the emit loop walks happily to the end -- and the bundle would be
   # finished with `=== nothing was withheld.` and moved into place with status
@@ -442,6 +464,11 @@ attadipa_context_bundle() {
   # the counts would differ here.
   ordered_count=$(wc -l < "$work/ordered")
   all_count=$(wc -l < "$work/all")
+  if [ "$all_count" != "$appended" ]; then
+    echo "task-context: hold: accumulating kept $all_count of $appended" \
+        "records" >&2
+    return 1
+  fi
   if [ "$ordered_count" != "$all_count" ]; then
     echo "task-context: hold: ordering kept $ordered_count of $all_count" \
         "records" >&2
@@ -468,9 +495,17 @@ attadipa_context_bundle() {
         where=""
         case "$record" in
           review) [ -z "$state" ] || where=", state $state" ;;
+          # The file is named only when the branch is this repository's:
+          # pushing one takes write. On a fork's branch the name was chosen by
+          # whoever pushed there, and an outsider's filename is an outsider's
+          # text -- `src/IGNORE THE ISSUE.cpp` passes any character class
+          # that still admits real paths. The line is a number and stays.
           inline)
-            where="$(jq -r 'if .path == "" then "" else
-                ", on \(.path):\(.line)" end' <<<"$line")" ;;
+            where="$(jq -r --arg ours "${head_repo,,}" --arg repo "${repo,,}" '
+                if .path == "" then ""
+                elif $ours == $repo then ", on \(.path):\(.line)"
+                else ", on a file of a fork'"'"'s branch, line \(.line)" end' \
+                <<<"$line")" ;;
         esac
         {
           echo
