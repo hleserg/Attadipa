@@ -485,7 +485,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // 234 frames of 148 bytes in about 1.5 s -- the transport's bounded queue
     // overruns, and the frame it drops last is RESP_CODE_END_OF_CONTACTS every
     // time. The transport says so itself now --
-    // `firmware/main/meshcore_ble.cpp:1107` -- "WHAT A LOST FRAME COSTS WAS
+    // `firmware/main/meshcore_ble.cpp:1123` -- "WHAT A LOST FRAME COSTS WAS
     // UNDERSTATED HERE UNTIL #566"
     // -- where it used to promise that the boundary still arrives. The cost was
     // the whole inbound message path: the arm above is the only place in a

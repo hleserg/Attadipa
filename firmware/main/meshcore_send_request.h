@@ -4,7 +4,7 @@
 // which it refuses on the spot -- and nothing else.
 //
 // #609: `BoardMeshSink::send()` bounded the text at a literal 160 while
-// `meshcore_ble.cpp:2534` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
+// `meshcore_ble.cpp:2568` -- "    if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {"
 // -- refuses anything past 128. The 32 bytes in between were accepted by the
 // adapter, refused synchronously one call deeper before the send slot was
 // claimed or anything was queued, and reached the operator as
@@ -78,7 +78,7 @@ inline bool mesh_send_arguments_ok(const std::uint8_t* peer_key,
 }
 
 // 15 password bytes is the Room Server's own bound and stays a literal here
-// because it is one: `meshcore_ble.cpp:2553` -- "    if (password.empty() ||
+// because it is one: `meshcore_ble.cpp:2587` -- "    if (password.empty() ||
 // password.size() > 15 || text.empty() ||" -- is the check this one guards, and
 // giving it a name in this file alone would create the second source of truth
 // the text bound above exists to avoid.
