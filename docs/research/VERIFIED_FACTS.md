@@ -516,13 +516,13 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:2313`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:2366`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator
   ([`firmware/main/meshcore_ble.cpp:223`](../../firmware/main/meshcore_ble.cpp)
   "std::atomic_bool secure_pairing{false};", stored at
-  [`firmware/main/meshcore_ble.cpp:1907`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1953`](../../firmware/main/meshcore_ble.cpp)
   "secure_pairing.store(event.passkey != 0);"). An image nobody has given a
   passkey to does not reach the SMP path and does not write a bond.
 - **Checked:** 2026-09-02, by reading the vendor tree in this checkout's IDF.
@@ -556,9 +556,9 @@ reader ends up citing the one that was not updated.
   `espressif/esp-idf@v5.5.5` records for
   `components/bt/host/nimble/nimble`.
 - **Source (this repository):** the watch is the central and takes that branch
-  from [`firmware/main/meshcore_ble.cpp:1060`](../../firmware/main/meshcore_ble.cpp)
+  from [`firmware/main/meshcore_ble.cpp:1109`](../../firmware/main/meshcore_ble.cpp)
   "if (secure_pairing.load()) {"; a `Configure` re-arms the attempt at
-  [`firmware/main/meshcore_ble.cpp:1947`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:1993`](../../firmware/main/meshcore_ble.cpp)
   "reconnect_allowed.store(true);".
 - **Checked:** 2026-09-02, [#409](https://github.com/hleserg/Attadipa/issues/409).
 - **Boundary — source-traced, not measured.** No stale bond has been made on

@@ -465,7 +465,7 @@ ru = "Результат"
 # screen. Forget takes the pin, and of the trust behind it only a bond the
 # watch had already recorded as stale — a good pairing survives it, and the
 # passkey survives it on purpose:
-# `firmware/main/meshcore_node_forget.h:132` — "    // The passkey itself is deliberately retained. This marker is therefore"
+# `firmware/main/meshcore_node_forget.h:186` — "    // The passkey itself is deliberately retained. This marker is therefore"
 # So the confirmation below promises neither of those two (#504), and what
 # the radio answers afterwards is one of six things — the line names the one
 # that happened rather than the first that started.
