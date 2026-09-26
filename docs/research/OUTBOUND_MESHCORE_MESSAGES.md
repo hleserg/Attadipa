@@ -150,7 +150,7 @@ than from this observation.
 
 This repository already holds one of these frames, captured on the bench and
 committed. The four bytes it deliberately declined to interpret —
-`link/src/meshcore_companion.cpp:1676` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
+`link/src/meshcore_companion.cpp:1683` — "std::memcmp(&data[1], expected_ack_.data(), expected_ack_.size()) != 0"
 reads the ack and stops — are a millisecond count:
 
 `docs/research/MESHCORE_T114_FIRST_CONTACT.md:298` — "82 38 66 6c b8 1b 03 00 00"
@@ -311,7 +311,7 @@ send(recipient: full 32-byte identity,
 
 - **Full 32-byte identity at the app/core boundary.** The six-byte prefix is
   what the adapter writes into `CMD_SEND_TXT_MSG` and must not be what an
-  application holds — `link/src/meshcore_companion.cpp:2156` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
+  application holds — `link/src/meshcore_companion.cpp:2163` — "std::memcpy(&frame[7], peer.public_key.data(), kPeerPrefixBytes);"
   is where the narrowing belongs and is already where it happens.
 - **A local request id, and the word "local" is the contract.** Non-zero so
   that zero means "no request"; monotonic within a session; explicitly **not**
@@ -361,7 +361,7 @@ of `Failed` an earlier draft of this report did not enumerate.** A room send is
 one call in two phases: `send_room()` publishes `Queued` and returns `true`
 while `CMD_SEND_LOGIN` is outstanding, and the text frame is enqueued later,
 from the `PUSH_CODE_LOGIN_SUCCESS` arm —
-`link/src/meshcore_companion.cpp:1742` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
+`link/src/meshcore_companion.cpp:1749` — "        if (!enqueue_private(room_peer_, std::string_view(room_text_.data()),".
 If the four-deep ring is full at that moment the enqueue fails, and the call
 that would have reported it returned `true` a second ago. So decision 3's rule
 — a local refusal is not a delivery state, because no message exists — does not
@@ -397,7 +397,7 @@ owner's side: nothing reached the radio, and a resend cannot duplicate anything.
 path answers `CMD_SEND_LOGIN` and publishes `Accepted` for a text the node has
 not been sent. That defect does not exist, and this is a retraction rather than
 a softening: the claim was checked by running it, and it was false.** The arm is
-gated on the phase — `link/src/meshcore_companion.cpp:1611` — "if (awaiting_send_) {" — and a
+gated on the phase — `link/src/meshcore_companion.cpp:1618` — "if (awaiting_send_) {" — and a
 room login has `awaiting_login_` set with `awaiting_send_` clear, so the
 login's `RESP_CODE_SENT` publishes no `Accepted` at all. The gate predates this
 report: it is #315's, written so that a second send could not overwrite
@@ -702,7 +702,7 @@ it, so a fetched contact never enters the window and never competes for its
 sixteen slots. Hazard 2 is answered by giving the fetch its own copy of the
 type test: the walk's guard still drops a non-chat advert in silence, which is
 right for a cache, and the fetch reports it as `Refused` —
-`link/src/meshcore_companion.cpp:2058` — "    if (data[33] != kAdvertTypeChat) {". Hazard
+`link/src/meshcore_companion.cpp:2065` — "    if (data[33] != kAdvertTypeChat) {". Hazard
 3 is answered by *exclusion*, and the exclusion has to be two-sided, which is
 the correction #600 round 1 made to this paragraph. `ContactsBusy` refuses a
 fetch while a walk or a re-read is outstanding, and that is checked once, at
@@ -800,7 +800,7 @@ harness, which delivers bytes to `receive()` rather than calling internals.
 | 15 | disconnect after `Accepted` | `Unknown`; and a reconnect does not resurrect the request |
 | 16 | `RESP_CODE_ERR` with `ERR_CODE_NOT_FOUND` after a send | `Refused`, distinguishable from a timeout |
 | 17 | `RESP_CODE_ERR` with `ERR_CODE_TABLE_FULL` | not reported to the owner as "the node is full" — §2.1 point 4 |
-| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1612` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
+| 18 | two `RESP_CODE_SENT` frames carrying an **identical** ack tag, in sequence | each is attributed to the request that was in flight when it arrived, and the second does not confirm the first. The aliasing of §2.5 is asserted through the seam the host has: this client never computes a tag — `link/src/meshcore_companion.cpp:1619` — "            std::memcpy(expected_ack_.data(), &data[2], expected_ack_.size());" — it copies one, so a host test states the collision rather than reproducing upstream's keyed hash to manufacture it |
 | 19 | a send to a key the retained window does not hold | `CMD_GET_CONTACT_BY_KEY` goes out with the whole key, and the call publishes `Queued` rather than refusing — §8.1 |
 | 20 | the node answers that fetch with `RESP_CODE_CONTACT` | the text is sent, and the contact is **not** appended to the retained window — §8.2 hazard 1 |
 | 21 | the node answers with an advert type that is not chat | `Refused`, reported rather than absorbed — §8.2 hazard 2 |

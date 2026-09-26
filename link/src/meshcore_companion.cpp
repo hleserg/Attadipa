@@ -1506,10 +1506,17 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // reads the same flag, so this `END` is the only thing left that can
         // spend the session's CMD_SYNC_NEXT_MESSAGE (#602). Every walk above
         // is over only once `contacts_complete_` is set, so that flag is what
-        // separates them; a re-read never lowers it.
-        if (!contacts_open_ && contacts_complete_) {
+        // separates them; a re-read never lowers it. Before DEVICE_INFO the
+        // walk has not been asked for, so an `END` then is nobody's.
+        //
+        // AND IT IS DIRTY. The push arms read `contacts_open_` too, so no
+        // invalidation could have been counted on it; `Consistent` would be
+        // the strongest claim on the least evidence. One bounded re-read, with
+        // its own `START`, settles it.
+        if ((!contacts_open_ && contacts_complete_) || !device_info_seen_) {
             break;
         }
+        if (!contacts_open_) snapshot_dirty_ = true;
         status_.peers_complete = true;
         if (!end_contacts(now)) {
             ++malformed_frames_;

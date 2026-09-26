@@ -2418,6 +2418,8 @@ void test_a_lost_contacts_end_still_asks_for_messages()
 // AND A LOST `START` STILL ENDS ON `END` (#602). Without the frame that opens
 // the walk, neither the boundary guard nor the quiet sweep sees one, and the
 // session would never ask for its messages.
+int drain_counting_re_reads(MeshCoreCompanion& client);
+
 void test_a_first_walk_whose_start_was_lost_still_ends_on_end()
 {
     MeshCoreCompanion client;
@@ -2457,6 +2459,38 @@ void test_a_first_walk_whose_start_was_lost_still_ends_on_end()
     CHECK(!client.next_tx(frame));
     CHECK(client.status().peers_complete);
     CHECK(client.status().peers_retained == 1);
+    CHECK(client.malformed_frames() == 0);
+
+    // No push arm could count an invalidation on it, so it is not
+    // `Consistent`: one bounded re-read, with a `START` of its own.
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    client.tick(at(6 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+}
+
+// An `END` before DEVICE_INFO answers a walk nobody asked for, and ends
+// nothing: no messages fetched, no list claimed complete.
+void test_an_end_before_the_walk_was_asked_for_ends_nothing()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    while (client.next_tx(frame)) {
+    }
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(4)));
+    CHECK(!client.next_tx(frame));
+    CHECK(!client.status().peers_complete);
     CHECK(client.malformed_frames() == 0);
 }
 
@@ -5279,6 +5313,7 @@ int main()
     test_handshake_contacts_and_service_boundary();
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_first_walk_whose_start_was_lost_still_ends_on_end();
+    test_an_end_before_the_walk_was_asked_for_ends_nothing();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
     test_a_confirmation_mid_walk_confirms_without_dirtying();
