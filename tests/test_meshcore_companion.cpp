@@ -4259,6 +4259,45 @@ void test_a_short_contact_deleted_push_is_malformed()
     CHECK(who == peer.id);
 }
 
+// A DELETE INSIDE A WALK DIRTIES IT, WHATEVER ITS LENGTH. The code alone is
+// the evidence that the table moved (ADR-0022 decision 3); the key only decides
+// whose coordinate goes. So a one-byte `0x8F` is malformed and still dirty, and
+// a matching one both empties the slot and dirties the walk -- the arm's two
+// halves together, which the deletion test above runs outside a walk.
+void test_a_delete_inside_a_walk_dirties_it_whatever_its_length()
+{
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    {
+        MeshCoreCompanion client;
+        open_a_contact_stream(client, true);
+        const std::uint8_t opcode_alone[] = {0x8F};
+        CHECK(!client.receive(opcode_alone, sizeof(opcode_alone), at(7)));
+        CHECK(client.malformed_frames() == 1);
+        CHECK(client.receive(end, sizeof(end), at(8)));
+        CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    }
+
+    MeshCoreCompanion client;
+    connect_and_handshake(client);
+    MeshPeer peer{};
+    CHECK(client.peer(0, peer));
+    deliver_message(client, peer, "@12.3456,65.4321", 100);
+
+    const std::uint8_t start[] = {2, 1, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(110)));
+    std::uint8_t deleted[1 + core::kMeshPublicKeyBytes] = {0x8F};
+    std::memcpy(&deleted[1], peer.id.public_key.data(), core::kMeshPublicKeyBytes);
+    CHECK(client.receive(deleted, sizeof(deleted), at(111)));
+    CHECK(client.receive(end, sizeof(end), at(112)));
+
+    core::MeshPeerId who{};
+    core::Position position{};
+    core::MonotonicTime arrived{};
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+    CHECK(client.malformed_frames() == 0);
+}
+
 // ROWS 1-4 OF THE RESEARCH REPORT'S SECTION 11.1: THE CAP REFUSES AT THE BYTE.
 //
 // `kMeshTextBytes` is 128 and it is a count of BYTES. The whole reason the row
@@ -5206,6 +5245,7 @@ int main()
     test_forgetting_the_node_withdraws_a_contact_coordinate();
     test_a_deleted_contact_takes_its_coordinate();
     test_a_short_contact_deleted_push_is_malformed();
+    test_a_delete_inside_a_walk_dirties_it_whatever_its_length();
     test_a_misfired_sweep_publishes_a_partial_pair();
     test_a_contact_dropped_by_type_leaves_retained_below_reported();
     test_room_send_does_not_wait_for_contact_sync();

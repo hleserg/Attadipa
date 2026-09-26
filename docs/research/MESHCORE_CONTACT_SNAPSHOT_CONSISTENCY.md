@@ -327,7 +327,7 @@ boolean is asked to: `core/include/attadipa/core/mesh_service.h:216` —
    `link/src/meshcore_companion.cpp:60` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
 6. Every other valid push — including all four invalidating ones — reaches the
    `default:` arm, where it is counted and refused —
-   `link/src/meshcore_companion.cpp:1889` — "// A response code this build does not know is a frame we did not".
+   `link/src/meshcore_companion.cpp:1893` — "// A response code this build does not know is a frame we did not".
    The link is deliberately left up, which is right and is why this is a
    correctness gap rather than an outage.
 7. `contacts_complete_` also gates `Availability::Ready` and the battery poll.

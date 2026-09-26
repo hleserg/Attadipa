@@ -1524,15 +1524,19 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
     //
     // `0x8F` is the one of the four that reads past its code, so it is the one
     // with a length guard: `[opcode][pub_key x32]`, written by upstream
-    // `MyMesh::onContactOverwrite()` as `1 + PUB_KEY_SIZE` bytes. A shorter one
-    // is refused before anything is compared -- a short delete must not become
-    // a delete -- and dirties nothing (#650).
+    // `MyMesh::onContactOverwrite()` as `1 + PUB_KEY_SIZE` bytes. The code alone
+    // says the table moved, so the walk is dirtied first, whatever the length;
+    // only then is a shorter one refused before anything is compared -- a short
+    // delete must not become a delete (#650).
     //
     // What it adds is ADR-0021 decision 7's fourth refusal: the coordinate held
     // under the deleted key is discarded, not aged, because the record it was
     // attributed through is gone. The comparison is the whole key; a deletion
     // of any other contact leaves the slot alone.
     case kPushContactDeleted:
+        if (contacts_open_ || retry_open_) {
+            snapshot_dirty_ = true;
+        }
         if (size < 1 + core::kMeshPublicKeyBytes) {
             ++malformed_frames_;
             return false;
@@ -1543,7 +1547,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             has_remote_position_ = false;
             remote_position_id_ = core::MeshPeerId{};
         }
-        [[fallthrough]];
+        break;
     case kPushAdvert:
     case kPushPathUpdated:
     case kPushPathDiscovery:
