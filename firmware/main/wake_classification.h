@@ -56,19 +56,14 @@ enum class WakeVerdict : std::uint8_t {
 //     it, and clearing a latch would destroy evidence to answer a question that
 //     was not asked.
 //   * An unarmed cause that arrives *alongside* an armed one does not get that
-//     treatment, and the limit is worth stating rather than discovering. This
-//     function is handed `WakeCauses`, not the wake plan, so it cannot tell
-//     `Timer` armed from `Timer` unarmed; all it can see is that something
-//     armable is set. So the armed route runs, the latch is spent, and if the
-//     latch was empty on a pure poll the verdict is `PollAgain` -- and the
-//     unarmed bits do not survive the descent, because the caller *assigns*
-//     `from_soc` and `unmapped_from_soc` on each wake instead of accumulating
-//     them (`soc_causes_to_wake_sources` in `board_power.cpp`, whose own
-//     comment gives the reason: three thousand poll wakes must not accumulate
-//     into a report claiming every source at once). Reporting on any unarmed
-//     bit instead would wake the device fully for a cause nobody asked about,
-//     which is a power decision, not a classification one, and there is no host
-//     seam for the re-arm loop to prove it against.
+//     treatment. This function is handed `WakeCauses`, not the wake plan, so
+//     it cannot tell `Timer` armed from `Timer` unarmed; all it can see is
+//     that something armable is set. So the armed route runs, the latch is
+//     spent, and if the latch was empty on a pure poll the verdict is
+//     `PollAgain`. Reporting on any unarmed bit instead would wake the device
+//     fully for a cause nobody asked about, which is a power decision, not a
+//     classification one. The bits are not lost: `sleep_until_reported()`
+//     below, which does know the plan, keeps them for the report (#623).
 //   * A debug descent that ended on the timer alone is over on arrival. It did
 //     not sleep to poll the PMU, and consuming a press it never went looking
 //     for would swallow one the *next* real descent would have reported.
@@ -100,6 +95,50 @@ WakeVerdict classify_wake(attadipa::core::WakeCauses &causes, bool debug_wake,
     return WakeVerdict::Report;
   }
   return by_touch ? WakeVerdict::Report : WakeVerdict::PollAgain;
+}
+
+// The whole light-sleep episode: descend, classify, and go back down until a
+// wake is worth reporting. `Ops` supplies, in the order they are called:
+//
+//   bool descend()                    -- one light sleep; false = refused
+//   void read(WakeCauses &causes)     -- what the SoC woke on, *assigned*
+//   bool consume_power_edge()         -- the AXP2101 latch, as above
+//   bool rearm()                      -- the next poll; false = refused
+//
+// `read` assigns rather than accumulates, so that three thousand Timer polls
+// do not end in a report claiming Timer. But a poll that goes back down can
+// carry something nobody armed -- Usb, or a raw bit this project has no name
+// for -- and the next `read` would overwrite it before the owner ever saw
+// it (#623). So what is outside `armed`, and every raw bit, is kept across
+// the polls and added to `causes` on every return, the refusals included,
+// because the owner reconciles `causes` on both. An armed bit is never kept,
+// so no poll's Timer reaches the report. True is a report.
+template <typename Ops>
+bool sleep_until_reported(attadipa::core::WakeCauses &causes, bool debug_wake,
+                          std::uint16_t armed, Ops &ops) {
+  std::uint16_t kept = 0;
+  std::uint32_t kept_unmapped = 0;
+  const auto end = [&](bool reported) {
+    causes.from_soc |= kept;
+    causes.unmapped_from_soc |= kept_unmapped;
+    return reported;
+  };
+  for (;;) {
+    if (!ops.descend()) {
+      return end(false);
+    }
+    ops.read(causes);
+    if (classify_wake(causes, debug_wake,
+                      [&ops] { return ops.consume_power_edge(); }) ==
+        WakeVerdict::Report) {
+      return end(true);
+    }
+    kept |= static_cast<std::uint16_t>(causes.from_soc & ~armed);
+    kept_unmapped |= causes.unmapped_from_soc;
+    if (!ops.rearm()) {
+      return end(false);
+    }
+  }
 }
 
 } // namespace attadipa::firmware

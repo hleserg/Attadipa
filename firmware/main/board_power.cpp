@@ -494,53 +494,73 @@ public:
              touch_armed_ ? "touch + " : "",
              debug_wake ? "debug timer" : "PMU polling");
 
-    for (;;) {
-      const esp_err_t result = esp_light_sleep_start();
-      if (result != ESP_OK) {
-        ESP_LOGE(kTag, "light sleep: %s", esp_err_to_name(result));
-        return false;
+    // The loop is `sleep_until_reported()` in wake_classification.h, so the
+    // host tests run the shipping loop; what stays here is the ESP-IDF half.
+    struct Episode {
+      WaveshareHardware &hw;
+
+      bool descend() {
+        const esp_err_t result = esp_light_sleep_start();
+        if (result != ESP_OK) {
+          ESP_LOGE(kTag, "light sleep: %s", esp_err_to_name(result));
+          return false;
+        }
+        return true;
       }
 
-      // Assigned, not accumulated. The PMU poll wakes on the timer every
-      // 100 ms and goes straight back down, so an episode that ends on a touch
-      // five minutes later has seen three thousand timer wakes -- and OR-ing
-      // them in would mean no wake this firmware ever reports is without
-      // Timer in it. What the report answers is why the sleep *ended*, and
-      // that read is itself a bitmap, so two sources arriving together still
-      // both survive.
-      const std::uint32_t soc = esp_sleep_get_wakeup_causes();
-      soc_causes_to_wake_sources(soc, causes);
+      void read(attadipa::core::WakeCauses &causes) {
+        // Assigned, not accumulated. The PMU poll wakes on the timer every
+        // 100 ms and goes straight back down, so an episode that ends on a
+        // touch five minutes later has seen three thousand timer wakes -- and
+        // OR-ing them in would mean no wake this firmware ever reports is
+        // without Timer in it. What the report answers is why the sleep
+        // *ended*, and that read is itself a bitmap, so two sources arriving
+        // together still both survive. What a poll carried beside Timer is
+        // kept by the loop instead (#623).
+        const std::uint32_t soc = esp_sleep_get_wakeup_causes();
+        soc_causes_to_wake_sources(soc, causes);
 
-      // ADR-0016 §6: the pin is a corroborating signal, never the classifier.
-      // It used to *be* the classifier, and a GPIO wake with the line already
-      // released then fell through to "cause unknown". It stays here rather
-      // than inside the classification because it is the one part of it that
-      // needs a GPIO, and it says nothing about the verdict either way.
-      if ((causes.from_soc &
-           attadipa::core::wake_bit(attadipa::core::WakeSource::Touch)) != 0 &&
-          touch_interrupt_ != GPIO_NUM_NC &&
-          gpio_get_level(touch_interrupt_) != 0) {
-        ESP_LOGW(kTag, "GPIO wake with the touch line already high");
+        // ADR-0016 §6: the pin is a corroborating signal, never the
+        // classifier. It used to *be* the classifier, and a GPIO wake with the
+        // line already released then fell through to "cause unknown". It
+        // stays here rather than inside the classification because it is the
+        // one part of it that needs a GPIO, and it says nothing about the
+        // verdict either way.
+        if ((causes.from_soc &
+             attadipa::core::wake_bit(attadipa::core::WakeSource::Touch)) !=
+                0 &&
+            hw.touch_interrupt_ != GPIO_NUM_NC &&
+            gpio_get_level(hw.touch_interrupt_) != 0) {
+          ESP_LOGW(kTag, "GPIO wake with the touch line already high");
+        }
       }
 
       // One decision for every route out of sleep, in wake_classification.h.
       // Two branches reading register 0x49 for different purposes is what
       // #367's P3 finding was: the GPIO route spent the latch and dropped the
       // Button it proved.
-      if (classify_wake(causes, debug_wake,
-                        [this] { return consume_power_edge(); }) ==
-          WakeVerdict::Report) {
+      bool consume_power_edge() { return hw.consume_power_edge(); }
+
+      // The debug delay is deliberately not re-used: it applies to the first
+      // descent only.
+      bool rearm() {
+        const esp_err_t result = esp_sleep_enable_timer_wakeup(kPmuSleepPollUs);
+        if (result != ESP_OK) {
+          ESP_LOGE(kTag, "re-arm PMU poll: %s", esp_err_to_name(result));
+          return false;
+        }
         return true;
       }
+    } episode{*this};
 
-      // Nothing to report. Re-arm the poll and go back down. The debug delay is
-      // deliberately not re-used: it applies to the first descent only.
-      const esp_err_t rearm = esp_sleep_enable_timer_wakeup(kPmuSleepPollUs);
-      if (rearm != ESP_OK) {
-        ESP_LOGE(kTag, "re-arm PMU poll: %s", esp_err_to_name(rearm));
-        return false;
-      }
-    }
+    // What this descent asked the SoC for: the poll is always Timer, and
+    // Touch only while its line is armed.
+    const std::uint16_t armed = static_cast<std::uint16_t>(
+        attadipa::core::wake_bit(attadipa::core::WakeSource::Timer) |
+        (touch_armed_
+             ? attadipa::core::wake_bit(attadipa::core::WakeSource::Touch)
+             : 0));
+    return sleep_until_reported(causes, debug_wake, armed, episode);
   }
 
 private:
