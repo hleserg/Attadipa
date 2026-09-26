@@ -77,7 +77,7 @@ struct AcceptingProvisioner final : core::Provisioner {
   // can tell those apart -- while stdout is a terminal scrollback, a shell
   // redirect and a CI artefact at once.
   // `docs/research/OWNER_DECISIONS.md:1143` -- "device access credential"; and
-  // one layer down, `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:595` --
+  // one layer down, `docs/research/MESHCORE_NODE_RESET_RECOVERY.md:596` --
   // "Do not log the passkey through the watch's". Queued and armed are the two
   // facts somebody watching this console is waiting for, and neither of them
   // is the number (#316).

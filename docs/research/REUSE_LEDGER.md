@@ -2737,7 +2737,7 @@ code under its own licence — no new dependency, no new licence surface:
   instance. This slot stays the HIL bridge's, its bond-shaped names
   (`Deleted`, `Refused`, `Nothing`) intact.
 - The worker's `ForgetBond` event —
-  [`../../firmware/main/meshcore_ble.cpp:2030`](../../firmware/main/meshcore_ble.cpp)
+  [`../../firmware/main/meshcore_ble.cpp:2038`](../../firmware/main/meshcore_ble.cpp)
   — "taken = recovery.take_forget(peer);" — `USE AS-IS as the seam`. It is
   already the only place that touches the bond store, already terminates the
   live session first, and already re-arms exactly one attempt. #411 put its
@@ -2748,7 +2748,7 @@ code under its own licence — no new dependency, no new licence surface:
   two pieces the report named and #411 wrote: `MeshCoreCompanion::unpin()`,
   the reverse of `pin()` on a host-tested `link/` class and the one that makes
   the clear take hold, since the next adoption overwrites the NVS key by
-  itself; and `erase_node_pin()` on `kNodeKeyNvsKey`, `erase_passkey()`'s
+  itself; and `erase_node_pin()` on `kNodeKeyNvsKey`, `erase_stored_passkey()`'s
   shape, covering only a restart in the window before that adoption re-pins
   the old key out of flash.
 
@@ -3242,7 +3242,7 @@ numbers — keeps the result and keeps the constants tracking Kconfig, without
 touching the toolchain or the build. What this costs is stated rather than
 hidden: the port's static `host_task_h` is now never set, so
 `nimble_port_freertos_deinit()` would delete nothing, and this image's host task
-ends itself instead — `firmware/main/meshcore_ble.cpp:2271` — "    vTaskDelete(nullptr);".
+ends itself instead — `firmware/main/meshcore_ble.cpp:2279` — "    vTaskDelete(nullptr);".
 When the pin moves to a release with candidate 2 in it, this becomes a call to
 `nimble_port_freertos_init()` again with its `esp_err_t` checked, and the
 ordering rule in `meshcore_boot.h` stays exactly as it is.
