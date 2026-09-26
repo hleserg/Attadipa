@@ -1865,6 +1865,13 @@ void test_cli_data_is_neither_a_message_nor_a_coordinate()
     CHECK(client.cli_frames() == 1);
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    // Again from the peer, whose prefix resolves, so the coordinate in it
+    // would land if the CLI check did not guard it (#678).
+    std::memcpy(&cli[4], peer.id.public_key.data(), 6);
+    CHECK(client.receive(cli, sizeof(cli) - 1, at(12)));
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(client.cli_frames() == 2);
+    CHECK(client.next_tx(frame));
 
     // The legacy shape, code 7: `path_len` at 7, `txt_type` at 8. A one-hop
     // message has `path_len` 1, so a type read one byte early would drop it.
@@ -1887,9 +1894,14 @@ void test_cli_data_is_neither_a_message_nor_a_coordinate()
     CHECK(std::strcmp(client.status().last_sender.data(), "Peer") == 0);
     CHECK(!client.remote_position(who, position, arrived));
     CHECK(client.malformed_frames() == 0);
-    CHECK(client.cli_frames() == 2);
+    CHECK(client.cli_frames() == 3);
     CHECK(client.next_tx(frame));
     CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    std::memcpy(&legacy_cli[1], peer.id.public_key.data(), 6);
+    CHECK(client.receive(legacy_cli, sizeof(legacy_cli) - 1, at(14)));
+    CHECK(!client.remote_position(who, position, arrived));
+    CHECK(client.cli_frames() == 4);
+    CHECK(client.next_tx(frame));
 }
 
 void test_channel_message_is_rendered_without_a_contact_prefix()
