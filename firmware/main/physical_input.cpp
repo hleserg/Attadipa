@@ -549,7 +549,7 @@ private:
   attadipa::core::InputQueue input_queue_{};
   attadipa::core::InputState input_state_{};
   bool physical_pressed_ = false;
-  // Set when a sleep returns, cleared when the glass is next empty.
+  // Set when a touch woke a sleep that happened, cleared when the glass is empty.
   bool swallow_wake_touch_ = false;
   std::int16_t physical_x_ = 0;
   std::int16_t physical_y_ = 0;
