@@ -23,6 +23,7 @@ import contextlib
 import io
 import os
 import socket
+import stat
 import struct
 import sys
 import tempfile
@@ -565,14 +566,11 @@ def discovery_skips_a_file_that_is_not_a_socket() -> None:
                 os.chmod(client.LOCAL_SOCKET, 0o600)
                 check(client.discover_socket() is None,
                       "a regular file of ours is not taken for a socket")
-                listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                try:
-                    listener.bind(client.default_socket_path())
-                    os.chmod(client.default_socket_path(), 0o600)  # as the simulator does
-                    check(client.discover_socket() == client.default_socket_path(),
-                          "and the socket at the next name is found past it")
-                finally:
-                    listener.close()
+                # A socket inode, not a socket: discovery only stats it, and this
+                # group must run where the OS refuses `socket()` (#638).
+                os.mknod(client.default_socket_path(), stat.S_IFSOCK | 0o600)
+                check(client.discover_socket() == client.default_socket_path(),
+                      "and the socket at the next name is found past it")
         finally:
             os.chdir(here)
 
@@ -598,6 +596,41 @@ def the_tool_fails_loudly_with_no_device() -> None:
     check(code != 0, "a missing device is a non-zero exit")
     check("could not connect" in stderr.getvalue(), "and the message names the cause")
 
+
+def a_socket_the_os_refuses_is_the_same_clean_failure() -> None:
+    """#638: an OSError from `socket.socket()` itself escaped as a traceback."""
+    sys.path.insert(0, str(HERE.parent))
+    import watch_control  # noqa: PLC0415
+    from watch import client  # noqa: PLC0415
+
+    def refuse(*_args, **_kwargs):
+        raise PermissionError(1, "Operation not permitted")
+
+    closed = []
+
+    class Unreachable:
+        def connect(self, _path):
+            raise FileNotFoundError(2, "No such file or directory")
+
+        def close(self):
+            closed.append(True)
+
+    stderr = io.StringIO()
+    real_socket, real_stderr = socket.socket, sys.stderr
+    socket.socket, sys.stderr = refuse, stderr
+    try:
+        code = watch_control.main(["--socket", "/nonexistent/attadipa.sock", "info"])
+        socket.socket = lambda *_args, **_kwargs: Unreachable()
+        check_raises(client.WatchError, "a failed connect is a WatchError",
+                     lambda: client.SocketTransport("/nonexistent/attadipa.sock"))
+    finally:
+        socket.socket, sys.stderr = real_socket, real_stderr
+
+    check(code == 2, "a refused socket is the documented exit 2, not a traceback")
+    check("could not connect to /nonexistent/attadipa.sock" in stderr.getvalue(),
+          "and the message names the endpoint")
+    check("Operation not permitted" in stderr.getvalue(), "and keeps the OS cause")
+    check(closed == [True], "and a socket that did not connect is closed")
 
 def serial_disconnects_are_reported_without_tracebacks() -> None:
     from watch.client import SerialTransport, WatchError  # noqa: PLC0415
@@ -1985,6 +2018,7 @@ CASES = (
     the_guide_and_the_tool_name_one_socket_path,
     discovery_skips_a_file_that_is_not_a_socket,
     the_tool_fails_loudly_with_no_device,
+    a_socket_the_os_refuses_is_the_same_clean_failure,
     serial_disconnects_are_reported_without_tracebacks,
     scenarios_load,
     a_scenario_that_runs_nothing_is_not_a_pass,

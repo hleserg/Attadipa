@@ -68,10 +68,16 @@ class Transport:
 class SocketTransport(Transport):
     def __init__(self, path: str) -> None:
         self._path = path
-        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        # Creating the socket can fail too -- EPERM in a restricted runner, no
+        # descriptors left -- and is reported the same way, with its cause (#638).
+        try:
+            self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        except OSError as exc:
+            raise WatchError(f"could not connect to {path}: {exc}") from exc
         try:
             self._sock.connect(path)
         except OSError as exc:
+            self._sock.close()
             raise WatchError(f"could not connect to {path}: {exc}") from exc
 
     def send(self, data: bytes) -> None:
