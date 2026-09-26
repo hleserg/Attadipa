@@ -252,7 +252,7 @@ std::string on_screen() {
 // crash instead of a named failure.
 //
 // An `LV_ASSERT` is the same failure, and since #653 the same signal: this
-// build aborts on one -- `sim/lv_conf_simulator.h:553` — "#define LV_ASSERT_HANDLER abort();"
+// build aborts on one -- `sim/lv_conf_simulator.h:555` — "#define LV_ASSERT_HANDLER abort();"
 // -- where it used to spin with both descriptors still redirected until ctest
 // sent the `SIGKILL` no handler catches. `LV_USE_ASSERT_OBJ` is on and this
 // walk hands raw `lv_obj_t *` to LVGL, so the trigger is real. `alarm()` is

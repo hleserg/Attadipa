@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "attadipa/ui/tokens.h"
+#include "attadipa/version.h"
 #include "attadipa_fonts.h"
 
 // An LVGL assertion must end the process, not spin (#653). Its likeliest
@@ -12,8 +13,6 @@
 // the LVGL lock forever. The firmware sets `abort()` in
 // `firmware/lv_assert_abort.h` and the simulator in `sim/lv_conf_simulator.h`;
 // this file is built by both, so either losing it stops the build here.
-#define ATTADIPA_STRINGIFY_(x) #x
-#define ATTADIPA_STRINGIFY(x) ATTADIPA_STRINGIFY_(x)
 static_assert(std::string_view(ATTADIPA_STRINGIFY(LV_ASSERT_HANDLER)) == "abort();",
               "LV_ASSERT_HANDLER must be abort(); -- see #653");
 

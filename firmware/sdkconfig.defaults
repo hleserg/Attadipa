@@ -141,3 +141,10 @@ CONFIG_LV_FONT_MONTSERRAT_28=y
 # CONFIG_ADC_CONTINUOUS_FORCE_USE_ADC2_ON_C3_S3, is deliberately left at its `n`
 # default — it re-enables a mode the erratum broke.
 # docs/research/ESP32S3_ERRATA_V02.md §1.
+
+# An LVGL assertion is abort() here (firmware/lv_assert_abort.h, #653), and
+# abort() is a panic. Print the backtrace and reboot at once: these two are the
+# ESP-IDF v5.5.5 defaults, pinned so that the choice lv_assert_abort.h argues
+# for cannot change under it with a menuconfig.
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=0

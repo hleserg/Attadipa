@@ -23,7 +23,7 @@ core::WallTime host_local_wall_time(core::WallTime utc) {
   // `std::localtime` rather than `localtime_r`, for one reason: the simulator
   // has no second thread. Nothing under `sim/` or `debug/` creates one, the
   // debug channel is polled from the same loop as LVGL, and
-  // `sim/lv_conf_simulator.h:149` — "#define LV_USE_OS   LV_OS_NONE" — is what
+  // `sim/lv_conf_simulator.h:151` — "#define LV_USE_OS   LV_OS_NONE" — is what
   // keeps LVGL from making one either. So the static buffer this returns has a
   // single reader.
   //

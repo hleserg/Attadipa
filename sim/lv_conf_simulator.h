@@ -29,6 +29,8 @@
  *   - LV_FONT_MONTSERRAT_36 0 -> 1: scaffolding only — Montserrat has no Cyrillic and is not the product font
  *   - LV_USE_SNAPSHOT 0 -> 1: --screenshot renders the active screen to a file,
  *     which is how a design review at both geometries gets an artefact
+ *   - LV_ASSERT_HANDLER while(1); -> abort(), and its include <stdint.h> -> <stdlib.h>:
+ *     a failed assertion ends the process instead of spinning with the lock held (#653)
  *
  * On LV_MEM_SIZE: 1 MiB is not a measurement and must not be read as one. The
  * device budget belongs in docs/architecture/RESOURCE_BUDGET.md and has not

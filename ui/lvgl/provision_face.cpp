@@ -94,7 +94,7 @@ constexpr unsigned kRows = 2;
 // RAISING THAT OPACITY FIXED THE WORD AND ERASED THE PRESS. The four keys the
 // model is not calling `acting` are filled `raised`, which is 22/26/38 from
 // the day page and 13/6/5 from night's; a few per cent of that is one or two
-// parts in 255, and `sim/lv_conf_simulator.h:69` — "#define LV_COLOR_DEPTH 16"
+// parts in 255, and `sim/lv_conf_simulator.h:71` — "#define LV_COLOR_DEPTH 16"
 // — buckets by `r >> 3`, `g >> 2`, `b >> 3`, so the pressed key was THE SAME
 // PIXEL as the resting one. Found in review, against a test that measured
 // both states and never asked whether they differ.
