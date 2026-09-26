@@ -89,7 +89,7 @@ recorded here so that no option is credited with paying them.
    factory-reset either — after `mesh-forget-bond` and a `Configure` carrying
    the node's current digits, the watch pairs afresh, reads the node's new key
    and refuses it at
-   `firmware/main/meshcore_node_pin.h:219` — "return PinOutcome::Refused;".
+   `firmware/main/meshcore_node_pin.h:223` — "return PinOutcome::Refused;".
    `erase-flash` is the only path, and it takes the bonds, the pin and the time
    metadata together. The decision below does not move — it declines to add a
    revocation gesture under either reading — but the cost of declining is larger

@@ -2709,9 +2709,9 @@ is still open with no comments. What the entry did not say is where its output
 stops. A factory-reset node also has a **new public key**, so once
 `mesh-forget-bond` has deleted the bond and the watch has paired afresh, the
 node is refused on the pin instead:
-[`../../firmware/main/meshcore_node_pin.h:213`](../../firmware/main/meshcore_node_pin.h)
+[`../../firmware/main/meshcore_node_pin.h:217`](../../firmware/main/meshcore_node_pin.h)
 — "if (!ops.wrong_node()) return PinOutcome::Pinned;" falls through to
-[`:200`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;".
+[`../../firmware/main/meshcore_node_pin.h:223`](../../firmware/main/meshcore_node_pin.h) — "return PinOutcome::Refused;".
 No image can clear that pin. So this entry is `USE AS-IS` for what it covers and
 **incomplete as a recovery**: a real one needs the bond and the pin cleared as
 one operation, and the stored passkey replaced by the entry that carries the
