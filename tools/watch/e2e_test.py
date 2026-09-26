@@ -569,6 +569,63 @@ def _the_default_endpoint_is_this_logins_own(simulator: str, board: str) -> None
                     pass
 
 
+def _a_clean_exit_unlinks_its_own_socket_and_nothing_else(simulator: str, board: str) -> None:
+    """#639. A clean exit removes the socket only if the path still names it.
+
+    `close()` asks `lstat`, not `stat`, for the reason `listen` does: `unlink`
+    acts on the name, so a link put there to the socket this server bound would
+    pass a `stat` and be deleted while the socket stayed behind. Every other
+    case here ends in `terminate`, which never reaches `close()`, so that `stat`
+    was killed by nothing. `--frames` returns from `main`, which does.
+    """
+    environment = dict(os.environ, SDL_VIDEODRIVER="dummy")
+    with tempfile.TemporaryDirectory() as workdir:
+        # The control. Without it the case below passes against a `close()`
+        # that unlinks nothing at all.
+        plain = os.path.join(workdir, "plain.sock")
+        try:
+            done = subprocess.run(
+                [simulator, "--board", board, "--frames", "20", "--debug-socket", plain],
+                capture_output=True, text=True, env=environment, timeout=60)
+            code, said = done.returncode, done.stdout + done.stderr
+        except subprocess.TimeoutExpired:
+            code, said = None, "still running after 60 s"
+        check(code == 0, f"a --frames run exits cleanly: {said[-200:]!r}")
+        check(not os.path.lexists(plain), "and removes the socket it bound")
+
+        bound = os.path.join(workdir, "bound.sock")
+        moved = os.path.join(workdir, "moved.sock")
+        log_path = os.path.join(workdir, "swapped.log")
+        with open(log_path, "wb") as log:
+            process = subprocess.Popen(
+                [simulator, "--board", board, "--frames", "400", "--debug-socket", bound],
+                stdout=log, stderr=subprocess.STDOUT, env=environment)
+            said = lambda: Path(log_path).read_text(errors="replace")
+            try:
+                # `listening on` is printed after `listen` recorded the inode
+                # `close()` compares against; the entry alone exists before it.
+                _within(30, lambda: process.poll() is not None or "listening on" in said())
+                listening = process.poll() is None and "listening on" in said()
+                check(listening, f"the simulator listens: {said()[-200:]!r}")
+                if not listening:
+                    return
+                os.rename(bound, moved)
+                os.symlink(moved, bound)
+                check(process.poll() is None, "and is still running when a link takes the name")
+                try:
+                    code = process.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    code = None
+                check(code == 0, f"then exits cleanly: {said()[-200:]!r}")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+        check(os.path.islink(bound), "and the link to its own socket is not unlinked")
+        check(os.path.exists(moved) and stat.S_ISSOCK(os.lstat(moved).st_mode),
+              "nor the socket it names")
+
+
 def _private_enough(path: str) -> bool:
     """True if `path` cannot collide with another login's.
 
@@ -592,6 +649,7 @@ def run(simulator: str, board: str = "waveshare-amoled-206") -> int:
     _one_stale_socket_has_one_recoverer(simulator, board)
     _a_cleanup_that_failed_is_not_a_cleanup(simulator, board)
     _the_default_endpoint_is_this_logins_own(simulator, board)
+    _a_clean_exit_unlinks_its_own_socket_and_nothing_else(simulator, board)
 
     with tempfile.TemporaryDirectory() as workdir:
         socket_path = os.path.join(workdir, "sim.sock")
