@@ -113,7 +113,7 @@ pin facts?", UNKNOWN, with a decision row reading "open" and a sentence in
 `DEPENDENCIES.md` reading "This is a reuse-ledger decision, not a default". All
 three have since been answered the other way, by
 [ADR-0017](../adr/0017-board-backends-compose-esp-idf-drivers.md): T6 is struck
-([OPEN_QUESTIONS.md:346](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
+([OPEN_QUESTIONS.md:350](OPEN_QUESTIONS.md) "RESOLVED 2026-09-01 — take the facts, not the dependency"),
 the decision row reads decided
 ([../architecture/ARCHITECTURE.md:665](../architecture/ARCHITECTURE.md) "a board backend composes ESP-IDF"),
 and the sentence is the decision itself
