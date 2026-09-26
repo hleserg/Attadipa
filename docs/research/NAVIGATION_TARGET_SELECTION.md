@@ -21,6 +21,15 @@ path already does with a full key. None of it is restated; this report cites it.
 
 - **Reviewed:** `main@ca4b64d` (2026-09-24). The owner's brief was written
   against `main@40271f5` (2026-09-17) and §1 records what moved between them.
+- **Re-verified:** `main@39898a1` (2026-09-26), when this report was rebased.
+  Three things were re-read rather than assumed: `remote_position()` still has
+  no consumer outside `tests/`, so the finding this report exists for has not
+  been fixed; ADR-0021 decision 7's deletion arm **has** been paid since, which
+  §2.4 now records and which drops the prerequisite count from three to two;
+  and every citation in this report resolves at that head under
+  `tools/docs/check_docs.py`. What was **not** re-done is the upstream half —
+  the three trees below were read once, at the pinned commits, and are
+  unchanged here.
 - **Method:** repository source read at that head; three upstream trees fetched
   at the exact commits the brief names and read at the exact lines it cites.
 - **Hardware:** nothing here was run on a board. Every claim about two nodes
@@ -123,17 +132,34 @@ Neither is a defect in #570. Both are the ceiling the header names, and both are
 reasons the consumer cannot be written on top of one slot unchanged. §6 prices
 the alternatives.
 
-### 2.4 One refusal of ADR-0021 decision 7 was unpaid, and #650 paid it
+### 2.4 One refusal of ADR-0021 decision 7 was unpaid, and has since been paid
 
 The clause requires that a contact the node has deleted is discarded rather than
-aged. When this report was written it was not implemented. #650 has since paid
-it on the `PUSH_CODE_CONTACT_DELETED` arm, for the one slot there is —
-`link/src/meshcore_companion.cpp:1128` — "// A deletion whose full key equals `remote_position_id_` empties the slot"
+aged. When this report was first written, against `ca4b64d`, it was not
+implemented: `remote_position()` could publish a coordinate held against a key
+the node had since deleted, latent only because nothing read it. That was filed
+as [#650](https://github.com/hleserg/Attadipa/issues/650) and it is **no longer
+the state of `main`.** #688 merged as `7b10884` on 2026-09-26 and pays it on the
+push arm — `link/src/meshcore_companion.cpp:1551` — "    // under the deleted key is discarded, not aged, because the record it was"
 
-So `remote_position()` no longer publishes a coordinate held against a key the
-node has deleted. What remains a *prerequisite* of this work is keeping that arm
-when the one slot becomes the keyed cache of §6: a deletion must empty the entry
-for its key, whichever entry that is.
+Three properties of that arm are what this report needs from it, and each is in
+the code rather than in the commit message. The comparison is the **whole** key,
+so deleting any other contact leaves the slot alone —
+`link/src/meshcore_companion.cpp:1564` — "                        core::kMeshPublicKeyBytes) == 0) {"
+— which is the same fail-closed discipline §8 asks of prefix collisions. A frame
+too short to carry a key is refused as malformed instead of being treated as a
+delete — `link/src/meshcore_companion.cpp:1559` — "            ++malformed_frames_;"
+— so a truncated push cannot empty the slot. And the walk is dirtied before that
+length check rather than after it, which is the defect round 1 of #688 found and
+fixed; a short delete still says the table moved.
+
+**So this is no longer a prerequisite of the consumer work.** The report's
+remaining two — §6 and §7 — are unaffected, and neither was ever blocked by this
+one. The reason it is recorded here rather than deleted is that §2's argument is
+a survey of what a consumer would inherit, and "this hole was real and is now
+closed, by this commit" is the part of that survey an implementer most needs;
+silently dropping the section would leave the next reader unable to tell a hole
+that was fixed from one that was never looked for.
 
 ### 2.5 A pointer in the header that will mislead the next reader
 
@@ -353,7 +379,7 @@ The ranking that follows from the evidence:
 | **reboot** | gone: session state, nothing survives | resolved by §9 O1. If persisted: reload, re-validate, show "no coordinate yet" — never a blank identity |
 | **reconnect to the same node** | `reset_session()` clears it; the window rebuilds from the walk | unchanged. A transport event is not a wearer's decision |
 | **unpin / rebind to another companion** | must be dropped. `peers_` belongs to whichever node filled it, and `wrong_node_` already refuses the read | the key is a mesh identity, not a per-node one, so it stays valid as a *name*. Whether that contact exists on the new node is a question to ask the node, not to assume either way |
-| **contact deleted on the node** | must be discarded rather than aged — ADR-0021 decision 7, **paid by #650** for the one slot (§2.4) | selection survives as named-but-unresolvable. Deleting a contact is somebody else's action; it must not silently repoint the wearer |
+| **contact deleted on the node** | must be discarded rather than aged — ADR-0021 decision 7, **paid since `7b10884`** (§2.4) | selection survives as named-but-unresolvable. Deleting a contact is somebody else's action; it must not silently repoint the wearer |
 | **duplicate display name** | irrelevant: names are not identity. Two bench nodes differ by an emoji, and the 32-byte name field truncates without complaint | irrelevant by construction |
 | **prefix collision** | fails closed if §6's full-key comparison is implemented; mis-attributes if it is not | unchanged |
 | **A and B reordered** | arrival order is the only order there is; no message carries a sequence number this repository reads | unchanged. The readout may not describe the survivor as "newest", only as the last that arrived |
@@ -378,8 +404,10 @@ The ranking that follows from the evidence:
 5. Losing data never changes the identity: a failed read, an emptied window, a
    reconnect and a deletion are four reasons a coordinate is absent and none is
    a reason the selection moved.
-6. A deleted contact's coordinate is discarded, not aged (ADR-0021 decision 7),
-   for every key the cache holds — #650 pays it for the one slot (§2.4).
+6. A deleted contact's coordinate is discarded, not aged (ADR-0021 decision 7).
+   The invariant is unchanged; what changed is who pays it. Since `7b10884` the
+   push arm does, on a full-key comparison, so the consumer inherits this one
+   instead of having to build it (§2.4).
 7. Precedence is by source rank, not by arrival; a **failed** message
    coordinate clears rather than demoting to the record, and a message that
    simply carries none leaves the slot untouched. Today's seam cannot tell
@@ -421,9 +449,9 @@ on showing a place with its state.
 watch-side implementations converged on, and on a wrist a single tap is the
 input most easily made by accident.
 
-**None of these four blocks writing the prerequisites** — §6's keyed cache,
-keeping §2.4's deletion arm per key, and §7's tri-state parser verdict are
-needed under every answer.
+**None of these four blocks writing the prerequisites** — §6's keyed cache and
+§7's tri-state parser verdict are needed under every answer. §2.4's deletion arm
+was the third until `7b10884` paid it.
 
 ---
 
@@ -548,12 +576,14 @@ and M35 already says about this wire still applies and is not restated.
 
 ## 13. Recommendation, and confidence
 
-**Build the two prerequisites, which no owner answer changes:** a coordinate
-held per key rather than in one slot (§6), keeping the deletion arm of ADR-0021
-decision 7 that #650 added (§2.4) for every key; and a parser verdict of
+**Build the two remaining prerequisites, which no owner answer changes:** a
+coordinate held per key rather than in one slot (§6); and a parser verdict of
 **absent / failed / ok** where there is one boolean today (§7), because the rule
 that a failed coordinate clears is not expressible at that seam and the
-plausible shortcut blanks the arrow on an ordinary message. Then take O1(b) and O2(a) as the smallest honest selection — a
+plausible shortcut blanks the arrow on an ordinary message. They were three
+when this report was written; `7b10884` paid the deletion arm of ADR-0021
+decision 7 (§2.4) on 2026-09-26, and it is the one of the three that needed no
+design. Then take O1(b) and O2(a) as the smallest honest selection — a
 persisted 32-byte key, a picker over the retained window with `k of N` visible,
 explicit commit — and leave the node-wide browse to O2(b) when M44 says it is
 needed.
