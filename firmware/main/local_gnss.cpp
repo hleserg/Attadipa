@@ -188,8 +188,8 @@ bool          quiet_logged   = false;
 //
 // `core::format_location_line` is the repository's engineering line -- shared
 // with `firmware/main/meshcore_ble.cpp:2276` -- "Position   : %s" --
-// the ESP_LOGI that has printed the *node's* position through it since
-// before this file existed. It prints the coordinate, both ages, the validity,
+// the line that has printed the *node's* position through it since before
+// this file existed (DEBUG since #716). It prints the coordinate, both ages, the validity,
 // the receiver state and the origin, and writes `UNKNOWN` in full wherever a number would imply a
 // measurement -- which is why it is the right thing to log and why nothing here
 // formats its own.
@@ -252,15 +252,15 @@ void log_if_answer_changed()
     // person, and `format_location_line` prints latitude and longitude at
     // 10^-7 of a degree, which is about a centimetre.
     //
-    // One line in this firmware already does put a coordinate at INFO --
-    // `firmware/main/meshcore_ble.cpp:2276` -- "Position   : %s" -- and the
-    // distinction is whose coordinate it is. That one
-    // prints the position a paired MeshCore node broadcast, on the boards that
-    // build BLE in; this one would print the wearer's own, from a receiver on
-    // the wrist. The second is the one worth a level. Whether the first should
-    // keep its level is a question about a subsystem this change does not
-    // touch, and it is older than this file -- so it is named here rather than
-    // quietly altered.
+    // The node's line -- `firmware/main/meshcore_ble.cpp:2276` --
+    // "Position   : %s" -- printed its coordinate at INFO until #716. The
+    // distinction this comment used to draw, the node's coordinate against
+    // the wearer's own, does not hold: a node carried on the body reports
+    // the wearer's position too. So that line is DEBUG now as well, and since
+    // meshcore_ble.cpp sets no `LOG_LOCAL_LEVEL` it is compiled out of every
+    // shipped image -- raising it there is a build setting, not a console
+    // command, which is the stricter of the two and the one a coordinate
+    // nobody asked for deserves.
     ESP_LOGI(kTag, "avail %s src %s fix %s validity %s position %s",
              attadipa::core::to_string(now.availability),
              attadipa::core::to_string(now.source),
