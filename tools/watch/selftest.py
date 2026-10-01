@@ -652,6 +652,8 @@ def a_socket_the_os_refuses_is_the_same_clean_failure() -> None:
     check("could not open a socket" in stderr.getvalue(),
           "and the message says no socket was made, not that the path is wrong")
     check("Operation not permitted" in stderr.getvalue(), "and keeps the OS cause")
+    check("/nonexistent/attadipa.sock" not in stderr.getvalue(),
+          "and does not name a path it never reached (#698)")
     check(closed == [True], "and a socket that did not connect is closed")
 
 
