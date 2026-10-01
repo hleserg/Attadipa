@@ -2720,14 +2720,16 @@ constants.
 - **Not verified:** nothing here was run on a board. The consequence for this
   product's vocabulary is [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md).
 
-### The ack tag is a keyed hash of the message, so identical messages alias
+### The ack tag is a plain hash of the message, so identical messages alias
 
 - **Claim:** the four bytes a client correlates a confirmation by are the first
-  four of `sha256(timestamp ‖ (attempt & 3) ‖ text)` keyed by the **sender's**
-  public key. It is therefore deterministic: the same text to the same recipient
-  at the same Unix second with the same attempt number yields the **same tag**,
-  and `attempt & 3` makes attempt 4 alias attempt 0. The recipient's key is not
-  an input, so the tag identifies neither the message nor the person. Upstream's
+  four of an unkeyed `sha256(timestamp ‖ (attempt & 3) ‖ text ‖ sender's public
+  key)`. It is therefore deterministic: the same text from the same sender at
+  the same Unix second with the same attempt number yields the **same tag**,
+  whoever it was sent to, and `attempt & 3` makes attempt 4 alias attempt 0. The
+  recipient's key is not an input, so the tag identifies neither the message
+  nor the person. *Corrected 2026-10-01:* this entry first called the hash keyed
+  by the sender's key; the key is appended data — see the entry below. Upstream's
   own comment beside the matcher reads
   *"NOTE: the same ACK can be received multiple times!"*.
 - **Source:** `BaseChatMesh::composeMsgPacket` and `MyMesh::processAck` at the
@@ -3190,7 +3192,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3100` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3102` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3247,7 +3249,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3171` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3173` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3288,7 +3290,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3125` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3127` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3374,7 +3376,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:3048` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:3050` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3569,7 +3571,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3174` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3176` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has
@@ -3780,7 +3782,9 @@ The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FO
   [`examples/companion_radio/MyMesh.cpp:417`](https://github.com/meshcore-dev/MeshCore/blob/e94125987ed87497e706a0b54d1e80c709343980/examples/companion_radio/MyMesh.cpp#L417)
   — "if (memcmp(data, &expected_ack_table[i].ack, 4) == 0) { // got an ACK from recipient".
 - **Evidence level:** vendor source only, at a revision newer than the fleet's
-  `v1.17.1`. No acknowledgement was forged or replayed on air — M50 in
+  `v1.17.1`; every file cited is byte-identical at the fleet's `d929643`, so the
+  line numbers hold there too ([`MESHCORE_ACK_TRUST.md`](MESHCORE_ACK_TRUST.md)
+  §0). No acknowledgement was forged or replayed on air — M50 in
   [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
 - **Consequence:** `Confirmed` means the companion node saw a matching tag,
   not that the addressed recipient acknowledged — see
