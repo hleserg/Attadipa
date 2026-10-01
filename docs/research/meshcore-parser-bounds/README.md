@@ -15,6 +15,14 @@ Compiles four upstream MeshCore translation units — `src/Packet.cpp`,
 **unmodified**, at whichever revision you name, and feeds their parsers inputs
 that are exactly as long as they claim to be.
 
+**46 cases in four series.** `A`, `B` and `C` are the fragments of 2026-08 —
+frames and adverts shorter than the fields read out of them. `D` is eighteen
+*whole* frames with a valid header and a malformed typed payload, because the
+shape checks upstream added in 2026-09 are per payload type and a fragment has
+no type. `V` is sixteen shapes **the pinned firmware itself builds**, which is
+the series that answers "does the fix cost valid traffic" — a question nobody
+asks until a patch has broken something.
+
 Each input ends flush against a `PROT_NONE` guard page and the build is under
 AddressSanitizer, so a read at `src[len]` is caught either way. Both mechanisms
 are needed: ASan names the source line, and ASan alone **does not report a read
@@ -43,10 +51,29 @@ git -C /tmp/meshcore-src fetch origin pull/3269/head:pr3269   # SHA alone is ref
 ./build.sh pr3269 5ebf8ef9cf1a0df28118c47460277857e0e675b2   # PR #3269 head
 ./build.sh pr3270 f80d805ee8b20f77ff5b3ca6bc3a9021989aafd2   # PR #3270 head
 ./run.sh
+./run.sh C5                   # one case, in full, with its sanitizer report
 
 ./build-extras.sh base        # the tag names which tree to measure
 ./build/path_arith            # P3, exhaustive
 ./build/decrypt_bounds 180    # P4, faults; 176 is clean
+./build/decrypt_bounds 182 --mac   # P4 through MACThenDecrypt, as Mesh.cpp calls it
+```
+
+The three revisions of 2026-10 — the pin, the base of
+[#3521](https://github.com/meshcore-dev/MeshCore/pull/3521) and its head, which
+lives on a fork and so is fetched by URL:
+
+```bash
+git -C /tmp/meshcore-src fetch origin dev
+git -C /tmp/meshcore-src fetch https://github.com/neilalexander/MeshCore.git \
+    54ac30609db317fd888726713d5cab8b5344beda
+
+./build.sh base    d92964352441e53b93e8667b802e04f6e072b39e
+./build.sh devbase 5d266dcb43c5084d2ba00431ca9d4ae9c0f7b176
+./build.sh pr3521  54ac30609db317fd888726713d5cab8b5344beda
+./run.sh
+./build-extras.sh pr3521      # exits 65 — and builds the other two tools first
+./build/path_guard            # exit 0: no pair isValidPathPlaintext accepts underflows
 ```
 
 `MESHCORE_SRC` overrides the clone location. Output goes to `build/`, which is
@@ -61,8 +88,15 @@ That is the point of keeping it. `./build.sh <tag> <ref> && ./run.sh` answers
 it the entry condition for pinning MeshCore into a local provider.
 
 Two findings are **not** in `run.sh`'s matrix and have to be checked separately —
-P3 through `path_arith` and P4 through `decrypt_bounds`. **A green `run.sh` is
-not a clean revision.**
+P3 through `path_arith` or `path_guard`, and P4 through `decrypt_bounds`.
+**A green `run.sh` is not a clean revision.**
+
+`path_arith` measures a revision with **no** guard: it enumerates every
+`(len, path_len)` pair and counts the ones that underflow. `path_guard` measures
+one that **has** a guard, by running the same domain through the tree's own
+`Packet::isValidPathPlaintext`, and exits non-zero if any accepted pair still
+underflows. `build-extras.sh` builds whichever applies and says which, because
+"there is no guard to execute" is a finding and not a build failure.
 
 Both of those go through `./build-extras.sh <tag>`, and the tag is not optional
 decoration. Two ways this directory could have lied about a candidate revision,
@@ -83,3 +117,12 @@ both closed on 2026-08-24 after the independent review of
   refused, with exit 65, naming the digest it wanted and the one it found.
   `#3269`'s head is such a revision, so `./build-extras.sh pr3269` is the
   one-command demonstration that the check is real.
+
+A third, closed on 2026-10-01: **that refusal used to take `decrypt_bounds` down
+with it.** `path_arith`'s fingerprint is a statement about `path_arith` alone —
+`decrypt_bounds` compiles the tree's own `src/Utils.cpp` and copies nothing — but
+it was built after the gate, so a revision that had *moved* the PATH branch could
+not be measured for P4 either. The revisions that move it are exactly the ones
+worth measuring; `#3521`'s head is one. P4's tool is now built first, and the
+refusal says so in its own message rather than leaving the reader to notice a
+binary that is nonetheless correct.

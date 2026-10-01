@@ -10,7 +10,13 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 out="$here/build"
-cases=(A1 A2 A3 B1 B2 B3 C1 C2 C3 C4)
+cases=(A1 A2 A3 B1 B2 B3 C1 C2 C3 C4 C5 C6
+       D1 D2 D3 D4 D5 D6 D7 D8 D9 D10 D11 D12 D13 D14 D15 D16 D17 D18
+       V1 V2 V3 V4 V5 V6 V7 V8 V9 V10 V11 V12 V13 V14 V15 V16)
+
+# One case may be named on the command line, so that a single row can be
+# re-run and read in full rather than through the matrix's one line.
+if [ $# -gt 0 ]; then cases=("$@"); fi
 
 shopt -s nullglob
 harnesses=("$out"/harness-*)
@@ -42,8 +48,11 @@ for h in "${harnesses[@]}"; do
         elif [ $rc -ne 0 ]; then
             printf '%-8s %-3s  ERROR  harness exited %d\n' "$tag" "$c" "$rc"
         else
+            # -a, because an advert name is attacker-chosen bytes and grep
+            # calls a NUL or a stray 0x80 "binary" and prints nothing — which
+            # is a blank cell in the matrix for a case that ran perfectly.
             printf '%-8s %-3s  clean  %s\n' "$tag" "$c" \
-                "$(grep -E 'returned|valid=' <<<"$outp" | head -1 | sed 's/^ *//')"
+                "$(grep -aE 'returned|valid=' <<<"$outp" | head -1 | sed 's/^ *//')"
         fi
     done
     echo

@@ -127,7 +127,7 @@ unusable, which is not a state anything has observed.
 
 **5. No age is claimed. ADR-0020 decision 4 applies to this wire verbatim, and
 the message gives it no help.** The advert fields were already forbidden from
-reaching `age_at_source_ms` — `docs/research/VERIFIED_FACTS.md:357` — "  decision 4 forbids either field from reaching `age_at_source_ms`." —
+reaching `age_at_source_ms` — `docs/research/VERIFIED_FACTS.md:414` — "  decision 4 forbids either field from reaching `age_at_source_ms`." —
 because they are on the sender's clock. A message carries no timestamp this
 repository reads at all: `accept_message()` copies the text and nothing else
 temporal. So there is no age to publish, `Validity::Unknown` travels with the
@@ -138,7 +138,7 @@ unless the bytes changed applies here too.
 A consequence worth stating because it is easy to mistake for a defect: the
 readout's honest resting state is still `NodePositionStale`, for the reason
 ADR-0020 gave — a companion has no periodic advert at all,
-`docs/research/VERIFIED_FACTS.md:383` — "### A companion node has no periodic advert at all" —
+`docs/research/VERIFIED_FACTS.md:440` — "### A companion node has no periodic advert at all" —
 and for a new one: a person sends a message when they have something to say,
 which is a cadence, not a refresh.
 

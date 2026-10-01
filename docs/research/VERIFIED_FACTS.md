@@ -71,6 +71,14 @@ An entry that cannot name its source does not belong here. It belongs in
 - **Consequence:** a measurement on a pull request's head tree is a measurement
   of our pin plus that pull request's guards, and no rebasing is needed to reason
   about either.
+- **Still true of four files on 2026-10-01, and no longer of two.** Against
+  `dev@5d266dcb`, 199 commits ahead of the pin and the base of
+  [#3521](https://github.com/meshcore-dev/MeshCore/pull/3521): `src/Packet.cpp`,
+  `src/Packet.h`, `src/Dispatcher.cpp` and `src/Mesh.cpp` are **still
+  byte-identical**, so P1, P2, P3 and P5 are untouched there. `src/Utils.cpp`
+  (+14 −2), `src/MeshCore.h` (+18 −7) and `src/helpers/AdvertDataHelpers.cpp`
+  (+8) have moved. Measured the same way —
+  [MESHCORE_PARSER_BOUNDS §9.1](MESHCORE_PARSER_BOUNDS.md).
 
 ### Nine of ten malformed-frame cases over-read on the pinned MeshCore revision
 
@@ -100,6 +108,47 @@ An entry that cannot name its source does not belong here. It belongs in
   radio, a node or a board, and no host sanitizer result may be presented as
   radio or HIL validation.
 
+### MeshCore #3521 rejects all 46 malformed cases and keeps all 16 valid ones
+
+- **Claim:** on `54ac3060` — the head of
+  [#3521](https://github.com/meshcore-dev/MeshCore/pull/3521), the public
+  disclosure of GHSA-2fvm-7f8c-957x — every case this project can execute is
+  clean: the ten of 2026-08, eighteen malformed typed frames (ACK of 0/3/7/184
+  bytes, TRACE underflow and incomplete hashes, empty CONTROL, non-block-aligned
+  ciphertext for TXT_MSG, GRP_TXT, ANON_REQ and PATH, truncated and oversized
+  ADVERT, empty and oversized MULTIPART ACK) and the `AdvertDataParser` write.
+  All eighteen malformed frames are **accepted** at the pin and at #3521's base.
+  Sixteen valid shapes the pinned firmware itself builds are accepted on all
+  three revisions.
+- **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §9.4 and
+  §9.8; corpus in [`meshcore-parser-bounds/`](meshcore-parser-bounds/).
+- **Checked:** 2026-10-01, clang 18.1.3, Ubuntu 24.04.
+- **What it is not:** a statement that the parser is now correct. It is a
+  statement about 46 cases. No fuzzer has run against either revision, and the
+  head has **no CI behind it at all** — zero check runs, zero status contexts —
+  so even upstream's own new unit tests are the author's claim.
+- **Not released, and not merged.** The pin is still `companion-v1.17.1`, still
+  upstream's newest release, and `main` is six documentation commits ahead of it.
+- **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.**
+
+### `AdvertDataParser` writes 254 bytes into a 32-byte name buffer
+
+- **Claim:** at `d929643`, `AdvertDataParser(app_data, 255)` with the name flag
+  set performs a `WRITE of size 254` into `char _name[MAX_ADVERT_DATA_SIZE]` —
+  32 bytes — at `src/helpers/AdvertDataHelpers.cpp:56`. Reproduced under
+  AddressSanitizer against upstream's unmodified translation unit.
+- **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §9.5,
+  corpus case C5.
+- **Checked:** 2026-10-01.
+- **What it is not: radio-reachable at the pin.** `src/Mesh.cpp:269` clamps
+  `app_data_len` to `MAX_ADVERT_DATA_SIZE` before `onAdvertRecv`, and both call
+  sites in the pinned tree — `examples/simple_repeater/MyMesh.cpp:656` and
+  `src/helpers/BaseChatMesh.cpp:121` — receive the clamped value. So this is a
+  broken parser contract waiting for a caller that forgets the clamp, which is
+  exactly what a new caller such as a local provider would be. Upstream's #3521
+  puts the bound inside the parser, where a caller cannot forget it.
+- **Hardware:** **NOT EXECUTED — HARDWARE REQUIRED.**
+
 ### `Utils::decrypt` writes 192 bytes into MeshCore's 184-byte packet buffer
 
 - **Claim:** `src/Utils.cpp:70-83` rounds its output up to whole 16-byte blocks
@@ -111,8 +160,16 @@ An entry that cannot name its source does not belong here. It belongs in
   for `src_len` 177, 180 and 182 and clean at 176.
 - **Source:** [MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §3 P4.
 - **Checked:** 2026-08-23.
-- **Not from upstream:** none of the three pull requests mentions it, and it is
-  not filed upstream. Reporting it is the owner's call, not an agent's.
+- ~~**Not from upstream:** none of the three pull requests mentions it, and it is
+  not filed upstream. Reporting it is the owner's call, not an agent's.~~
+  **Corrected 2026-10-01: it was filed upstream on 2026-02-23**, seven months
+  before this project found it, as
+  [MeshCore #1809](https://github.com/meshcore-dev/MeshCore/pull/1809), whose
+  body describes the same block-rounding write into the same 184-byte stack
+  buffer. It merged into `dev` as `b9f519ef` on 2026-09-28. None of the *three*
+  pull requests this project was looking at mentions it, which is what was
+  checked; the repository was not. **It is not fixed at our pin:** `b9f519ef` is
+  on `dev` only, `main` has not taken it, and no release contains it.
 - **Not established:** what those eight bytes overwrite on an ESP32-S3, and
   whether the end-to-end path through `Mesh::onRecvPacket` runs — both need
   builds this project has not made. See
@@ -1072,7 +1129,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2356`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2413`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -2331,7 +2388,7 @@ constants.
   have since been read side by side and **both give `0x7C`** in their
   register-description sections. Either citation was right about the byte. What
   neither is is a way to tell the two documents apart — see
-  [`VERIFIED_FACTS.md:1055`](VERIFIED_FACTS.md) "no register tells them apart".
+  [`VERIFIED_FACTS.md:1112`](VERIFIED_FACTS.md) "no register tells them apart".
   Both are 88 pages, both are held off-tree because they are copyrighted and
   marked "Security Level: 3": `13-52-27` md5 `e093b1cc1d1cf85097f955abbea65c08`,
   `13-52-25` md5 `5a0fef65a358430d6499944a75d22e19`.
@@ -3133,7 +3190,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3043` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3100` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3167,7 +3224,7 @@ ones that heading states.
   wrong prior for a powered-off reading.** They fix no order of magnitude for a
   *VBUS-side* residual, because the table nowhere records which side of the PMU
   it was taken on, and this tree already says what such rows are worth —
-  `docs/research/VERIFIED_FACTS.md:937` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
+  `docs/research/VERIFIED_FACTS.md:994` — "- **Impact:** these are **vendor numbers under vendor firmware**, useful as an".
   Its neighbouring rows read as battery-side figures —
   `docs/research/HARDWARE_MATRIX.md:337` — "| Deep sleep | PWR + BOOT, backup off | 460 µA |" —
   and 460 µA of deep sleep is not what an inline USB meter returns with a
@@ -3190,7 +3247,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3114` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3171` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3206,7 +3263,7 @@ ones that heading states.
   (`firmware/main/board_power.cpp:640` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
   2026-09-05 and recorded above
-  (`docs/research/VERIFIED_FACTS.md:845` — "Claim, on the bench unit, MEASURED 2026-09-05"),
+  (`docs/research/VERIFIED_FACTS.md:902` — "Claim, on the bench unit, MEASURED 2026-09-05"),
   and this image raises that rail on purpose
   (`firmware/main/twatch_board.cpp:981` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
   So for the whole 45 minutes a receiver was powered, and **nothing here
@@ -3216,7 +3273,7 @@ ones that heading states.
   (below). So the GNSS share is unmeasured in size *and* unbounded in
   direction; this entry claims only that it is inside the 778.9 mW. The rail is named, not gated: this
   entry does not claim that clearing BLDO1 would turn the module off:
-  `docs/research/VERIFIED_FACTS.md:859` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
+  `docs/research/VERIFIED_FACTS.md:916` — "- **What the rail attribution does *not* license.** BLDO1 was found already"
   says why nothing here could show that.
 - **The LoRa radio rail was down for the run.** Bit 3 of that same byte is
   `aldo4 enable`, read off the register's own bit map — AXP2101 datasheet
@@ -3231,7 +3288,7 @@ ones that heading states.
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3068` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3125` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3291,7 +3348,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:736` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:754` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3317,7 +3374,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:2991` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:3048` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3512,7 +3569,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3117` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3174` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has

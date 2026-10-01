@@ -2,6 +2,11 @@
 #
 # The two experiments that are not part of the ten-case corpus:
 #
+#   ./build/path_guard          finding P3, on a revision that has a guard —
+#                               the same domain through the tree's own
+#                               Packet::isValidPathPlaintext. Built only where
+#                               that symbol exists.
+#
 #   ./build/path_arith          finding P3 — every (len, path_len) pair that
 #                               reaches src/Mesh.cpp:160-172, and which of them
 #                               underflow extra_len. The constants and the
@@ -13,6 +18,9 @@
 #                               against a stub block cipher, writing into a
 #                               184-byte destination backed by a guard page.
 #                               N is src_len; 176 is clean, 177..180 are not.
+#                               Add --mac to enter through MACThenDecrypt,
+#                               which is the call Mesh::onRecvPacket makes and
+#                               the place upstream put the gate.
 #
 # Usage:
 #
@@ -51,6 +59,40 @@ revision=$(cat "$tree/.revision")
 
 mkdir -p "$out"
 
+# --- P4, first, because P3's gate must not take it down with it ------------
+#
+# decrypt_bounds compiles the tree's own src/Utils.cpp and copies nothing, so
+# it is correct on any revision. The P3 fingerprint below is a statement about
+# path_arith alone. Building them in the other order — which is how this script
+# started — meant that a revision which had MOVED the PATH branch could not be
+# measured for P4 either, and the revisions that move it are exactly the ones
+# worth measuring. #3521's head is one.
+
+clang++ -std=c++17 -g -O0 -fsanitize=address -fno-omit-frame-pointer \
+    -I"$tree/src" -I"$here/shim" \
+    "$here/decrypt_bounds.cpp" "$here/shim/shim.cpp" "$tree/src/Utils.cpp" \
+    -o "$out/decrypt_bounds"
+echo "built build/decrypt_bounds from $revision"
+
+# --- P3's guard, where there is one ----------------------------------------
+#
+# Built only when the tree declares Packet::isValidPathPlaintext. Its absence
+# is not a build failure: on every revision up to and including the pin there
+# is no guard, and "there is nothing to execute" is the finding rather than an
+# error. path_arith below is what measures those.
+
+if grep -q "isValidPathPlaintext" "$tree/src/Packet.h"; then
+    clang++ -std=c++17 -g -O0 -fsanitize=address -fno-omit-frame-pointer \
+        -DPARSER_BOUNDS_REV="\"$revision\"" \
+        -I"$tree/src" -I"$here/shim" \
+        "$here/path_guard.cpp" "$here/shim/shim.cpp" "$tree/src/Packet.cpp" \
+        -o "$out/path_guard"
+    echo "built build/path_guard from $revision"
+else
+    rm -f "$out/path_guard"
+    echo "no Packet::isValidPathPlaintext at $revision — nothing to execute for P3's guard"
+fi
+
 # --- P3's hand-copy, fingerprinted against the tree ------------------------
 #
 # path_arith takes its constants and its validator from the built revision, but
@@ -75,6 +117,7 @@ branch_text=$(
 if [ -z "$branch_text" ]; then
     echo "could not find the PAYLOAD_TYPE_PATH branch in $tree/src/Mesh.cpp." >&2
     echo "Upstream has moved or renamed it. Re-read finding P3 by hand at $revision." >&2
+    echo "build/decrypt_bounds IS built and is valid for this revision." >&2
     exit 65
 fi
 digest=$(printf '%s\n' "$branch_text" | sha256sum | cut -d' ' -f1)
@@ -89,6 +132,10 @@ path_arith's index arithmetic is a hand-copy of those lines, so its answer is
 about the pinned revision and NOT about this one. Re-read finding P3 in
 ../MESHCORE_PARSER_BOUNDS.md against $revision, update the extraction and this
 digest together, and only then trust the number.
+
+build/decrypt_bounds IS built from $revision and is valid for it: it compiles
+that tree's own src/Utils.cpp and copies nothing, so P4 can still be measured
+here. Only path_arith is refused.
 EOF
     exit 65
 fi
@@ -100,10 +147,3 @@ clang++ -std=c++17 -g -O0 \
     -o "$out/path_arith"
 echo "built build/path_arith from $revision (PATH branch digest matches)"
 
-# --- P4 --------------------------------------------------------------------
-
-clang++ -std=c++17 -g -O0 -fsanitize=address -fno-omit-frame-pointer \
-    -I"$tree/src" -I"$here/shim" \
-    "$here/decrypt_bounds.cpp" "$here/shim/shim.cpp" "$tree/src/Utils.cpp" \
-    -o "$out/decrypt_bounds"
-echo "built build/decrypt_bounds from $revision"

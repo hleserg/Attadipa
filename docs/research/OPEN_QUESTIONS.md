@@ -234,7 +234,10 @@ Five parser defects at the pin were verified and are in
 work **failed** to establish, kept separate so that a verified over-read is never
 read as a verified consequence.
 
-**These four were filed as M15–M18 and are M20–M23.** The frame-capacity research
+**These four were filed as M15–M18 and are M20–M23**, and M24–M26 were added on
+2026-10-01 — as **M46–M48**, the first free numbers, because M24, M25 and M26
+were taken by the GNSS and companion work in between — when the public advisory
+answered half of M23 and opened three more. The frame-capacity research
 took M15–M19 on `main` while this branch was open, and two research runs in the
 same week can pick the same next number without either being wrong. Renumbered
 here on merge, 2026-08-25, rather than left as two answers to one identifier —
@@ -246,17 +249,32 @@ along. Anything citing the old numbers from before that date means these.
 | M20 | **Do P3 and P4 actually run end to end through `Mesh::onRecvPacket`?** Both are proven at the function they live in — the `extra_len` underflow exhaustively, the `Utils::decrypt` over-write against the real translation unit. Neither has been driven through the packet path that reaches it | **UNKNOWN** | a host build of MeshCore with the genuine `rweather/Crypto` AES-128 and SHA-256 and the vendored ed25519, rather than this harness's stubs. That is a day of work and it would also give the project its first real MeshCore reference vectors, which M13 says do not exist |
 | M21 | **Can an attacker steer P3's `extra_type` and `tag`?** They are read from `data[k..]`, past the decrypted length, so they are stale stack bytes rather than anything in the triggering packet. Grooming them with an earlier packet is plausible and untested. This is the difference between a conditional finding and a controllable one | **UNKNOWN** | the same build as M20, plus a two-packet sequence that fills the stack region and then triggers the underflow |
 | M22 | **What do P4's eight bytes overwrite on an ESP32-S3?** The over-write leaves `uint8_t data[184]` in `Mesh::onRecvPacket`. What sits after it is a property of the stack frame the compiler chose for that target, and nobody here has compiled MeshCore for it | **UNKNOWN** | build MeshCore for an ESP32-S3 target and read the frame layout. Note that answering it does **not** need a board — this one is a compiler question, not a hardware one |
-| M23 | **Are there more of these?** The corpus is hand-built from reading three parsers. It demonstrates; it does not search. `Utils::decrypt` was found by following a caller, not by the corpus, which is evidence that reading finds what a ten-case corpus does not | **UNKNOWN** | a real fuzzing pass over the pinned tree with the genuine crypto libraries. Scope it as its own task; do not fold it into a pin decision |
+| ~~M23~~ | ~~**Are there more of these?**~~ | **ANSWERED 2026-10-01: yes.** [MeshCore #3521](https://github.com/meshcore-dev/MeshCore/pull/3521), the public disclosure of GHSA-2fvm-7f8c-957x, names ACK, multipart ACK, TRACE, CONTROL, ANON_REQ reply paths and truncated and oversized ADVERT — none of which the ten-case corpus contained — and this project then found a sixth defect of its own in `AdvertDataParser`. The corpus is 46 cases and all eighteen new malformed typed frames are accepted at the pin. The half that is **not** answered is whether the set is now complete, which is M46 | — |
+| M46 | **Is the set complete?** M23's successor and deliberately narrower. #3521 closes all 46 cases this project can measure, which is a statement about the corpus and not about the parser. Upstream's own body says MemorySanitizer was never run, and no fuzzer corpus is published with the advisory | **UNKNOWN** | a coverage-guided fuzzer over `Packet::readFrom`, `isValidPayload`, `AdvertDataParser` and the decrypted-PATH helpers, on both revisions, with the genuine crypto libraries. The same task M20 describes, and it should be scoped once for both |
+| M47 | **Do the role builds behave as the library does?** All of this was read in `src/` plus one call site in `examples/simple_repeater`. The companion and room-server roles have their own overrides, and upstream's own patch touches `examples/simple_repeater/MyMesh.cpp` separately from the library | **UNKNOWN** | read the three roles' overrides of the advert, ACK and TRACE paths at the pin. Source work, no hardware. It matters because the fleet runs companion and repeater builds, not the library |
+| M48 | **Does the fleet's real traffic survive #3521's shape checks?** Sixteen shapes the pinned senders build were measured and all sixteen are accepted on its head — but sixteen shapes derived from reading is not a traffic sample, and one client-chosen field (a TRACE's `flags`) can build a frame the pin forwards and the head drops | **UNKNOWN** | capture real traffic from the bench nodes and replay it through both revisions' parsers. The capture needs a node; the replay does not. **NOT EXECUTED — HARDWARE REQUIRED** for the capture half |
 
 None of these blocks anything today, because Attadipa compiles no MeshCore code.
-All four become entry conditions the moment a local MeshCore provider is real —
-[MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §5.
+They become entry conditions the moment a local MeshCore provider is real —
+[MESHCORE_PARSER_BOUNDS.md](MESHCORE_PARSER_BOUNDS.md) §5 — and M46 and M48 are
+also the two that a **fleet upgrade** would have to answer, which is a different
+decision and a separate issue; §9.10 states its entry condition.
 
 One more, and it is not a MeshCore question: the three pull request authors each
 state they verified on a Heltec V4, and none attaches a crash trace, a corpus or
 sanitizer output. That is **an unverified author claim** and it is recorded as
 one. This project has no Heltec V4 and independently confirming it is
 **NOT EXECUTED — HARDWARE REQUIRED**.
+
+**The same applies to #3521, and less generously.** Its head `54ac3060` has no
+check runs and no status contexts at all — not failing, absent — so even the
+author's claim that the new unit tests pass has nothing behind it but the
+author. No board, HIL run, radio capture, crash trace or post-fix field count is
+published with the advisory, and the older three authors' "tested on a Heltec V4"
+cannot be carried across to a different patch. Independently confirming any of
+it on this project's T114 or V4.3 nodes is
+**NOT EXECUTED — HARDWARE REQUIRED**, and malformed-frame radio tests must not
+be run on a node anyone depends on.
 
 ### What a position out of a node still does not say
 
