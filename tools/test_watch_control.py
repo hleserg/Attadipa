@@ -169,6 +169,9 @@ class Recorder:
         if Recorder.forget_bond_error is not None:
             raise Recorder.forget_bond_error
 
+    def tap(self, x, y):
+        self.calls.append(("tap", x, y))
+
     def describe(self):
         return "a recorder"
 
@@ -407,6 +410,34 @@ except AttributeError:
     ok("a zero series interval is still accepted")  # reached the device, as it should
 else:
     no("a zero series interval is still accepted", "it returned without a device")
+
+
+# #614 -- the duration flags an operator types, through the parser and the
+# REPL rather than the callee. `--delay` once had nothing behind the parser:
+# `--delay inf` slept forever with the tap delivered and the connection held.
+for argv in (["tap", "--x", "1", "--y", "1", "--screenshot-after", "--delay", "inf"],
+             ["live", "--delay", "nan"]):
+    code, calls, err = run(argv)
+    if code == 2 and calls == [] and "not a length of time" in err:
+        ok(f"{argv[0]} --delay {argv[-1]} is a usage error before anything is sent")
+    else:
+        no(f"{argv[0]} --delay {argv[-1]} is a usage error before anything is sent",
+           f"exit {code}, calls {calls}, err {err!r}")
+
+try:
+    wc.after_action(None, _argparse.Namespace(
+        screenshot_after=True, delay=float("inf"), json=False), "tap", "tap")
+except _WatchError:
+    ok("a --delay that slipped past the parser is refused before the sleep")
+else:
+    no("a --delay that slipped past the parser is refused before the sleep")
+
+code, calls, err = run(["live"], stdin_text="delay inf\nwait nan\nseries 2 inf\nquit\n")
+if code == 0 and err.count("not a length of time") == 3:
+    ok("live refuses delay, wait and series durations and keeps the session")
+else:
+    no("live refuses delay, wait and series durations and keeps the session",
+       f"exit {code}, err {err!r}")
 
 
 print(f"\n{PASS} passed, {FAIL} failed")

@@ -548,7 +548,7 @@ def cmd_live(watch: Watch, args) -> int:
     followed by a `release` in two processes could never test a real hold.
     """
     auto = bool(args.screenshot_after)
-    delay = float(args.delay or 0.15)
+    delay = _duration_seconds(args.delay or 0.15, "the screenshot delay")
     print(f"connected to {watch.describe()}. 'help' for commands, 'quit' to leave.")
     if auto:
         print(f"automatic screenshot after each action, {delay}s later")
@@ -653,7 +653,8 @@ def after_action(watch: Watch, args, description: str, prefix: str) -> int:
         emit(args, {"action": description, "ok": True}, description)
         return 0
 
-    time.sleep(float(getattr(args, "delay", None) or 0.15))
+    time.sleep(_duration_seconds(getattr(args, "delay", None) or 0.15,
+                                 "the screenshot delay"))
     shots = take_screenshots(watch, args, prefix)
     if args.json:
         print(json.dumps({"action": description, "ok": True, "screenshots": shots}, indent=2))
