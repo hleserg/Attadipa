@@ -67,21 +67,24 @@ constexpr char kTag[] = "attadipa_mesh_ble";
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
-// How long the worker may keep finding the queue non-empty before it blocks
-// for one tick (#630). Under a backlog the receive below returns at once, and
+// How long the worker may go without blocking before it blocks for one tick
+// (#630). The clock restarts whenever the worker did block: on an empty queue,
+// and in the `kMeshCoreWriteDelay` pause after a write that went out -- not on
+// a write that failed or outlived its session, which returns at once (#693).
+// Under a backlog the receive below returns at once, and
 // a priority-3 task that never blocks starves the idle task of its core -- the
-// task watchdog's five seconds, the same class `gnss_bridge.cpp` hit -- and
-// LVGL at priority 1 with it. `taskYIELD()` would not help: it yields only to
-// equal priority.
-//
-// Chosen, not derived. Counted in time, not passes, so the cost does not grow
-// as a pass gets cheaper: one tick is 10 ms at `CONFIG_FREERTOS_HZ=100`
-// (`docs/research/ak09911-waveshare-2026-09-09/build-sdkconfig.txt:1468` --
-// "CONFIG_FREERTOS_HZ=100"), so a flood costs the worker at most one tick in
-// eleven, far inside the watchdog's five seconds. A worker that keeps up
-// empties the queue and never takes one. What the tick costs a contact walk,
-// whose records arrive in bursts, against 48 slots of `kEventDepth`, is
-// `UNKNOWN`.
+// task watchdog's five seconds, the class `gnss_bridge.cpp` hit. `taskYIELD()`
+// would not help: it yields only to equal priority. Chosen, not derived, and
+// counted in time, not passes, at `CONFIG_FREERTOS_HZ=100`
+// (`docs/research/ak09911-waveshare-2026-09-09/build-sdkconfig.txt:1468` -- "CONFIG_FREERTOS_HZ=100"):
+// a flood leaves lower priorities on the worker's core at most one tick in
+// eleven, and less, since `vTaskDelay(1)` wakes at the next tick, 0-10 ms on.
+// That fixes the watchdog. Whether it keeps LVGL and touch answering on core 1
+// (`firmware/main/waveshare_board.cpp:1284` -- "  port.task_affinity = 1;"),
+// when the unpinned worker runs there, is `UNKNOWN`. So is what the tick
+// costs a contact walk, whose records arrive in bursts
+// (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:644` -- "are contact to contact: median 0 ms, p99 10 ms"),
+// against 48 slots of `kEventDepth`.
 constexpr TickType_t kBacklogTicks = pdMS_TO_TICKS(100);
 
 static_assert(BLE_HS_CONN_HANDLE_NONE == attadipa::link::kNoSessionHandle,
@@ -1427,7 +1430,8 @@ void pump_tx(const SessionSnapshot& session)
     }
 }
 
-void handle_write_result(std::int32_t result, std::uint32_t generation)
+// Returns whether it blocked, which is what restarts the backlog clock.
+bool handle_write_result(std::int32_t result, std::uint32_t generation)
 {
     // A completion outlives the session that submitted it: the worker may not
     // run again until the connection is gone, and `write_completions` is a
@@ -1438,11 +1442,11 @@ void handle_write_result(std::int32_t result, std::uint32_t generation)
     // one whose write failed, which is the bug generations exist to prevent.
     const SessionSnapshot session = session_snapshot();
     if (session.generation != generation || session.phase == SessionPhase::Ended) {
-        return;
+        return false;
     }
     if (result == 0) {
         vTaskDelay(kMeshCoreWriteDelay);
-        return;
+        return true;
     }
     // A write that failed is the peer not answering, not a broken subsystem,
     // and calling fault() here is what wedged the session on the bench. ATT
@@ -1457,6 +1461,7 @@ void handle_write_result(std::int32_t result, std::uint32_t generation)
     if (session.connection != attadipa::link::kNoSessionHandle) {
         (void)ble_gap_terminate(session.connection, BLE_ERR_REM_USER_CONN_TERM);
     }
+    return false;
 }
 
 // Everything the worker still owes the link model, taken from the record rather
@@ -1870,11 +1875,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:226` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1963` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1968` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1119` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1122` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2304,8 +2309,9 @@ void mesh_task(void*)
             send_owned = false;
             send_claimed.store(false);
         }
-        if (catch_up.write_completed) {
-            handle_write_result(catch_up.write_result, catch_up.write_generation);
+        if (catch_up.write_completed &&
+            handle_write_result(catch_up.write_result, catch_up.write_generation)) {
+            backlog_since = xTaskGetTickCount();  // it blocked for the write delay
         }
         // One read, used by both. A published MTU and the connection a frame is
         // written to therefore describe the same session or neither.

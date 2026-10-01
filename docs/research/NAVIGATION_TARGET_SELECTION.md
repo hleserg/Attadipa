@@ -218,7 +218,7 @@ longer exists is a selection that is still *named* and no longer *resolvable*,
 and §5 gives it a state rather than a silent clear.
 
 **There is a precedent for the storage and it is the right size.** The pinned
-node key is already a 32-byte NVS blob — `firmware/main/meshcore_ble.cpp:377` — "    const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey," —
+node key is already a 32-byte NVS blob — `firmware/main/meshcore_ble.cpp:380` — "    const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey," —
 and the brightness store is the shape for a read that can fail in three
 distinguishable ways — `firmware/main/brightness_nvs.h:18` — "  err = nvs_get_u8(handle, "brightness", &percent);" —
 `Present`, `Missing`, `Failed`. The three-way answer is load-bearing here:
