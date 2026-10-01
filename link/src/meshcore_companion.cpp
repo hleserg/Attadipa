@@ -241,6 +241,7 @@ void MeshCoreCompanion::reset_session()
     self_info_seen_ = false;
     contacts_complete_ = false;
     contacts_open_ = false;
+    end_unsent_ = false;
     last_contact_at_ = {};
     status_.snapshot = core::MeshSnapshot::None;
     snapshot_dirty_ = false;
@@ -567,7 +568,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // the next tick would put CMD_SYNC_NEXT_MESSAGE on the wire to a stranger's
     // node, which is the thing the refusal exists to stop: "nothing is sent
     // through it" is what the latch below claims for itself
-    // (`link/src/meshcore_companion.cpp:1361` -- "            wrong_node_ = true;").
+    // (`link/src/meshcore_companion.cpp:1366` -- "            wrong_node_ = true;").
     //
     // Withheld, not discarded. `unpin()` un-latches a refusal inside the
     // session, and a message the node announced before it was refused is still
@@ -773,9 +774,13 @@ bool MeshCoreCompanion::request_next_message(core::MonotonicTime now)
 bool MeshCoreCompanion::end_contacts(core::MonotonicTime now)
 {
     if (contacts_complete_) return true;
+    // Both frames or neither: one free slot would send the sync and lose the
+    // vars request for the session, since this is never re-entered after it.
+    if (!custom_vars_requested_ && tx_size_ + 2 > tx_.size()) return false;
     if (!request_next_message(now)) return false;
     contacts_complete_ = true;
     contacts_open_ = false;
+    end_unsent_ = false;
     // AND THE ONE QUESTION THIS SESSION ASKS ABOUT THE NODE'S RECEIVER, here
     // and nowhere earlier. The contacts iteration is over by the time this
     // runs, which is the property that matters: a command sent while one is
@@ -1451,8 +1456,9 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // inside one is the walk's by construction, so the snapshot stays whole
         // and the quiet window keeps being stamped; the fetch waits for its own
         // reply, or expires, and an expired fetch is `Refused` -- nothing
-        // reached the air and a resend duplicates nothing.
-        if (awaiting_contact_ && !contacts_open_ && !retry_open_ &&
+        // reached the air and a resend duplicates nothing. A walk whose `END`
+        // already arrived has no rows left to send, so it ties nothing.
+        if (awaiting_contact_ && (!contacts_open_ || end_unsent_) && !retry_open_ &&
             std::memcmp(&data[1], contact_peer_.public_key.data(),
                         contact_peer_.public_key.size()) == 0) {
             take_fetched_contact(data, size);
@@ -1474,7 +1480,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         }
         // AND A BOUNDARY FRAME BELONGS TO NOBODY WHEN NO WALK IS OPEN. The
         // rule is the one `accept_contact()` applies --
-        // `link/src/meshcore_companion.cpp:699` -- "    if (retry_swept_ && !retry_open_) {"
+        // `link/src/meshcore_companion.cpp:700` -- "    if (retry_swept_ && !retry_open_) {"
         // -- a frame of a walk that is over belongs to nobody -- and it was
         // applied to the rows and not to the frame that ends them.
         //
@@ -1488,7 +1494,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // every flag false and fell through. Both are the same mistake, and
         // `!contacts_open_` is the form that covers all three walks. A walk the
         // node opens afterwards sets it again, including the node's own --
-        // `link/src/meshcore_companion.cpp:1433` -- "        contacts_open_ = true;"
+        // `link/src/meshcore_companion.cpp:1438` -- "        contacts_open_ = true;"
         // -- so a later walk owns its frames.
         //
         // Every shape of it is wrong about a walk that is already over. With a
@@ -1532,10 +1538,9 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
             contacts_open_ = true;
             last_contact_at_ = now;
         }
-        if (!end_contacts(now)) {
-            ++malformed_frames_;
-            return false;
-        }
+        // Not malformed: the frame is honoured, one sweep later.
+        end_unsent_ = true;
+        if (!end_contacts(now)) break;
         status_.peers_complete = true;
         settle_snapshot(now);
         break;

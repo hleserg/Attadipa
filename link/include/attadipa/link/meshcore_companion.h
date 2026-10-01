@@ -442,6 +442,9 @@ private:
     // transport dropped. Read only while `contacts_open_` is true, so the stale
     // timestamp a close leaves behind is never consulted.
     bool contacts_open_ = false;
+    // Its `END` arrived and the ring was full: the walk has no rows left, and
+    // the quiet sweep owes it only the sync.
+    bool end_unsent_ = false;
     core::MonotonicTime last_contact_at_{};
     // AN INVALIDATING PUSH ARRIVED INSIDE THE WALK THAT IS RUNNING. Set by four
     // codes and only between START and END; the same codes outside that window

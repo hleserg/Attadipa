@@ -93,13 +93,13 @@ Before #600, a recipient outside the retained sixteen could not be sent to. Now
 `send_private()` takes a full 32-byte key, and a key the window does not hold is
 fetched from the node by `CMD_GET_CONTACT_BY_KEY` (30). The reply is taken
 above the list walk, and **deliberately does not enter the window**:
-`link/src/meshcore_companion.cpp:2079` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely"
+`link/src/meshcore_companion.cpp:2084` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely"
 
 The incoming side did not move with it. A coordinate is attributed by resolving
 the message's six-byte sender prefix against the retained window and nothing
-else — `link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+else — `link/src/meshcore_companion.cpp:729` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
 and a seventeenth contact never enters that window —
-`link/src/meshcore_companion.cpp:718` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
+`link/src/meshcore_companion.cpp:719` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
 
 **So the two directions now disagree about who exists.** The watch can send a
 message to contact 200 of 233; a coordinate arriving *from* contact 200 resolves
@@ -118,7 +118,7 @@ One coordinate is retained, against one sender key, as session state:
 `link/include/attadipa/link/meshcore_companion.h:160` — "    // One slot is the known ceiling, not an oversight: it becomes a table"
 
 Two denial paths follow from the single slot, both documented and one of them
-pinned by a test — `tests/test_meshcore_companion.cpp:4253` — "void test_a_second_peer_restarts_the_first_peers_arrival()":
+pinned by a test — `tests/test_meshcore_companion.cpp:4261` — "void test_a_second_peer_restarts_the_first_peers_arrival()":
 
 1. **B evicts A.** A wearer walking to A loses A's coordinate the moment any
    other contact sends a coordinate. The arrow does not turn towards B —
@@ -140,15 +140,15 @@ implemented: `remote_position()` could publish a coordinate held against a key
 the node had since deleted, latent only because nothing read it. That was filed
 as [#650](https://github.com/hleserg/Attadipa/issues/650) and it is **no longer
 the state of `main`.** #688 merged as `7b10884` on 2026-09-26 and pays it on the
-push arm — `link/src/meshcore_companion.cpp:1562` — "    // under the deleted key is discarded, not aged, because the record it was"
+push arm — `link/src/meshcore_companion.cpp:1567` — "    // under the deleted key is discarded, not aged, because the record it was"
 
 Three properties of that arm are what this report needs from it, and each is in
 the code rather than in the commit message. The comparison is the **whole** key,
 so deleting any other contact leaves the slot alone —
-`link/src/meshcore_companion.cpp:1575` — "                        core::kMeshPublicKeyBytes) == 0) {"
+`link/src/meshcore_companion.cpp:1580` — "                        core::kMeshPublicKeyBytes) == 0) {"
 — which is the same fail-closed discipline §8 asks of prefix collisions. A frame
 too short to carry a key is refused as malformed instead of being treated as a
-delete — `link/src/meshcore_companion.cpp:1570` — "            ++malformed_frames_;"
+delete — `link/src/meshcore_companion.cpp:1575` — "            ++malformed_frames_;"
 — so a truncated push cannot empty the slot. And the walk is dirtied before that
 length check rather than after it, which is the defect round 1 of #688 found and
 fixed; a short delete still says the table moved.
@@ -190,7 +190,7 @@ storing them together.
 - **The coordinate is session state and must stay there.** It is attributed
   through `peers_`, which belongs to whichever node filled it, and
   `remote_position()` already refuses on a disowned node —
-  `link/src/meshcore_companion.cpp:1179` — "    if (wrong_node_ || !has_remote_position_) return false;"
+  `link/src/meshcore_companion.cpp:1184` — "    if (wrong_node_ || !has_remote_position_) return false;"
 - **The selection is not session state.** "I am walking to Anna" does not stop
   being true because BLE dropped. A selection cleared by a reconnect is a
   wearer's decision undone by a transport event, and the wearer did not undo it.
@@ -235,7 +235,7 @@ exists yet.** The four candidates, each measured against the code:
 | Candidate | What it actually gives |
 |---|---|
 | **the retained window** | up to 16 chat contacts, `peers_retained` against `peers_reported`, with completeness already published — `core/include/attadipa/core/mesh_service.h:216` — "    bool peers_complete = false;". On the bench node that is 16 of 233 |
-| **recent message senders** | **nothing the window does not already contain.** A sender is resolved by `find_peer_prefix` against `peers_`, so a message from outside the window has no sender at all — `link/src/meshcore_companion.cpp:1078` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" — and cannot appear in a "recent senders" list, because nothing knows who it was. This candidate looks like a second source and is a subset of the first |
+| **recent message senders** | **nothing the window does not already contain.** A sender is resolved by `find_peer_prefix` against `peers_`, so a message from outside the window has no sender at all — `link/src/meshcore_companion.cpp:1083` — "    const core::MeshPeer* sender = find_peer_prefix(&data[prefix]);" — and cannot appear in a "recent senders" list, because nothing knows who it was. This candidate looks like a second source and is a subset of the first |
 | **exact-key entry or search** | the *transport* exists after #600 and the *interaction* does not. 32 bytes is 64 hex characters, on a 2.06-inch touch screen, with no keyboard in the tree. A key the wearer cannot type is a key they cannot select |
 | **enumerating the node's table on demand** | the only candidate that reaches contact 200. It costs a walk: at the T114 build's 350-slot capacity, ~350 records × 148 bytes ≈ 52 kB over a link whose notifications carry 173 bytes — about 34 kB for the 233 the bench node actually holds — under ADR-0022's snapshot rules, and the result does not fit in RAM as a list. The byte count is the easy half; **M41** is the stall it has to survive |
 
@@ -353,7 +353,7 @@ The ranking that follows from the evidence:
    parser's verdict arrives as one boolean that means two different things —
    **no coordinate in this message** and **a coordinate that failed** — and the
    caller returns early on both:
-   `link/src/meshcore_companion.cpp:1136` — "if (!parse_trailing_coordinate(status_.last_message.data(), position))"
+   `link/src/meshcore_companion.cpp:1141` — "if (!parse_trailing_coordinate(status_.last_message.data(), position))"
 
    That is correct today and it cannot carry the rule. A rule that cleared the
    slot on every `false` would blank the arrow when the selected contact sent

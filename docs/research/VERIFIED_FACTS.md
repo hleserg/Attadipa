@@ -310,7 +310,7 @@ reader ends up citing the one that was not updated.
 - **Independently corroborated:** the same arithmetic puts `node_name` at offset
   58, which is where a bench capture found it in a 72-byte frame and where this
   repository's own parser reads it —
-  `link/src/meshcore_companion.cpp:1352` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
+  `link/src/meshcore_companion.cpp:1357` — "(void)copy_text(status_.node_name, &data[58], size - 58);".
   The coordinate sits between two fields already read correctly.
 - **Not verified:** nothing has read bytes 36–43 off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -392,7 +392,7 @@ reader ends up citing the one that was not updated.
   reads the same ten fields in the same order, naming the last three `advLat`,
   `advLon`, `lastMod`; and this repository already requires all 148 bytes before
   it will read one —
-  `link/src/meshcore_companion.cpp:1437` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+  `link/src/meshcore_companion.cpp:1442` — "        if (size < 148) { ++malformed_frames_; return false; }" —
   reading the key at 1 and the name at 100 and discarding 132–147.
 - **Not verified:** no contact frame has been read off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -561,12 +561,12 @@ reader ends up citing the one that was not updated.
   sixteen are a cache: `send_private()` takes a full 32-byte key, and a key the
   cache does not hold is fetched from the node with `CMD_GET_CONTACT_BY_KEY`
   (30), whose reply is taken above the list walk and deliberately never enters
-  the cache — `link/src/meshcore_companion.cpp:2079` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
+  the cache — `link/src/meshcore_companion.cpp:2084` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
   **Inbound**, a message's coordinate is attributed by resolving its six-byte
   sender prefix against that same cache and nothing else —
-  `link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
+  `link/src/meshcore_companion.cpp:729` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
   and a seventeenth contact never enters it —
-  `link/src/meshcore_companion.cpp:718` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
+  `link/src/meshcore_companion.cpp:719` — "    // A seventeenth distinct contact is dropped and nothing is flagged for it."
   So a message may be sent to contact 200 of 233, and a coordinate arriving from
   contact 200 resolves to no peer, carries no target under
   [ADR-0021](../adr/0021-remote-target-from-a-message.md) decision 2, and raises
@@ -684,7 +684,7 @@ reader ends up citing the one that was not updated.
   "if (!ops.wrong_node()) return PinOutcome::Pinned;" falling through to
   [`firmware/main/meshcore_node_pin.h:223`](../../firmware/main/meshcore_node_pin.h)
   "return PinOutcome::Refused;", latched by
-  [`link/src/meshcore_companion.cpp:1353`](../../link/src/meshcore_companion.cpp)
+  [`link/src/meshcore_companion.cpp:1358`](../../link/src/meshcore_companion.cpp)
   "if (pinned_set_ && !(status_.node_id == pinned_)) {". The pin's only writer
   is [`firmware/main/meshcore_ble.cpp:564`](../../firmware/main/meshcore_ble.cpp)
   "nvs_set_blob(handle, kNodeKeyNvsKey"; the file's one `nvs_erase_key` names
