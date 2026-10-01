@@ -4677,7 +4677,7 @@ void test_an_ack_after_the_budget_upgrades_unconfirmed_to_confirmed()
 
     // AND THE UPGRADE IS BOUNDED BY THE REQUEST, NOT BY THE CLOCK. Once the
     // request has been replaced, a match has nothing to attach to -- the tag is
-    // a keyed hash of timestamp, attempt and text and repeats for identical
+    // a hash of timestamp, attempt and text and repeats for identical
     // messages in the same second, so an unattached match would be evidence
     // about some other message.
     {

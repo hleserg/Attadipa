@@ -102,7 +102,7 @@ enum class MeshSendRefusal : std::uint8_t {
 // and never neither.
 //
 // The id is local and the word is the contract: it is explicitly NOT the node's
-// four-byte acknowledgement tag, which is a keyed hash of timestamp, attempt and
+// four-byte acknowledgement tag, which is a hash of timestamp, attempt and
 // text and repeats for identical messages in the same second -- the recipient's
 // key is not even an input. That tag is a correlation hint that can repeat, and
 // a correlator written as if it were unique would attribute one message's

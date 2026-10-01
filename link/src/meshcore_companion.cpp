@@ -1707,7 +1707,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // `Unconfirmed` rather than `Unknown` that crosses a reset intact.
         //
         // A genuine tag of four zero bytes is refused here too. The tag is a
-        // keyed hash, so that costs one message in 2^32 an upgrade it was owed
+        // hash, so that costs one message in 2^32 an upgrade it was owed
         // -- and the message stays `Unconfirmed`, which is the direction to
         // fail in: the owner is told the wire cannot prove delivery, which is
         // exactly what this client can no longer prove.
@@ -1727,7 +1727,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // client's budget -- it pushes the confirmation whenever its own
         // acknowledgement arrives -- so a late match is ordinary traffic and
         // not a protocol violation, and its own ack table is cleared on a match
-        // and never by age. Positive proof outranks the absence of proof, and
+        // and never by age. A matching tag outranks the absence of one, and
         // discarding it would leave the owner deciding whether to risk the
         // duplicate decision 7 exists to prevent, about a message this client
         // had since learned was delivered.
@@ -1737,7 +1737,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // the request whose tag `expected_ack_` holds, and a later send leaves
         // `Queued` here until its own RESP_CODE_SENT overwrites the tag. So
         // there is no window in which a stale tag can be matched against a
-        // different request -- which matters, because the tag is a keyed hash
+        // different request -- which matters, because the tag is a hash
         // of timestamp, attempt and text and repeats for identical messages in
         // the same second.
         //
