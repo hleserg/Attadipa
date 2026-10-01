@@ -695,6 +695,16 @@ void publish(const SessionSnapshot& session)
     taskEXIT_CRITICAL(&snapshot_lock);
 }
 
+// The only other write to snapshot. The UI task reads it from before
+// start_meshcore_ble() runs, so even the first write takes the lock (#344);
+// tests/snapshot_writes_locked.py fails on any write that does not.
+void set_availability(attadipa::core::Availability availability)
+{
+    taskENTER_CRITICAL(&snapshot_lock);
+    snapshot.availability = availability;
+    taskEXIT_CRITICAL(&snapshot_lock);
+}
+
 int gap_event(ble_gap_event* event, void* arg);
 
 // Stopping a scan, in one place and with one rule for what "stopped" means:
@@ -1862,9 +1872,9 @@ void settle_node_identity(std::uint32_t generation)
         // the wrong one. Armed is a condition, not a given: it is
         // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1953` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1963` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1109` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1119` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2503,11 +2513,9 @@ void restore_passkey()
 
 esp_err_t start_meshcore_ble()
 {
-    // Before anything the worker could read, and before the worker exists.
-    // This used to run after xTaskCreate, which made it a plain write racing a
-    // publish() that takes snapshot_lock -- one field, two tasks, one of them
-    // unsynchronised.
-    snapshot.availability = attadipa::core::Availability::Unprovisioned;
+    // Before the worker exists, and under the lock: the UI task started first
+    // and already reads snapshot (#344).
+    set_availability(attadipa::core::Availability::Unprovisioned);
 
     // NVS BEFORE THE PIN IS READ, because nothing else guarantees it has been
     // done. The only other call in the image is inside the UI --
@@ -2607,10 +2615,7 @@ esp_err_t start_meshcore_ble()
     // the last word on availability for this boot. Left at Unprovisioned, the
     // mesh screen would ask the wearer to pick a node on a radio that will
     // never advertise; Failed is the answer that means a reset, not a retry.
-    // Under the lock: the UI task may already be reading it.
-    taskENTER_CRITICAL(&snapshot_lock);
-    snapshot.availability = attadipa::core::Availability::Failed;
-    taskEXIT_CRITICAL(&snapshot_lock);
+    set_availability(attadipa::core::Availability::Failed);
     return failed;
 }
 

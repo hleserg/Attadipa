@@ -829,3 +829,13 @@ if(ATTADIPA_BUILD_SIMULATOR)
     set_tests_properties(sim_lvgl_oom_aborts
                          PROPERTIES LABELS "simulator" TIMEOUT 60)
 endif()
+
+# MeshCore's status snapshot is read by the UI task from before the mesh starts,
+# so every write to it takes snapshot_lock (#344). A source rule, because the
+# race it prevents never shows on a host build. Without Python the
+# *_checks_unavailable tests above already fail the run.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME meshcore_snapshot_writes_are_locked
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/snapshot_writes_locked.py)
+endif()

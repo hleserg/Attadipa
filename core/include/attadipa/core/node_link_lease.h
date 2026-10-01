@@ -50,10 +50,10 @@ namespace attadipa::core {
 // `core/include/attadipa/core/transport_state.h:27` — "Attached,    // it exists and is powered"
 // — and the firmware is why: one `case` arm brings the stack up and starts
 // scanning in the same breath,
-// `firmware/main/meshcore_ble.cpp:1483` — "provider.begin(now());"
-// followed immediately by `firmware/main/meshcore_ble.cpp:1484` — "if (configured.load()) start_scan();",
+// `firmware/main/meshcore_ble.cpp:1493` — "provider.begin(now());"
+// followed immediately by `firmware/main/meshcore_ble.cpp:1494` — "if (configured.load()) start_scan();",
 // and that scan is neither passive nor bounded —
-// `firmware/main/meshcore_ble.cpp:730` — "params.passive = 0;" and `:735`
+// `firmware/main/meshcore_ble.cpp:740` — "params.passive = 0;" and `:745`
 // — "const int rc = ble_gap_disc(own_address_type.load(), BLE_HS_FOREVER,".
 // So the ordinary state of a configured watch with no node in range is
 // `Attached` with the radio actively scanning forever. A declaration that
@@ -79,9 +79,9 @@ namespace attadipa::core {
 // rather than a retry", and the transport stops its own GAP work before it
 // publishes it: the fault taken when the stack refuses the passkey first
 // disarms reconnect and cancels the scan, a pending connection and the live
-// session (`firmware/main/meshcore_ble.cpp:1972` — "(void)attadipa::firmware::quiesce_gap(gap);"),
+// session (`firmware/main/meshcore_ble.cpp:1982` — "(void)attadipa::firmware::quiesce_gap(gap);"),
 // and the lifecycle's fault step is reached only on paths where no scan is
-// running (`firmware/main/meshcore_ble.cpp:1486` — "case SessionStep::Fault:").
+// running (`firmware/main/meshcore_ble.cpp:1496` — "case SessionStep::Fault:").
 // A disarm alone would not be enough for either, and the follow-up review on
 // #628 is why this sentence says "stops" rather than "forbids": disarming
 // stops the callbacks that have not started work yet, and a scan whose gate
@@ -91,7 +91,7 @@ namespace attadipa::core {
 // That is a claim about what the transport asked NimBLE for, not about the
 // controller, and it has one gap: a cancel NimBLE refuses is logged, retried
 // by the worker until it lands, and the fault stands regardless of either
-// (`firmware/main/meshcore_ble.cpp:2242` — "if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);").
+// (`firmware/main/meshcore_ble.cpp:2252` — "if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);").
 // Released regardless: a declaration that held through
 // `Faulted` would refuse every sleep until the reset arrived, on a watch whose
 // power key is the thing asking.
