@@ -3245,7 +3245,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:718` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:722` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3552,3 +3552,86 @@ is unchanged and still UNKNOWN. A drain that carries words *out* is still
 streams, the manifest and the restored production boot are in
 [the head session](qmi-head-waveshare-2026-09-11/README.md). This revives no
 calibration number and claims no compass, tilt or step-count PASS.
+
+---
+
+## The MeshCore offline queue, read at `0d7ba547` (S14, continued)
+
+Four facts behind [ADR-0024](../adr/0024-an-unknown-answer-is-not-a-malformed-one.md).
+They sit at the end of this file rather than under the S14 heading above so
+that adding them moves no citation into it. The admissibility is that
+heading's: upstream source at a pinned revision, read, not measured on a board.
+The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT.md).
+
+### A queued frame is popped when it is handed over, so nobody can ask for it twice
+
+- **Claim:** `MyMesh::getFromOfflineQueue()` copies `offline_queue[0]` into the
+  outgoing frame, decrements `offline_queue_len` and shifts the remainder down
+  — before the frame reaches the app and with no acknowledgement of any kind.
+  The `CMD_SYNC_NEXT_MESSAGE` handler writes whatever it returns, and answers
+  `RESP_CODE_NO_MORE_MESSAGES` only when it returned zero.
+- **Source:** `examples/companion_radio/MyMesh.cpp` at
+  `0d7ba5473f9185f1af24c696e806709ddfec18b0`, read 2026-09-26.
+- **Consequence:** a response a client cannot classify is a frame that is
+  already gone from the node. The cost of mishandling one is bounded at one
+  frame — there is no head-of-line blocking — and it is also unrecoverable:
+  no command re-fetches it. Both halves are load-bearing in ADR-0024.
+
+---
+
+### The offline queue is 256 frames on every node type this bench owns
+
+- **Claim:** `OFFLINE_QUEUE_SIZE` defaults to 16 in
+  `examples/companion_radio/MyMesh.h`, and of the build environments that
+  override it, **135 set 256 and 10 set 128** — no other value appears in the
+  tree. `heltec_t114`, `heltec_v3` and `heltec_v4` all set 256.
+- **Source:** the same revision, `grep -rho "OFFLINE_QUEUE_SIZE=[0-9]*"` over a
+  blobless clone checked out at that SHA, read 2026-09-26. The eviction
+  behaviour when it fills was already recorded —
+  `docs/research/MESHCORE_COMPANION_PROTOCOL.md:288` — "**Lossy when full**: `addToOfflineQueue` evicts the *oldest channel message*"
+- **Consequence:** 256 is the largest queue this client can be asked to walk,
+  which is where ADR-0024's budget comes from. It is also how long a stalled
+  drain has before the node starts evicting: a queue that stops draining while
+  traffic continues loses messages silently.
+
+---
+
+### Response codes occupy 0–31 and push codes `0x80`–`0x90`, with nothing between
+
+- **Claim:** at this revision the companion protocol allocates
+  `RESP_CODE_*` 0 through 31 and `PUSH_CODE_*` `0x80` through `0x90`. Both
+  travel the same wire with no framing that tells them apart, so the first byte
+  is the only distinction a client has.
+- **Source:** the `#define` block of `examples/companion_radio/MyMesh.cpp` at
+  that revision, enumerated 2026-09-26. Corroborated by
+  `docs/companion_protocol.md`'s own packet-type table, which lists the same
+  two ranges.
+- **This is an allocation, not a documented guarantee.** Upstream writes the
+  split down nowhere, and a client that relies on it is relying on a pattern.
+  Recorded as **M39** in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+- **Consequence:** ADR-0024 uses `< 0x80` to decide whether an unrecognised
+  frame could be an *answer* at all. If the inference is ever wrong the rule
+  fails back to today's behaviour rather than to a spin, which is why the
+  conservative direction was chosen.
+
+---
+
+### This client stalls its own drain on any response code it does not define
+
+- **Claim:** measured at `39898a11`, an unrecognised response arriving as the
+  answer to an outstanding `CMD_SYNC_NEXT_MESSAGE` sends no further command
+  **and does not end the drain**: `draining_` stays up for the full
+  `kMaxAckWait`, which also withholds the coalesced-push repayment and the
+  battery poll for that time. A structurally short *known* frame behaves
+  differently — it ends the drain at once and recovers on the next tick.
+- **Source:** a host build of this repository's own `MeshCoreCompanion`, driven
+  through its public surface, in
+  [`meshcore-offline-queue-drain/`](meshcore-offline-queue-drain/). The capture
+  is [`trace-2026-09-26.md`](meshcore-offline-queue-drain/trace-2026-09-26.md)
+  and names its revision on the first line.
+- **This is a software measurement and not a hardware result.** No node, radio
+  or board was involved, and none is claimed. The bench confirmation is
+  **NOT EXECUTED — HARDWARE REQUIRED**.
+- **Consequence:** the defect is reachable without MeshCore PR #3447 — opcode
+  29, `RESP_CODE_CLI_REPLY`, is already upstream and already undefined here —
+  so ADR-0024 does not depend on that pull request merging.

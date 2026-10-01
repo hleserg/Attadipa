@@ -105,6 +105,7 @@ do not close the finding they were written for.
 | `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22; `12998cba` on 2026-08-24 | — | checked for equivalent guards arriving by another route: **none.** `readFrom` on `dev` is byte-identical to the pin |
 | [MeshCore #3403](https://github.com/meshcore-dev/MeshCore/pull/3403) | `fefc1500` | open, unmerged, base `dev`, opened 2026-09-13; read 2026-09-14 | a `MyMesh::writePushFrame()` in `examples/companion_radio/MyMesh.cpp` and an 8 × `MAX_FRAME_SIZE` FIFO in `MyMesh.h`: async pushes are held while a `CMD_GET_CONTACTS` response is streaming and flushed one per `loop()` pass afterwards. +1,416 bytes RAM on both environments the author built | **ADAPT the failure model, MONITOR the patch, take no code.** It makes the stream contiguous and **not** the snapshot consistent — the table still mutates under the iterator, a full FIFO drops the push a client detects that with, and a deferred push is byte-identical to a fresh one. Command responses are deliberately not deferred, so a client that sends a command mid-read still sees an interleave. Compile-only by the author's own statement. [MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md) §8 is the compatibility matrix and [ADR-0022](../adr/0022-contact-snapshot-consistency.md) decision 9 the decision |
 | [MeshCore #2974](https://github.com/meshcore-dev/MeshCore/pull/2974) | `3ae67848` | open, unmerged, base `dev`, opened 2026-07-17, last updated 2026-08-09; read 2026-09-14. **`mergeable: false`, `mergeable_state: dirty`** | a protocol-v14 push `PACKET_SEND_TX_STATUS` (`0x91`): `[0x91][ack tag:4][status]`, status 0 transmitted, 1 rejected before transmission, 2 completion unknown. A fixed-size correlation table in the companion layer. No LoRa wire change, no ACK or retry change | **MONITOR as compatibility input; take nothing, and plan against nothing.** It adds a *local radio* signal, not delivery evidence: status 2 is explicitly unknown, so it makes "unconfirmed" narrower and can never make it "failed" — which is why [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md) is unchanged either way. Its 20/20 native tests and three representative builds are the author's own statement about somebody else's tree, and none is Attadipa hardware. No maintainer has answered the design proposal on [#1834](https://github.com/meshcore-dev/MeshCore/issues/1834) in the two months since; the last two comments there are both the proposer's. The fleet is pinned on `v1.17.1-d929643` by owner decision, so **no node here would receive it if it merged today** — [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §5 |
+| [MeshCore #3447](https://github.com/meshcore-dev/MeshCore/pull/3447) | `0d7ba547` | open, unmerged, base `dev`, opened 2026-09-18; read 2026-09-26, **untouched since it was opened and with no review on it at all** | two response codes for messages the device itself sent — `RESP_CODE_CONTACT_MSG_SENT_V3` (`0x1E`) and `RESP_CODE_CHANNEL_MSG_SENT_V3` (`0x1F`) — queued through the existing offline queue, plus a paragraph in `docs/companion_protocol.md` requiring a host to advance its polling loop on **any** response to `CMD_SYNC_NEXT_MESSAGE` | **ADAPT the invariant with a bound, MONITOR the pull request, take no code.** The stall it names is real here and is not specific to these two codes — `RESP_CODE_CLI_REPLY` (29) already reproduces it. The wording is a contributor's paragraph in his own unreviewed pull request and carries no bound, so what is taken is the direction and not the sentence: [ADR-0024](../adr/0024-an-unknown-answer-is-not-a-malformed-one.md) classifies before it continues and spends a per-drain budget. Mainline calls neither new method; only a custom firmware can emit either. [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT.md) is the reading |
 | [Meshtastic firmware#11573](https://github.com/meshtastic/firmware/pull/11573) | `6094d148`, merged as `ac330e6a` | **MERGED 2026-08-23** into `develop`; **not in any release** — `master` does not contain it, and `v2.7.26.54e0d8d` predates it | an `assert()` on a wire-supplied payload length becomes an executable rejection that releases the packet and unwinds the TX state, plus a unit test asserting the rejection | **ADAPT the invariant, IGNORE the code.** GPL-3.0, and a radio stack we do not have. Read-only evidence. What is taken is a sentence and a test *shape*, both restated in our own words on T-013 and T-050 — [MESHCORE_PARSER_BOUNDS §8](MESHCORE_PARSER_BOUNDS.md) |
 
 **Reusable as test material, not as code.** The guards in `05da523e`
@@ -3268,3 +3269,88 @@ nothing fallible may follow it.
 `boot_meshcore()` template, not a copy of it. What they cannot cover is the
 FreeRTOS half: that `xTaskCreatePinnedToCore` with these arguments produces a
 working NimBLE host is **NOT EXECUTED — HARDWARE REQUIRED**.
+
+### Draining an offline queue that outlives this build's vocabulary
+
+**Problem:** [#624](https://github.com/hleserg/Attadipa/issues/624). A MeshCore
+node hands over one queued frame per `CMD_SYNC_NEXT_MESSAGE` and pops it as it
+does, so a response this client cannot classify is a frame nobody can ask for
+again. Today an unrecognised response code stops the drain without ending it:
+nothing is asked, `draining_` stays up for fifteen seconds, and everything
+behind that frame waits for an announcement the node has no reason to repeat.
+The full reading is
+[MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT.md);
+this record is the reuse half only.
+
+**Projects investigated:** `meshcore-dev/MeshCore`
+[PR #3447](https://github.com/meshcore-dev/MeshCore/pull/3447), head
+`0d7ba5473f9185f1af24c696e806709ddfec18b0`, opened 2026-09-18, read 2026-09-26 —
+`docs/companion_protocol.md`, `examples/companion_radio/MyMesh.cpp` and
+`examples/companion_radio/MyMesh.h`. The surrounding tree was read at the same
+revision for the queue's own mechanics: `getFromOfflineQueue()`,
+`addToOfflineQueue()`, the `CMD_SYNC_NEXT_MESSAGE` handler, and every
+`OFFLINE_QUEUE_SIZE` in `variants/`.
+
+**Useful implementation:** the **invariant**, and the two frame shapes as
+replay material. The pull request states that a host must issue the next
+`CMD_SYNC_NEXT_MESSAGE` on any response, and that only `PACKET_NO_MORE_MSGS`
+ends the loop. Its `queueSentMessage()` and `queueSentChannelMessage()` are the
+authority for the `0x1E` and `0x1F` byte layouts used by the harness in
+[`meshcore-offline-queue-drain/`](meshcore-offline-queue-drain/).
+
+**License:** MIT — `license.txt`, the same grant as every other MeshCore row in
+this ledger. Compatible, and not the reason nothing was taken.
+
+**Strengths:** it names a failure this client really has, it names it as a
+forward-compatibility rule rather than as a property of its own two codes, and
+it reuses the existing queue rather than adding a parallel path — so a host
+that gets the rule right needs no new transport, no new command and no
+negotiation.
+
+**Weaknesses:** four.
+
+1. **The invariant has no bound.** "On *any* response" includes one byte of
+   noise, repeated. Followed literally it restores the session-long exchange
+   [#481](https://github.com/hleserg/Attadipa/pull/481) removed.
+2. **It is a premise, not a ruling.** The paragraph was added by the same
+   contributor in the same pull request that needs it; no maintainer has
+   answered, and the document is not a released protocol guarantee.
+3. **Nothing emits the new frames.** Mainline calls neither method, by the
+   author's own comment and by a grep of the tree at that revision, so the
+   feature half is unreachable and only the *general* stall is real.
+4. **The producer is not safe to copy.** `int tlen = strlen(text); // TODO: UTF-8 ??`
+   clamps to a byte count with the question still open beside it; it is not
+   evidence of a safe truncation boundary and nothing here inherits it.
+
+**Decision:** `ADAPT` the invariant, with a bound of this project's own ·
+`MONITOR` the pull request · **take no code.**
+
+**Reason:** the correct client behaviour is the same whether or not #3447 ever
+merges — advance the queue on an answer that arrived whole, refuse to advance
+on anything that was not an answer, and bound the refusal to lie in either
+direction. What is inherited is the *distinction* the pull request forces:
+"this build does not define that code" and "that frame is broken" had been one
+branch here, and only one of the two is a reason to stop draining. The bound is
+not inherited, because the pull request has none; it is derived from the queue
+being drained — 256, the largest `OFFLINE_QUEUE_SIZE` any upstream environment
+configures at `0d7ba547` — so one drain can always empty one queue.
+
+**Source revision:** MeshCore PR #3447 at
+`0d7ba5473f9185f1af24c696e806709ddfec18b0`. Read at that exact revision: the
+pull request's own state and diff through the API, and the three changed files
+plus the surrounding queue mechanics from a blobless clone checked out at that
+SHA.
+
+**Attadipa integration:** none in this issue, which is research-only. The
+contract is [ADR-0024](../adr/0024-an-unknown-answer-is-not-a-malformed-one.md)
+and the implementation is [#709](https://github.com/hleserg/Attadipa/issues/709).
+
+**Tests required:** when that issue runs — the twelve rows of §3.3 of the
+report, driven through the existing frame-by-frame harness in
+`tests/test_meshcore_companion.cpp`, asserting the post-contract column rather
+than the measured one. Two of them exist to stop this record's own reasoning
+being encoded wrongly: an unknown frame arriving with **no** sync outstanding
+must still start nothing, and a structurally short *known* frame must still end
+the drain at once. The measurement rig that produced the before-picture is
+[`meshcore-offline-queue-drain/`](meshcore-offline-queue-drain/) and is not part
+of any build.
