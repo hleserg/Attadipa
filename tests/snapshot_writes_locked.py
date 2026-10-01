@@ -13,8 +13,9 @@ It reads text, so it sees assignments only: a `memcpy` into the snapshot, a
 write through a reference, or an RAII guard in place of the two macros are
 not recognised. A guard for `snapshot_lock` has to teach this file its name:
 any other line that names the lock is refused rather than guessed at. A file
-with no lock section or no write to check fails too: a check that found nothing
-to check did not run.
+with no write to check fails too: a check that found nothing to check did not
+run. The count comes from the same pass, so a comment or the exempt initializer
+cannot stand in for one (#743).
 """
 import pathlib
 import re
@@ -34,14 +35,17 @@ DECLARATION = "portMUX_TYPE snapshot_lock = portMUX_INITIALIZER_UNLOCKED;"
 def unlocked_writes(text):
     bad = []
     held = 0
+    entered = writes = False
     for number, raw in enumerate(text.splitlines(), 1):
         line = raw.split("//", 1)[0].strip()
         if line == ENTER:
             if held:
                 bad.append((number, f"ENTER while the ENTER at {held} has no EXIT"))
-            held = number
+            held = entered = number
         elif line == EXIT:
-            if not held:
+            # An early release before a second EXIT is correct code; an EXIT
+            # before any ENTER is not (#743).
+            if not entered:
                 bad.append((number, "EXIT with no ENTER"))
             held = 0
         elif "snapshot_lock" in line and line != DECLARATION:
@@ -49,37 +53,40 @@ def unlocked_writes(text):
             # wrong for the rest of the file (#736).
             bad.append((number, "names snapshot_lock in a form this test cannot "
                                 "read; teach it the form"))
-        elif WRITE.search(line) and line != INITIALIZER and not held:
-            bad.append((number, "write outside snapshot_lock"))
+        elif WRITE.search(line) and line != INITIALIZER:
+            writes = True
+            if not held:
+                bad.append((number, "write outside snapshot_lock"))
     if held:
         bad.append((held, "ENTER with no EXIT before the end of the file"))
+    if not writes:
+        bad.append((0, "no snapshot write to check"))
     return bad
 
 
 def self_test():
     for locked in (f"{ENTER}\nsnapshot = next;\n{EXIT}\n",
                    f"{ENTER}\nsnapshot = n;\nsnapshot.availability = a;\n{EXIT}",
-                   f"{ENTER}\nif (a) {{\n  location_snapshot = p;\n}}\n{EXIT}"):
+                   f"{ENTER}\nif (a) {{\n  location_snapshot = p;\n}}\n{EXIT}",
+                   f"{ENTER}\nsnapshot = n;\nif (a) {{\n  {EXIT}\n  return;\n}}\n{EXIT}"):
         assert unlocked_writes(locked) == [], f"a locked write was refused: {locked!r}"
     for mutant in ("snapshot.availability = x;", "snapshot = next;",
                    "if (a) snapshot.mtu += 1;", "location_snapshot = p;",
                    f"{ENTER}\n{EXIT}\nsnapshot = n;",
                    f"{ENTER}\nif (a) taskEXIT_CRITICAL(&snapshot_lock);\n{EXIT}",
                    f"{ENTER}\n{ENTER}\nsnapshot = n;\n{EXIT}",
-                   f"{ENTER}\nsnapshot = n;", f"{EXIT}\nx = 1;"):
+                   f"{ENTER}\nsnapshot = n;",
+                   f"{EXIT}\n{ENTER}\nsnapshot = n;\n{EXIT}",
+                   # Nothing to check: no lock, or only what the scan skips.
+                   "", f"{ENTER}\n// snapshot = n;\n{EXIT}\n{INITIALIZER}"):
         assert unlocked_writes(mutant), f"an unlocked write passed: {mutant!r}"
-    assert unlocked_writes("my_snapshot = p;\nx = session_snapshot();") == []
+    assert unlocked_writes(f"{ENTER}\nsnapshot = n;\n{EXIT}\nmy_snapshot = p;\n"
+                           "x = session_snapshot();") == []
 
 
 def main():
     self_test()
-    text = SOURCE.read_text(encoding="utf-8")
-    if ENTER not in text or EXIT not in text or not WRITE.search(text):
-        # A check that found nothing to check did not run.
-        print(f"{SOURCE}: no snapshot_lock section or snapshot write to check",
-              file=sys.stderr)
-        return 1
-    bad = unlocked_writes(text)
+    bad = unlocked_writes(SOURCE.read_text(encoding="utf-8"))
     for number, reason in bad:
         print(f"{SOURCE}:{number}: {reason}", file=sys.stderr)
     return 1 if bad else 0
