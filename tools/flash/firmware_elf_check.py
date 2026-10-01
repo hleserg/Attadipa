@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prove a firmware ELF is the image it claims to be.
 
-Three questions, each answered from the linked artefact rather than from a
+Three questions are answered from the linked artefact rather than from a
 configuration file that may not be the one the toolchain read:
 
 * did every required Attadipa library contribute code,
@@ -16,7 +16,10 @@ point does, and `app_elf_sha256()` binds it to the `.bin` that will be written.
 
 Run on a build directory's `attadipa.elf`, this also checks that binding
 against the `attadipa.bin` beside it, and says in the last line of its output
-which of the two it did. CI already calls this on five real builds -- both
+which of the two it did. Two more -- was LVGL built with the abort() handler,
+and what does a panic do -- cannot be asked of the ELF, so they are asked of
+the build directory beside it: the weaker claim, and why neither is among
+`flash_no_reset.py`'s imports. CI already calls this on five real builds -- both
 boards, the HIL image and both pure-RAM ones -- so the descriptor arithmetic
 meets the toolchain's own output on every push rather than only fixtures that
 were written to agree with it.
@@ -216,12 +219,15 @@ def assert_handler_fault(elf: Path) -> tuple[str | None, str]:
     config = elf.with_name("config") / "sdkconfig.h"
     wanted = {"#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1",
               "#define CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS 0"}
-    if (not config.is_file()
-            or not wanted <= set(config.read_text().splitlines())):
-        return (f"{config} does not set CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT "
-                "with a 0 s delay: the panic an LVGL assertion becomes is not "
-                "the one sdkconfig.defaults asks for; delete a stale sdkconfig "
-                "and rebuild (#703)"), ""
+    if not config.is_file():
+        return (f"there is no config/{config.name} beside it, so the panic an "
+                "LVGL assertion becomes cannot be checked (#703)"), ""
+    missing = sorted(wanted - set(config.read_text().splitlines()))
+    if missing:
+        return (f"{config} lacks {'; '.join(missing)}: the panic an LVGL "
+                "assertion becomes is not the one sdkconfig.defaults asks for; "
+                "delete the stale sdkconfig this build read (firmware/sdkconfig "
+                "or its -DSDKCONFIG= path) and rebuild (#703)"), ""
     return None, ("LVGL's lv_timer.c was compiled with the abort() handler, "
                   "and a panic prints and reboots at once")
 
@@ -431,10 +437,10 @@ def self_test() -> int:
                 (json.dumps([{"file": "/idf/main/main.cpp", "command": "gcc -c"}]),
                  reboot, "no lv_timer.c was compiled"),
                 (defined, "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT 1\n" + delay,
-                 "delete a stale sdkconfig"),
+                 "lacks #define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1:"),
                 (defined, reboot.replace("SECONDS 0", "SECONDS 10"),
-                 "delete a stale sdkconfig"),
-                (defined, None, "delete a stale sdkconfig")):
+                 "lacks #define CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS 0:"),
+                (defined, None, "there is no config/sdkconfig.h")):
             commands.unlink(missing_ok=True)
             config.unlink(missing_ok=True)
             if database is not None:
