@@ -564,6 +564,11 @@ public:
     switch (meshcore_ble_forget_node(forget_ticket_)) {
     case ESP_OK:
       return attadipa::core::ProvisionOutcome::Pending;
+    case ESP_ERR_NOT_FINISHED:
+      // An earlier forget is still running, from a screen that was left.
+      // `forget_ticket_` was written on success only, so it still names
+      // that one, and this screen waits for how it ends (#719).
+      return attadipa::core::ProvisionOutcome::Pending;
     case ESP_ERR_INVALID_STATE:
       return attadipa::core::ProvisionOutcome::Rejected;
     default:

@@ -2797,6 +2797,11 @@ attadipa::firmware::ForgetOutcome meshcore_ble_forget_bond_outcome()
 
 esp_err_t meshcore_ble_forget_node(std::uint32_t& ticket)
 {
+    // A forget already in flight comes first (#719): its clears may be
+    // half-done, so neither "nothing to forget" nor "kept" is true yet, and
+    // the caller's `ticket` still names it to wait on.
+    std::uint32_t reserved = 0;
+    if (!forget_node_op.reserve(reserved)) return ESP_ERR_NOT_FINISHED;
     // Something to forget, or the request is refused where the caller can
     // still be told: a recorded stale bond, or a pin. The pin is read from
     // the published status because `provider` is worker-owned; the worker
@@ -2807,9 +2812,10 @@ esp_err_t meshcore_ble_forget_node(std::uint32_t& ticket)
         anything = recovery.recovery_required();
     }
     if (!anything) anything = meshcore_ble_status().has_pinned;
-    if (!anything) return ESP_ERR_INVALID_STATE;
-    std::uint32_t reserved = 0;
-    if (!forget_node_op.reserve(reserved)) return ESP_ERR_NOT_FINISHED;
+    if (!anything) {
+        forget_node_op.release(reserved);
+        return ESP_ERR_INVALID_STATE;
+    }
     Event event{EventKind::ForgetNode};
     event.ticket = reserved;
     if (!post(event)) {

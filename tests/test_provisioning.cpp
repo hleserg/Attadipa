@@ -164,13 +164,15 @@ struct FakeBoard final : attadipa::core::Provisioner {
     ProvisionOutcome forget_mesh_node() override
     {
         ++forgets;
-        // The request gate, as meshcore_ble_forget_node() has it: a recorded
-        // bond or a pin, or ESP_ERR_INVALID_STATE -> Rejected.
+        // As meshcore_ble_forget_node() has it: a forget still in flight is
+        // waited on (ESP_ERR_NOT_FINISHED -> Pending, the ticket untouched),
+        // then the gate -- a recorded bond or a pin, or Rejected.
+        std::uint32_t reserved = 0;
+        if (!forget_op.reserve(reserved)) return ProvisionOutcome::Pending;
         if (!recovery.recovery_required() && !pinned) {
+            forget_op.release(reserved);
             return ProvisionOutcome::Rejected;
         }
-        std::uint32_t reserved = 0;
-        if (!forget_op.reserve(reserved)) return ProvisionOutcome::Failed;
         if (queue_full) {
             forget_op.release(reserved);
             return ProvisionOutcome::Failed;
@@ -1180,6 +1182,88 @@ void test_leaving_a_wait_says_the_answer_is_lost()
     CHECK(!second.finished());
 }
 
+// A forget left while the radio still has it, then asked for again (#719).
+// The clears of the first may be half-done, so the second screen must not say
+// trust was kept: it waits on that same forget and reports how it ended, once.
+void test_a_forget_asked_again_waits_on_the_one_in_flight()
+{
+    using attadipa::firmware::ForgetNodeOutcome;
+    const ForgetNodeOutcome endings[] = {
+        ForgetNodeOutcome::Forgotten, ForgetNodeOutcome::Unpinned,
+        ForgetNodeOutcome::PinOnFlash, ForgetNodeOutcome::Nothing,
+        ForgetNodeOutcome::BondKept, ForgetNodeOutcome::ReplayInhibited,
+    };
+    const MeshForgetOutcome outcomes[] = {
+        MeshForgetOutcome::Forgotten, MeshForgetOutcome::Unpinned,
+        MeshForgetOutcome::PinOnFlash, MeshForgetOutcome::Nothing,
+        MeshForgetOutcome::BondKept, MeshForgetOutcome::ReplayInhibited,
+    };
+    for (unsigned i = 0; i < 6; ++i) {
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry first(board, EntryTask::NodePasskey);
+        first.press(EntryKey::Forget);
+        first.press(EntryKey::Minus);
+        CHECK(first.waiting());
+        first.press(EntryKey::Leave);
+        CHECK(first.verdict() == EntryVerdict::Abandoned);
+        const std::uint32_t in_flight = board.forget_queued;
+
+        ProvisioningEntry second(board, EntryTask::NodePasskey);
+        second.press(EntryKey::Forget);
+        second.press(EntryKey::Minus);
+        CHECK(board.forgets == 2 && board.forget_queued == in_flight);
+        CHECK(second.waiting());
+        CHECK(second.verdict() == EntryVerdict::ForgetPending);
+        CHECK(!second.poll());
+
+        board.forget_op.complete(in_flight, endings[i]);
+        CHECK(second.poll());
+        CHECK(second.forget_outcome() == outcomes[i]);
+        // Consumed: nobody else can read it again.
+        CHECK(board.forget_op.take(in_flight) == ForgetNodeOutcome::Idle);
+    }
+
+    // A queue that refused with nothing running is still kept, and a retry.
+    {
+        FakeBoard board;
+        board.pinned = true;
+        board.queue_full = true;
+        ProvisioningEntry entry(board, EntryTask::NodePasskey);
+        entry.press(EntryKey::Forget);
+        entry.press(EntryKey::Minus);
+        CHECK(!entry.waiting());
+        CHECK(entry.verdict() == EntryVerdict::ForgetKept);
+        CHECK(eq(entry.text(Locale::En).next, "Retry"));
+        board.queue_full = false;
+        entry.press(EntryKey::Next);
+        CHECK(board.forgets == 2 && entry.waiting());
+    }
+
+    // And a later, independent forget hears its own answer, never a stale
+    // one quoted under the ticket it replaced.
+    {
+        FakeBoard board;
+        board.pinned = true;
+        ProvisioningEntry first(board, EntryTask::NodePasskey);
+        first.press(EntryKey::Forget);
+        first.press(EntryKey::Minus);
+        const std::uint32_t old = board.forget_queued;
+        board.forget_op.complete(old, ForgetNodeOutcome::BondKept);
+        CHECK(first.poll() && first.verdict() == EntryVerdict::ForgetKept);
+
+        ProvisioningEntry later(board, EntryTask::NodePasskey);
+        later.press(EntryKey::Forget);
+        later.press(EntryKey::Minus);
+        CHECK(board.forget_queued != old && later.waiting());
+        board.forget_op.complete(old, ForgetNodeOutcome::Forgotten);
+        CHECK(!later.poll());
+        board.forget_op.complete(board.forget_queued, ForgetNodeOutcome::Nothing);
+        CHECK(later.poll());
+        CHECK(later.forget_outcome() == MeshForgetOutcome::Nothing);
+    }
+}
+
 // The frame after the last press, which no test used to look at.
 //
 // `Exit` is not a screen; it is the absence of one, and the thing that takes
@@ -1396,6 +1480,7 @@ int main()
     test_a_partial_forget_is_not_the_same_verdict_as_a_complete_one();
     test_the_forget_confirmation_promises_only_what_forget_does();
     test_leaving_a_wait_says_the_answer_is_lost();
+    test_a_forget_asked_again_waits_on_the_one_in_flight();
     test_the_finished_frame_keeps_the_words_and_drops_the_keys();
     test_leave_is_never_a_trap();
     test_both_locales_print_the_whole_instant();

@@ -89,8 +89,10 @@ public:
     // Asks the radio to forget that node: its stale bond where one was
     // recorded, and the pin in both the places it is kept. Never `Accepted`:
     // the clears run on the radio's task, so a `Pending` here owes exactly one
-    // `mesh_forget_outcome()` other than `Pending`. `Rejected` means there is
-    // nothing to forget, `Failed` that the request could not be queued.
+    // `mesh_forget_outcome()` other than `Pending`. `Pending` also answers a
+    // request made while an earlier forget is still running: that one is
+    // what it then waits on. `Rejected` means there is nothing to forget,
+    // `Failed` that the request could not be queued and nothing is running.
     //
     // Forgetting arms nothing. The watch stays silent until a passkey is
     // entered, and that entry -- the same one a first provisioning makes --
