@@ -2064,3 +2064,29 @@ be test-only infrastructure that exists to exercise one comparison.
 **What it does not decide:** whether a later change that *does* put a delay
 between the two `lstat` calls needs a test. If one does, the window has become
 reachable, and the question is open again.
+
+## OD-32 — LE Legacy Pairing stays allowed, so a T114 can pair
+
+**Decided:** 2026-10-01, by the owner, in conversation, on
+[#712](https://github.com/hleserg/Attadipa/issues/712) and its pull request
+[#725](https://github.com/hleserg/Attadipa/pull/725).
+
+**What was decided:** the firmware keeps `CONFIG_BT_NIMBLE_SM_LEGACY` at the
+ESP-IDF default. It offers Secure Connections and accepts LE Legacy Pairing
+from a peer that does not offer it. #725, which compiled legacy out, was
+reduced to its unrelated comment fix.
+
+**Why:** MeshCore's nRF52 companion answers every pairing without the Secure
+Connections bit (the T114 entry in
+[`VERIFIED_FACTS.md`](VERIFIED_FACTS.md)). Requiring SC would leave the T114 on
+the bench, and every nRF52 node on the same firmware, unable to pair at all. That
+node's link to MeshCore's own phone app is legacy too, so refusing it here would
+protect no link that is not already legacy.
+
+**What it accepts:** the risk #712 names. A passive sniffer present during a
+legacy pairing can recover the passkey and decrypt that link. Against an ESP32
+node, an active attacker could force the same downgrade.
+
+**What it does not decide:** whether to require SC once MeshCore's nRF52
+companion offers it, or to require it per peer. Either is a new change with its
+own evidence.
