@@ -2273,7 +2273,7 @@ void mesh_task(void*)
                 std::snprintf(last_line, sizeof(last_line), "%s", line);
                 attadipa::core::format_location_line(location.state(now()), line,
                                                      sizeof(line));
-                ESP_LOGI(kTag, "Position   : %s", line);
+                ESP_LOGD(kTag, "Position   : %s", line);
             }
         }
         // A terminal outcome -- confirmed, an explicit error, the ack budget
