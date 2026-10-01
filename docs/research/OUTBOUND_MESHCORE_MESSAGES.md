@@ -717,10 +717,28 @@ frame from the other direction. It now stands down while one is —
 
 **And the arm holds its own precondition rather than resting on those two call
 sites.** The intercept asks `!contacts_open_ && !retry_open_` beside the key,
-so a walk — a third sender added later, or one the node volunteers — wins the
-tie and keeps its snapshot whole; the fetch then waits for its own reply or
-expires. Asserting an invariant in a comment and enforcing it two files away is
-how it decays, and the two loads are cheaper than the audit.
+so a walk wins the tie and keeps its snapshot whole; the fetch then waits for
+its own reply or expires. Asserting an invariant in a comment and enforcing it
+two files away is how it decays, and the two loads are cheaper than the audit.
+
+**The walk that wins that tie is the session's own first one, and no third
+sender is needed to reach it.** `CMD_GET_CONTACTS` is enqueued when
+`RESP_CODE_DEVICE_INFO` arrives —
+`link/src/meshcore_companion.cpp:1332` — "            const std::uint8_t contacts[] = {kGetContacts};"
+— and the walk opens only at the `RESP_CODE_CONTACTS_START` that answers it —
+`link/src/meshcore_companion.cpp:1440` — "        contacts_open_ = true;".
+Between those two frames `refuse_text()` is already past `LinkNotReady`, since
+`RESP_CODE_SELF_INFO` and `RESP_CODE_DEVICE_INFO` have both been seen, and the
+call gate above reads `contacts_open_` and the retry flags, which describe no
+walk while the command is in flight and nothing has come back. So a send to an
+unheld key in that window is accepted, `CMD_GET_CONTACT_BY_KEY` goes out, and
+the `START` that overlaps it is solicited. The send path reaches the provider
+there with no `Availability::Ready` check of its own —
+`firmware/main/meshcore_ble.cpp:1548` — "bool handle_send(const Event& event)"
+— so this is the shipping ordering and not a hypothesis about upstream. An
+earlier draft of this paragraph said neither sender could open a first walk
+over a fetch and offered a volunteered `START` as the only way in; #763 is the
+correction, and row 25 below is tested that way.
 
 That the exclusion is the mechanism is still worth naming, because a test
 written against hazard 3 directly passes with the fetch branch removed — the
@@ -811,7 +829,7 @@ harness, which delivers bytes to `receive()` rather than calling internals.
 | 22 | the node answers `ERR_CODE_NOT_FOUND`, never answers, or the link drops with the fetch outstanding | `Refused` **all three ways** — no `CMD_SEND_TXT_MSG` was ever built, so nothing reached the air and a resend duplicates nothing. One ground truth must not reach the owner three ways depending on whether the node troubled itself to reply and on how the session ended. The error and budget routes said `Unknown` until #600 round 1; the disconnect route, which `reset_session()` owns and `fault()` shares, until round 3 |
 | 23 | a send to an unheld key while a contacts walk or a re-read is outstanding | `ContactsBusy`, a *call* refusal, and the walk is untouched — §8.2 hazard 3 |
 | 24 | the re-read falls due while a fetch is outstanding | the re-read stands down and asks on the next tick after the fetch is answered; row 23 with the two steps in the other order, which is the half a call refusal cannot cover |
-| 25 | a contacts walk begins anyway while a fetch is outstanding, and streams the fetched key | the **walk** takes the frame: the snapshot stays whole and the quiet window keeps being stamped, and the fetch waits for its own reply or expires `Refused` |
+| 25 | the session's own first contacts walk begins while a fetch is outstanding — the fetch accepted between `CMD_GET_CONTACTS` at `RESP_CODE_DEVICE_INFO` and the `RESP_CODE_CONTACTS_START` answering it — and streams the fetched key | the **walk** takes the frame: the snapshot stays whole and the quiet window keeps being stamped, and the fetch waits for its own reply or expires `Refused` |
 | 26 | the budget expires with a text, rather than a fetch, outstanding | `Unknown`, unchanged — that frame did leave the ring and may be on the characteristic, so a resend may duplicate. This row is what keeps row 22 from being a rename |
 
 Rows 11, 12 and 18 are the ones this research exists to produce. A test suite
@@ -824,7 +842,12 @@ is outstanding and streaming the fetched key — §8.2. **So hazard 3 is handled
 each end rather than unreachable at one**, and the tie-breaking terms of the
 contact arm are load-bearing, not redundant. An earlier draft of this paragraph
 said the opposite and was the stated reason a direct hazard-3 test did not need
-to exist; row 25 is that test.
+to exist; row 25 is that test. It takes the `START` the session itself asked
+for, in the window §8.2 names, rather than one the node volunteers: a change
+that closes that window — a call gate that refused while the initial
+`CMD_GET_CONTACTS` was in flight — leaves a volunteered-`START` fixture green
+and this row red, which is why row 25 is written with the handshake stopped
+after `RESP_CODE_DEVICE_INFO` and the command asserted out of the ring.
 
 ### 11.2 Simulator and replay
 
