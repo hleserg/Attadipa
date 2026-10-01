@@ -27,8 +27,8 @@ were *not* it.
 disabled and `esp_rom_printf` writes nowhere at all. Use `ESP_LOGx` or `printf`.
 Same document, §2.4.
 
-**Two ESP32-S3 boards enumerate as `303a:1001` on this bench** — the watch and a
-MeshCore node — so the port is resolved by USB serial and never guessed, and
+**Three ESP32-S3 boards enumerate as `303a:1001` on this bench** — two watches
+and a MeshCore node — so the port is resolved by USB serial and never guessed, and
 the base MAC the loader reports is matched to `--serial` before anything is
 loaded. There is no `--port`: opening the wrong native USB port can already
 reset that board, so no invocation names a tty instead of a unit (#717).
@@ -79,6 +79,22 @@ def resolve_port(serial: str) -> str:
     return str(matches[0].resolve())
 
 
+def identity_mismatch(mac: bytes, serial: str) -> str | None:
+    """Why the chip on the opened port is not the unit --serial names, or None.
+
+    Three ESP32-S3 boards enumerate as 303a:1001 on this bench, and a by-id
+    link only names a unit; the loader is what proves it. The base MAC the loader reports is
+    the USB serial in colon form, so the comparison is two values already in
+    hand -- and it runs before anything is written, because a T-Watch image
+    over the 32 MB Waveshare is exactly what --restore cannot undo.
+    """
+    seen = ":".join(f"{b:02x}" for b in mac)
+    want = serial.strip().lower()
+    if seen == want:
+        return None
+    return f"the chip on this port is {seen}, not {want}: nothing written"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("image", type=Path, help="the PURE_RAM_APP .bin to load")
@@ -126,11 +142,12 @@ def main() -> int:
 
     esp = esptool.detect_chip(port=target, baud=args.baud,
                               connect_mode=args.connect_mode)
-    print(f"# chip {esp.CHIP_NAME}", flush=True)
-    # The by-id link names the unit; the loader proves it. Same check as
-    # flash_no_reset.py, imported here because that module imports this one.
-    from flash_no_reset import identity_mismatch
-    mismatch = identity_mismatch(esp.read_mac(), args.serial)
+    # The by-id link names the unit; the loader proves it, and the transcript
+    # keeps the MAC it proved rather than only the ttyACM number.
+    mac = esp.read_mac()
+    print(f"# chip {esp.CHIP_NAME}  mac {':'.join(f'{b:02x}' for b in mac)}",
+          flush=True)
+    mismatch = identity_mismatch(mac, args.serial)
     if mismatch:
         raise SystemExit(mismatch.replace("nothing written", "no RAM image loaded"))
 

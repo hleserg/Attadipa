@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """`ramhold.py` resolves the watch by USB serial, and never guesses.
 
-There are two ESP32-S3 boards on this bench and both enumerate as `303a:1001`
+There are three ESP32-S3 boards on this bench and all enumerate as `303a:1001`
 (docs/research/BENCH_DEVICES.md). The failure this guards against is not a crash
 — it is `ramhold.py` cheerfully loading a watch image into the MeshCore node
 because `/dev/ttyACM0` came up first today. So the cases that matter are the
@@ -93,7 +93,7 @@ def check(tmp: Path) -> list[str]:
 
     # Case. The by-id name carries whatever case udev read off the descriptor;
     # a serial typed by hand is whatever the hand typed, and `identity_mismatch`
-    # in flash_no_reset.py already folds it. LOWER is the direction that
+    # in `ramhold.py` already folds it. LOWER is the direction that
     # exercises the fold, the constants here being upper case.
     try:
         lowered = resolve_in(both, WATCH.lower())
