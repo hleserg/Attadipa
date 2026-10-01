@@ -3518,7 +3518,15 @@ state the pin cannot reach; it is compile-only on one board. #2964 is a draft,
 not mergeable, and wipes the filesystem on downgrade. Neither adds a wire
 signal, so neither lets a client tell a recovered store from an empty one.
 
-**Decision:** `MONITOR` both. `REJECT` copying #3499.
+[PR #1447](https://github.com/meshcore-dev/MeshCore/pull/1447) (open, head
+`ffebb64b`, read 2026-10-01) is the same backup mechanism without #3499's hole:
+it falls back on a primary that is missing **or empty**. This ledger's earlier
+`ADOPT` of its pattern
+(`docs/upstream/meshcore-1.17-review.md:445` — "**Status: `ADOPT` the pattern from #1447, and apply it more widely than upstream")
+stands.
+
+**Decision:** `MONITOR` all three. `REJECT` copying #3499's validity test;
+the `ADOPT` of #1447's pattern stands.
 
 **Reason.** This product cannot change the node, and on the wire both leave the
 question where it was. What would help is a storage-health field in a companion

@@ -10,10 +10,12 @@ table ended. `peers_complete` and `MeshSnapshot::Consistent` say nothing about
 whether that table is the node's durable store, whether the store was intact,
 or whether it is the newest one the node ever held. At the fleet pin, an
 interrupted save, a filesystem reformat that kept the node's identity, and a
-legitimately empty table produce **byte-identical** walks, and no frame, CLI
-answer, boot flag or statistic tells them apart. Only a reformat that also
-regenerated the node's identity is visible, and it is visible as a different
-node. Confidence: **high**, read from source; the field frequency is
+legitimately empty table produce **byte-identical** walks as far as LittleFS's
+own bookkeeping goes (what a cut does to the flash page beneath it is
+**UNKNOWN**, M51/M52), and no frame, CLI answer, boot flag or statistic tells
+them apart. A reformat that also regenerated the node's identity is visible as
+a different node, but only while this watch holds a pin (§3), and a table of
+garbage records shows only weakly (§4). Confidence: **high**, read from source; the field frequency is
 **UNKNOWN** and the power-cut experiment is **NOT EXECUTED — HARDWARE
 REQUIRED** (§8).
 
@@ -31,17 +33,21 @@ REQUIRED** (§8).
 | Atta-dipa | `main@04dca51a` | this repository | source read; one host test run (§7) |
 
 Every MeshCore citation below was read **at the fleet pin itself**, so no
-byte-identity bridge to another revision is needed. Paths without a prefix are
-under `examples/companion_radio/` of that tree.
+byte-identity bridge to another revision is needed. Unprefixed `MyMesh.cpp`,
+`DataStore.cpp`, `DataStore.h` and `main.cpp` are under
+`examples/companion_radio/` of that tree; unprefixed `lfs.c` is the core's
+`libraries/Adafruit_LittleFS/src/littlefs/lfs.c`, and `platformio.ini` is
+MeshCore's top-level file.
 
 ## 1. Where the contacts live on a T114
 
 The Heltec T114 companion environment is
 `[env:Heltec_t114_companion_radio_ble]`, the build this project's bench node
 runs (`docs/research/VERIFIED_FACTS.md:724` — "[env:Heltec_t114_companion_radio_ble]").
-Its board is `heltec_t114` with `board_build.ldscript = boards/nrf52840_s140_v6.ld`
-(`variants/heltec_t114/platformio.ini:6-7`), so the nRF52840 branches of the
-core apply. `platformio.ini:93` sets `-D EXTRAFS=1` for the nRF52 family.
+Its board is `heltec_t114` (`variants/heltec_t114/platformio.ini:6`), and the
+companion environment overrides the base linker script with
+`boards/nrf52840_s140_v6_extrafs.ld` (`variants/heltec_t114/platformio.ini:212`),
+so the nRF52840 branches of the core apply. `platformio.ini:93` sets `-D EXTRAFS=1` for the nRF52 family.
 
 | Store | Holds | Geometry | Source |
 |---|---|---|---|
@@ -138,10 +144,10 @@ completeness (`apps/src/mesh.cpp:284` — "        if (status.peers_complete && 
 | Legitimately empty table | yes | `START 0`, `END lastmod=0` | — (the reference) |
 | Zero-length truncation | **yes**: a cut between `remove` and `close` (§2) | `START 0`, `END lastmod=0` | **no** — identical bytes |
 | Partial final record | not from an interrupted save in v1.7, whose dir entry stays at size 0 until close; possible only if a block is damaged after a successful save (**UNKNOWN**, M52) | `START n`, n CONTACTs, END | **no** — a shorter table looks like fewer contacts |
-| Same-length, content-corrupt | possible: file data carries no CRC (§1); rate **UNKNOWN** | CONTACT frames with garbage keys and names | **no** — the frames are well formed |
+| Same-length, content-corrupt | possible: file data carries no CRC (§1); rate **UNKNOWN** | CONTACT frames with garbage keys and names | **weakly** — a record whose byte 33 is not the chat type is not retained (`link/src/meshcore_companion.cpp:685` — "    if (size < 148 || data[33] != kAdvertTypeChat) {"), so the face can show `retained < reported` (§4); repeaters, rooms and any table above 16 contacts show the same |
 | Older backup restored | **cannot occur**: the pin keeps no backup. It becomes possible only with #3499 (§5) | — | — |
 | Reformat, identity kept | yes: ExtraFS fails to mount and is erased, InternalFS mounts | `START 0`, `END lastmod=0` | **no** — same node, empty table |
-| Reformat, identity regenerated | yes: InternalFS fails to mount and the identity is lost | a different public key in `SELF_INFO` | **yes** — the pin check fires (`link/src/meshcore_companion.cpp:1353` — "        if (pinned_set_ && !(status_.node_id == pinned_)) {") and the walk is refused (`link/src/meshcore_companion.cpp:1361` — "            wrong_node_ = true;") |
+| Reformat, identity regenerated | yes: InternalFS fails to mount and the identity is lost | a different public key in `SELF_INFO` | **yes, while this watch holds a pin** — the check fires (`link/src/meshcore_companion.cpp:1353` — "        if (pinned_set_ && !(status_.node_id == pinned_)) {") and the walk is refused (`link/src/meshcore_companion.cpp:1361` — "            wrong_node_ = true;"). With the pin unreadable (`firmware/main/meshcore_ble.cpp:2571` — "    case PinRead::Unreadable:"), unfinished (`firmware/main/meshcore_ble.cpp:2579` — "    case PinRead::Unfinished:") or never adopted (`firmware/main/meshcore_node_pin.h:211` — "            return PinOutcome::AdoptFailed;") the watch attaches to the reformatted node as its own, and this row is as invisible as the others |
 
 The host replay the issue asks for holds by construction:
 `MeshCoreCompanion` is a function of the frame bytes it is fed, and the three
@@ -158,14 +164,13 @@ indistinguishable rows above feed it the same bytes.
 | Reset reason | captured into `g_nrf52_reset_reason` (`src/helpers/NRF52Board.cpp:46`) | never put on the wire |
 | CLI rescue `ls` | file listing (`MyMesh.cpp:2074-2097`) | serial console only, not the BLE companion link |
 | Mount failure | handled and swallowed inside `begin()` (§2) | never reported anywhere |
+| `retained / reported` on the face | chat contacts this client kept against START's total (`apps/src/mesh.cpp:284` — "        if (status.peers_complete && retained < reported) {") | the empty-table rows all give `0 == 0`. It fires on a garbage table only weakly: repeaters and rooms are dropped the same way, and `kRetainedPeers` (`link/include/attadipa/link/meshcore_companion.h:251` — "    static constexpr std::size_t kRetainedPeers = 16;") makes it fire on every table above sixteen |
 
-**No signal exists, and none is invented here.** The one wire hint — END
+**No signal separates the empty-table rows, and none is invented here.** The one wire hint — END
 `lastmod` going backwards between two sessions — is ambiguous by design and
 would need state this product does not keep across a session: `reset_session`
 clears the walk (`link/src/meshcore_companion.cpp:225` — "    status_.peers_complete = false;",
-`link/src/meshcore_companion.cpp:245` — "    status_.snapshot = core::MeshSnapshot::None;"),
-and [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md) holds the mesh
-contract to no new persistent state.
+`link/src/meshcore_companion.cpp:245` — "    status_.snapshot = core::MeshSnapshot::None;").
 
 One more consequence, read from source: a direct message is decrypted only by
 trying contacts whose hash matches its source (`src/Mesh.cpp:147-160`), so after
@@ -188,6 +193,16 @@ CONTACT_RECORD_SIZE == 0` (its `DataStore.cpp:62`), so:
   This is the "older backup restored" state, and #3499 is what creates it.
 
 It is compile-only on a Wio Tracker L1. **MONITOR; do not copy.**
+
+**#1447** (open, head `ffebb64b`, read 2026-10-01) is the same mechanism without
+that hole: it falls back to the backup when the primary is missing **or empty**
+([its `DataStore.cpp:271`](https://github.com/meshcore-dev/MeshCore/blob/ffebb64b31fa3b951c82886caa2169e53c75af9e/examples/companion_radio/DataStore.cpp#L271) — "if (!file || file.size() == 0) {")
+and deletes the backup after a successful promotion
+([its `DataStore.cpp:356`](https://github.com/meshcore-dev/MeshCore/blob/ffebb64b31fa3b951c82886caa2169e53c75af9e/examples/companion_radio/DataStore.cpp#L356)).
+A cut between its two renames still loads the previous generation. This
+repository already decided `ADOPT` for its pattern
+(`docs/upstream/meshcore-1.17-review.md:445` — "**Status: `ADOPT` the pattern from #1447, and apply it more widely than upstream"),
+and that stands; the `REJECT` here is of #3499's validity test.
 
 **#2964** moves to LittleFS v2 with 4 KiB blocks and chunked contact files with
 checksums, which addresses the page-erase problem at its root, and warns that a
@@ -225,8 +240,11 @@ recovered store fills like any other.
 **ADR-0021 needs no amendment either.** A target is named by a full 32-byte key,
 and a message whose sender resolves to no contact carries no target
 (`docs/adr/0021-remote-target-from-a-message.md:79` — "**2. A target is named by the full 32-byte public key of the contact the").
-A contact lost with the store therefore resolves to *nothing*, never to another
-contact, so the selected key cannot silently switch. The selection itself is
+A contact lost with the store therefore resolves to no target by its key. A
+sender is matched on a six-byte prefix
+(`link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {"),
+so a collision with a remaining or garbage contact is not excluded, and
+ADR-0021 already declines to call that risk zero. The selection itself is
 not implemented yet; when it is, the rule this report adds for it is the third
 bullet above: a selected key that a fresh walk no longer contains has become
 **unresolved**, not deleted.
