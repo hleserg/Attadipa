@@ -114,7 +114,10 @@ ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink, EntryTask task,
                 seeded_ = true;
             }
         }
-        return;
+        // An owed forget answer jumps the clock half (#733): a board builds
+        // only `All`, and a holder who left from the Day field was otherwise
+        // never told. Shown once, so the next open is the clock again.
+        if (!sink_.mesh_forget_owed()) { return; }
     }
     enter_node_half();
 }

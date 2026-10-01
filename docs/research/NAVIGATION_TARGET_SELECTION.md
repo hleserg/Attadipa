@@ -72,7 +72,7 @@ and it has not been fixed.
 The brief asks the product to distinguish a connected companion, a contact, and
 a selected navigation target. On the shipping board there is one of them:
 
-`firmware/main/waveshare_board.cpp:1011` — "  nav.target = meshcore_ble_location();"
+`firmware/main/waveshare_board.cpp:1006` — "  nav.target = meshcore_ble_location();"
 
 That is the **connected companion's own** coordinate — `RESP_CODE_SELF_INFO`
 bytes 36–43, through `NodePositionProvider` over `node_position()` — and not any

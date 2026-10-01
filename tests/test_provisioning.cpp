@@ -164,11 +164,12 @@ struct FakeBoard final : attadipa::core::Provisioner {
     ProvisionOutcome forget_mesh_node() override
     {
         ++forgets;
-        // As meshcore_ble_forget_node() has it: a forget still in flight is
-        // waited on (ESP_ERR_NOT_FINISHED -> Pending, the ticket untouched),
-        // then the gate -- a recorded bond or a pin, or Rejected.
+        // As meshcore_ble_forget_node() has it: a forget still in flight
+        // refuses (ESP_ERR_NOT_FINISHED -> Failed; the entry takes an owed
+        // answer before it can ask, #733), then the gate -- a recorded bond
+        // or a pin, or Rejected.
         std::uint32_t reserved = 0;
-        if (!forget_op.reserve(reserved)) return ProvisionOutcome::Pending;
+        if (!forget_op.reserve(reserved)) return ProvisionOutcome::Failed;
         if (!recovery.recovery_required() && !pinned) {
             forget_op.release(reserved);
             return ProvisionOutcome::Rejected;
@@ -1303,11 +1304,7 @@ void test_a_forget_that_ended_unseen_is_shown_on_the_next_open()
             board.forget_op.complete(old, c.ending);
             board.pinned = c.pin_left;
 
-            ProvisioningEntry second(board, task);
-            if (task == EntryTask::All) {
-                for (int i = 0; i < 7; ++i) { second.press(EntryKey::Next); }
-                second.press(EntryKey::Next);  // past the clock's receipt
-            }
+            ProvisioningEntry second(board, task);  // `All` too: first frame
             CHECK(!second.waiting());
             CHECK(second.field() == EntryField::Receipt);
             CHECK(second.verdict() == c.verdict);
