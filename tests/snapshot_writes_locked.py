@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Every write to MeshCore's `snapshot` happens under `snapshot_lock` (#344).
+"""Every assignment to what `snapshot_lock` guards happens under it (#344).
 
-The UI task reads `snapshot` under the lock from before start_meshcore_ble()
-runs, so a single unlocked write is a data race. The rule checked here: a line
-that assigns to `snapshot` (or a member of it) must directly follow
-`taskENTER_CRITICAL(&snapshot_lock);`. The one static initializer is exempt —
+The UI task reads `snapshot` and `location_snapshot` under the lock from before
+start_meshcore_ble() runs, so a single unlocked write is a data race -- and for
+`location_snapshot` a torn read pairs one fix's coordinate with another's age.
+The rule checked here: a line that assigns to either (or a member of it) lies
+between `taskENTER_CRITICAL(&snapshot_lock);` and the matching
+`taskEXIT_CRITICAL(&snapshot_lock);`. The one static initializer is exempt --
 it runs before any task exists.
+
+It reads text, so it sees assignments only: a `memcpy` into the snapshot, a
+write through a reference, or an RAII guard in place of the two macros are
+not recognised. A guard for `snapshot_lock` has to teach this file its name.
 """
 import pathlib
 import re
@@ -14,39 +20,44 @@ import sys
 SOURCE = (pathlib.Path(__file__).resolve().parent.parent
           / "firmware" / "main" / "meshcore_ble.cpp")
 WRITE = re.compile(
-    r"(?<![\w.>:])snapshot(?:\.\w+|\[[^\]]*\])*\s*(?:[-+*/%|&^]|<<|>>)?=(?!=)")
-LOCK = "taskENTER_CRITICAL(&snapshot_lock);"
+    r"(?<![\w.>:])(?:location_)?snapshot(?:\.\w+|\[[^\]]*\])*\s*"
+    r"(?:[-+*/%|&^]|<<|>>)?=(?!=)")
+ENTER = "taskENTER_CRITICAL(&snapshot_lock);"
+EXIT = "taskEXIT_CRITICAL(&snapshot_lock);"
 INITIALIZER = "attadipa::core::MeshStatus snapshot = provider.status();"
 
 
 def unlocked_writes(text):
     bad = []
-    previous = ""
+    held = False
     for number, raw in enumerate(text.splitlines(), 1):
         line = raw.split("//", 1)[0].strip()
-        if not line:
-            continue
-        if WRITE.search(line) and line != INITIALIZER and previous != LOCK:
+        if line == ENTER:
+            held = True
+        elif line == EXIT:
+            held = False
+        elif WRITE.search(line) and line != INITIALIZER and not held:
             bad.append(number)
-        previous = line
     return bad
 
 
 def self_test():
-    locked = f"{LOCK}\nsnapshot = next;\n"
-    assert unlocked_writes(locked) == [], "a locked write was refused"
+    for locked in (f"{ENTER}\nsnapshot = next;\n{EXIT}\n",
+                   f"{ENTER}\nsnapshot = n;\nsnapshot.availability = a;\n{EXIT}",
+                   f"{ENTER}\nif (a) {{\n  location_snapshot = p;\n}}\n{EXIT}"):
+        assert unlocked_writes(locked) == [], f"a locked write was refused: {locked!r}"
     for mutant in ("snapshot.availability = x;", "snapshot = next;",
-                   "if (a) snapshot.mtu += 1;", f"{LOCK}\nf();\nsnapshot = n;"):
+                   "if (a) snapshot.mtu += 1;", "location_snapshot = p;",
+                   f"{ENTER}\n{EXIT}\nsnapshot = n;"):
         assert unlocked_writes(mutant), f"an unlocked write passed: {mutant!r}"
-    assert unlocked_writes("location_snapshot = p;\nx = session_snapshot();") == []
+    assert unlocked_writes("my_snapshot = p;\nx = session_snapshot();") == []
 
 
 def main():
     self_test()
     bad = unlocked_writes(SOURCE.read_text(encoding="utf-8"))
     for number in bad:
-        print(f"{SOURCE}:{number}: write to snapshot outside snapshot_lock",
-              file=sys.stderr)
+        print(f"{SOURCE}:{number}: write outside snapshot_lock", file=sys.stderr)
     return 1 if bad else 0
 
 

@@ -830,10 +830,10 @@ if(ATTADIPA_BUILD_SIMULATOR)
                          PROPERTIES LABELS "simulator" TIMEOUT 60)
 endif()
 
-# MeshCore's status snapshot is read by the UI task from before the mesh starts,
-# so every write to it takes snapshot_lock (#344). A source rule, because the
-# race it prevents never shows on a host build. Without Python the
-# *_checks_unavailable tests above already fail the run.
+# MeshCore's status and location snapshots are read by the UI task from before
+# the mesh starts, so every write to them takes snapshot_lock (#344). A source
+# rule, because the race it prevents never shows on a host build. Without
+# Python the *_checks_unavailable tests above already fail the run.
 if(Python3_Interpreter_FOUND)
     add_test(NAME meshcore_snapshot_writes_are_locked
              COMMAND ${Python3_EXECUTABLE}
