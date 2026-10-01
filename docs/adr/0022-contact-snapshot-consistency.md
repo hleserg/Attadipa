@@ -19,8 +19,9 @@ the same transport. The node's contact iterator is a raw index into the live
 compacted underneath the cursor while the walk runs — research report §2.
 
 Attadipa converts the end of that stream into a claim about its content:
-`link/src/meshcore_companion.cpp:1544` — "status_.peers_complete = true;" is set
-unconditionally on `RESP_CODE_END_OF_CONTACTS`. The stream ending is a syntactic
+`link/src/meshcore_companion.cpp:1546` — "status_.peers_complete = true;" is set
+on `RESP_CODE_END_OF_CONTACTS` once the frames that close the walk have left
+(decision 1c). The stream ending is a syntactic
 fact. That the list matches the node's table is a semantic one, and the wire does
 not carry it.
 
@@ -121,7 +122,7 @@ be proven and is not does not.
 **7a. Publishing it costs a shadow copy and a latch, and that is part of this
 decision, not an implementation detail.** A re-read opens with a second
 `RESP_CODE_CONTACTS_START`, whose handler empties the retained set and clears
-both completion flags — `link/src/meshcore_companion.cpp:1434` — "        peer_count_ = 0;".
+both completion flags — `link/src/meshcore_companion.cpp:1436` — "        peer_count_ = 0;".
 Left alone, a retry therefore drops `Availability::Ready`, closes the battery
 poll gate, restarts the `retained/reported` pair at zero, and — the one that
 matters — leaves an incoming message with no sender name, because

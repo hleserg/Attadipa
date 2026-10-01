@@ -135,8 +135,8 @@ Any traversal error is swallowed: `DataStore.cpp:95`–`:97` log under
 `MESH_DEBUG_PRINTLN` and return 0, and the T114 companion builds without
 `MESH_DEBUG` (`variants/heltec_t114/platformio.ini:224` — ";  -D MESH_DEBUG=1"), so a corrupt traversal is invisible on the wire except as
 "0 KiB used" — which Atta-dipa never reads: the reply layout is
-`link/src/meshcore_companion.cpp:1612` — "// Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].",
-and the parse takes only bytes 1–2 (`link/src/meshcore_companion.cpp:1634` — "static_cast<unsigned>(data[1]) |").
+`link/src/meshcore_companion.cpp:1614` — "// Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].",
+and the parse takes only bytes 1–2 (`link/src/meshcore_companion.cpp:1636` — "static_cast<unsigned>(data[1]) |").
 
 ## 3. What the traversal can and cannot do
 
@@ -270,7 +270,7 @@ Mechanism: **UNKNOWN**. Only the HIL matrix of §8 can tell them apart.
 
 Atta-dipa keeps **no** record of the last battery request before a disconnect:
 the request is never logged, and `received_at`
-(`link/src/meshcore_companion.cpp:1643` — "battery.received_at = now;") lives
+(`link/src/meshcore_companion.cpp:1645` — "battery.received_at = now;") lives
 only in memory. A post-mortem cannot say whether a poll was in flight.
 
 ## 7. Is battery separable from storage?

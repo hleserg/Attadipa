@@ -3838,7 +3838,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1419` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1420` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3949,12 +3949,12 @@ void test_a_refused_session_keeps_its_quiet_window()
     CHECK(client.status().peers_complete);
 }
 
-// A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:751` --
-// "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
-// CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
-// never left would strand the node's backlog for the session, which is the
-// defect #566 is about, reached by a different road.
+// A FULL RING IS NOT AN ANSWER. `end_contacts()` sends nothing without two free
+// slots in the four-deep TX ring -- `link/src/meshcore_companion.cpp:779` --
+// "    if (!custom_vars_requested_ && tx_size_ + 2 > tx_.size()) return false;"
+// -- and the session has exactly one CMD_SYNC_NEXT_MESSAGE to spend on a lost
+// boundary. Counting a frame that never left would strand the node's backlog
+// for the session, which is the defect #566 is about, reached by a different road.
 void test_a_quiet_stream_that_cannot_send_tries_again()
 {
     MeshCoreCompanion client;
@@ -4662,8 +4662,8 @@ void test_an_ack_after_the_budget_upgrades_unconfirmed_to_confirmed()
 
         // Row 11: the node has no notion of this client's budget and clears its
         // own ack table only on a match, so a confirmation after the budget is
-        // ordinary traffic. It is positive proof against the absence of proof,
-        // and the absence loses.
+        // ordinary traffic. A matching tag outranks the absence of one, so the
+        // late match upgrades.
         CHECK(client.receive(ack, sizeof(ack), at(8 + 30000)));
         CHECK(service.status().delivery == MeshDelivery::Confirmed);
         CHECK(!client.send_busy());
@@ -5494,6 +5494,46 @@ void test_a_walk_that_starts_anyway_owns_the_contact_frame()
     CHECK(service.status().delivery == MeshDelivery::Refused);
 }
 
+// A `START` BEHIND AN UNSENT `END` OPENS A WALK THAT OWNS ITS ROWS (#749). The
+// `END` before it raised `end_unsent_`, which lets a fetch reply through while
+// a walk is open; a walk the node volunteers next has rows still to send, and
+// the fetched key's row among them is the walk's.
+void test_a_start_behind_an_unsent_end_owns_its_rows()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+
+    MeshService service(client);
+    const auto far = absent_key(0xD4);
+    CHECK(service.send_private(far, "hi", WallTime{1000}).accepted());
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(5)));
+
+    // One slot freed, not two: the `END` stays unsent.
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] != 10);
+
+    const std::uint8_t start[] = {2, 1, 0, 0, 0};
+    CHECK(client.receive(start, sizeof(start), at(6)));
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 1);
+    CHECK(client.receive(reply, sizeof(reply), at(7)));
+
+    CHECK(client.peer_count() == 1);
+    CHECK(client.send_busy());
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+}
+
 void test_a_re_read_waits_for_a_fetch_too()
 {
     MeshCoreCompanion client;
@@ -5691,6 +5731,7 @@ int main()
     test_a_text_the_link_drops_under_stays_unknown();
     test_a_text_the_node_never_answers_expires_unknown();
     test_a_walk_that_starts_anyway_owns_the_contact_frame();
+    test_a_start_behind_an_unsent_end_owns_its_rows();
     test_a_re_read_waits_for_a_fetch_too();
     test_a_fetch_keeps_the_request_id_its_caller_was_given();
     test_a_room_login_keeps_the_request_id_its_caller_was_given();

@@ -451,7 +451,7 @@ time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
-(`meshcore_ble.cpp:2628` "bool configure_meshcore_ble") had exactly one caller,
+(`meshcore_ble.cpp:2629` "bool configure_meshcore_ble") had exactly one caller,
 `BoardMeshSink::configure` (`waveshare_board.cpp:664`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
@@ -488,7 +488,7 @@ flashed away, which is what showed the round trip never existed. #356's first
 change added the one thing that persists: an accepted six-digit passkey is
 written to NVS by the worker (`meshcore_ble.cpp:2000`
 "attadipa::firmware::persist_passkey(persist_ops, event.passkey);") and boot replays it through the same
-`Configure` event (`meshcore_ble.cpp:2598` "restore_passkey();"). The zero of
+`Configure` event (`meshcore_ble.cpp:2599` "restore_passkey();"). The zero of
 `--unpaired-probe` is not a passkey and is not written: it turns pairing and
 link encryption off for one session, and a boot must not do that on its own.
 `mesh-disconnect` is the way back: its `Deconfigure` erases the key
@@ -511,9 +511,9 @@ scans without showing that it does.
 It still pays for the subsystem. `start_meshcore_ble()` is unconditional
 (`attadipa_main.cpp:326` "start_meshcore_ble()", under `CONFIG_BT_NIMBLE_ENABLED`
 and `!CONFIG_APP_BUILD_TYPE_PURE_RAM_APP` only), so every product image runs
-`nimble_port_init()` (`meshcore_ble.cpp:2385` "nimble_port_init()"), brings the
+`nimble_port_init()` (`meshcore_ble.cpp:2386` "nimble_port_init()"), brings the
 controller up and creates the `meshcore` task with a 6,144-byte stack
-(`meshcore_ble.cpp:2406` "xTaskCreate(mesh_task") for a subsystem that scans
+(`meshcore_ble.cpp:2407` "xTaskCreate(mesh_task") for a subsystem that scans
 only once a passkey is on flash — left by a HIL image, or, since #356's second
 change, typed on the entry screen. That cost is real and is recorded against
 [#356](https://github.com/hleserg/Attadipa/issues/356) rather than removed here:
