@@ -1304,6 +1304,11 @@ void test_a_forget_that_ended_unseen_is_shown_on_the_next_open()
             board.forget_op.complete(old, c.ending);
             board.pinned = c.pin_left;
 
+            // A clock-only walk has no node half: it neither shows the answer
+            // nor takes it (#737).
+            ProvisioningEntry clock(board, EntryTask::LocalTime);
+            CHECK(clock.field() == EntryField::Day);
+
             ProvisioningEntry second(board, task);  // `All` too: first frame
             CHECK(!second.waiting());
             CHECK(second.field() == EntryField::Receipt);
