@@ -65,9 +65,12 @@ def resolve_port(serial: str) -> str:
     # reports the same MAC in lower case, and `identity_mismatch` already folds
     # it -- so a lower-case serial passed every later check and then found no
     # port at all. Found in review.
-    want = serial.casefold()
+    # Equality, not substring, on the serial between the last `_` and `-if`:
+    # a partial serial used to resolve here and then be refused by
+    # `identity_mismatch` after the port was open (#731).
+    want = serial.strip().casefold()
     matches = [link for link in sorted(BY_ID.iterdir())
-               if want in link.name.casefold()]
+               if link.name.rsplit("-if", 1)[0].rsplit("_", 1)[-1].casefold() == want]
     if not matches:
         available = "\n  ".join(link.name for link in sorted(BY_ID.iterdir())) or "(none)"
         raise SystemExit(

@@ -81,8 +81,8 @@ def check(tmp: Path) -> list[str]:
     if "(none)" not in refusal_in(empty, WATCH):
         failures.append("an empty by-id directory does not say so")
 
-    # A serial that is a prefix of two links. Contrived, and the point is that
-    # the ambiguity is refused rather than silently resolved to the first.
+    # One serial on two links, two interfaces of one unit. Contrived, and the
+    # point is that the ambiguity is refused rather than resolved to the first.
     ambiguous = tmp / "ambiguous"
     ambiguous.mkdir()
     for suffix in ("if00", "if02"):
@@ -103,6 +103,11 @@ def check(tmp: Path) -> list[str]:
         failures.append("a lower-case serial did not find the port, so it "
                         "passes every later identity check and then resolves "
                         "to nothing")
+
+    # A partial serial names no unit. It used to resolve by substring and then
+    # be refused by `identity_mismatch` with the port already open (#731).
+    if "no serial device" not in refusal_in(both, WATCH[:8]):
+        failures.append("a partial serial resolved to a port")
 
     # The directory itself missing — a host with no udev by-id links at all.
     if "does not exist" not in refusal_in(tmp / "absent", WATCH):
@@ -220,7 +225,7 @@ def main() -> int:
             print(f"  - {failure}")
         return 1
 
-    print("ramhold selftest: 13 cases, all as expected.")
+    print("ramhold selftest: every case as expected.")
     return 0
 
 
