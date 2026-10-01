@@ -3542,3 +3542,49 @@ existing states mean.
 
 **Tests required:** none now. A power-cut series on hardware is M51 in
 [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+
+### Locking the storage reading against the shared flash cache
+
+**Problem.** Every battery poll makes a T114 run `lfs_traverse()` over
+`ExtraFS` without a lock, and upstream reports BLE failing after a few
+connections. [#700](https://github.com/hleserg/Attadipa/issues/700) asked
+whether the poll can cause it and whether an upstream fix applies.
+
+**Projects investigated.** MeshCore
+[PR #3503](https://github.com/meshcore-dev/MeshCore/pull/3503) (open,
+non-draft); CustomLFS `0.2.3`; LittleFS v1.7 as vendored in the nRF52 core.
+
+**Useful implementation.** #3503 locks `lfs_traverse` in `DataStore`, wraps
+CustomLFS's four block callbacks with `InternalFS`'s lock in a new
+`LockedLFS.h`, and fixes the traversal bound to `>=`.
+
+**License.** MeshCore and CustomLFS MIT; LittleFS BSD-3-Clause.
+
+**Strengths.** #3503 puts both filesystems that share the flash cache under one
+lock, which closes the write/write race in the report's §4, and its upstream
+result is 5–10 connections to failure before, 100 clean after.
+
+**Weaknesses.** That result changes three things at once, so it cannot say
+which one mattered, and its board and client are not this fleet's. It is
+unmerged, and its mount- and format-time erases stay unlocked.
+
+**Decision:** `MONITOR` #3503 as evidence and test design. `REJECT` copying or
+vendoring `LockedLFS.h`. Nothing is adopted from CustomLFS or LittleFS; both
+are read as the canonical trace only.
+
+**Reason.** This product cannot change the node's firmware, and the trace finds
+no write path from the poll; what #3503 fixes exists with the poll off.
+
+**Source revision:** `meshcore-dev/MeshCore#3503@a845319d5890f08b9c2def5dfe8c5296c8d25c0b`
+(read 2026-10-01) · CustomLFS `0.2.3@b3928ea2d0f46c2533e901c43f471a081c503a3c`
+· `meshcore-dev/Adafruit_nRF52_Arduino@d541301665b40959682252911e57b11df3ee651a`
+for LittleFS v1.7, against the fleet pin
+`d92964352441e53b93e8667b802e04f6e072b39e`.
+
+**Attadipa integration:** none; #700 is research-only. The trace and what it
+leaves open are
+[`MESHCORE_STORAGE_POLL_CONCURRENCY.md`](MESHCORE_STORAGE_POLL_CONCURRENCY.md).
+
+**Tests required:** none now. The hardware matrix is M53 in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md), and it is what would move #3503 from
+`MONITOR`.
