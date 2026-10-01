@@ -15,8 +15,9 @@ requests are accepted — **every `watch_control` invocation is expected to rebo
 the watch twice: once at open and once at the last close**, and this repository
 already measured both halves in a different context without connecting them to
 the watch-control path. On the T-Watch S3 Plus the same open is expected to
-**fail outright** rather than reset, because that unit refuses every CDC
-`SET_CONTROL_LINE_STATE` request. Neither expectation has been run through
+**fail outright** rather than reset, because in the one window measured on
+2026-08-28 that unit refused every CDC `SET_CONTROL_LINE_STATE` request — a
+unit the same session recorded as stateful (§3.2). Neither expectation has been run through
 `watch_control` on either board: **NOT EXECUTED — HARDWARE REQUIRED.**
 
 The practical consequence is not the reset. It is that a reset at open is
@@ -72,7 +73,7 @@ a substring test to equality on the serial between the last `_` and `-if`.
 proposes `resolve_port` as a local reuse candidate for the watch-control path.
 It is already reused there: `tools/watch_control.py:39` —
 "from flash.ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402" — and the
-call is at `tools/watch_control.py:866` —
+call is at `tools/watch_control.py:867` —
 "args.port = resolve_port(named or DEFAULT_SERIAL)". So identity resolution is
 done. What is missing is only the *re-resolution after a reset* already
 described at `tools/flash/flash_no_reset.py:60` —
@@ -119,6 +120,11 @@ vendor and one field investigation, agree on which combination resets the part �
 and the vendor's comment also states that the *order* of the writes matters,
 although for a Windows `usbser.sys` flush reason rather than a chip one.
 
+That is *a* resetting combination, not the only one. §2.3's kernel raises both
+lines at open and lowers both at the last close; neither is `DTR=0, RTS=1`, so
+the resets §3.1 predicts, and this bench measured, are not reached through this
+sequence. Which transition carries them is open — §8.
+
 ### 2.2 The ESP32-S3 cannot refuse it
 
 `components/soc/esp32s3/register/soc/usb_serial_jtag_reg.h` at `v5.5.5` is 732
@@ -135,7 +141,11 @@ not a proof that no S3 mitigation exists anywhere.
 ### 2.3 The host asserts both lines from inside `open(2)`, and lowers them on the last close
 
 This is the layer the issue's question 2 asks about, and it is the one that
-settles the question negatively.
+settles the question negatively. The mechanism is already recorded, as `LIKELY`
+and with its measurement left to T-116's third goal, at
+`docs/hardware/BENCH_HANDLING.md:143` — "is **`LIKELY` to be defeated**, not established".
+What this read adds is the pinned `v6.17` lines, the `C_BAUD` and `C_HUPCL`
+gates, and the silent `dev_dbg` failure.
 
 `drivers/tty/tty_port.c:503-506` at `v6.17`, in `tty_port_block_til_ready`:
 
@@ -146,7 +156,7 @@ if (filp == NULL || (filp->f_flags & O_NONBLOCK)) {
 		tty_port_raise_dtr_rts(port);
 ```
 
-and `:355-356`, in `tty_port_shutdown`:
+and `drivers/tty/tty_port.c:355-356`, in `tty_port_shutdown`:
 
 ```c
 	if (tty && C_HUPCL(tty))
@@ -168,8 +178,10 @@ Three consequences, and they are the core of this report:
    nothing about this one.
 2. The raise is gated only on `C_BAUD(tty)` — the termios the port already
    carries, from whoever held it last. The lower is gated on `C_HUPCL(tty)`.
-   That is exactly why this repository's own 2026-08-25 bench note records
-   `stty -hupcl` as tried and useless: pyserial calls
+   That is exactly why the 2026-08-23 bench session records `stty -hupcl` as
+   tried and useless —
+   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:205` — "was tried and is not a fix: esptool reopens the port" —
+   pyserial calls
    `_reconfigure_port(force_update=True)` on every open and writes the setting
    back.
 3. "Pre-open suppression" as the issue words it does not exist on Linux for the
@@ -255,8 +267,9 @@ is the open itself, and only `rtscts=True, dsrdtr=True` got past it.
 behaviour of the open at `tools/watch/client.py:127` —
 "serial.Serial(port, baud, timeout=0)" — on this unit is a `WatchError` out of
 `SerialTransport.__init__` — *"could not open …"* — and not a reset. That is a
-different answer from `UNKNOWN`, and it means the watch-control path has never
-been able to reach this board at all, which no document currently says.
+different answer from `UNKNOWN`, and it means that in a window like that one
+the watch-control path cannot reach this board at all, which no document
+currently says.
 
 The unit's USB behaviour is also **stateful**: the same report notes the unit
 reset and re-enumerated three times during one earlier invocation and then
@@ -495,6 +508,7 @@ not because running it would have closed anything.
 | Does `watch_control` reset the Waveshare at open? | **Derived yes** (§3.1), measured never. One external capture settles it |
 | Can `watch_control` open the T-Watch at all? | **Derived no** (§3.2). The same capture settles it |
 | What did every prior `watch_control` observation actually observe? | §3.3. Depends on the first row |
+| Which control-line transition resets the part, when neither the kernel's open nor its close is the vendor's `DTR=0, RTS=1`? | §2.1 against §2.3. The same external capture, logging line state, settles it |
 | Is there any Linux-side policy, available to the opening process, that avoids the open-time raise? | §2.3 says no for a pyserial application. The `C_BAUD` gate is the only lever in the source and `B0` means hang up, so it is probably not one; untested |
 | Does the asymmetric host wedge reproduce on a native Python CLI? | Upstream's only reproduction is a browser on one host, and upstream itself withdrew the general explanation |
 | Does the T-Watch's ROM loader accept control-line requests? | Every refusal was observed against the factory application |

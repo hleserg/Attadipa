@@ -3350,7 +3350,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:759` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:762` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3884,8 +3884,9 @@ watches is a derivation and lives in
 - **Evidence level:** vendor source.
 - **Consequence:** it independently corroborates the state MeshCadet
   [#211](https://github.com/jagoda/meshcadet/pull/211) narrowed to from field
-  observation and wrote as `DTR=0, RTS=1`. Two unrelated sources agree on which
-  combination resets the part. Neither says a post-open re-ordering cures
+  observation and wrote as `DTR=0, RTS=1`. Two unrelated sources agree on *a*
+  combination that resets the part — not the only one: the kernel's open and
+  close, in the next entry, produce neither it nor each other's state. Neither says a post-open re-ordering cures
   anything — #212 tested that on hardware and reverted it.
 
 ### On Linux the kernel asserts DTR and RTS from inside `open(2)`, and lowers them on the last close
@@ -3900,12 +3901,15 @@ watches is a derivation and lives in
   that rejects the request fails silently at this layer.
 - **Source:** Linux `v6.17`,
   [`drivers/tty/tty_port.c:503-506`](https://github.com/torvalds/linux/blob/v6.17/drivers/tty/tty_port.c#L503-L506)
-  — "if (C_BAUD(tty))" then "tty_port_raise_dtr_rts(port);" — and `:355-356`
-  — "if (tty && C_HUPCL(tty))";
+  — "if (C_BAUD(tty))" then "tty_port_raise_dtr_rts(port);" — and
+  `drivers/tty/tty_port.c:355-356` — "if (tty && C_HUPCL(tty))";
   [`drivers/usb/class/cdc-acm.c:676`](https://github.com/torvalds/linux/blob/v6.17/drivers/usb/class/cdc-acm.c#L676)
   — "static void acm_port_dtr_rts(struct tty_port *port, bool active)" (GPL-2.0).
 - **Evidence level:** kernel source, read over the GitHub API. Not reproduced
-  with a bus capture on this bench.
+  with a bus capture on this bench. The mechanism was already recorded as
+  `LIKELY` in [BENCH_HANDLING](../hardware/BENCH_HANDLING.md), the `cdc_acm`
+  bullet, whose measurement is T-116's third goal; this entry adds the pinned
+  lines and the two gates, and does not replace that record.
 - **Consequence:** pyserial's `rtscts`/`dsrdtr` suppression — the route
   `tools/flash/ramhold.py` and `tools/flash/flash_no_reset.py` take — removes
   pyserial's own two ioctls and **not** this one. "Suppress the control lines
@@ -3926,13 +3930,16 @@ watches is a derivation and lives in
   [`a5c48d4`](https://github.com/pyserial/pyserial/blob/a5c48d445fbc1943d4fabf8d9090a50fda3172fd/serial/serialutil.py),
   `serial/serialutil.py:179` and `:210-211`;
   [`serial/serialposix.py:335`](https://github.com/pyserial/pyserial/blob/a5c48d445fbc1943d4fabf8d9090a50fda3172fd/serial/serialposix.py#L335)
-  (`os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK`), `:344-355` (the two guarded
-  updates and the errno filter) and `:641-649` (the infinite write branch).
+  (`os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK`), `serial/serialposix.py:344-355`
+  (the two guarded updates and the errno filter) and
+  `serial/serialposix.py:641-649` (the infinite write branch).
   BSD-3-Clause.
 - **Evidence level:** library source.
-- **Consequence:** `errno 71` is `EPROTO`, so the T-Watch's measured refusal of
-  every `SET_CONTROL_LINE_STATE` request propagates out of the `serial.Serial`
-  constructor rather than being absorbed. And the unbounded host call in this
+- **Consequence:** `errno 71` is `EPROTO`, so a refusal like the T-Watch's —
+  every `SET_CONTROL_LINE_STATE` request in the one window measured on
+  2026-08-28, on a unit that session recorded as stateful after three resets
+  earlier the same day — propagates out of the `serial.Serial` constructor
+  rather than being absorbed. And the unbounded host call in this
   repository's watch-control path is the **write**, not the `tcdrain(2)` that
   MeshCadet [#208](https://github.com/jagoda/meshcadet/pull/208) named: nothing
   in `tools/watch/client.py` calls `flush()`, which is pyserial's only
