@@ -98,7 +98,9 @@ nothing else is queued:
   and a five-second budget fails the request without retrying early
   (`link/src/meshcore_companion.cpp:73` — "constexpr core::Millis kBatteryReplyBudget{5000};").
 - A new session clears the flag (`link/src/meshcore_companion.cpp:180` — "battery_polled_ = false;"),
-  so **every completed handshake sends one request**, after the contact walk.
+  so **every completed handshake makes one request due**, after the contact
+  walk. It is sent on the first tick that may send, so a link that drops first
+  sends none.
 - The host test pins the cadence: `tests/test_meshcore_companion.cpp:2026` —
   "void test_attached_node_battery_uses_the_live_queue_and_public_status()"
   polls at 10 ms, then `tests/test_meshcore_companion.cpp:2060` — "client.tick(at(60010));"
@@ -139,7 +141,12 @@ and the parse takes only bytes 1–2 (`link/src/meshcore_companion.cpp:1618` —
 ## 3. What the traversal can and cannot do
 
 **Read-only.** `lfs_traverse` in v1.7 calls the callback and `lfs_bd_read`;
-it allocates and programs nothing. `flash_cache_read` overlays cached bytes
+it allocates and programs nothing. Its last arm walks every open file's block
+list, and there the file's own cache is passed only as the `const` program
+cache, beside the filesystem's read cache
+([`lfs.c:2307`](https://github.com/meshcore-dev/Adafruit_nRF52_Arduino/blob/d541301665b40959682252911e57b11df3ee651a/libraries/Adafruit_LittleFS/src/littlefs/lfs.c#L2307)
+— "int err = lfs_ctz_traverse(lfs, &lfs->rcache, &f->cache,"), so a pending
+write in an open file is read through, never overwritten. `flash_cache_read` overlays cached bytes
 when the range overlaps the cached page and otherwise reads flash; it never
 changes `cache_addr` or the buffer
 ([`flash_cache.c:98`](https://github.com/meshcore-dev/Adafruit_nRF52_Arduino/blob/d541301665b40959682252911e57b11df3ee651a/libraries/InternalFileSytem/src/flash/flash_cache.c#L98)
@@ -268,8 +275,8 @@ only in memory. A post-mortem cannot say whether a poll was in flight.
 
 ## 7. Is battery separable from storage?
 
-At the fleet pin, **no**: command 20 is the only battery command, and its one
-11-byte reply computes both (§2). The already-supported alternative is
+Within command 20, **no**: its one 11-byte reply computes both (§2), and it is
+the only battery command this client sends. At the protocol level, **yes**:
 `CMD_GET_STATS` with `STATS_TYPE_CORE`
 ([`MyMesh.cpp:1865`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/MyMesh.cpp#L1865)
 — "} else if (cmd_frame[0] == CMD_GET_STATS && len >= 2) {"), whose reply
@@ -285,10 +292,13 @@ contacts, channels and prefs:
 
 1. **Baseline:** the unmodified fleet image, the poll suppressed by a test
    harness, N reconnect cycles; numerator, denominator, time to failure.
-2. **Poll on:** the same matrix with the shipping 60 s cadence and one poll per
-   handshake.
-3. **Write race isolated:** a contact save forced at each connection, poll
-   off — this is explanation 1 alone.
+2. **Poll on:** the same matrix with the shipping 60 s cadence and one poll due
+   per handshake.
+3. **Write race isolated:** poll off, and both sides of §4's race forced into
+   the same window at each connection — a contact change that marks the table
+   dirty, so the loop task saves it, and a fresh pairing, so the Callback task
+   saves the bond key. A run that forces only one side cannot test explanation
+   1 and is no evidence against it.
 4. **#3503 head** on a separate image, watching for deadlocks in contact and
    channel operations.
 5. **After a failure:** capture node serial, reset reason, identity, counts and
