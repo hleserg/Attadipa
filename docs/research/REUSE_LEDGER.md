@@ -3542,3 +3542,27 @@ existing states mean.
 
 **Tests required:** none now. A power-cut series on hardware is M51 in
 [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+
+### Locking the storage reading against the shared flash cache
+
+**Candidates:** MeshCore
+[PR #3503](https://github.com/meshcore-dev/MeshCore/pull/3503) (open,
+non-draft, head `a845319d5890f08b9c2def5dfe8c5296c8d25c0b`, read 2026-10-01) ·
+MIT. CustomLFS `0.2.3` (`b3928ea2d0f46c2533e901c43f471a081c503a3c`) · MIT.
+LittleFS v1.7 as vendored in the nRF52 core
+(`d541301665b40959682252911e57b11df3ee651a`) · BSD-3-Clause.
+
+#3503 locks `lfs_traverse` in `DataStore`, wraps CustomLFS's four block
+callbacks with `InternalFS`'s lock in a new `LockedLFS.h`, and fixes the
+traversal bound to `>=`. Its upstream result — 5–10 connections to failure
+before, 100 clean after — changes three things at once, so it cannot say which
+one mattered, and its board and client are not this fleet's.
+
+**Decision:** `MONITOR` #3503 as evidence and test design. `REJECT` copying or
+vendoring `LockedLFS.h`: it is unmerged, and its mount- and format-time erases
+stay unlocked. Nothing is adopted from CustomLFS or LittleFS; both are read as
+the canonical trace only.
+
+**Attadipa integration:** none; #700 is research-only. The trace and what it
+leaves open are
+[`MESHCORE_STORAGE_POLL_CONCURRENCY.md`](MESHCORE_STORAGE_POLL_CONCURRENCY.md).

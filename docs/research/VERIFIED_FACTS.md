@@ -3350,7 +3350,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:758` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:759` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3815,3 +3815,22 @@ The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FO
   and `MeshSnapshot::Consistent` describe one walk of the node's RAM table and
   nothing more — see
   [`MESHCORE_CONTACT_STORE_RECOVERY.md`](MESHCORE_CONTACT_STORE_RECOVERY.md).
+
+### On a T114 every battery poll traverses the contact filesystem without a lock
+
+- **Claim:** at MeshCore `companion-v1.17.1@d929643`, command 20
+  (`CMD_GET_BATT_AND_STORAGE`) runs `lfs_traverse()` over `ExtraFS` on the
+  Arduino loop task without taking the filesystem lock, and the traversal and
+  its flash-cache reads are read-only. Battery and storage come from that one
+  reply; the only other battery source, `CMD_GET_STATS` / `STATS_TYPE_CORE`,
+  touches no filesystem.
+- **Source:** MeshCore
+  [`examples/companion_radio/DataStore.cpp:94`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/DataStore.cpp#L94)
+  — "int err = lfs_traverse(fs->_getFS(), _countLfsBlock, &size);";
+  [`examples/companion_radio/MyMesh.cpp:1477`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/MyMesh.cpp#L1477)
+  — "uint32_t used = _store->getStorageUsedKb();".
+- **Evidence level:** vendor source at the fleet pin. Whether the poll can
+  cause a failure on a T114 is **UNKNOWN** — M53 in
+  [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md); **NOT EXECUTED — HARDWARE REQUIRED**.
+- **Consequence:** no write path from the poll was found; see
+  [`MESHCORE_STORAGE_POLL_CONCURRENCY.md`](MESHCORE_STORAGE_POLL_CONCURRENCY.md).
