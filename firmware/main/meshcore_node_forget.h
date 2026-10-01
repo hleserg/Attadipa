@@ -25,6 +25,10 @@
 // the person holding it had reached the passkey field. The Configure that the
 // passkey entry posts is the one arm, exactly as it is for a first
 // provisioning; §7 of the report is where that rule is written down.
+//
+// `quiesce_gap()` and `start_discovery()` below are here for the same reason
+// and are not about forgetting a node: they are the two halves of who owns
+// GAP discovery, they have to agree, and a forget is one of their callers.
 
 #include <cstdint>
 
@@ -107,6 +111,56 @@ ForgetTransportTermination quiesce_gap(Ops& ops)
     if (ops.connecting() && !ops.cancel_connect())
         return ForgetTransportTermination::Refused;
     return ops.end_session();
+}
+
+// How a start of discovery ended. The last two are the race below: the scan
+// was started and then taken back, because by the time it existed nothing
+// wanted it any more.
+enum class ScanStart : std::uint8_t {
+    // The gate was down, or a scan was already running. The stack was not
+    // asked for anything.
+    Skipped,
+    // The stack would not start one. Nothing is scanning.
+    Refused,
+    // Started, and still wanted once it had started.
+    Scanning,
+    // Started after a disarm, and cancelled again.
+    Stopped,
+    // Started after a disarm, and the cancel was refused. Somebody else owes
+    // the retry; `cancel_discovery()` is where that was recorded.
+    StopOwed,
+};
+
+// Starting discovery, and owning what was started. The other half of
+// `quiesce_gap()`, and one decision with it (#628).
+//
+// `quiesce_gap()` disarms and then asks whether a scan is running, which is
+// the truth at that instant and about nothing else. A caller on the radio's
+// own callback task that has read the gate armed and has not yet reached the
+// start is invisible to it: the teardown finds nothing to cancel, the fault is
+// published, and the unbounded scan begins afterwards, behind a phase that
+// says the transport failed and needs a reset. Neither half was wrong on its
+// own. The check and the start were two operations with a disarm allowed in
+// between, and disarming only stops the entries that have not happened yet.
+//
+// So the start reads the gate again once the stack has taken it, and undoes
+// itself when the disarm won. Whichever of the two runs second sees the
+// other's work -- the disarm before this second read, or the scan before
+// `quiesce_gap()`'s `discovering()` -- so they cannot both find nothing, and
+// no step here needs a lock held across a call into the stack.
+//
+// `Ops`:
+//   bool armed();             the stack is up, configured, reconnect allowed
+//   bool discovering();       ble_gap_disc_active()
+//   bool begin();             ble_gap_disc(..., BLE_HS_FOREVER, ...) == 0
+//   bool cancel_discovery();  accepted or already over; owes the retry if not
+template <typename Ops>
+ScanStart start_discovery(Ops& ops)
+{
+    if (!ops.armed() || ops.discovering()) return ScanStart::Skipped;
+    if (!ops.begin()) return ScanStart::Refused;
+    if (ops.armed()) return ScanStart::Scanning;
+    return ops.cancel_discovery() ? ScanStart::Stopped : ScanStart::StopOwed;
 }
 
 // `Ops` is the board:

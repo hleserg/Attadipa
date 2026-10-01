@@ -47,8 +47,8 @@ recorded here so that no option is credited with paying them.
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:2554` — "bool configure_meshcore_ble(std::uint32_t passkey)"
-   reaches `firmware/main/meshcore_ble.cpp:1907` — "secure_pairing.store(event.passkey != 0);"
+   `firmware/main/meshcore_ble.cpp:2607` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   reaches `firmware/main/meshcore_ble.cpp:1953` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
    `firmware/main/meshcore_ble.cpp:222` — "std::atomic_bool configured{false};"
    and `firmware/main/meshcore_ble.cpp:224` — "std::atomic_bool reconnect_allowed{false};".
@@ -56,17 +56,17 @@ recorded here so that no option is credited with paying them.
    there by #304: `firmware/main/meshcore_ble.cpp:288` — "constexpr const char* kMeshNvsNamespace = ",
    read at `firmware/main/meshcore_ble.cpp:377` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
    and written at `firmware/main/meshcore_ble.cpp:561` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2471` —
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2524` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
    persisting what was provisioned is orthogonal to the channel that delivered
    it. #356's first change added that key: an accepted pairing passkey is
    stored once the stack has taken it
-   (`firmware/main/meshcore_ble.cpp:1938` — "const bool stored = !event.persist_passkey ||"),
+   (`firmware/main/meshcore_ble.cpp:1984` — "const bool stored = !event.persist_passkey ||"),
    replayed at boot through the same event unless a durable node-forget marker
    requires new owner-entered digits, and erased again by `Deconfigure`
-   (`firmware/main/meshcore_ble.cpp:1998` —
+   (`firmware/main/meshcore_ble.cpp:2044` —
    "if (!attadipa::firmware::erase_passkey(persist_ops)) {").
    Since #648 a second durable gate stands while new digits are written, so
    power lost mid-write leaves a watch that arms nothing at the next boot
@@ -179,11 +179,11 @@ Consent is that a person is holding this watch and touching its screen. Nothing
 on a cable or a radio can do that.
 
 The decisive fact is one the firmware already asserts to its peer:
-`firmware/main/meshcore_ble.cpp:2314` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
+`firmware/main/meshcore_ble.cpp:2367` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:2554` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:2607` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.
@@ -225,8 +225,8 @@ Priced against the current build, B is **A plus a radio**:
   One qualifier, because the cost lands later than it looks: the watch only
   reaches the SMP path once a passkey has been armed —
   `firmware/main/meshcore_ble.cpp:223` — "std::atomic_bool secure_pairing{false};",
-  set at `firmware/main/meshcore_ble.cpp:1907` — "secure_pairing.store(event.passkey != 0);"
-  and read at `firmware/main/meshcore_ble.cpp:1060` — "if (secure_pairing.load()) {". An image nobody has provisioned
+  set at `firmware/main/meshcore_ble.cpp:1953` — "secure_pairing.store(event.passkey != 0);"
+  and read at `firmware/main/meshcore_ble.cpp:1109` — "if (secure_pairing.load()) {". An image nobody has provisioned
   writes no bond at all, so the eviction is a cost of the *second* provisioning
   and of bench images, not of every build. It is still B's cost, because B's
   whole purpose is to provision a second peer.
