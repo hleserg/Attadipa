@@ -48,8 +48,8 @@ instead of hiding it.
    inventory already says so:
    `docs/research/DEPENDENCIES.md:114` — "both sub-paths share one repository and must move together".
    Both are pinned to the same commit today:
-   `.github/workflows/codeql.yml:42` — "github/codeql-action/init@1c5b675" and
-   `.github/workflows/codeql.yml:55` — "github/codeql-action/analyze@1c5b675".
+   `.github/workflows/codeql.yml:42` — "github/codeql-action/init@2892aa5" and
+   `.github/workflows/codeql.yml:55` — "github/codeql-action/analyze@2892aa5".
 
 ## The state machine a Dependabot PR actually goes through
 
