@@ -3488,3 +3488,57 @@ one worth naming here is the one Meshtastic's own merged fix
 precedent for: leaving the readout must stop heading and location work *without*
 changing the selected identity, and a test that asserts only the first half
 passes on the code that gets the second half wrong.
+
+### Recovering a MeshCore node's contact store after a power cut
+
+**Problem.** A MeshCore companion that loses `/contacts3` to an interrupted save
+or a reformat enumerates an empty or shorter table, byte-identical to a
+legitimate one. [#654](https://github.com/hleserg/Attadipa/issues/654) asked
+whether an upstream fix makes the loss visible or recoverable. Report:
+[MESHCORE_CONTACT_STORE_RECOVERY](MESHCORE_CONTACT_STORE_RECOVERY.md).
+
+**Projects investigated.** MeshCore
+[PR #3499](https://github.com/meshcore-dev/MeshCore/pull/3499) (contact file
+staged to `.tmp`, previous kept as `.bak`, backup loaded when the primary is
+invalid) and [PR #2964](https://github.com/meshcore-dev/MeshCore/pull/2964)
+(LittleFS v2 with 4 KiB blocks and checksummed chunked files).
+
+**Useful implementation.** #2964's diagnosis: a 4 KiB read-modify-write page
+under 128-byte LittleFS blocks is where the damage comes from, and it is the
+T114's geometry too.
+
+**License.** MIT, both.
+
+**Strengths.** #3499 is small and keeps the old table across a failed rename.
+#2964 fixes the layer the damage happens in.
+
+**Weaknesses.** #3499 treats a zero-length file as valid, so the commonest loss
+is never rolled back; its two-rename promotion creates an *older-generation*
+state the pin cannot reach; it is compile-only on one board. #2964 is a draft,
+not mergeable, and wipes the filesystem on downgrade. Neither adds a wire
+signal, so neither lets a client tell a recovered store from an empty one.
+
+[PR #1447](https://github.com/meshcore-dev/MeshCore/pull/1447) (open, head
+`ffebb64b`, read 2026-10-01) is the same backup mechanism without #3499's hole:
+it falls back on a primary that is missing **or empty**. This ledger's earlier
+`ADOPT` of its pattern
+(`docs/upstream/meshcore-1.17-review.md:445` — "**Status: `ADOPT` the pattern from #1447, and apply it more widely than upstream")
+stands.
+
+**Decision:** `MONITOR` all three. `REJECT` copying #3499's validity test;
+the `ADOPT` of #1447's pattern stands.
+
+**Reason.** This product cannot change the node, and on the wire both leave the
+question where it was. What would help is a storage-health field in a companion
+frame, which neither proposes.
+
+**Source revision:** `meshcore-dev/MeshCore#3499@f8ff81ec4a7f7968dc13643946d4554410e7b6df`
+· `meshcore-dev/MeshCore#2964@06423621f9911285b900520da25e755f3bded092`, both
+read on 2026-10-01 against the fleet pin
+`d92964352441e53b93e8667b802e04f6e072b39e`.
+
+**Attadipa integration:** none; research only. The report's §6 records what the
+existing states mean.
+
+**Tests required:** none now. A power-cut series on hardware is M51 in
+[OPEN_QUESTIONS](OPEN_QUESTIONS.md).

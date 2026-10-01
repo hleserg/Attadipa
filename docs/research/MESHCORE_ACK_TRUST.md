@@ -47,19 +47,19 @@ mesh::Utils::sha256((uint8_t *)&expected_ack, 4, temp, 5 + text_len, self_id.pub
 `frag1 ‖ frag2`. It is **not keyed**: the sender's public key is appended
 data, and it is public. The inputs are `timestamp ‖ (attempt & 3) ‖ text ‖
 sender public key`. The recipient is not an input; it is used only to address
-and encrypt the datagram (`:439`, `createDatagram`).
+and encrypt the datagram (`src/helpers/BaseChatMesh.cpp:439`, `createDatagram`).
 
 Recipient, `BaseChatMesh.cpp:243`, computes the same four bytes over the
 decrypted message and the sender's public key, sets byte 5 from the attempt and
-byte 6 at random (`:244-246`), and answers one of two ways:
+byte 6 at random (`src/helpers/BaseChatMesh.cpp:244-246`), and answers one of two ways:
 
 - **Flood-routed message.** The ACK is folded into a `PAYLOAD_TYPE_PATH` return
-  (`:250-251`, `createPathReturn`). That return is encrypted and MAC'd with the
+  (`src/helpers/BaseChatMesh.cpp:250-251`, `createPathReturn`). That return is encrypted and MAC'd with the
   pairwise secret. The MAC is **two bytes** (`src/MeshCore.h:17`,
   `#define CIPHER_MAC_SIZE      2`).
-- **Direct-routed message.** `sendAckTo(from, ack_hash, 6)` (`:254`) builds a
+- **Direct-routed message.** `sendAckTo(from, ack_hash, 6)` (`src/helpers/BaseChatMesh.cpp:254`) builds a
   bare `PAYLOAD_TYPE_ACK`. `Mesh::createAck` (`src/Mesh.cpp:560`) copies the
-  bytes into the payload (`:568`). No encryption, no MAC, no sender field.
+  bytes into the payload (`src/Mesh.cpp:568`). No encryption, no MAC, no sender field.
 
 ## 2. How the four bytes are accepted
 
@@ -77,7 +77,7 @@ is:
    contact that produced the MAC is never compared with the contact the message
    was sent to.
 
-`BaseChatMesh::onAckRecv` (`:347-349`) passes the four bytes to `processAck`.
+`BaseChatMesh::onAckRecv` (`src/helpers/BaseChatMesh.cpp:347-349`) passes the four bytes to `processAck`.
 The companion's `MyMesh::processAck` (`examples/companion_radio/MyMesh.cpp:414-426`)
 scans an eight-entry circular table (`MyMesh.h:248-254`) by `memcmp` of four
 bytes. On a match it writes `[0x82][ack:4][trip_time:4]` to the app, zeroes the
@@ -86,7 +86,7 @@ identity**. The returned contact is used only to cancel a timer and to retry a
 path; nothing compares it with the packet's origin.
 
 Entries are added at `MyMesh.cpp:1113-1117` and never expire by age.
-`onSendTimeout()` is empty (`:860`).
+`onSendTimeout()` is empty (`examples/companion_radio/MyMesh.cpp:860`).
 
 ## 3. What Atta-dipa does with it
 
@@ -102,9 +102,18 @@ The catalogue renders that as `delivered` / `доставлено`
 Two source comments in that arm call the tag a "keyed hash"
 (`link/src/meshcore_companion.cpp:1694` — "// keyed hash, so that costs one message in 2^32 an upgrade it was owed",
 `link/src/meshcore_companion.cpp:1724` — "// different request -- which matters, because the tag is a keyed hash").
-§1 shows it is not keyed. The comments are left as they are because this is a
-research change; the conclusions they draw (rarity of an all-zero tag,
-repetition for identical messages) do not depend on the word.
+§1 shows it is not keyed. The same word stands in three more places:
+`core/include/attadipa/core/mesh_service.h:105` — "four-byte acknowledgement tag, which is a keyed hash of timestamp, attempt and",
+`link/include/attadipa/link/meshcore_companion.h:428` — "the tag is a keyed hash that repeats.",
+and `tests/test_meshcore_companion.cpp:4611` — "a keyed hash of timestamp, attempt and text and repeats for identical".
+The header's "the recipient's key is not even an input" is right; the hash is
+over the sender's public key as data. And the arm still says
+`link/src/meshcore_companion.cpp:1714` — "Positive proof outranks the absence of proof, and",
+the phrase decision 2a of ADR-0023 no longer uses.
+All of these are left as they are because this is a research change; the
+conclusions they draw (rarity of an all-zero tag, repetition for identical
+messages, a late match upgrades) do not depend on the wording. This list is the
+record of that debt: the next change that edits these files corrects them.
 
 ## 4. The six cases
 

@@ -420,12 +420,15 @@ values are the settings model.
 
 **PR #1447** (open) makes *contacts* atomic — temp file, flush, rename original
 to `.bak`, rename temp into place, and fall back to `.bak` on load if the
-primary is missing or empty. At `d929643` that has not landed, and
-`DataStore::saveContacts()` still opens `/contacts3` for writing **in place** and
-streams records into it, with `if (!success) break;` leaving a partially written
-live file and no rollback.
+primary is missing or empty. At `d929643` that has not landed.
+**Corrected 2026-10-01 (#654):** this paragraph said `saveContacts()` writes
+`/contacts3` in place. On nRF52 and STM32 it opens the file through `openWrite`,
+which removes it first — the same remove-then-write as `savePrefs` below
+([MESHCORE_CONTACT_STORE_RECOVERY §2](../research/MESHCORE_CONTACT_STORE_RECOVERY.md#2-the-trace)).
+A cut mid-save leaves the table absent or empty, and `if (!success) break;`
+still has no rollback.
 
-Worse, and not covered by #1447 at all: `CommonCLI::savePrefs()` on nRF52 and
+Also not covered by #1447: `CommonCLI::savePrefs()` on nRF52 and
 STM32 does
 
 ```cpp
