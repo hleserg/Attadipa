@@ -673,7 +673,7 @@ than opened as a separate issue.
    pull** — because the active level is a register the owning driver writes and
    is **H20**. Recording the vendor's configuration as a board fact is the
    mistake this repository already has on record —
-   `docs/research/OPEN_QUESTIONS.md:133` — "A software choice had been promoted".
+   `docs/research/OPEN_QUESTIONS.md:134` — "A software choice had been promoted".
 
 **Explicitly out of scope until the bench has run.** Arming GPIO21, GPIO16 or
 GPIO14 as wake sources: B3 may show GPIO21 is unusable without an external part,
@@ -688,7 +688,7 @@ decode logic is fully determined by section 1 and testable on the host, and item
 4 as reworded records only what the drawing shows. The ledger move this list
 used to carry as a fifth item is **done, under #422 and in this report's own
 pull request** —
-`docs/research/REUSE_LEDGER.md:2584` — "now `REJECT` for the" —
+`docs/research/REUSE_LEDGER.md:2594` — "now `REJECT` for the" —
 so it is not scope for anybody lifting this section into an issue, and the
 licence obligation that item named is recorded in the same paragraph.
 Item 3 needs **B1, B2, B4 and

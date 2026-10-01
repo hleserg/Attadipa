@@ -82,6 +82,11 @@ want to inherit the experience, not only the code.
 | `CayenneLPP` (myDevices) | github.com/myDevicesIoT/CayenneLPP | `e8cca2c` | **2018-12-07** | the original, read for format lineage only. Eight years unmaintained; not a candidate |
 | `meshcore_py` | github.com/meshcore-dev/meshcore_py | `664ba0c99e3eedd13d701fc58ed4b273670bf64b` (2.3.9.1) | 2026-08-30 | MIT. The maintained **host** client for the same companion protocol Attadipa speaks, so it is prior art for request correlation and for what a real node answers. Cannot be a firmware dependency and is not treated as one. Read 2026-09-02: `req_telemetry_sync` serialises every mesh request behind one lock, mirroring the node's own single pending slot — and converts the node's millisecond `est_timeout` as `/ 800` here and `/ 1000 * 1.2` elsewhere, which is why the unit is taken from the firmware instead |
 | `meshcore.js` | github.com/meshcore-dev/meshcore.js | `9e76c51409c13c3ed0183ee1e9c1b380e671a038` (v1.15.0) | 2026-09-07 | MIT, `LICENSE`, © 2025-2026 Liam Cottle. The **second** first-party client of the companion protocol, and its value is that it was written independently of `meshcore_py`: its `onContactResponse` reads the 148-byte contact frame field for field the same way, which is what makes that layout corroborated rather than merely read twice. Its constants also annotate the `0x80`/`0x8A` split correctly, which the issue that commissioned this reading had backwards. Read 2026-09-07. Not a candidate for anything: JavaScript, and its `package.json` `test` script is `echo "Error: no test specified" && exit 1` |
+| `pyserial` | github.com/pyserial/pyserial | `a5c48d445fbc1943d4fabf8d9090a50fda3172fd` | 2026-10-01 | BSD-3-Clause. Already the host tools' serial library; read 2026-10-01 for what its POSIX `open()` does to the modem-control lines, and for the three facts in [VERIFIED_FACTS](VERIFIED_FACTS.md) §"pyserial asserts both lines inside `open()`". The `rtscts`/`dsrdtr` suppression `tools/flash/ramhold.py` relies on is exactly two `if not` tests in `serial/serialposix.py`, and nothing more |
+| `esptool` (Espressif) | github.com/espressif/esptool | `c85144be5f4edff13e818033a7a9a060f2f607cb` | 2026-10-01 | GPL-2.0-or-later. Read for `docs/en/esptool/advanced-options.rst`, which is the vendor's statement that the USB-Serial/JTAG peripheral treats RTS as a core reset, and for `esptool/reset.py`, whose `ResetStrategy` docstring records both that a native-USB part re-enumerates during a reset and that some interfaces do not honour modem-control writes at all — the second being this bench's T-Watch, named by the vendor as a class |
+| `esp-pylib` (Espressif) | github.com/espressif/esp-pylib | `e15358d5fedc7d6766ed4493c11851096b8b0291` | 2026-10-01 | Apache-2.0. Where `usb_jtag_bootloader_reset` and the `PIN_LOW`/`PIN_HIGH` convention now live after esptool split them out — so the reset sequence a reader expects to find in esptool is one import away, and the file is cited here so the next reader does not conclude it was deleted |
+| **MeshCadet** | github.com/jagoda/meshcadet | PRs #208 `0813abaf`, #209 `6c5b81b4`, #211 `8dd22d00`, #212 `76d380d5`, #213 `3edd6bb2` | 2026-09-25 | **GPL-3.0-only**, which is narrower than this tree's `GPL-3.0-or-later` — nothing is copied. A Rust/Web-Serial provisioner for an ESP32-S3 T-Deck Plus whose thirteen-round connect investigation is the issue behind [#636](https://github.com/hleserg/Attadipa/issues/636). Read at the closeout: **four of the five PRs retract something the one before claimed**, which is why the chain is pinned PR by PR rather than at a single revision |
+| **MeshcoreChatter** | github.com/vinceneil666/MeshcoreChatter | PR #3 `ff166a7c` | 2026-09-14 | **no licence found** — evidence only. An ESP32-S3 ThinkNode M2 with a **CH340K external bridge**, measured line-state by line-state. Recorded because its result points the *other way* for a native-USB part: an untouched open does not reset that board, and this bench measured the opposite on the Waveshare. [ESP32S3_USB_RESET_RECOVERY_CONTRACT §6.2](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md) |
 | `zephyr` (GNSS subsystem) | github.com/zephyrproject-rtos/zephyr | `2f0bc11264a8e72e214f3db0a3fa221eb022453a` | 2026-09-02 | Apache-2.0. **A second revision of a project already in this table** — the power-management record pins v4.4.2 `671f64aa` — and deliberately a different one, because these are different files read on a different date. `include/zephyr/drivers/gnss.h`, `gnss_publish.h` and `drivers/gnss/gnss_emul.c`: the acquisition struct, the publish seam and the emulator pattern. `drivers/modem/vendor_standalone/hl78xx/hl78xx_gnss.c` is read as a **counter-example**: it wraps `gnss_publish_data()` in `if (fix_status != GNSS_FIX_STATUS_NO_FIX)`, so losing the fix produces silence rather than a transition |
 
 ### Upstream deltas being monitored, and not taken
@@ -180,6 +185,11 @@ from a badge or a recollection.
 | `lv_i18n` | **MIT** | `LICENSE` in the clone | anything |
 | `cldr-core` (plural rules data) | **Unicode-DFS-2016** | npm registry metadata — **not** the file, because it is not vendored | permissive and GPL-compatible; read the file itself before vendoring any of it |
 | **Gadgetbridge** | **AGPL-3.0** | `LICENSE` | read for evidence; combining code would require distributing the combined work under AGPL terms, not solely under Attadipa's licence |
+| `pyserial` | **BSD-3-Clause** | the GitHub API's `license.spdx_id`, confirmed against the headers in `serial/serialutil.py` | anything. Already a host-tool dependency, not vendored |
+| `esptool` (Espressif) | **GPL-2.0-or-later** | `SPDX-License-Identifier: GPL-2.0-or-later` in the file headers, e.g. `esptool/reset.py` | read as documentation and used as an installed host tool. **Not** copyable into this tree: GPL-2.0-or-later and `GPL-3.0-or-later` can combine only by taking the whole at GPL-3.0, which is a decision nobody has made for a docstring's worth of logic |
+| `esp-pylib` (Espressif) | **Apache-2.0** | the GitHub API's `license.spdx_id` for the repository | use and modify, with attribution. Where esptool's reset primitives now live; read, not taken |
+| **MeshCadet** | **GPL-3.0-only** | the GitHub API's `license.spdx_id` for `jagoda/meshcadet` | **nothing copied.** `only` is the operative word: combining GPL-3.0-only code with this `GPL-3.0-or-later` tree would narrow the whole project to GPL-3.0-only. Evidence, invariants and experiment design only — see the record below |
+| **MeshcoreChatter** | **none found** | the GitHub API returns `license: null` for `vinceneil666/MeshcoreChatter`, and no licence file was located | **nothing, not even a snippet.** No licence means no grant. Read as a measurement report and cited as one |
 
 These projects matter because they have already solved some of Attadipa's
 hardest problems. GPL-3.0 code is compatible with Attadipa after the licence
@@ -3591,3 +3601,118 @@ leaves open are
 **Tests required:** none now. The hardware matrix is M53 in
 [OPEN_QUESTIONS](OPEN_QUESTIONS.md), and it is what would move #3503 from
 `MONITOR`.
+
+### Opening a native-USB ESP32-S3 without rebooting it, and knowing when it rebooted anyway
+
+**Problem:** a `watch_control` run opens an ESP32-S3 native USB-Serial/JTAG
+endpoint with pyserial's defaults. Does that reset the watch; if it does, what
+does the reset destroy; and which of the twelve watch-control operations may be
+replayed afterwards? Researched under
+[#636](https://github.com/hleserg/Attadipa/issues/636); the reading is
+[ESP32S3_USB_RESET_RECOVERY_CONTRACT](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md).
+Research-only: no production code changed.
+
+**Projects investigated:** `espressif/esptool` and `espressif/esp-pylib`, the
+vendor's own statement of what RTS does and of the sequence that uses it ·
+`espressif/esp-idf` at the pinned `v5.5.5`, for whether the S3 can refuse it ·
+the Linux kernel's `tty_port` and `cdc_acm`, for who actually asserts the lines ·
+`pyserial`, for what the library adds on top · MeshCadet, a GPL-3.0-only
+Rust/Web-Serial provisioner with a thirteen-round hardware investigation of this
+exact failure class · Offband `meshcore-firmware`, for an independent
+same-SoC result and a measurement rig · MeshcoreChatter, for a line-state table
+on an external-bridge board.
+
+**Useful implementation:** four methods and one negative result. No code.
+
+- **Offband's capture rig** (`tools/diag/rc32-tester/sniffer/capture.py` at
+  `1b801a8f`): one timestamped connection to a *separate* sniffer, and the DUT's
+  own USB endpoint never opened. Its own docstring is the argument —
+  *"The RC32's own USB console power-cycles the board on attach, which is why
+  every log ever captured that way came from a boot that SUCCEEDED"*. A capture
+  taken through the endpoint under test cannot answer the question being asked
+  about that endpoint.
+- **Offband's device-side `[usb]` line**: bus attach, host lifecycle and a
+  **flap count**, printed by the firmware. An on-device enumeration oracle that
+  needs no kernel log and no second host, and the cheapest way to tell "the host
+  lost the interface" from "the device rebooted". Attadipa's firmware has no
+  equivalent.
+- **Numerator/denominator reporting**: `7/7` and `4/4` in #1295's evidence
+  table. "It worked" is not a result for an intermittent enumeration.
+- **Reset-class plus retention as a cross-check**, not as proof: retained RAM
+  survived `rst:0x15` three times in one capture and did not survive `CHIP_PU`.
+  Useful as a corroborating oracle for *which* reset happened; it says nothing
+  about whether a command was applied.
+- **The negative result, which is the most valuable single item here.**
+  MeshCadet #211 made its client clear RTS before DTR; #212 tested that on
+  hardware, found it did not clear the wedge, and reverted to bare
+  `port.open()`. So no post-open signal ordering is an endorsed mitigation, and
+  the closeout at `3edd6bb2` additionally records that **no recovery action is
+  known to reliably clear the wedge** — the unplug/replug remedy an earlier
+  round reported was tried again and withdrawn. Any design that assumed
+  "detect, then recover" has no upstream recovery to copy.
+
+**Licence:** MIT for Offband `meshcore-firmware`, so its code *could* be taken
+and is not — what is taken is a rig design and an observable. **GPL-3.0-only**
+for MeshCadet, which is narrower than this tree's `GPL-3.0-or-later`: copying it
+would relicense the project, so nothing is copied and the record is invariants
+and experiment design. **No licence at all** for MeshcoreChatter, so nothing
+there is a reuse candidate under any reading. GPL-2.0-or-later for esptool,
+Apache-2.0 for esp-pylib and esp-idf, BSD-3-Clause for pyserial — all read as
+documentation of behaviour, none vendored by this work.
+
+**Strengths:** the vendor sources and the kernel agree with each other and with
+this bench's own two measurements, which is the first time this failure class
+has had four independent lines of evidence pointing the same way. Offband's rig
+is directly reproducible here — this bench already owns a second ESP32-S3 and a
+UART.
+
+**Weaknesses:** MeshCadet's hardware is a T-Deck Plus, not either watch, and its
+campaign closed without a root cause for the symptom it chased. Its retraction
+chain is four deep, so any single PR read alone is misleading. MeshcoreChatter's
+board uses an external bridge whose reset mechanism is physically different from
+a native-USB part's, and its "untouched open is safe" row does not transfer.
+Offband's result is a third ESP32-S3 board, not ours.
+
+**Decision:** **ADAPT** the capture rig, the device-side `[usb]`/boot-counter
+observable, numerator/denominator reporting and the reset-class cross-check.
+**TAKE NOTHING** as code from any of the six. **REJECT** as mitigations: any
+post-open DTR/RTS ordering, MeshCadet's fixed 3.5 s settle delay, an S3 register
+write by analogy with the C6's `USB_UART_CHIP_RST_DIS`, and blanket automatic
+retry after an uncertain write.
+
+**Reason.** The reset is produced by a peripheral this project cannot
+reconfigure, from control lines the kernel asserts inside `open(2)` before any
+application flag applies — so the useful artefacts are the ones that let a
+reset be *observed* rather than the ones that claim to prevent it. The one
+upstream mitigation that was tested on hardware was reverted by its own author.
+
+**Source revision:** `espressif/esptool@c85144be5f4edff13e818033a7a9a060f2f607cb` ·
+`espressif/esp-pylib@e15358d5fedc7d6766ed4493c11851096b8b0291` ·
+`espressif/esp-idf@v5.5.5` · `pyserial@a5c48d445fbc1943d4fabf8d9090a50fda3172fd` ·
+`torvalds/linux@v6.17` · MeshCadet PRs #208 `0813abaf`, #209 `6c5b81b4`,
+#211 `8dd22d00`, #212 `76d380d5`, #213 `3edd6bb2` ·
+`OffbandMesh/meshcore-firmware` PR #1295 merged `1b801a8f` ·
+`vinceneil666/MeshcoreChatter` PR #3 merged `ff166a7c`. Nothing cloned — every
+file was fetched at the exact revision over the GitHub API and read on
+2026-10-01.
+
+**Local reuse candidates, and how much of the issue's recommendation is already
+done.** `ramhold.py::resolve_port` is **already** the watch-control path's
+identity resolver — `tools/watch_control.py:39` — "from flash.ramhold import DEFAULT_SERIAL, resolve_port  # noqa: E402" — so that
+half needs no work. What is not reused is `flash_no_reset.py`'s *re-resolution
+after a reset*, and neither tool's `rtscts`/`dsrdtr` suppression belongs in
+`watch/`: §2.3 of the report shows it does not reach the layer that asserts the
+lines, and on the Waveshare the only thing it would change is hiding the
+pyserial half of an assertion the kernel has already made.
+
+**Attadipa integration:** none. The issue is research-only, and §9 of the report
+says why no ADR moved either. What an implementation issue would contain is §10
+of the report, and it is gated on one bench run: §7 row 1.
+
+**Tests required:** when an implementation issue opens. The one worth naming
+here is the one that has no board in it — a host fake that removes and recreates
+the endpoint under one pathname and distinguishes failure-before-write from an
+uncertain write from a completed write with a lost reply. It is listed as §7 row
+8 and was deliberately **not** run as part of this research: a test of a fixture
+is not evidence about the shipping seam, and running it would have produced a
+green result that proved nothing about either watch.
