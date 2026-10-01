@@ -114,12 +114,12 @@ ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink, EntryTask task,
                 seeded_ = true;
             }
         }
-        return;
+        // An owed forget answer jumps the clock half (#733): a board builds
+        // only `All`, and a holder who left from the Day field was otherwise
+        // never told. Shown once, so the next open is the clock again.
+        if (!sink_.mesh_forget_owed()) { return; }
     }
-    // Nothing to keep or forget on a watch that is pinned to no node, and no
-    // field to show it in: that journey is the passkey alone.
-    has_node_ = sink_.mesh_node(node_);
-    if (!has_node_) { field_ = EntryField::Passkey; }
+    enter_node_half();
 }
 
 // February, and the short months. Stepping the month or the year off a 31st
@@ -346,13 +346,26 @@ void ProvisioningEntry::begin_forget()
 void ProvisioningEntry::enter_node_half()
 {
     verdict_ = EntryVerdict::None;
-    // Asked here rather than in the constructor: the clock half of this walk
+    // Asked here rather than in the constructor of an `All` walk: its clock half
     // has no business reading the mesh, and by the time it is over the answer
     // is fresher anyway. A watch pinned to no node has nothing to show or
     // forget, so it goes where the node task sends it -- straight to the
     // passkey.
     has_node_ = sink_.mesh_node(node_);
     field_    = has_node_ ? EntryField::Node : EntryField::Passkey;
+    // A forget from a screen that was left is still this product's to report,
+    // and the pin is no guide to it: a `PinOnFlash` ending has already
+    // unpinned the node in RAM, so a screen that chose by the pin alone went
+    // straight to the passkey and never said the old pin is back after a
+    // restart (#733). Waited on like one this screen asked for, and a finished
+    // one is shown at once rather than after a frame of waiting.
+    if (sink_.mesh_forget_owed()) {
+        verdict_         = EntryVerdict::ForgetPending;
+        awaiting_forget_ = true;
+        receipt_of_      = EntryField::Node;
+        field_           = EntryField::Receipt;
+        (void)poll();
+    }
 }
 
 // The receipt's forward key. What it is depends on what the receipt says, and

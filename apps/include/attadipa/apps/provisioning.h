@@ -120,9 +120,9 @@ enum class EntryVerdict : std::uint8_t {
     NodeNothingToForget,  // Nothing: there was neither a bond nor a pin.
     ForgetKept,           // BondKept or ReplayInhibited: trust stayed. Retry.
     // Leaving.
-    Abandoned,        // Left while the radio still had a request of ours. The
-                      // board keeps the answer from the entry that replaces
-                      // this one, so nobody will ever be told how it ended.
+    Abandoned,        // Left while the radio still had a request of ours. A
+                      // forget's answer is shown by the next entry (#733); a
+                      // passkey's is not, so nobody is told how that ended.
 };
 
 // What the clock already believes, offered as the draft's starting point. A

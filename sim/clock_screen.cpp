@@ -119,6 +119,7 @@ struct AcceptingProvisioner final : core::Provisioner {
     forget_in_flight_ = true;
     return core::ProvisionOutcome::Pending;
   }
+  bool mesh_forget_owed() override { return forget_in_flight_; }
   core::MeshForgetOutcome mesh_forget_outcome() override {
     if (!forget_in_flight_) {
       return core::MeshForgetOutcome::BondKept;

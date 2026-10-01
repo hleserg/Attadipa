@@ -106,6 +106,13 @@ public:
     // caller's is in flight, and "nothing changed" is the one claim that
     // cannot be a stale success.
     virtual MeshForgetOutcome mesh_forget_outcome() = 0;
+
+    // True while a forget this product asked for has an answer nobody has
+    // taken: still running, or finished after the screen that asked was left.
+    // `mesh_forget_outcome()` cannot say so itself -- with nothing outstanding
+    // it answers `BondKept` -- and `mesh_node()` cannot either, because a
+    // `PinOnFlash` ending has already unpinned the node in RAM (#733).
+    virtual bool mesh_forget_owed() = 0;
 };
 
 }  // namespace attadipa::core

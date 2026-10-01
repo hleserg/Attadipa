@@ -35,7 +35,7 @@
 // value under the cursor is. #502 predicted a live clip at 240 x 240 from
 // `240 - 128 - 22 - 6 = 84 px`; the panel height never reaches the face, which
 // is given `g_frame.content_height()` at
-// `sim/clock_screen.cpp:150` -- "  content.height_px = g_frame.content_height();"
+// `sim/clock_screen.cpp:151` -- "  content.height_px = g_frame.content_height();"
 // -- so the column is 77 px and the worst real line stack MEASURED across this
 // walk is 75. Two pixels. Nothing clips today and one more wrapped line ends
 // that, which is why this is a test and not an edit to the layout.
@@ -142,7 +142,7 @@ struct Panel {
   // `ui::Motion::Slow * 8`, 2560 ms, where a walk is some four hundred. So a
   // walk that just stopped left a timer running: the next `emplace()` replaces
   // the entry under it and two timers then poll one optional, which is what
-  // `sim/clock_screen.cpp:222` -- "  // A TIMER MAY OUTLIVE THE ENTRY IT
+  // `sim/clock_screen.cpp:223` -- "  // A TIMER MAY OUTLIVE THE ENTRY IT
   // POLLS, AND ONLY THIS SAYS SO." -- is about. 64 frames is 3200 ms, one
   // period and a half, so the timer collects itself here rather than being
   // deleted from under the function that owns it.

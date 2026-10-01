@@ -564,11 +564,6 @@ public:
     switch (meshcore_ble_forget_node(forget_ticket_)) {
     case ESP_OK:
       return attadipa::core::ProvisionOutcome::Pending;
-    case ESP_ERR_NOT_FINISHED:
-      // An earlier forget is still running, from a screen that was left.
-      // `forget_ticket_` was written on success only, so it still names
-      // that one, and this screen waits for how it ends (#719).
-      return attadipa::core::ProvisionOutcome::Pending;
     case ESP_ERR_INVALID_STATE:
       return attadipa::core::ProvisionOutcome::Rejected;
     default:
@@ -578,6 +573,10 @@ public:
     return attadipa::core::ProvisionOutcome::Failed;
 #endif
   }
+
+  // Written on a queued request only and cleared when its answer is taken,
+  // so non-zero is exactly "an answer of ours is outstanding".
+  bool mesh_forget_owed() override { return forget_ticket_ != 0; }
 
   attadipa::core::MeshForgetOutcome mesh_forget_outcome() override {
 #if CONFIG_BT_NIMBLE_ENABLED
