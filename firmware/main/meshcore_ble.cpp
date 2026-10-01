@@ -763,11 +763,11 @@ void start_scan()
         ESP_LOGI(kTag, "scanning for MeshCore Companion service");
         break;
     case ScanStart::Stopped:
-    case ScanStart::StopOwed:
-        // The gate went down while this start was in flight. Nothing is left
-        // running, or the retry pass owes the cancel; either way this is the
-        // interleaving that used to leave an unbounded scan behind a fault.
+        // The gate went down while this start was in flight; nothing is left.
         ESP_LOGW(kTag, "a scan started after the local stop, and was taken back");
+        break;
+    case ScanStart::StopOwed:  // the cancel did not take; the retry pass owes it
+        ESP_LOGW(kTag, "a scan started after the local stop, and its stop is still owed");
         break;
     }
 }
