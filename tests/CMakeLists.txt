@@ -241,7 +241,7 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME flash_spiffs_extract_refuses_mistakes
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/tools/flash/spiffs_selftest.py)
-    # Two ESP32-S3 boards enumerate identically on this bench, so the loader
+    # Three ESP32-S3 boards enumerate identically on this bench, so the loader
     # resolves the watch by USB serial. The cases that matter are the refusals:
     # picking the wrong board is a silent wrong answer, not an error.
     # docs/research/BENCH_DEVICES.md.

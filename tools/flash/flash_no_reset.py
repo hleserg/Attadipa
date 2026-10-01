@@ -74,7 +74,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ramhold import resolve_port  # noqa: E402
+from ramhold import identity_mismatch, resolve_port  # noqa: E402
 from firmware_elf_check import (  # noqa: E402
     APP_DESC_ELF_SHA256, APP_DESC_MAGIC, APP_DESC_OFFSET, BOARD_SYMBOLS,
     app_elf_sha256, board_fault, elf_sha256,
@@ -250,22 +250,6 @@ def esptool_argv(settings: dict[str, str], files: list[tuple[int, Path]],
     for offset, path in files:
         argv += [f"0x{offset:x}", str(path)]
     return argv
-
-
-def identity_mismatch(mac: bytes, serial: str) -> str | None:
-    """Why the chip on the opened port is not the unit --serial names, or None.
-
-    Two ESP32-S3 boards enumerate as 303a:1001 on this bench, and --port skips
-    the by-id lookup that tells them apart. The base MAC the loader reports is
-    the USB serial in colon form, so the comparison is two values already in
-    hand -- and it runs before anything is written, because a T-Watch image
-    over the 32 MB Waveshare is exactly what --restore cannot undo.
-    """
-    seen = ":".join(f"{b:02x}" for b in mac)
-    want = serial.strip().lower()
-    if seen == want:
-        return None
-    return f"the chip on this port is {seen}, not {want}: nothing written"
 
 
 def selftest() -> int:

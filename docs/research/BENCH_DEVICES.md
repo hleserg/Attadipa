@@ -171,10 +171,10 @@ cannot say who it was talking to. Both halves are
 
 ## How tools resolve it
 
-`tools/flash/ramhold.py` looks up `/dev/serial/by-id` by USB serial and exits
-non-zero when the unit is absent, rather than falling back to a port number.
-`--serial` overrides it for a different unit; there is deliberately no "just
-use the first ESP32 you find" path.
+`tools/flash/ramhold.py` looks up `/dev/serial/by-id` by USB serial, exits
+non-zero when the unit is absent, and refuses to load when the base MAC the
+loader reports is not that serial. `--serial` names a different unit; there is
+deliberately no `--port` and no "just use the first ESP32 you find" path.
 
 ```
 $ ls /dev/serial/by-id/          # 2026-08-27, the MeshCore node unplugged

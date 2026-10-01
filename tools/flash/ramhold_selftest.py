@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """`ramhold.py` resolves the watch by USB serial, and never guesses.
 
-There are two ESP32-S3 boards on this bench and both enumerate as `303a:1001`
+There are three ESP32-S3 boards on this bench and all enumerate as `303a:1001`
 (docs/research/BENCH_DEVICES.md). The failure this guards against is not a crash
 — it is `ramhold.py` cheerfully loading a watch image into the MeshCore node
 because `/dev/ttyACM0` came up first today. So the cases that matter are the
 ones where the answer is *refusal*: no match, and more than one match.
 
 No device is needed. `resolve_port` reads a directory, so a temporary directory
-with the right names in it is the whole fixture.
+with the right names in it is the whole fixture. `main()` itself runs against
+stand-in `esptool` and `serial` modules, because the by-id link only *names* a
+unit: what proves it is the base MAC the loader reads back, and that check has
+to sit between `detect_chip` and `load_ram` (#717).
 """
 
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -87,7 +93,7 @@ def check(tmp: Path) -> list[str]:
 
     # Case. The by-id name carries whatever case udev read off the descriptor;
     # a serial typed by hand is whatever the hand typed, and `identity_mismatch`
-    # in flash_no_reset.py already folds it. LOWER is the direction that
+    # in `ramhold.py` already folds it. LOWER is the direction that
     # exercises the fold, the constants here being upper case.
     try:
         lowered = resolve_in(both, WATCH.lower())
@@ -105,11 +111,106 @@ def check(tmp: Path) -> list[str]:
     return failures
 
 
+class FakePort:
+    def __init__(self) -> None:
+        self.timeout = None
+        self.pending = [b"I (12) app: running\n"]
+
+    def read(self, _size: int) -> bytes:
+        return self.pending.pop() if self.pending else b""
+
+
+def run_main(tmp: Path, argv: list[str], chip_mac: str) -> dict:
+    """Run ramhold.main() with stand-ins; return what reached each seam."""
+    seen: dict = {"loaded": [], "opened": [], "detected": None, "exit": None}
+
+    def detect_chip(port, baud, connect_mode):
+        seen["detected"] = port
+        return types.SimpleNamespace(
+            CHIP_NAME="ESP32-S3", _port=FakePort(),
+            read_mac=lambda: bytes.fromhex(chip_mac.replace(":", "")))
+
+    def opened(port, **kwargs):
+        seen["opened"].append((port, kwargs))
+        return FakePort()
+
+    esptool = types.ModuleType("esptool")
+    esptool.__version__ = "4.12.0"
+    esptool.detect_chip = detect_chip
+    esptool.cmds = types.ModuleType("esptool.cmds")
+    esptool.cmds.load_ram = lambda esp, image: seen["loaded"].append(image)
+    pyserial = types.ModuleType("serial")
+    pyserial.Serial = opened
+
+    image = tmp / "ram.bin"
+    image.write_bytes(b"\xe9")
+    fakes = {"esptool": esptool, "esptool.cmds": esptool.cmds, "serial": pyserial}
+    saved = {name: sys.modules.get(name) for name in fakes}
+    saved_argv = sys.argv
+    sys.modules.update(fakes)
+    sys.argv = ["ramhold.py", str(image), "0.05", *argv]
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            seen["exit"] = ramhold.main()
+    except SystemExit as exit_:
+        seen["exit"] = exit_.code
+    finally:
+        sys.argv = saved_argv
+        for name, module in saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+    return seen
+
+
+def check_main(tmp: Path) -> list[str]:
+    failures = []
+    ramhold.BY_ID = tmp / "both"
+    watch_tty = str(tmp / "ttyACM1")
+
+    for mode in ("default_reset", "no_reset"):
+        argv = ["--serial", WATCH, "--connect-mode", mode]
+        ok = run_main(tmp, argv, WATCH)
+        if len(ok["loaded"]) != 1 or ok["exit"] != 0:
+            failures.append(f"{mode}: the right chip was not loaded ({ok})")
+        if mode == "no_reset":
+            if [port for port, _ in ok["opened"]] != [watch_tty] or not all(
+                    kw.get("rtscts") and kw.get("dsrdtr") for _, kw in ok["opened"]):
+                failures.append("no_reset no longer pre-opens the port with "
+                                "rtscts/dsrdtr, the only route to the T-Watch")
+        elif ok["detected"] != watch_tty:
+            failures.append(f"default_reset opened {ok['detected']}, not the watch")
+
+        # The case the issue is about: the link said watch, the chip did not.
+        wrong = run_main(tmp, argv, OTHER)
+        if wrong["loaded"]:
+            failures.append(f"{mode}: an image was loaded into a chip whose MAC "
+                            "is not --serial")
+        if not isinstance(wrong["exit"], str) or "no RAM image loaded" not in wrong["exit"]:
+            failures.append(f"{mode}: a MAC mismatch did not exit saying nothing "
+                            f"was loaded ({wrong['exit']!r})")
+
+    # The loader reports lower case; a serial typed in lower case is the same unit.
+    lower = run_main(tmp, ["--serial", WATCH.lower()], WATCH)
+    if len(lower["loaded"]) != 1:
+        failures.append("a lower-case --serial was refused for the right chip")
+
+    # --port was the bypass: it named a tty, not a unit, and nothing checked it.
+    port = run_main(tmp, ["--port", watch_tty], WATCH)
+    if port["exit"] != 2 or port["detected"] is not None:
+        failures.append("--port is still accepted")
+
+    return failures
+
+
 def main() -> int:
     original = ramhold.BY_ID
     try:
         with tempfile.TemporaryDirectory() as raw:
             failures = check(Path(raw))
+            failures += check_main(Path(raw))
     finally:
         ramhold.BY_ID = original
 
@@ -119,7 +220,7 @@ def main() -> int:
             print(f"  - {failure}")
         return 1
 
-    print("ramhold selftest: 7 cases, all as expected.")
+    print("ramhold selftest: 13 cases, all as expected.")
     return 0
 
 
