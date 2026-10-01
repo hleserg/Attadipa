@@ -254,9 +254,13 @@ private:
     // other. LVGL is reset as well: it may be holding a press of its own from
     // before the sleep, and that one has no lift coming either.
     //
-    // Only when a touch is what ended it (#635). A sleep that was refused or
-    // failed never happened, and one the timer or the button ended had no
-    // finger: arming the swallow there eats the next real tap whole.
+    // Only when the report says a touch ended the sleep (#635). A refused
+    // sleep never descended. A failed one may have, but it was rolled back,
+    // `woke_by` reports no cause for it, and #635 chose not to swallow a tap
+    // there. One the timer or the button ended had no finger: arming the
+    // swallow there eats the next real tap whole. The touch line is not read
+    // here: ADR-0016 section 6 makes a pin a corroborating signal, never the
+    // classifier.
     swallow_wake_touch_ = report.woke_by(attadipa::core::WakeSource::Touch);
     physical_pressed_ = false;
     lv_indev_reset(nullptr, nullptr);

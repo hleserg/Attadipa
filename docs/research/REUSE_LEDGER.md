@@ -955,6 +955,7 @@ actually refusing — a source over the dimension cap, a source under `docs/` or
 `pics/`, a size with no drawing, a filename that disagrees with its pixels; and,
 in C++, that every linked descriptor is `A8` with `stride == width` and carries
 a drawing rather than a blank rectangle.
+
 ---
 
 ### Binding a committed generated tree to the bytes in it
@@ -1342,6 +1343,7 @@ product need without adding a second protocol.
 **Tests required:** none — there is nothing to test and, per OD-12, there will
 not be. If this is ever revisited, only the product decision needs to change:
 the licence question is answered and stays answered.
+
 ---
 
 ### GNSS integrity and trust
@@ -2623,7 +2625,7 @@ necessary; `REJECT` every vendor BSP as a link-time dependency.
 **Reason:** the shipping tree already exposes the right seam —
 `waveshare_board.cpp:140-144` — "esp_lcd_panel_handle_t panel" — hands on an
 `esp_lcd_panel_handle_t` and an `esp_lcd_touch_handle_t`, and
-`physical_input.cpp:570` — "start_physical_input(esp_lcd_touch_handle_t touch"
+`physical_input.cpp:574` — "start_physical_input(esp_lcd_touch_handle_t touch"
 — takes exactly those.
 A second backend that reuses it needs no `#ifdef` anywhere above the board
 layer, which is what lets `core/` and `apps/` keep asking what a device can do
@@ -3389,6 +3391,7 @@ must still start nothing, and a structurally short *known* frame must still end
 the drain at once. The measurement rig that produced the before-picture is
 [`meshcore-offline-queue-drain/`](meshcore-offline-queue-drain/) and is not part
 of any build.
+
 ---
 
 ### Choosing which contact the arrow points at, and stopping when the wearer leaves
