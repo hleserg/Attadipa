@@ -1,5 +1,6 @@
 #include "replay.h"
 
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -32,18 +33,16 @@ struct Parser {
     }
 };
 
-bool to_i64(const std::string& text, std::int64_t& out)
+// A fixture value must survive parsing unchanged. It is parsed straight into
+// the field's own type, so one that does not fit -- past int64, past int32,
+// negative for an unsigned field -- is a malformed fixture and never a wrapped
+// value that then passes its expectations (#720).
+template <typename T>
+bool to_int(const std::string& text, T& out)
 {
-    if (text.empty()) {
-        return false;
-    }
-    char*             end   = nullptr;
-    const long long   value = std::strtoll(text.c_str(), &end, 10);
-    if (end == text.c_str() || *end != '\0') {
-        return false;
-    }
-    out = static_cast<std::int64_t>(value);
-    return true;
+    const char* const end = text.data() + text.size();
+    const auto [ptr, ec] = std::from_chars(text.data(), end, out);
+    return ec == std::errc{} && ptr == end;
 }
 
 bool sensor_body(const std::string& text, SensorBody& out)
@@ -170,9 +169,9 @@ bool load(const std::string& path, Scenario& out, std::string& error)
         }
 
         auto word = [&fields](std::string& into) { return static_cast<bool>(fields >> into); };
-        auto number = [&fields](std::int64_t& into) {
+        auto number = [&fields](auto& into) {
             std::string token;
-            return (fields >> token) && to_i64(token, into);
+            return (fields >> token) && to_int(token, into);
         };
 
         if (keyword == "scenario") {
@@ -284,38 +283,38 @@ bool load(const std::string& path, Scenario& out, std::string& error)
                 return false;
             }
         } else if (keyword == "pos") {
-            std::int64_t lat = 0, lon = 0;
+            std::int32_t lat = 0, lon = 0;
             if (!number(lat) || !number(lon)) {
                 parser.fail("`pos` needs latitude and longitude in degrees x 1e7");
                 error = parser.error;
                 return false;
             }
-            o.position = Position{static_cast<std::int32_t>(lat), static_cast<std::int32_t>(lon)};
+            o.position = Position{lat, lon};
         } else if (keyword == "alt") {
-            std::int64_t mm = 0;
+            std::int32_t mm = 0;
             if (!number(mm)) { parser.fail("`alt` needs millimetres"); error = parser.error; return false; }
-            o.altitude_msl_mm = static_cast<std::int32_t>(mm);
+            o.altitude_msl_mm = mm;
         } else if (keyword == "acc") {
-            std::int64_t mm = 0;
-            if (!number(mm) || mm < 0) { parser.fail("`acc` needs millimetres"); error = parser.error; return false; }
-            o.horizontal_accuracy_mm = static_cast<std::uint32_t>(mm);
+            std::uint32_t mm = 0;
+            if (!number(mm)) { parser.fail("`acc` needs millimetres"); error = parser.error; return false; }
+            o.horizontal_accuracy_mm = mm;
         } else if (keyword == "speed") {
-            std::int64_t mm_s = 0;
-            if (!number(mm_s) || mm_s < 0) { parser.fail("`speed` needs mm/s"); error = parser.error; return false; }
-            o.speed_mm_s = static_cast<std::uint32_t>(mm_s);
+            std::uint32_t mm_s = 0;
+            if (!number(mm_s)) { parser.fail("`speed` needs mm/s"); error = parser.error; return false; }
+            o.speed_mm_s = mm_s;
         } else if (keyword == "sats") {
-            std::int64_t used = 0, in_view = 0;
+            std::uint8_t used = 0, in_view = 0;
             if (!number(used) || !number(in_view)) {
                 parser.fail("`sats` needs used and in-view counts");
                 error = parser.error;
                 return false;
             }
-            o.satellites_used    = static_cast<std::uint8_t>(used);
-            o.satellites_in_view = static_cast<std::uint8_t>(in_view);
+            o.satellites_used    = used;
+            o.satellites_in_view = in_view;
         } else if (keyword == "hdop") {
-            std::int64_t centi = 0;
+            std::uint16_t centi = 0;
             if (!number(centi)) { parser.fail("`hdop` needs dilution x 100"); error = parser.error; return false; }
-            o.hdop_centi = static_cast<std::uint16_t>(centi);
+            o.hdop_centi = centi;
         } else if (keyword == "jam" || keyword == "spoof") {
             std::string what;
             ReceiverIndication value = ReceiverIndication::Unknown;
@@ -327,7 +326,7 @@ bool load(const std::string& path, Scenario& out, std::string& error)
             if (keyword == "jam") { o.jamming = value; } else { o.spoofing = value; }
         } else if (keyword == "plevel") {
             std::string  valid;
-            std::int64_t horizontal = 0, vertical = 0;
+            std::uint32_t horizontal = 0, vertical = 0;
             if (!word(valid) || !number(horizontal) || !number(vertical) ||
                 (valid != "valid" && valid != "invalid")) {
                 parser.fail("`plevel` needs valid|invalid and two millimetre bounds");
@@ -336,8 +335,8 @@ bool load(const std::string& path, Scenario& out, std::string& error)
             }
             ProtectionLevel level;
             level.valid         = valid == "valid";
-            level.horizontal_mm = static_cast<std::uint32_t>(horizontal);
-            level.vertical_mm   = static_cast<std::uint32_t>(vertical);
+            level.horizontal_mm = horizontal;
+            level.vertical_mm   = vertical;
             o.protection_level  = level;
         } else if (keyword == "rtime") {
             std::int64_t seconds = 0;

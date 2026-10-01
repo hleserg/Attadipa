@@ -154,6 +154,29 @@ void test_malformed_fixtures_are_refused()
         {"scenario x\nat 0\n  hold\n",                "a hold with nothing yet to hold"},
         {"scenario x\nat 0\n  provider other\n  pos 5000000 10000000\n"
          "at 1000\n  hold\n",                          "a hold after nothing but a provider's answer"},
+
+        // A number that does not fit the field it is written into. Narrowed
+        // instead, 4299967296 became latitude 5000000 and the step was Valid.
+        {"scenario x\nat 0\n  fix 3d\n  pos 4299967296 10000000\n"
+         "  sats 8 12\n  expect validity valid\n",  "a latitude that only fits by wrapping (#720)"},
+        {"scenario x\nat 99999999999999999999\n",    "a timestamp past int64"},
+        {"scenario x\nat 0\n  dtime -99999999999999999999\n", "a time below int64"},
+        {"scenario x\nat 0\n  pos 2147483648 0\n",   "a latitude past int32"},
+        {"scenario x\nat 0\n  pos 0 -2147483649\n",  "a longitude below int32"},
+        {"scenario x\nat 0\n  alt 2147483648\n",     "an altitude past int32"},
+        {"scenario x\nat 0\n  alt -2147483649\n",    "an altitude below int32"},
+        {"scenario x\nat 0\n  acc 4294967296\n",     "an accuracy past uint32"},
+        {"scenario x\nat 0\n  acc -1\n",             "a negative accuracy"},
+        {"scenario x\nat 0\n  speed 4294967296\n",   "a speed past uint32"},
+        {"scenario x\nat 0\n  speed -1\n",           "a negative speed"},
+        {"scenario x\nat 0\n  plevel valid 4294967296 0\n", "a protection level past uint32"},
+        {"scenario x\nat 0\n  plevel valid 0 -1\n",  "a negative protection level"},
+        {"scenario x\nat 0\n  hdop 65536\n",         "an hdop past uint16"},
+        {"scenario x\nat 0\n  hdop -1\n",            "a negative hdop"},
+        {"scenario x\nat 0\n  sats 256 12\n",        "satellites used past uint8"},
+        {"scenario x\nat 0\n  sats 8 -1\n",          "a negative satellites in view"},
+        {"scenario x\nat 0\n  sats 8 256\n",         "satellites in view past uint8"},
+        {"scenario x\nat 0\n  alt 12abc\n",          "a number with trailing text"},
     };
 
     Scratch scratch;
@@ -288,6 +311,61 @@ void test_age_and_hold_parse_into_what_they_claim()
     CHECK(scenario.steps[2].observation.observed_at.ms == 5000);
 }
 
+// The other side of the range checks: every exact boundary loads as written,
+// and a coordinate off the globe that still fits int32 reaches classify()
+// unchanged -- calling it NoFix is production's job, not the parser's (#720).
+void test_boundaries_load_unchanged()
+{
+    Scratch scratch;
+    if (!scratch.ok()) {
+        std::fprintf(stderr, "FAIL: cannot make a private directory for the fixture\n");
+        ++failures;
+        return;
+    }
+
+    const std::string path = scratch.file("boundaries.trace");
+    std::FILE*        file = create_private(path);
+    if (file == nullptr) {
+        std::fprintf(stderr, "FAIL: cannot write a temporary fixture\n");
+        ++failures;
+        return;
+    }
+    std::fputs("scenario boundaries\n"
+               "at 0\n  pos 2147483647 -2147483648\n  alt -2147483648\n"
+               "  acc 4294967295\n  speed 4294967295\n  hdop 65535\n  sats 255 0\n"
+               "  plevel valid 4294967295 0\n"
+               "at 1000\n  fix 3d\n  pos 1000000000 10000000\n  sats 8 12\n"
+               "  expect validity nofix\n",
+               file);
+    std::fclose(file);
+
+    attadipa::replay::Scenario scenario;
+    std::string               error;
+    const bool loaded = attadipa::replay::load(path, scenario, error);
+    std::remove(path.c_str());
+    if (!loaded || scenario.steps.size() != 2) {
+        std::fprintf(stderr, "FAIL: boundary fixture refused: %s\n", error.c_str());
+        ++failures;
+        return;
+    }
+
+    const attadipa::core::GnssObservation& edge = scenario.steps[0].observation;
+    CHECK(edge.position.has_value() && edge.position->latitude_e7 == 2147483647 &&
+          edge.position->longitude_e7 == -2147483647 - 1);
+    CHECK(edge.altitude_msl_mm == -2147483647 - 1);
+    CHECK(edge.horizontal_accuracy_mm == 4294967295u);
+    CHECK(edge.speed_mm_s == 4294967295u);
+    CHECK(edge.hdop_centi == 65535);
+    CHECK(edge.satellites_used == 255 && edge.satellites_in_view == 0);
+    CHECK(edge.protection_level.has_value() && edge.protection_level->horizontal_mm == 4294967295u);
+
+    const attadipa::core::GnssObservation& off = scenario.steps[1].observation;
+    CHECK(off.position.has_value() && off.position->latitude_e7 == 1000000000);
+    const attadipa::replay::Result result = attadipa::replay::run(
+        scenario, attadipa::core::default_trust_policy(), attadipa::core::ValidityPolicy{});
+    CHECK(result.failures.empty());
+}
+
 // run() also takes scenarios nobody parsed, and a hold with nothing behind it
 // would otherwise classify a default-constructed observation and report a
 // confident NoFix for a step that never had an input. It says so instead.
@@ -328,6 +406,7 @@ int main()
     test_a_fixture_explains_itself();
     test_age_and_hold_parse_into_what_they_claim();
     test_a_hold_with_nothing_held_is_reported();
+    test_boundaries_load_unchanged();
 
     if (failures != 0) {
         std::fprintf(stderr, "%d check(s) failed\n", failures);

@@ -639,7 +639,7 @@ and ages rather than clearing.
 
 Replay: a plausible coordinate, then loss of fix, then the same coordinate for
 an hour — the fixture must end `NoFix`, must never have been `Valid`, and is
-judged by the same classifier (`tests/replay/replay.cpp:484` — "validity = classify(step.observation, step.at, validity_policy);"). A
+judged by the same classifier (`tests/replay/replay.cpp:483` — "validity = classify(step.observation, step.at, validity_policy);"). A
 manually typed coordinate and a GNSS one must produce **identical** observations
 except for the `gps` key, and the test asserts that indistinguishability rather
 than papering over it.
