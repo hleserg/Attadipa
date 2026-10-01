@@ -28,8 +28,10 @@ disabled and `esp_rom_printf` writes nowhere at all. Use `ESP_LOGx` or `printf`.
 Same document, §2.4.
 
 **Two ESP32-S3 boards enumerate as `303a:1001` on this bench** — the watch and a
-MeshCore node — so the port is resolved by USB serial and never guessed. Pass
-`--port` to override, or `ATTADIPA_WATCH_SERIAL` to name a different unit.
+MeshCore node — so the port is resolved by USB serial and never guessed, and
+the base MAC the loader reports is matched to `--serial` before anything is
+loaded. There is no `--port`: opening the wrong native USB port can already
+reset that board, so no invocation names a tty instead of a unit (#717).
 """
 
 from __future__ import annotations
@@ -82,8 +84,6 @@ def main() -> int:
     parser.add_argument("image", type=Path, help="the PURE_RAM_APP .bin to load")
     parser.add_argument("seconds", nargs="?", type=float, default=15.0,
                         help="how long to watch the console afterwards (default 15)")
-    parser.add_argument("--port", default=None,
-                        help="serial port, if the USB-serial lookup is not wanted")
     parser.add_argument("--serial", default=DEFAULT_SERIAL,
                         help=f"USB serial of the unit to load (default {DEFAULT_SERIAL})")
     parser.add_argument("--baud", type=int, default=115200)
@@ -108,7 +108,7 @@ def main() -> int:
     import esptool
     import esptool.cmds
 
-    port = args.port or resolve_port(args.serial)
+    port = resolve_port(args.serial)
     print(f"# port {port}  image {args.image}", flush=True)
 
     # no_reset stops esptool toggling DTR/RTS, but pyserial still asserts them
@@ -127,6 +127,12 @@ def main() -> int:
     esp = esptool.detect_chip(port=target, baud=args.baud,
                               connect_mode=args.connect_mode)
     print(f"# chip {esp.CHIP_NAME}", flush=True)
+    # The by-id link names the unit; the loader proves it. Same check as
+    # flash_no_reset.py, imported here because that module imports this one.
+    from flash_no_reset import identity_mismatch
+    mismatch = identity_mismatch(esp.read_mac(), args.serial)
+    if mismatch:
+        raise SystemExit(mismatch.replace("nothing written", "no RAM image loaded"))
 
     # esptool 4.x takes an args namespace with .filename here; 5.x takes the
     # path as a string. ESP-IDF v5.5.5 ships 4.12.0, on which the string form
