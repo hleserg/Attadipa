@@ -410,8 +410,8 @@ radio time in exchange for a consistency that may never be reached on such a
 node. **How often a `0x80` actually arrives inside a stream is `UNKNOWN` (M32)**,
 and it is the number that decides whether the retry is worth issuing at all.
 
-Every one of those codes must first stop being counted as malformed. A push the
-build understands and deliberately ignores is not a parse failure.
+None of `0x80`/`0x81`/`0x8A`/`0x8D`/`0x8F`/`0x90` may be counted as malformed when
+it is well formed: a push the build understands and ignores is not a parse failure.
 
 ### 7.3 Bounded retry
 

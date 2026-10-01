@@ -88,8 +88,10 @@ moves `lastmod` alone, and letting an ordinary incoming message cancel a sync
 would be a self-inflicted outage. The same code outside the stream is staleness,
 which a re-read does not repair.
 
-**4. None of the six contact-table pushes — `0x80`, `0x81`, `0x8A`, `0x8D`,
-`0x8F` and `0x90` — is counted as a malformed frame.** A push
+**4. None of the six contact pushes is counted as a malformed frame when it is
+well formed** — the four that invalidate, `0x80`, `0x81`, `0x8D` and `0x8F`, and
+the two that only look as if they do, `0x8A` and `0x90`. A `0x8F` shorter than
+its 33 bytes is still malformed, refused after it has dirtied the walk. A push
 this build understands and deliberately does not act on is not a parse failure,
 and putting protocol-correct traffic in the parser-fault counter destroys the
 evidence anybody debugging this will need. The `default:` arm's refusal to tear
