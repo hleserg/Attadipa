@@ -144,7 +144,7 @@ CONFIG_LV_FONT_MONTSERRAT_28=y
 
 # An LVGL assertion is abort() here (firmware/lv_assert_abort.h, #653), and
 # abort() is a panic. Print the backtrace and reboot at once: these two are the
-# ESP-IDF v5.5.5 defaults, pinned so that the choice lv_assert_abort.h argues
-# for cannot change under it with a menuconfig.
+# ESP-IDF v5.5.5 defaults. An existing sdkconfig wins over this file, so
+# tools/flash/firmware_elf_check.py checks the generated config for both.
 CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
 CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=0
