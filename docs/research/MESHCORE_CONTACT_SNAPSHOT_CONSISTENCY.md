@@ -25,7 +25,7 @@ implementation.
 |---|---|
 | the node's iteration, its push sites and its contact table | read at the **pinned** revision `d92964352441e53b93e8667b802e04f6e072b39e` (`companion-v1.17.1`, 2026-08-14), the revision [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) pins and the one the bench T114 reports running |
 | the upstream patch | `meshcore-dev/MeshCore` [PR #3403](https://github.com/meshcore-dev/MeshCore/pull/3403), head `fefc150005d19b03ac5f302ea93a6e684ecd3308`, read as its own diff and against its base; **open**, unmerged, base `dev`, 2 files, +73/−21, created 2026-09-13 |
-| Attadipa's client behaviour | read at `main@8e597d8`, the revision #563 was filed against, which is still the tip |
+| Attadipa's client behaviour | read at `main@8e597d8`, the revision #563 was filed against; §6 was re-read at `main@1531cee` |
 | **that a push really does interleave a contact stream** | **`MEASURED`** on this project's own bench — [§2.4](#24-it-is-measured-here-not-only-reported-upstream) |
 | everything about *how often* it interleaves, and about node preferences | **`UNKNOWN`**. `NOT EXECUTED — HARDWARE REQUIRED` — §10 |
 
