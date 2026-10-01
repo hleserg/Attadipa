@@ -196,7 +196,7 @@ bool fractions_fit(const char* line)
 // address ends `GGA` is not merely dispatched as a GGA, it is accepted as one
 // and its fields latch onto the open epoch. The vendored copy stays
 // byte-identical to upstream —
-// `docs/research/REUSE_LEDGER.md:533` — "**Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at"
+// `docs/research/REUSE_LEDGER.md:552` — "**Decision:** `WRAP` — take `minmea.c` / `minmea.h` unmodified at"
 // — so the boundary is drawn on this side of it, before any epoch meaning is
 // attached to a sentence.
 //

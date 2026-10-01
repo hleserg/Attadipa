@@ -398,7 +398,7 @@ repaired by a re-read of a snapshot that was true.
 
 **Expect dirty to be the normal outcome, not the exception.** The test that
 demotes `0x83` — it moves `last_advert_timestamp` and `lastmod` and nothing else
-— is one a routine `0x80` also fails: `docs/research/VERIFIED_FACTS.md:343` — "An advert without a coordinate advances a contact's timestamps"
+— is one a routine `0x80` also fails: `docs/research/VERIFIED_FACTS.md:400` — "An advert without a coordinate advances a contact's timestamps"
 — and `0x80` is 33 bytes of bare public key, so the client has nothing in the
 frame to tell an advert that changed the table from one that did not. Repeaters
 and room servers advert on a timer. On a busy channel the likely steady state is

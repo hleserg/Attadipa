@@ -59,7 +59,7 @@ want to inherit the experience, not only the code.
 
 | Project | Repository | Commit at examination | Last commit | Why it is here |
 |---|---|---|---|---|
-| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006. **Re-checked 2026-08-23**: still `main`'s tip and still the newest release (`companion-v1.17.1`), so the pin is current rather than lagging. `dev` is at `9d7cee66` (2026-08-22) and contains none of the parser guards below — [MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md). **Re-checked again 2026-08-24**: `main` is now `0679dbe`, two commits ahead, **both `docs/faq.md`** — so the pin is no longer the literal tip and is still upstream's newest *code* and newest release. Stated that way on purpose: "our pin is `main`" ages badly, "no code has moved" does not |
+| `MeshCore` | github.com/meshcore-dev/MeshCore | `d92964352441e53b93e8667b802e04f6e072b39e` | 2026-08-14 | the mesh stack Attadipa builds on; T-006. **Re-checked 2026-08-23**: still `main`'s tip and still the newest release (`companion-v1.17.1`), so the pin is current rather than lagging. `dev` is at `9d7cee66` (2026-08-22) and contains none of the parser guards below — [MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md). **Re-checked again 2026-08-24**: `main` is now `0679dbe`, two commits ahead, **both `docs/faq.md`** — so the pin is no longer the literal tip and is still upstream's newest *code* and newest release. Stated that way on purpose: "our pin is `main`" ages badly, "no code has moved" does not. **Re-checked 2026-10-01**: `main` is `a366955c`, six commits ahead, and all six are documentation (`docs/faq.md`, `docs/kiss_modem_protocol.md`, `docs/radio_presets.md`) — so seven weeks on, the pin is *still* upstream's newest code on `main` and *still* the newest release. `dev` is `1af2760c`, 199 commits ahead, and now contains a merged fix for P4 that no release has — [MESHCORE_PARSER_BOUNDS §9.2](MESHCORE_PARSER_BOUNDS.md) |
 | `meshtastic` | github.com/meshtastic/firmware | `68bfe015e6ab9ec2ab8f1657066898b7880eaf63` | 2026-08-20 | ~200 board variants, worldwide regulatory regions, nanopb phone API. **GPL-3.0, compatible with the project licence; evidence only here because OD-12 rejects Meshtastic integration.** This is the local clone's revision and it *predates* `ac330e6a` (2026-08-23), so the bounds fix in the monitored-deltas table below is not in it; that one was read from the merged diff over the API |
 | `InfiniTime` | github.com/InfiniTimeOrg/InfiniTime | `825056574f47a8187b410b860f326050566553e2` | 2026-08-19 | mature LVGL watch firmware with a real app lifecycle, on far less RAM |
 | `RadioLib` | github.com/jgromes/RadioLib | `510e00cfb05bbc3c2b7b524262785454944adb6e` | 2026-08-13 | radio abstraction across many chips; candidate for ADR-0003 |
@@ -95,14 +95,16 @@ than a search.
 open: an unmerged pull request has no release behind it, and two of these three
 do not close the finding they were written for.
 
-| Upstream | Head | State 2026-08-24 | What it would change | Our decision |
+| Upstream | Head | State | What it would change | Our decision |
 |---|---|---|---|---|
-| [MeshCore #3267](https://github.com/meshcore-dev/MeshCore/pull/3267) | `05da523e` | open, unmerged, base `dev` | length checks in `src/Dispatcher.cpp::tryParsePacket` and `src/Packet.cpp::readFrom` | **MONITOR.** Verified to close all six of our A/B corpus cases on the pin. Still not taken — unreleased, and we compile neither file |
-| [MeshCore #3269](https://github.com/meshcore-dev/MeshCore/pull/3269) | `5ebf8ef9` | open, unmerged, base `dev` | a `MESH_DEBUG_PRINTLN` on the `PAYLOAD_TYPE_PATH` length mismatch | **MONITOR as evidence, not as a fix.** The diff logs the condition and then executes the read anyway — no `break`, no `return`. Verified, not inferred |
-| [MeshCore #3270](https://github.com/meshcore-dev/MeshCore/pull/3270) | `f80d805e` | open, unmerged, base `dev` | three guards in `AdvertDataParser` | **MONITOR.** Closes three of our four C cases and **leaves `app_data[0]` unguarded** at `AdvertDataHelpers.cpp:34` when `app_data_len == 0` — measured on its own head |
+| [MeshCore #3521](https://github.com/meshcore-dev/MeshCore/pull/3521) | `54ac3060` (on `neilalexander/MeshCore`) | **open, unmerged**, base `dev@5d266dcb`, opened 2026-09-28; read 2026-10-01. **No check runs and no status contexts on the head** — not failing, absent | the public disclosure of **GHSA-2fvm-7f8c-957x**. `Packet::readFrom` centralises frame and header validation; a new `isValidPayload` adds per-type shape checks for REQ, RESPONSE, TXT_MSG, GRP_TXT, GRP_DATA, PATH, ANON_REQ, ACK, multipart ACK, TRACE, ADVERT and CONTROL; `Dispatcher::tryParsePacket` becomes a call to it; `AdvertDataParser` is bounded; `Utils::decrypt` rejects non-block-aligned input; `createAck`/`createMultiAck` are guarded; two unit-test files and a native ASan+UBSan target are added | **ADAPT the failure matrix and the sanitizer configuration, MONITOR to merge *and to a release*, take no code.** Measured on its head: it closes **all 46** cases this project can run — the ten of 2026-08, eighteen new malformed typed frames, and the `AdvertDataParser` write P6 — while accepting all sixteen valid shapes the pinned firmware builds. Not taken anyway: unmerged, unreleased, no CI, and we compile none of the files. [MESHCORE_PARSER_BOUNDS §9](MESHCORE_PARSER_BOUNDS.md) |
+| [MeshCore #1809](https://github.com/meshcore-dev/MeshCore/pull/1809) | `b74ba545`, merged as `b9f519ef` | **MERGED into `dev` 2026-09-28**; opened 2026-02-23. **Not on `main`, not in any release** | a block-alignment reject in `Utils::MACThenDecrypt`, closing the 192-into-184 stack over-write this project found independently as P4 | **MONITOR the release, take no code.** It is P4, filed upstream seven months before this project looked — which corrects [MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md)'s claim that P4 was in no pull request, and withdraws the owner decision built on it. #3521 moves the same reject into `decrypt()` itself, which covers every caller rather than one |
+| [MeshCore #3267](https://github.com/meshcore-dev/MeshCore/pull/3267) | `05da523e` | open, unmerged, base `dev`; **superseded by #3521 and untouched since 2026-08-22** | length checks in `src/Dispatcher.cpp::tryParsePacket` and `src/Packet.cpp::readFrom` | **MONITOR.** Verified to close all six of our A/B corpus cases on the pin. Still not taken — unreleased, and we compile neither file |
+| [MeshCore #3269](https://github.com/meshcore-dev/MeshCore/pull/3269) | `5ebf8ef9` | open, unmerged, base `dev`; **superseded by #3521 and untouched since 2026-08-22** | a `MESH_DEBUG_PRINTLN` on the `PAYLOAD_TYPE_PATH` length mismatch | **MONITOR as evidence, not as a fix.** The diff logs the condition and then executes the read anyway — no `break`, no `return`. Verified, not inferred |
+| [MeshCore #3270](https://github.com/meshcore-dev/MeshCore/pull/3270) | `f80d805e` | open, unmerged, base `dev`; **superseded by #3521 and untouched since 2026-08-22** | three guards in `AdvertDataParser` | **MONITOR.** Closes three of our four C cases and **leaves `app_data[0]` unguarded** at `AdvertDataHelpers.cpp:34` when `app_data_len == 0` — measured on its own head |
 | [MeshCore #3266](https://github.com/meshcore-dev/MeshCore/pull/3266) | `d87dd32f` | **closed, unmerged** | the #3267 hunks plus 28 unrelated files | superseded by #3267, whose parser hunks are byte-identical |
 | [MeshCore #3271](https://github.com/meshcore-dev/MeshCore/pull/3271) | `f80d805e` | **closed, unmerged** | — | the *same commit* as #3270, not merely equivalent |
-| `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22; `12998cba` on 2026-08-24 | — | checked for equivalent guards arriving by another route: **none.** `readFrom` on `dev` is byte-identical to the pin |
+| `meshcore-dev/MeshCore` `dev` | `9d7cee66` | 2026-08-22; `12998cba` on 2026-08-24; `1af2760c` on 2026-10-01 | — | checked for equivalent guards arriving by another route. **2026-08: none.** **2026-10: one** — `Utils::MACThenDecrypt` now rejects non-block-aligned ciphertext (#1809), which is P4. `Packet.cpp`, `Dispatcher.cpp` and `Mesh.cpp` on `dev` are **still byte-identical to the pin**, so P1, P2, P3 and P5 are untouched there |
 | [MeshCore #3403](https://github.com/meshcore-dev/MeshCore/pull/3403) | `fefc1500` | open, unmerged, base `dev`, opened 2026-09-13; read 2026-09-14 | a `MyMesh::writePushFrame()` in `examples/companion_radio/MyMesh.cpp` and an 8 × `MAX_FRAME_SIZE` FIFO in `MyMesh.h`: async pushes are held while a `CMD_GET_CONTACTS` response is streaming and flushed one per `loop()` pass afterwards. +1,416 bytes RAM on both environments the author built | **ADAPT the failure model, MONITOR the patch, take no code.** It makes the stream contiguous and **not** the snapshot consistent — the table still mutates under the iterator, a full FIFO drops the push a client detects that with, and a deferred push is byte-identical to a fresh one. Command responses are deliberately not deferred, so a client that sends a command mid-read still sees an interleave. Compile-only by the author's own statement. [MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY](MESHCORE_CONTACT_SNAPSHOT_CONSISTENCY.md) §8 is the compatibility matrix and [ADR-0022](../adr/0022-contact-snapshot-consistency.md) decision 9 the decision |
 | [MeshCore #2974](https://github.com/meshcore-dev/MeshCore/pull/2974) | `3ae67848` | open, unmerged, base `dev`, opened 2026-07-17, last updated 2026-08-09; read 2026-09-14. **`mergeable: false`, `mergeable_state: dirty`** | a protocol-v14 push `PACKET_SEND_TX_STATUS` (`0x91`): `[0x91][ack tag:4][status]`, status 0 transmitted, 1 rejected before transmission, 2 completion unknown. A fixed-size correlation table in the companion layer. No LoRa wire change, no ACK or retry change | **MONITOR as compatibility input; take nothing, and plan against nothing.** It adds a *local radio* signal, not delivery evidence: status 2 is explicitly unknown, so it makes "unconfirmed" narrower and can never make it "failed" — which is why [ADR-0023](../adr/0023-unconfirmed-is-not-failed.md) is unchanged either way. Its 20/20 native tests and three representative builds are the author's own statement about somebody else's tree, and none is Attadipa hardware. No maintainer has answered the design proposal on [#1834](https://github.com/meshcore-dev/MeshCore/issues/1834) in the two months since; the last two comments there are both the proposer's. The fleet is pinned on `v1.17.1-d929643` by owner decision, so **no node here would receive it if it merged today** — [OUTBOUND_MESHCORE_MESSAGES](OUTBOUND_MESHCORE_MESSAGES.md) §5 |
 | [MeshCore #3447](https://github.com/meshcore-dev/MeshCore/pull/3447) | `0d7ba547` | open, unmerged, base `dev`, opened 2026-09-18; read 2026-09-26, **untouched since it was opened and with no review on it at all** | two response codes for messages the device itself sent — `RESP_CODE_CONTACT_MSG_SENT_V3` (`0x1E`) and `RESP_CODE_CHANNEL_MSG_SENT_V3` (`0x1F`) — queued through the existing offline queue, plus a paragraph in `docs/companion_protocol.md` requiring a host to advance its polling loop on **any** response to `CMD_SYNC_NEXT_MESSAGE` | **ADAPT the invariant with a bound, MONITOR the pull request, take no code.** The stall it names is real here and is not specific to these two codes — `RESP_CODE_CLI_REPLY` (29) already reproduces it. The wording is a contributor's paragraph in his own unreviewed pull request and carries no bound, so what is taken is the direction and not the sentence: [ADR-0024](../adr/0024-an-unknown-answer-is-not-a-malformed-one.md) classifies before it continues and spends a per-drain budget. Mainline calls neither new method; only a custom firmware can emit either. [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT.md) is the reading |
@@ -111,18 +113,35 @@ do not close the finding they were written for.
 **Reusable as test material, not as code.** The guards in `05da523e`
 (`src/Dispatcher.cpp`, `src/Packet.cpp`) and `f80d805e`
 (`src/helpers/AdvertDataHelpers.cpp`) are MIT and may be read, adapted and used
-to derive rejection cases. What Attadipa actually took from them is **nothing but
-the shape of the inputs**: the ten-case corpus in
+to derive rejection cases, and the same is true of `54ac3060`
+(`src/Packet.cpp`, `src/Dispatcher.cpp`, `src/Mesh.cpp`, `src/Utils.cpp`,
+`src/helpers/AdvertDataHelpers.cpp`). What Attadipa actually took from any of
+them is **nothing but the shape of the inputs**: the 46-case corpus in
 [`meshcore-parser-bounds/`](meshcore-parser-bounds/) is our own, written from
-reading the parsers, and it is the artifact to keep. There is no upstream test or
-corpus to port — MeshCore's `test/` covers none of these paths, and its `AES` and
-`SHA256` test mocks are no-ops (recorded as M13 in
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)).
+reading the parsers, and it is the artifact to keep. **"There is no upstream test
+or corpus to port" was true until 2026-09-28 and is not any more** — see the
+paragraph below. MeshCore's `AES` and `SHA256` test mocks are still no-ops
+(recorded as M13 in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)).
 
-A fifth finding, in `Utils::decrypt`, is **not** in any of these pull requests and
-so is not in this table. It is P4 in
-[MESHCORE_PARSER_BOUNDS](MESHCORE_PARSER_BOUNDS.md), it is a write rather than a
-read, and reporting it upstream is the owner's decision.
+~~A fifth finding, in `Utils::decrypt`, is **not** in any of these pull requests
+and so is not in this table.~~ **Corrected 2026-10-01: it is, and it was there
+first.** P4 is upstream's [#1809](https://github.com/meshcore-dev/MeshCore/pull/1809),
+opened 2026-02-23 and merged into `dev` on 2026-09-28; it now has a row above.
+The claim that it was unreported was a statement about four pull requests
+presented as a statement about the repository. Reporting it upstream is
+therefore no longer an owner decision — there is nobody left to tell.
+
+**An upstream corpus now exists, and this is the first time that sentence is
+true.** #3521's head adds `test/test_packet_parser/test_packet_parser.cpp`
+(+183) and `test/test_advert_data_parser/test_advert_data_parser.cpp` (+91),
+plus a `platformio.ini` native target running AddressSanitizer and
+UndefinedBehaviorSanitizer. **MIT, and reusable as test material.** They are
+PlatformIO `native` targets and this project's harness is a standalone clang
+build, so they were read and **not executed here** — which is why the ledger
+records them as a location rather than as a result. The sanitizer configuration
+is the part worth adapting: it is the mechanism this project reached
+independently in `meshcore-parser-bounds/build.sh`, arrived at from the other
+end.
 
 **The Meshtastic row is a different kind of row and the difference matters.**
 Every MeshCore row above is a candidate: MIT, so if one of them merged and

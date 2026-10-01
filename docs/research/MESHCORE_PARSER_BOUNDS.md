@@ -3,9 +3,12 @@
 Research for [issue #142](https://github.com/hleserg/Attadipa/issues/142).
 Read on 2026-08-23; re-checked and extended 2026-08-24 (§1's freshness row, the
 `#3269` column in §4, the harness's revision binding in §7, and §8, which is a
-second ecosystem arriving at the same invariant). **Research only — no Attadipa
-production code changed, and none should on the strength of this document
-alone.**
+second ecosystem arriving at the same invariant); **re-checked and extended
+again on 2026-10-01 — §9, for the public advisory GHSA-2fvm-7f8c-957x and the
+patch that supersedes all three pull requests this document started from.**
+§9 corrects two claims made below and names them where it does. **Research only
+— no Attadipa production code changed, and none should on the strength of this
+document alone.**
 
 *This document reached `main` in two pieces. `a7624b0` took it and the harness —
 14 of the 19 files of [#160](https://github.com/hleserg/Attadipa/pull/160) — and
@@ -75,7 +78,11 @@ src/Utils.cpp                     vs 9d7cee66                      : identical
 ```
 
 Every file any of these pull requests touches is byte-identical between our pin
-and both of their bases. `dev` leads the pin by **31** commits and `#3267`'s base
+and both of their bases. **That sentence has an expiry date and it has passed:
+`src/Utils.cpp`, `src/MeshCore.h` and `src/helpers/AdvertDataHelpers.cpp` have
+all moved on `dev` since, and §9.1 re-measures the whole list against the base
+of the patch that replaced these three.** It still holds for `src/Packet.cpp`,
+`src/Dispatcher.cpp` and `src/Mesh.cpp`, which is where P1, P2, P3 and P5 live. `dev` leads the pin by **31** commits and `#3267`'s base
 by 29 — measured on 2026-08-23, `git rev-list --count`, not carried over from
 [M2](OPEN_QUESTIONS.md#meshcore)'s count of 29, which was true of `dev` on
 2026-08-21 and has since moved. All of them are elsewhere in the tree. So each
@@ -469,6 +476,12 @@ cases had to be made to work.
 
 ## 4. The corpus
 
+**Ten sequences here, and thirty-six more in §9.4** — the typed payload shapes
+the public advisory names, plus a valid-frame series, measured on three
+revisions rather than four. This section is the 2026-08 reading and is left as
+it was taken; §9 is the 2026-10 one and supersedes its conclusions about which
+upstream head to watch.
+
 Ten sequences. Each is the whole input; each is fed as a buffer of exactly its own
 length with a guard page behind it. `base` is `d929643`.
 
@@ -592,6 +605,15 @@ and that is a separate, executable task, not this one.
   then `run.sh`.
 - **Keep the corpus.** It is the executable form of this document and the entry
   condition for any future pin.
+- ~~**P4 should be reported upstream, and that is the owner's call, not an agent's.**~~
+  **Withdrawn 2026-10-01, and the premise under it was wrong: P4 was already
+  filed upstream as [#1809](https://github.com/meshcore-dev/MeshCore/pull/1809)
+  on 2026-02-23, seven months before this project looked, and merged into `dev`
+  on 2026-09-28.** The paragraph below is kept rather than deleted because the
+  reasoning in it was sound and only its fact was not, and because an owner
+  decision that quietly disappears is worse than one that is struck through.
+  §9.2 has the evidence. The original text follows.
+
 - **P4 should be reported upstream, and that is the owner's call, not an agent's.**
   It is a memory-safety defect in a third-party project, it is a write rather
   than a read, and opening an issue on `meshcore-dev/MeshCore` is an outward-facing
@@ -629,6 +651,11 @@ here moved it, and an ADR edited to say what it already said is churn.
 | What P4's eight bytes overwrite on an ESP32-S3 | **UNKNOWN.** Depends on a stack frame layout nobody here has compiled |
 | Whether any of this is exploitable rather than merely wrong | **UNKNOWN, and deliberately not claimed.** P1, P2 and P5 end in a rejected packet. P3 and P4 leave a buffer, which is a necessary and not a sufficient condition for anything worse |
 
+**§9.11 is this table's 2026-10 continuation** and adds what the advisory work
+could not establish either. Nothing in this table was overturned by it; two rows
+were strengthened, in that P3's and P4's gates are now measured on a revision
+that has them.
+
 The harness has no fuzzer behind it. It runs a hand-built corpus derived from
 reading the parsers, so it demonstrates the findings and does not search for
 more. A real fuzzing pass over the pinned tree would be a separate task and would
@@ -650,6 +677,29 @@ cd docs/research/meshcore-parser-bounds
 ./build/path_arith            # P3
 ./build/decrypt_bounds 180    # P4; 176 is clean
 ```
+
+For §9 — the advisory, its base, and its head:
+
+```bash
+git -C /tmp/meshcore-src fetch origin dev
+git -C /tmp/meshcore-src fetch https://github.com/neilalexander/MeshCore.git \
+    54ac30609db317fd888726713d5cab8b5344beda
+cd docs/research/meshcore-parser-bounds
+./build.sh base    d92964352441e53b93e8667b802e04f6e072b39e
+./build.sh devbase 5d266dcb43c5084d2ba00431ca9d4ae9c0f7b176
+./build.sh pr3521  54ac30609db317fd888726713d5cab8b5344beda
+./run.sh                           # 46 cases × 3 revisions — §9.4, §9.8
+./run.sh C5                        # one case in full, for its sanitizer report
+./build-extras.sh pr3521           # path_arith refuses here; decrypt_bounds does not
+./build/path_guard                 # §9.6 — exit 0 means no accepted pair underflows
+./build/decrypt_bounds 182 --mac   # §9.7 — through MACThenDecrypt, as Mesh.cpp calls it
+```
+
+`#3521`'s head lives on the author's fork, so it is fetched by URL rather than
+from `origin`. `build-extras.sh pr3521` exits **65** on purpose — that revision
+rewrote the lines `path_arith` hand-copies — and builds `decrypt_bounds` and
+`path_guard` before it does, because a revision that moved P3 is exactly the one
+worth measuring for P4.
 
 The pull request heads have to be fetched before they resolve —
 `git -C /tmp/meshcore-src fetch origin <sha>`, or
@@ -797,9 +847,354 @@ should on the strength of this section: there is nothing yet for it to change.
 
 ---
 
+## 9. The public advisory, and the patch that supersedes all three
+
+Added 2026-10-01, for the reopening of
+[issue #142](https://github.com/hleserg/Attadipa/issues/142). On 2026-09-28
+`meshcore-dev/MeshCore` gained
+[#3521](https://github.com/meshcore-dev/MeshCore/pull/3521), *"Protocol parser
+vulnerability fixes"*, which its body calls the public disclosure of
+**GHSA-2fvm-7f8c-957x** three months after it was filed privately. It replaces
+#3267, #3269 and #3270 with one patch, and it is the first upstream change that
+closes everything §3 found.
+
+Everything in this section was executed on a host. **Nothing was run on a radio,
+a node or any board — NOT EXECUTED — HARDWARE REQUIRED.**
+
+### 9.1 Two sentences from the reopening that do not survive checking
+
+The task that reopened this research stated that #3521 leaves `src/Utils.cpp`
+untouched, and §1 of this document stated that every file the parser pull
+requests touch is byte-identical between our pin and their bases. Both were true
+when written. Neither is true now, and the second one is the kind of sentence
+this document already warns about.
+
+**`Utils.cpp` has moved twice, and the second move is #3521's own.** Against
+#3521's base `dev@5d266dcb`:
+
+```
+$ git diff d929643 5d266dcb -- <each file #3521 touches>
+src/Packet.cpp                    : identical
+src/Packet.h                      : identical
+src/Dispatcher.cpp                : identical
+src/Mesh.cpp                      : identical
+src/Utils.cpp                     : DIFFERS  (+14 −2)
+src/Utils.h                       : DIFFERS  (+3  −1)
+src/MeshCore.h                    : DIFFERS  (+18 −7)
+src/helpers/AdvertDataHelpers.cpp : DIFFERS  (+8  −0)
+```
+
+So the four files carrying P1, P2, P3 and P5 are still byte-identical to the pin
+and #3521's diff against them reads against `d929643` unchanged. The three that
+have moved are where the care is needed, and one of them changes an answer this
+document gave.
+
+### 9.2 P4 was reported upstream in February, and this document said it was not
+
+§5 recorded, as a live owner decision, whether to tell upstream about P4 before
+publishing it. **That decision is moot and the premise behind it was wrong.**
+
+[MeshCore #1809](https://github.com/meshcore-dev/MeshCore/pull/1809), *"Fix stack
+buffer overflow in MACThenDecrypt"*, was opened on **2026-02-23** by Daniel
+Novak, seven months before this project looked. Its body describes P4 in the same
+terms §3 P4 reaches independently — the block loop rounding up, the 184-byte
+stack destination, `payload_len - 4`, `payload_len = 184` giving 180 to
+`decrypt()` and eight bytes past the end. It merged into `dev` as `b9f519ef` on
+**2026-09-28**, the same day #3521 was opened.
+
+What this document said was that P4 "is in **no** pull request" and is unreported
+upstream. That was a claim about four pull requests presented as a claim about
+the repository, and it was wrong on the second. The finding itself is unaffected
+— it was reproduced here, not read from anywhere — but the recommendation built
+on it was, so §5's upstream-reporting paragraph is corrected rather than left to
+be discovered.
+
+**It is still not fixed at our pin.** `b9f519ef` is on `dev` and not on `main`:
+
+| | |
+|---|---|
+| `meshcore-dev/MeshCore` `main`, 2026-10-01 | `a366955c` — 6 commits ahead of the pin, **all three of them documentation**: `docs/faq.md`, `docs/kiss_modem_protocol.md`, `docs/radio_presets.md` |
+| `meshcore-dev/MeshCore` `dev`, 2026-10-01 | `1af2760c`, 199 commits ahead of the pin |
+| Newest release | **`companion-v1.17.1` / `repeater-` / `room-server-`, 2026-08-14 — still `d929643`, still our pin** |
+| `dev` contains `b9f519ef` | yes |
+| `main` contains `b9f519ef` | **no** |
+
+So seven weeks after this research first ran, the pin is still upstream's newest
+release *and* still upstream's newest `main` code, and a fix that has existed on
+`dev` since 2026-09-28 has reached no release. Nothing below may be written up
+as "upstream fixed it".
+
+### 9.3 The supersession graph, as it stands
+
+| PR | State, 2026-10-01 | Base | Head | What it is |
+|---|---|---|---|---|
+| [#3521](https://github.com/meshcore-dev/MeshCore/pull/3521) | **open, unmerged**, opened 2026-09-28, last touched 2026-09-29 | `dev@5d266dcb` | `54ac3060` (on `neilalexander/MeshCore`) | 13 files, +468/−86: `Packet::readFrom` centralised, `isValidPayload` per type, `Dispatcher::tryParsePacket` reduced to a call, PATH plaintext helpers, `AdvertDataParser` bounded, `createAck`/`createMultiAck` guarded, two unit-test files and a native ASan+UBSan target |
+| [#1809](https://github.com/meshcore-dev/MeshCore/pull/1809) | **merged** into `dev` `b9f519ef`, 2026-09-28; opened 2026-02-23 | `dev` | `b74ba545` | the block-alignment reject in `MACThenDecrypt` — P4, filed seven months before this project found it |
+| [#3267](https://github.com/meshcore-dev/MeshCore/pull/3267) | open, unmerged, **untouched since 2026-08-22** | `dev@e003187` | `05da523e` | superseded by #3521 |
+| [#3269](https://github.com/meshcore-dev/MeshCore/pull/3269) | open, unmerged, untouched since 2026-08-22 | `dev@9d7cee6` | `5ebf8ef9` | superseded; never a fix — §3 P3 |
+| [#3270](https://github.com/meshcore-dev/MeshCore/pull/3270) | open, unmerged, untouched since 2026-08-22 | `dev@9d7cee6` | `f80d805e` | superseded; incomplete — §3 P5 |
+| [#3266](https://github.com/meshcore-dev/MeshCore/pull/3266), [#3271](https://github.com/meshcore-dev/MeshCore/pull/3271) | closed, unmerged | — | — | unchanged from §1 |
+
+**`54ac3060` has no CI behind it.** The GitHub check-runs collection for that
+commit is empty and its combined status has no contexts, so the pull request's
+`mergeable_state: unstable` is not a failing check — there is no check. The
+author's own statement is that the new tests pass; nobody else's machine has
+said so, including upstream's.
+
+### 9.4 What was measured, and on which revisions
+
+The corpus is now **46 cases on three revisions**: the pin, #3521's base
+`dev@5d266dcb` — which carries the merged P4 fix and so answers "did the gate
+move" separately from "did the parser" — and the head `54ac3060`.
+
+The ten original cases are unchanged in meaning and are re-run rather than
+re-asserted. On `devbase` all ten behave exactly as at the pin, with the
+`AdvertDataHelpers.cpp` line numbers shifted by the eight lines `isValidName`
+added on `dev`. On `54ac3060` **all ten are clean**, which no earlier head
+managed: #3267 closed A and B, #3270 closed three of the four C, and C3 —
+`app_data_len == 0` — survived every one of them.
+
+**Twelve new malformed cases and eighteen typed frames.** The typed series are
+whole radio frames rather than fragments, because a shape check is per payload
+type and a fragment has no type. They are fed to `Dispatcher::tryParsePacket`,
+which is the radio entry point, and the measurement is accept versus reject —
+the fault each of these shapes causes is downstream, in translation units this
+harness cannot link.
+
+| # | Frame | base `d929643` | `devbase` | `#3521` head |
+|---|---|---|---|---|
+| C5 | advert, `app_data_len=255`, NAME flag | **WRITE of size 254** into `_name[32]`, `AdvertDataHelpers.cpp:56` | same, `:64` | clean, `valid=false` |
+| C6 | advert, `app_data_len=32`, NAME flag — the builder's maximum | clean, `valid=true` | clean | clean, `valid=true` |
+| D1 | ACK, 0 payload bytes | **accepted** | accepted | rejected |
+| D2 | ACK, 3 bytes | **accepted** | accepted | rejected |
+| D3 | ACK, 7 bytes | **accepted** | accepted | rejected |
+| D4 | ACK, 184 bytes — `createMultiAck` writes `1+184` | **accepted** | accepted | rejected |
+| D5 | TRACE, 8 bytes — the 9-byte prefix underflows | **accepted** | accepted | rejected |
+| D6 | TRACE, hash size 2, 3 trailing bytes | **accepted** | accepted | rejected |
+| D7 | TRACE with `path_len` upper bits set | **accepted** | accepted | rejected |
+| D8 | CONTROL, 0 bytes | **accepted** | accepted | rejected |
+| D9 | TXT_MSG, 15 ciphertext bytes | **accepted** | accepted | rejected |
+| D10 | TXT_MSG, 180 ciphertext bytes — P4's trigger | **accepted** | accepted | rejected |
+| D11 | TXT_MSG, prefix and MAC and no ciphertext | **accepted** | accepted | rejected |
+| D12 | GRP_TXT, 15 ciphertext bytes | **accepted** | accepted | rejected |
+| D13 | ANON_REQ, 15 ciphertext bytes | **accepted** | accepted | rejected |
+| D14 | ADVERT, 99 bytes — one short of key+timestamp+signature | **accepted** | accepted | rejected |
+| D15 | ADVERT, 33 app_data bytes | **accepted** | accepted | rejected |
+| D16 | MULTIPART, 0 bytes | **accepted** | accepted | rejected |
+| D17 | MULTIPART ACK whose inner ACK is 7 bytes | **accepted** | accepted | rejected |
+| D18 | PATH, 15 ciphertext bytes | **accepted** | accepted | rejected |
+
+Eighteen of eighteen accepted at the pin; eighteen of eighteen rejected on the
+head. "Accepted" here means the frame parser hands the packet on — what the node
+then does with a zero-byte ACK or a TRACE eight bytes long is the fault upstream
+describes, and this harness measures the gate rather than the fault.
+
+### 9.5 P6 · `AdvertDataParser` writes 254 bytes into 32, and the clamp is the only reason nobody has noticed
+
+New, and the first finding in this document that is a **write** on the read side
+of the radio. `src/helpers/AdvertDataHelpers.cpp:50-57` at the pin:
+
+```cpp
+if (app_data_len >= i) {
+  int nlen = 0;
+  if (_flags & ADV_NAME_MASK) {
+    nlen = app_data_len - i;     // remainder of app_data
+  }
+  if (nlen > 0) {
+    memcpy(_name, &app_data[i], nlen);   // :56   _name is char[32]
+```
+
+`_name` is `char _name[MAX_ADVERT_DATA_SIZE]` — 32 bytes,
+`src/helpers/AdvertDataHelpers.h:46`. `nlen` is bounded by nothing but
+`app_data_len`, which is a `uint8_t`. Case C5 measures it:
+
+```
+==7456==ERROR: AddressSanitizer: stack-buffer-overflow
+WRITE of size 254 at 0x7f91aa300070
+```
+
+**Reachability is the honest half of this, and it is negative at the pin.**
+`Mesh::onRecvPacket` clamps before it calls anything:
+
+```cpp
+int app_data_len = pkt->payload_len - i;
+if (app_data_len > MAX_ADVERT_DATA_SIZE) { app_data_len = MAX_ADVERT_DATA_SIZE; }   // src/Mesh.cpp:269
+```
+
+and both call sites in the pinned tree —
+`examples/simple_repeater/MyMesh.cpp:656` and `src/helpers/BaseChatMesh.cpp:121`
+— receive the clamped value through `onAdvertRecv`. So **a radio advert cannot
+reach P6 at `d929643`**: it is a broken contract waiting for a caller that
+forgets the clamp, which is exactly the sentence upstream's own body uses
+("passed directly to `AdvertDataParser`"). #3521 puts the bound in the parser,
+where a caller cannot forget it. **Severity at the pin: latent.** Severity for
+anybody writing a new caller, including a future local provider: this is the one
+finding in this document that corrupts memory with no MAC in front of it.
+
+### 9.6 P3's guard, executed rather than read
+
+`isValidPathPlaintext` is new on the head and is the replacement for the
+`isValidPathLen` check that §3 P3 showed was not enough. `path_guard` runs the
+same `(len, path_len)` domain `path_arith` runs — `len` ∈ 16…176 step 16,
+`path_len` 0…255 — through the tree's own function:
+
+```
+revision under test : 54ac30609db317fd888726713d5cab8b5344beda
+accepted by isValidPathPlaintext         : 1122
+rejected                                 : 1694
+of the accepted, k > len (underflow)      : 0
+of the accepted, window past data[184]    : 0
+```
+
+The pin accepts **1309** pairs, of which **187** underflow. The head accepts
+**1122**. 1309 − 1122 = 187: the guard rejects exactly the underflowing pairs and
+not one pair more. That is the strongest single result in this section, because
+it is simultaneously the memory-safety claim and the compatibility claim for the
+same code path, and neither is an argument.
+
+`path_arith` itself **refuses** `54ac3060` with exit 65, by design — #3521
+rewrote the lines it hand-copies, which is the case the fingerprint exists for.
+It still runs on `devbase` and reproduces §4's numbers exactly, confirming that
+P3 is untouched at #3521's base.
+
+### 9.7 P4's gate moved twice, and the second placement is the better one
+
+The over-write loop in `Utils::decrypt` is **unchanged on all three revisions** —
+`decrypt(…, 180)` still walks into the guard page on the pin and on `devbase`.
+What changed is who stops the caller reaching it. `decrypt_bounds` now has a
+`--mac` mode that enters through `MACThenDecrypt`, which is the call
+`Mesh::onRecvPacket` makes:
+
+| | `decrypt(180)` | `MACThenDecrypt(182)` | `MACThenDecrypt(178)` |
+|---|---|---|---|
+| base `d929643` | **SEGV**, guard page | **SEGV**, guard page | returns 176 |
+| `devbase` (#1809 merged) | **SEGV** | returns 0 | returns 176 |
+| `#3521` head | returns 0 | returns 0 | returns 176 |
+
+#1809 stops the one caller that was known to be dangerous. #3521 moves the same
+reject into `decrypt()` itself, so every caller is covered including ones nobody
+has audited — and the typed `hasCompleteCiphertext` checks in `isValidPayload`
+reject the frame at the wire before it gets that far. Three independent layers
+on the head where the pin has none.
+
+**The `--mac` mode passes a zero HMAC**, which is what the harness's stub SHA-256
+produces. That is not a claim that a real two-byte MAC can be passed at will; it
+is how the harness reaches the length arithmetic through a stub cipher. §3 P4's
+description of the real gate is unchanged: a 2-byte MAC, which is weak, and not
+absent.
+
+### 9.8 Does the patch cost valid traffic? Measured, and no
+
+The question the reopening asks sixth is the one most easily skipped, so it has
+its own series. Sixteen frames, each a shape **the pinned firmware itself
+builds**, named by the line in the pinned tree that builds it. All sixteen are
+accepted on all three revisions:
+
+| # | Shape | Built by |
+|---|---|---|
+| V1 | ACK of 4 | `src/Mesh.h:190`, `createAck(uint32_t)` |
+| V2 | ACK of 6 | `src/helpers/BaseChatMesh.cpp:254`, `sendAckTo(from, hash, 6)` |
+| V3 | MULTIPART ACK, `remaining=1`, 4-byte ACK | `src/Mesh.cpp:574` |
+| V4 | ADVERT, no app_data | `src/Mesh.cpp:413` |
+| V5 | ADVERT, 32 app_data bytes | `AdvertDataBuilder::encodeTo`, whose own cap is `MAX_ADVERT_DATA_SIZE` |
+| V6–V9 | TXT_MSG, GRP_TXT, ANON_REQ, PATH with one whole cipher block | `Utils::encryptThenMAC` callers |
+| V10 | TRACE as `createTrace` builds it, flags 0 | `src/Mesh.cpp:605` |
+| V11 | TRACE with eight SNR bytes appended | `src/Mesh.cpp:700` |
+| V12 | flood ACK carrying three 1-byte hops | path accumulation |
+| V13 | transport-flood ACK with its four transport codes | `Mesh::sendFlood` |
+| V14 | direct ACK over two hops of 2-byte hashes | `setPathHashSizeAndCount` |
+| V15 | CONTROL with the high bit of `payload[0]` clear | — |
+| V16 | RAW_CUSTOM | application-defined |
+
+Two of the head's new constants were checked against their own senders rather
+than taken on trust. `MIN_ACK_PAYLOAD_SIZE`/`MAX_ACK_PAYLOAD_SIZE` are 4 and 6,
+and the pinned tree emits exactly 4 (`Mesh.h:190`) and 6
+(`BaseChatMesh.cpp:254`) and nothing else. The TRACE check rejects `path_len`
+with either upper bit set, and `Mesh::createTrace` leaves `path_len` at 0 while
+`Mesh::sendDirect` sets it to 0 explicitly for TRACE (`src/Mesh.cpp:703`), so no
+TRACE the firmware builds carries one.
+
+**One compatibility edge is a client's to respect rather than the firmware's.**
+The head's TRACE check also requires `(flags & 0xfc) == 0`, and `flags` on a
+TRACE comes from the companion command — `examples/companion_radio/MyMesh.cpp:1774`,
+`createTrace(tag, auth, flags)` — so it is a byte a connected app chooses. An
+app that sets any of the top six bits builds a TRACE the pin forwards and the
+head drops. Attadipa sends no TRACE today; if it ever does, `flags` belongs in
+0…3. That is a note for a future client, not a defect in the patch.
+
+This is **not** a proof that no valid frame anywhere is rejected. It is sixteen
+shapes derived from reading the pinned senders, and the senders in the examples
+directory were read rather than executed. A full compatibility proof would need
+the whole fleet's traffic, which is [M48](OPEN_QUESTIONS.md#meshcore).
+
+### 9.9 What this changes for Attadipa, and what it does not
+
+**Still nothing today.** Attadipa compiles no MeshCore code; §5 holds without
+amendment. Everything in this section executes on the node, on the far side of
+the companion link, and the watch's own decoder was checked in §5 and is not
+analogous.
+
+What the disclosure does change is the **confidence** half of §5's argument, in
+one direction and not the other. Before, this project's position was five
+defects it had found itself in a parser nobody else had audited publicly. Now
+there is a public advisory, a patch covering a strictly larger set, and upstream
+unit tests. "The node is a peer and its output is a peer's claim" was already the
+rule; it is now a rule with a third party's evidence behind it. **No ADR is
+amended** — [ADR-0008](../adr/0008-mesh-service-providers.md) already says it, and
+an ADR edited to repeat itself is churn.
+
+**M23 closes, narrowly.** It asked "are there more of these?" and the answer is
+**yes** — ACK, multipart ACK, TRACE, CONTROL, ANON_REQ reply paths, truncated
+and oversized ADVERT, and the advert-name write, none of which the ten-case
+corpus contained. What does **not** close is whether the set is now complete:
+upstream's own body says MemorySanitizer was never run, no fuzzer corpus is
+published, and this project's 46 cases still demonstrate rather than search.
+That half becomes [M46](OPEN_QUESTIONS.md#meshcore).
+
+### 9.10 Decision
+
+**ADAPT the failure matrix and the sanitizer configuration. MONITOR #3521 to
+merge and to a release. Take no code, change no pin, reflash nothing.**
+
+- **Do not vendor #3521**, and do not backport it. It is unmerged, unreleased and
+  has no CI behind its head. The project compiles none of the files it touches,
+  so a partial vendoring would buy an unsupported fork and no safety.
+- **The old three are superseded and should stop being monitored individually.**
+  #3267, #3269 and #3270 are untouched since 2026-08-22 and each is a subset of
+  #3521, two of them incomplete against their own findings. The ledger says so.
+- **An upgrade of the fleet is a separate, executable issue, and its entry
+  condition is now writable.** Not "when the advisory is public" — it already is
+  — but all of: #3521 **merged**; a **release** built from a revision containing
+  it, since `b9f519ef` has sat on `dev` since 2026-09-28 and reached no release;
+  the corpus in `docs/research/meshcore-parser-bounds/` re-run against that
+  release's exact revision; and the V series still green on it. The first two are
+  upstream's to produce and neither has happened.
+- **The corpus is the entry condition for a local provider too**, unchanged from
+  §5 and now with three revisions' worth of columns to compare against.
+- **§5's upstream-reporting decision is withdrawn**, not deferred: P4 is upstream's
+  #1809, merged. There is nobody left to tell.
+
+### 9.11 What this section did not establish
+
+| Claim | Status |
+|---|---|
+| Any of this on a radio, a node or a board | **NOT EXECUTED — HARDWARE REQUIRED.** No host sanitizer result in this section may be presented as radio or HIL validation |
+| That #3521 closes every memory-safety defect in the parser | **NOT ESTABLISHED.** It closes all 46 cases measured here, which is a statement about the corpus. No fuzzer has run against either revision |
+| Upstream's own unit tests, run here | **NOT EXECUTED.** `test/test_packet_parser/` and `test/test_advert_data_parser/` on the head are PlatformIO `native` targets; this harness is a standalone clang build and does not run them. Reading them was enough to see that they are new, not enough to call them passing |
+| That the fleet's real traffic survives the head | **UNKNOWN.** Sixteen shapes derived from reading the pinned senders is not a traffic sample — M48 |
+| Exploitability, crash rate, or what bytes any of this would disclose | **UNKNOWN, and still deliberately not claimed.** Upstream's body claims stale-memory disclosure, memory corruption and repeater crashes; this project has confirmed the parser defects and not the consequences |
+| Whether the node builds the fleet actually runs behave as the library does | **NOT ESTABLISHED** — M47. `examples/simple_repeater` has its own overrides and the companion and room-server roles have others; only the library and the repeater's advert call site were read |
+
+---
+
 ## References
 
 - Upstream: `meshcore-dev/MeshCore`, MIT, pinned `d92964352441e53b93e8667b802e04f6e072b39e`
+- Upstream: [MeshCore #3521](https://github.com/meshcore-dev/MeshCore/pull/3521),
+  head `54ac3060`, base `dev@5d266dcb` — the public disclosure of
+  **GHSA-2fvm-7f8c-957x**, open and unmerged; §9
+- Upstream: [MeshCore #1809](https://github.com/meshcore-dev/MeshCore/pull/1809),
+  merged into `dev` as `b74ba545`/`b9f519ef` on 2026-09-28 — P4, filed 2026-02-23; §9.2
 - Upstream: `meshtastic/firmware`, **GPL-3.0**, `ac330e6a` — licence-compatible,
   but evidence only in §8 because [OD-12](OWNER_DECISIONS.md#od-12--meshtastic-is-not-supported-and-the-reason-is-not-the-licence)
   rejects Meshtastic integration

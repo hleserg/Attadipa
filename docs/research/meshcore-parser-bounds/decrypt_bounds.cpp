@@ -15,9 +15,22 @@
 #include <unistd.h>
 #include <Utils.h>
 
+// Two entry points, because the gate moved twice and "is this revision safe"
+// has a different answer at each.
+//
+//   decrypt_bounds <n>        calls Utils::decrypt directly with src_len = n
+//   decrypt_bounds <n> --mac  calls Utils::MACThenDecrypt with src_len = n,
+//                             which is what Mesh::onRecvPacket calls
+//
+// The --mac mode passes the shim's HMAC, which is all zeroes, by starting the
+// buffer with two zero bytes. That is NOT a claim that a real 2-byte MAC can be
+// passed at will; it is how the harness gets past a stub cipher to the length
+// arithmetic on the other side, which is the only thing under test. The real
+// gate costs an attacker a MAC, and the report says so in its own row.
 int main(int argc, char** argv)
 {
     const int src_len = argc > 1 ? atoi(argv[1]) : 180;
+    const bool via_mac = argc > 2 && std::strcmp(argv[2], "--mac") == 0;
 
     const size_t page = (size_t)sysconf(_SC_PAGESIZE);
     uint8_t* m = (uint8_t*)mmap(nullptr, page * 2, PROT_READ | PROT_WRITE,
@@ -32,12 +45,16 @@ int main(int argc, char** argv)
     static uint8_t src[512];
     static uint8_t key[CIPHER_KEY_SIZE] = {0};
     memset(src, 0xAA, sizeof(src));
+    if (via_mac) { src[0] = 0; src[1] = 0; }   // matches the shim's zero HMAC
 
-    std::printf("dest = 184 bytes (uint8_t data[MAX_PACKET_PAYLOAD]), src_len = %d\n", src_len);
+    std::printf("dest = 184 bytes (uint8_t data[MAX_PACKET_PAYLOAD]), src_len = %d, via %s\n",
+                src_len, via_mac ? "MACThenDecrypt (Mesh::onRecvPacket's call)" : "decrypt");
     std::fflush(stdout);
 
-    int n = mesh::Utils::decrypt(key, dest, src, src_len);
+    int n = via_mac ? mesh::Utils::MACThenDecrypt(key, dest, src, src_len)
+                    : mesh::Utils::decrypt(key, dest, src, src_len);
 
-    std::printf("decrypt() returned %d — wrote dest[0..%d]\n", n, n - 1);
+    std::printf("%s returned %d — wrote dest[0..%d]\n",
+                via_mac ? "MACThenDecrypt()" : "decrypt()", n, n - 1);
     return 0;
 }
