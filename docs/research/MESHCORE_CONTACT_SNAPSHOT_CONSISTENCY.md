@@ -25,7 +25,7 @@ implementation.
 |---|---|
 | the node's iteration, its push sites and its contact table | read at the **pinned** revision `d92964352441e53b93e8667b802e04f6e072b39e` (`companion-v1.17.1`, 2026-08-14), the revision [MESHCORE_COMPANION_PROTOCOL](MESHCORE_COMPANION_PROTOCOL.md) pins and the one the bench T114 reports running |
 | the upstream patch | `meshcore-dev/MeshCore` [PR #3403](https://github.com/meshcore-dev/MeshCore/pull/3403), head `fefc150005d19b03ac5f302ea93a6e684ecd3308`, read as its own diff and against its base; **open**, unmerged, base `dev`, 2 files, +73/−21, created 2026-09-13 |
-| Attadipa's client behaviour | read at `main@8e597d8`, the revision #563 was filed against, which is still the tip |
+| Attadipa's client behaviour | read at `main@8e597d8`, the revision #563 was filed against; §6 was re-read at `main@1531cee` |
 | **that a push really does interleave a contact stream** | **`MEASURED`** on this project's own bench — [§2.4](#24-it-is-measured-here-not-only-reported-upstream) |
 | everything about *how often* it interleaves, and about node preferences | **`UNKNOWN`**. `NOT EXECUTED — HARDWARE REQUIRED` — §10 |
 
@@ -410,8 +410,8 @@ radio time in exchange for a consistency that may never be reached on such a
 node. **How often a `0x80` actually arrives inside a stream is `UNKNOWN` (M32)**,
 and it is the number that decides whether the retry is worth issuing at all.
 
-Every one of those codes must first stop being counted as malformed. A push the
-build understands and deliberately ignores is not a parse failure.
+None of `0x80`/`0x81`/`0x8A`/`0x8D`/`0x8F`/`0x90` may be counted as malformed when
+it is well formed: a push the build understands and ignores is not a parse failure.
 
 ### 7.3 Bounded retry
 
