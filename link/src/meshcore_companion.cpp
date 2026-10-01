@@ -1517,15 +1517,26 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // invalidation could have been counted on it; `Consistent` would be
         // the strongest claim on the least evidence. One bounded re-read, with
         // its own `START`, settles it.
+        //
+        // AND IT IS REGISTERED BEFORE IT IS ENDED (#706). `end_contacts()`
+        // fails on a full ring, and the node sends this frame once; raising
+        // `contacts_open_` here hands a failed send to the quiet sweep, which
+        // retries it once `kContactsQuiet` has passed, publishes
+        // `peers_complete` only on a frame that left, and stamps the re-read's
+        // spacing through `settle_snapshot()`.
         if ((!contacts_open_ && contacts_complete_) || !device_info_seen_) {
             break;
         }
-        if (!contacts_open_) snapshot_dirty_ = true;
-        status_.peers_complete = true;
+        if (!contacts_open_) {
+            snapshot_dirty_ = true;
+            contacts_open_ = true;
+            last_contact_at_ = now;
+        }
         if (!end_contacts(now)) {
             ++malformed_frames_;
             return false;
         }
+        status_.peers_complete = true;
         settle_snapshot(now);
         break;
     // A PUSH THIS BUILD UNDERSTANDS AND DELIBERATELY IGNORES IS NOT A PARSE

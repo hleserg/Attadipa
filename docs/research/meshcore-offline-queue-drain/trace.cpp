@@ -21,7 +21,7 @@
 //     A push that produces CMD_SYNC_NEXT_MESSAGE at once found `draining_`
 //     down; a push swallowed with nothing on the wire found it up, because
 //     coalescing is the only thing that swallows one
-//     (`link/src/meshcore_companion.cpp:1736` — "    case kPushMessageWaiting:").
+//     (`link/src/meshcore_companion.cpp:1747` — "    case kPushMessageWaiting:").
 //
 //   * pass 2 touches nothing and ticks a simulated minute, which is what the
 //     firmware worker does anyway. The first CMD_SYNC_NEXT_MESSAGE to leave is

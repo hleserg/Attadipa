@@ -2469,6 +2469,67 @@ void test_a_first_walk_whose_start_was_lost_still_ends_on_end()
     CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
 }
 
+// AND A FULL RING DOES NOT LOSE IT (#706). The lost-`START` `END` arrives once;
+// if the sync cannot be queued, the walk must still end on the next sweep, and
+// nothing may be published before the frame that ends it left. The session
+// starts at uptime, not zero, so a re-read stamped from zero would show.
+void test_a_lost_start_end_on_a_full_ring_tries_again()
+{
+    MeshCoreCompanion client;
+    client.begin(at(60000));
+    client.peer_arriving(at(60001));
+    client.connected(at(60002));
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(60003)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(60004)));
+
+    // No `START`, and the ring undrained: three handshake frames and a text.
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(60006)));
+    core::MeshPeerId peer{};
+    for (std::size_t i = 0; i < 32; ++i) {
+        peer.public_key[i] = static_cast<std::uint8_t>(i + 1);
+    }
+    CHECK(client.send_private(peer, "Hello", core::WallTime{1000}).accepted());
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(!client.receive(end, sizeof(end), at(60007)));
+    CHECK(!client.status().peers_complete);
+
+    MeshCoreFrame frame{};
+    for (int i = 0; i < 4; ++i) {
+        CHECK(client.next_tx(frame));
+        CHECK(frame.bytes[0] != 10);
+    }
+    CHECK(!client.next_tx(frame));
+
+    client.tick(at(60007 + 3000));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    // The re-read waits its ten seconds from the walk's end, not from zero.
+    client.tick(at(60007 + 3001));
+    CHECK(drain_counting_re_reads(client) == 0);
+    client.tick(at(60007 + 3000 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+}
+
 // An `END` before DEVICE_INFO answers a walk nobody asked for, and ends
 // nothing: no messages fetched, no list claimed complete.
 void test_an_end_before_the_walk_was_asked_for_ends_nothing()
@@ -5456,6 +5517,7 @@ int main()
     test_handshake_contacts_and_service_boundary();
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_first_walk_whose_start_was_lost_still_ends_on_end();
+    test_a_lost_start_end_on_a_full_ring_tries_again();
     test_an_end_before_the_walk_was_asked_for_ends_nothing();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();

@@ -561,7 +561,7 @@ reader ends up citing the one that was not updated.
   sixteen are a cache: `send_private()` takes a full 32-byte key, and a key the
   cache does not hold is fetched from the node with `CMD_GET_CONTACT_BY_KEY`
   (30), whose reply is taken above the list walk and deliberately never enters
-  the cache — `link/src/meshcore_companion.cpp:2068` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
+  the cache — `link/src/meshcore_companion.cpp:2079` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
   **Inbound**, a message's coordinate is attributed by resolving its six-byte
   sender prefix against that same cache and nothing else —
   `link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
