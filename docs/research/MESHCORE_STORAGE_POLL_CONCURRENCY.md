@@ -209,7 +209,7 @@ and it skips the write when nothing changed
 ([`bonding.cpp:238`](https://github.com/meshcore-dev/Adafruit_nRF52_Arduino/blob/d541301665b40959682252911e57b11df3ee651a/libraries/Bluefruit52Lib/src/utility/bonding.cpp#L238)
 — "if ( 0 == memcmp(sys_attr, old_data, len) )"). Atta-dipa writes the CCCD on
 every connection, after encryption
-(`firmware/main/meshcore_ble.cpp:887` — "const int rc = ble_gattc_write_flat(conn, session.cccd_handle, enable,"),
+(`firmware/main/meshcore_ble.cpp:890` — "const int rc = ble_gattc_write_flat(conn, session.cccd_handle, enable,"),
 so each connection **queues** a CCCD save; whether any byte is programmed
 depends on whether the stored attributes differ, which is **UNKNOWN** for the
 fleet node.
@@ -261,7 +261,7 @@ Mechanism: **UNKNOWN**. Only the HIL matrix of §8 can tell them apart.
 
 | Failure class | What Atta-dipa observes today | What tells it apart (needs node serial, flash image or HIL) |
 |---|---|---|
-| Ordinary BLE negotiation failure | `MeshCore disconnected: %d` with the reason (`firmware/main/meshcore_ble.cpp:1220` — "MeshCore disconnected: %d"); next connection succeeds | nothing more needed |
+| Ordinary BLE negotiation failure | `MeshCore disconnected: %d` with the reason (`firmware/main/meshcore_ble.cpp:1223` — "MeshCore disconnected: %d"); next connection succeeds | nothing more needed |
 | Controller or host failure, flash intact | repeated disconnects or timeouts; same identity once it answers | node serial log, reset reason — **UNKNOWN** until HIL |
 | Filesystem corruption, identity intact | storage figures are discarded; a short or empty contact walk is indistinguishable from a real one (#654) | traversal error under `MESH_DEBUG`, a flash image — **UNKNOWN** |
 | Corrupted bond or config state | `pairing failed` or encryption failure on every attempt | the bond file on `InternalFS` — **UNKNOWN** |
