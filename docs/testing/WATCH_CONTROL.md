@@ -445,14 +445,14 @@ restores a persisted UTC offset — `restore_time_metadata()`
 (`waveshare_board.cpp:324` "restore_time_metadata()") is outside the `#if` — and,
 since #356's second change, writes one too: `provision_time()` has two callers,
 `BoardProvisioner` (`waveshare_board.cpp:479` "provision_time(ops, request,")
-outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:642`
+outside the `#if` and `BoardTimeSink` (`waveshare_board.cpp:646`
 "provision_time(ops, provision,") inside it. Flashing the HIL image, setting the
 time, and flashing back therefore works: the PCF85063 is battery-backed and the
 offset is in NVS.
 
 *MeshCore had no round trip at all, when this boundary was drawn.* `configure_meshcore_ble()`
 (`meshcore_ble.cpp:2617` "bool configure_meshcore_ble") had exactly one caller,
-`BoardMeshSink::configure` (`waveshare_board.cpp:665`
+`BoardMeshSink::configure` (`waveshare_board.cpp:669`
 "if (!configure_meshcore_ble(passkey))"), inside the same `#if`, so a production
 image contained no call to it; the entry screen's `BoardProvisioner`
 (`waveshare_board.cpp:516`
@@ -504,7 +504,7 @@ press on the clock opens ends on a passkey field, and its `waveshare_board.cpp:5
 "set_mesh_passkey(std::uint32_t passkey) override {" sends the same `Configure`
 event. What stays HIL-only is watching it happen: the mesh screen's
 `mesh_screen_requested` (`waveshare_board.cpp:202`
-"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:668`
+"std::atomic_bool mesh_screen_requested") is set only at `waveshare_board.cpp:672`
 "mesh_screen_requested.store(true)", inside the `#if`, so a product image
 scans without showing that it does.
 

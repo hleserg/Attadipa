@@ -579,6 +579,10 @@ public:
 #endif
   }
 
+  // Written on a queued request only and cleared when its answer is taken,
+  // so non-zero is exactly "an answer of ours is outstanding".
+  bool mesh_forget_owed() override { return forget_ticket_ != 0; }
+
   attadipa::core::MeshForgetOutcome mesh_forget_outcome() override {
 #if CONFIG_BT_NIMBLE_ENABLED
     using attadipa::firmware::ForgetNodeOutcome;

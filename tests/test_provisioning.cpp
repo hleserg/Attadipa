@@ -181,6 +181,7 @@ struct FakeBoard final : attadipa::core::Provisioner {
         forget_queued = reserved;
         return ProvisionOutcome::Pending;
     }
+    bool mesh_forget_owed() override { return forget_ticket_ != 0; }
     MeshForgetOutcome mesh_forget_outcome() override
     {
         ++forget_polls;
@@ -1209,10 +1210,10 @@ void test_a_forget_asked_again_waits_on_the_one_in_flight()
         CHECK(first.verdict() == EntryVerdict::Abandoned);
         const std::uint32_t in_flight = board.forget_queued;
 
+        // It waits from the moment it opens: the forget is still this
+        // product's to report (#733), so no second request is even made.
         ProvisioningEntry second(board, EntryTask::NodePasskey);
-        second.press(EntryKey::Forget);
-        second.press(EntryKey::Minus);
-        CHECK(board.forgets == 2 && board.forget_queued == in_flight);
+        CHECK(board.forgets == 1 && board.forget_queued == in_flight);
         CHECK(second.waiting());
         CHECK(second.verdict() == EntryVerdict::ForgetPending);
         CHECK(!second.poll());
@@ -1261,6 +1262,75 @@ void test_a_forget_asked_again_waits_on_the_one_in_flight()
         board.forget_op.complete(board.forget_queued, ForgetNodeOutcome::Nothing);
         CHECK(later.poll());
         CHECK(later.forget_outcome() == MeshForgetOutcome::Nothing);
+    }
+}
+
+// A forget left while the radio still has it, and finished before the screen
+// is opened again (#733). A `PinOnFlash` ending has already unpinned the node in
+// RAM, so a screen that chose its field by the pin went straight to the
+// passkey and never said the old pin comes back after a restart. Every ending
+// is shown once, on the first frame, and then never again.
+void test_a_forget_that_ended_unseen_is_shown_on_the_next_open()
+{
+    using attadipa::firmware::ForgetNodeOutcome;
+    struct Case {
+        ForgetNodeOutcome ending;
+        bool pin_left;  // what the worker leaves in RAM for `mesh_node()`
+        MeshForgetOutcome outcome;
+        EntryVerdict verdict;
+    };
+    const Case cases[] = {
+        {ForgetNodeOutcome::Forgotten, false, MeshForgetOutcome::Forgotten,
+         EntryVerdict::NodeForgotten},
+        {ForgetNodeOutcome::Unpinned, false, MeshForgetOutcome::Unpinned,
+         EntryVerdict::NodeForgotten},
+        {ForgetNodeOutcome::PinOnFlash, false, MeshForgetOutcome::PinOnFlash,
+         EntryVerdict::NodePartlyForgotten},
+        {ForgetNodeOutcome::BondKept, true, MeshForgetOutcome::BondKept,
+         EntryVerdict::ForgetKept},
+        {ForgetNodeOutcome::ReplayInhibited, true,
+         MeshForgetOutcome::ReplayInhibited, EntryVerdict::ForgetKept},
+    };
+    for (const Case& c : cases) {
+        for (const EntryTask task : {EntryTask::NodePasskey, EntryTask::All}) {
+            FakeBoard board;
+            board.pinned = true;
+            ProvisioningEntry first(board, EntryTask::NodePasskey);
+            first.press(EntryKey::Forget);
+            first.press(EntryKey::Minus);
+            first.press(EntryKey::Leave);
+            const std::uint32_t old = board.forget_queued;
+            board.forget_op.complete(old, c.ending);
+            board.pinned = c.pin_left;
+
+            ProvisioningEntry second(board, task);
+            if (task == EntryTask::All) {
+                for (int i = 0; i < 7; ++i) { second.press(EntryKey::Next); }
+                second.press(EntryKey::Next);  // past the clock's receipt
+            }
+            CHECK(!second.waiting());
+            CHECK(second.field() == EntryField::Receipt);
+            CHECK(second.verdict() == c.verdict);
+            CHECK(second.forget_outcome() == c.outcome);
+            CHECK(board.forgets == 1);
+            if (c.ending == ForgetNodeOutcome::PinOnFlash) {
+                CHECK(verdict_is(second,
+                                 "forgot till reboot; a restart brings it back"));
+            }
+            // Taken, once: a third screen is back to the pin alone, and the old
+            // ticket cannot answer a request made after it.
+            CHECK(board.forget_op.take(old) == ForgetNodeOutcome::Idle);
+            ProvisioningEntry third(board, EntryTask::NodePasskey);
+            CHECK(third.field() ==
+                  (c.pin_left ? EntryField::Node : EntryField::Passkey));
+            if (c.pin_left) {
+                third.press(EntryKey::Forget);
+                third.press(EntryKey::Minus);
+                CHECK(third.waiting() && board.forget_queued != old);
+                board.forget_op.complete(old, ForgetNodeOutcome::Forgotten);
+                CHECK(!third.poll());
+            }
+        }
     }
 }
 
@@ -1481,6 +1551,7 @@ int main()
     test_the_forget_confirmation_promises_only_what_forget_does();
     test_leaving_a_wait_says_the_answer_is_lost();
     test_a_forget_asked_again_waits_on_the_one_in_flight();
+    test_a_forget_that_ended_unseen_is_shown_on_the_next_open();
     test_the_finished_frame_keeps_the_words_and_drops_the_keys();
     test_leave_is_never_a_trap();
     test_both_locales_print_the_whole_instant();
