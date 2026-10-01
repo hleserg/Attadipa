@@ -179,9 +179,14 @@ handler turns into 0 — nothing is stored.
 pair's `tail` until a null pair and bounds nothing, so a corrupt but
 checksum-valid tail cycle would never return, and the loop task would stop
 answering while the BLE link stays up. The T114 build defines no
-`HAS_EXTERNAL_WATCHDOG`, and no source read here arms the nRF52's internal one
-(no `WDT` start in MeshCore's `src/` or the core at `d541301`), so a hang is
-not turned into a reboot. That is a way for the poll to **expose** earlier corruption, not to
+`HAS_EXTERNAL_WATCHDOG` — at `d929643` only MeshCore's
+`variants/heltec_tower_v2/variant.h:85` — "#define HAS_EXTERNAL_WATCHDOG" and
+`variants/heltec_mesh_solar/platformio.ini:16` — "  -D HAS_EXTERNAL_WATCHDOG" do — and no watchdog start
+appears anywhere in that tree, `examples/companion_radio/` and
+`variants/heltec_t114/` included, nor in the core at `d541301`. The T114's
+bootloader was not read, so whether a hang becomes a reboot is **UNKNOWN**;
+§8 step 5 captures the reset reason that settles it. Either way it is a way for
+the poll to **expose** earlier corruption, not to
 cause it; it is listed as a hypothesis in §5, not a finding, and the same
 traversal runs from `lfs_alloc` on any write that needs a block
 (`lfs.c:325` of the vendored v1.7 — "int err = lfs_traverse(lfs, lfs_alloc_lookahead, lfs);").
@@ -268,10 +273,14 @@ Mechanism: **UNKNOWN**. Only the HIL matrix of §8 can tell them apart.
 | Recoverable by power cycle | the node answers again after it | the order of recovery steps in §8 |
 | Recoverable only by erase or reflash | nothing ever answers, or every pairing fails | the order of recovery steps in §8 |
 
-Atta-dipa keeps **no** record of the last battery request before a disconnect:
-the request is never logged, and `received_at`
+Atta-dipa keeps **no** stored record of the last battery request before a
+disconnect. Every outgoing frame prints its opcode at INFO
+(`firmware/main/meshcore_ble.cpp:1291` — "ESP_LOGI(kTag, "%s op=0x%02X len=%u", direction,"),
+so a poll is a `TX op=0x14 len=1` line on the watch's serial console, but only
+for whoever is capturing it; `received_at`
 (`link/src/meshcore_companion.cpp:1645` — "battery.received_at = now;") lives
-only in memory. A post-mortem cannot say whether a poll was in flight.
+only in memory. Whether a poll was in flight is known only from a serial
+capture running at the time.
 
 ## 7. Is battery separable from storage?
 
@@ -302,7 +311,8 @@ contacts, channels and prefs:
 4. **#3503 head** on a separate image, watching for deadlocks in contact and
    channel operations.
 5. **After a failure:** capture node serial, reset reason, identity, counts and
-   a flash image, then recover in order — client reconnect, watch restart, node
+   a flash image, with the watch's serial log from a capture started before the
+   run (§6), then recover in order — client reconnect, watch restart, node
    power cycle, bond removal, filesystem erase, reflash — never erasing before
    capture.
 
@@ -310,8 +320,8 @@ Power-cut trials stay with #654 (M51, M52); they are not this experiment.
 
 ## 9. Against #654
 
-`MESHCORE_CONTACT_STORE_RECOVERY.md`
-([#744](https://github.com/hleserg/Attadipa/pull/744)) and this report share one mechanism — the nRF52 core rewrites a whole 4 KiB
+[`MESHCORE_CONTACT_STORE_RECOVERY.md`](MESHCORE_CONTACT_STORE_RECOVERY.md)
+and this report share one mechanism — the nRF52 core rewrites a whole 4 KiB
 page per write, through one cache (M52) — and keep separate root causes. #654
 is a **power cut** during a save; this is **two tasks** sharing the cache with
 the power on. Both end in the same blind spot: a contact walk that completes
