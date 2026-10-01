@@ -3278,7 +3278,7 @@ numbers — keeps the result and keeps the constants tracking Kconfig, without
 touching the toolchain or the build. What this costs is stated rather than
 hidden: the port's static `host_task_h` is now never set, so
 `nimble_port_freertos_deinit()` would delete nothing, and this image's host task
-ends itself instead — `firmware/main/meshcore_ble.cpp:2363` — "    vTaskDelete(nullptr);".
+ends itself instead — `firmware/main/meshcore_ble.cpp:2364` — "    vTaskDelete(nullptr);".
 When the pin moves to a release with candidate 2 in it, this becomes a call to
 `nimble_port_freertos_init()` again with its `esp_err_t` checked, and the
 ordering rule in `meshcore_boot.h` stays exactly as it is.

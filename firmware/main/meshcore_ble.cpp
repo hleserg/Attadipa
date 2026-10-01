@@ -70,18 +70,18 @@ constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
 // How long the worker may keep finding the queue non-empty before it blocks
 // for one tick (#630). Under a backlog the receive below returns at once, and
 // a priority-3 task that never blocks starves the idle task of its core -- the
-// task watchdog's five seconds, the same class `gnss_bridge.cpp` hit -- and
-// LVGL at priority 1 with it. `taskYIELD()` would not help: it yields only to
-// equal priority.
-//
-// Chosen, not derived. Counted in time, not passes, so the cost does not grow
-// as a pass gets cheaper: one tick is 10 ms at `CONFIG_FREERTOS_HZ=100`
-// (`docs/research/ak09911-waveshare-2026-09-09/build-sdkconfig.txt:1468` --
-// "CONFIG_FREERTOS_HZ=100"), so a flood costs the worker at most one tick in
-// eleven, far inside the watchdog's five seconds. A worker that keeps up
-// empties the queue and never takes one. What the tick costs a contact walk,
-// whose records arrive in bursts, against 48 slots of `kEventDepth`, is
-// `UNKNOWN`.
+// task watchdog's five seconds, the class `gnss_bridge.cpp` hit. `taskYIELD()`
+// would not help: it yields only to equal priority. Chosen, not derived, and
+// counted in time, not passes, at `CONFIG_FREERTOS_HZ=100`
+// (`docs/research/ak09911-waveshare-2026-09-09/build-sdkconfig.txt:1468` -- "CONFIG_FREERTOS_HZ=100"):
+// a flood leaves lower priorities on the worker's core at most one tick in
+// eleven, and less, since `vTaskDelay(1)` wakes at the next tick, 0-10 ms on.
+// That fixes the watchdog. Whether it keeps LVGL and touch answering on core 1
+// (`firmware/main/waveshare_board.cpp:1284` -- "  port.task_affinity = 1;"),
+// when the unpinned worker runs there, is `UNKNOWN`. So is what the tick
+// costs a contact walk, whose records arrive in bursts
+// (`docs/research/MESHCORE_T114_FIRST_CONTACT.md:644` -- "are contact to contact: median 0 ms, p99 10 ms"),
+// against 48 slots of `kEventDepth`.
 constexpr TickType_t kBacklogTicks = pdMS_TO_TICKS(100);
 
 static_assert(BLE_HS_CONN_HANDLE_NONE == attadipa::link::kNoSessionHandle,
@@ -2306,6 +2306,7 @@ void mesh_task(void*)
         }
         if (catch_up.write_completed) {
             handle_write_result(catch_up.write_result, catch_up.write_generation);
+            backlog_since = xTaskGetTickCount();  // a write is paced by blocking
         }
         // One read, used by both. A published MTU and the connection a frame is
         // written to therefore describe the same session or neither.
