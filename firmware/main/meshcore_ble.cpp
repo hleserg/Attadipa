@@ -2185,11 +2185,21 @@ void mesh_task(void*)
             }
             case EventKind::Send:
             case EventKind::SendRoom: {
+                // A stop that landed after this send was queued (#629). A link
+                // NimBLE refused to end still reads Ready, so the provider would
+                // take the request and pump_tx() would never move it; refuse it
+                // here instead, before a request id exists, and scrub the room
+                // password as handle_send_room() would have.
+                const bool stopped = !configured.load();
+                if (stopped) {
+                    std::fill(event.password.begin(), event.password.end(), '\0');
+                    ESP_LOGW(kTag, "send refused: the watch was stopped after it was queued");
+                }
                 // Answered before the claim is released, so the next send
                 // cannot reserve over an answer still owed to this one.
-                const bool taken = event.kind == EventKind::Send
-                                       ? handle_send(event)
-                                       : handle_send_room(event);
+                const bool taken = !stopped && (event.kind == EventKind::Send
+                                                    ? handle_send(event)
+                                                    : handle_send_room(event));
                 send_op.complete(event.ticket,
                                  taken ? attadipa::firmware::SendOutcome::Sent
                                        : attadipa::firmware::SendOutcome::Refused);
@@ -2690,7 +2700,10 @@ bool meshcore_ble_send(
     if (text.empty() || text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
-    if (!claim_send()) return false;
+    // A stopped watch takes no send, even while NimBLE keeps a link it was
+    // asked to end (#629); the worker checks again for a stop that lands
+    // after this.
+    if (!configured.load() || !claim_send()) return false;
     std::uint32_t reserved = 0;
     if (!send_op.reserve(reserved)) {
         send_claimed.store(false);
@@ -2721,7 +2734,10 @@ bool meshcore_ble_send_room(
         text.size() > attadipa::core::kMeshTextBytes) {
         return false;
     }
-    if (!claim_send()) return false;
+    // A stopped watch takes no send, even while NimBLE keeps a link it was
+    // asked to end (#629); the worker checks again for a stop that lands
+    // after this.
+    if (!configured.load() || !claim_send()) return false;
     std::uint32_t reserved = 0;
     if (!send_op.reserve(reserved)) {
         send_claimed.store(false);

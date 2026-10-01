@@ -187,7 +187,7 @@ bool          quiet_logged   = false;
 // ONE LINE PER CHANGE OF ANSWER, NOT ONE PER EPOCH.
 //
 // `core::format_location_line` is the repository's engineering line -- shared
-// with `firmware/main/meshcore_ble.cpp:2276` -- "Position   : %s" --
+// with `firmware/main/meshcore_ble.cpp:2286` -- "Position   : %s" --
 // the line that has printed the *node's* position through it since before
 // this file existed (DEBUG since #716). It prints the coordinate, both ages, the validity,
 // the receiver state and the origin, and writes `UNKNOWN` in full wherever a number would imply a
@@ -252,7 +252,7 @@ void log_if_answer_changed()
     // person, and `format_location_line` prints latitude and longitude at
     // 10^-7 of a degree, which is about a centimetre.
     //
-    // The node's line -- `firmware/main/meshcore_ble.cpp:2276` --
+    // The node's line -- `firmware/main/meshcore_ble.cpp:2286` --
     // "Position   : %s" -- printed its coordinate at INFO until #716. The
     // distinction this comment used to draw, the node's coordinate against
     // the wearer's own, does not hold: a node carried on the body reports

@@ -91,7 +91,7 @@ namespace attadipa::core {
 // That is a claim about what the transport asked NimBLE for, not about the
 // controller, and it has one gap: a cancel NimBLE refuses is logged, retried
 // by the worker until it lands, and the fault stands regardless of either
-// (`firmware/main/meshcore_ble.cpp:2232` — "if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);").
+// (`firmware/main/meshcore_ble.cpp:2242` — "if (rc == 0 || rc == BLE_HS_EALREADY) scan_stop_owed.store(false);").
 // Released regardless: a declaration that held through
 // `Faulted` would refuse every sleep until the reset arrived, on a watch whose
 // power key is the thing asking.
