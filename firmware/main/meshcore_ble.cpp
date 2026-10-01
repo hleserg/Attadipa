@@ -67,8 +67,11 @@ constexpr char kTag[] = "attadipa_mesh_ble";
 constexpr std::size_t kEventDepth = 48;
 constexpr TickType_t kPollTicks = pdMS_TO_TICKS(500);
 constexpr TickType_t kMeshCoreWriteDelay = pdMS_TO_TICKS(60);
-// How long the worker may keep finding the queue non-empty before it blocks
-// for one tick (#630). Under a backlog the receive below returns at once, and
+// How long the worker may go without blocking before it blocks for one tick
+// (#630). The clock restarts whenever the worker did block: on an empty queue,
+// and in the `kMeshCoreWriteDelay` pause after a write that went out -- not on
+// a write that failed or outlived its session, which returns at once (#693).
+// Under a backlog the receive below returns at once, and
 // a priority-3 task that never blocks starves the idle task of its core -- the
 // task watchdog's five seconds, the class `gnss_bridge.cpp` hit. `taskYIELD()`
 // would not help: it yields only to equal priority. Chosen, not derived, and
@@ -1427,7 +1430,8 @@ void pump_tx(const SessionSnapshot& session)
     }
 }
 
-void handle_write_result(std::int32_t result, std::uint32_t generation)
+// Returns whether it blocked, which is what restarts the backlog clock.
+bool handle_write_result(std::int32_t result, std::uint32_t generation)
 {
     // A completion outlives the session that submitted it: the worker may not
     // run again until the connection is gone, and `write_completions` is a
@@ -1438,11 +1442,11 @@ void handle_write_result(std::int32_t result, std::uint32_t generation)
     // one whose write failed, which is the bug generations exist to prevent.
     const SessionSnapshot session = session_snapshot();
     if (session.generation != generation || session.phase == SessionPhase::Ended) {
-        return;
+        return false;
     }
     if (result == 0) {
         vTaskDelay(kMeshCoreWriteDelay);
-        return;
+        return true;
     }
     // A write that failed is the peer not answering, not a broken subsystem,
     // and calling fault() here is what wedged the session on the bench. ATT
@@ -1457,6 +1461,7 @@ void handle_write_result(std::int32_t result, std::uint32_t generation)
     if (session.connection != attadipa::link::kNoSessionHandle) {
         (void)ble_gap_terminate(session.connection, BLE_ERR_REM_USER_CONN_TERM);
     }
+    return false;
 }
 
 // Everything the worker still owes the link model, taken from the record rather
@@ -1870,11 +1875,11 @@ void settle_node_identity(std::uint32_t generation)
         // ENC_CHANGE -- so wherever a passkey is armed, the watch has already
         // paired and bonded with this node before anything here can know it is
         // the wrong one. Armed is a condition, not a given: it is
-        // `firmware/main/meshcore_ble.cpp:223` -- "std::atomic_bool secure_pairing{false};",
+        // `firmware/main/meshcore_ble.cpp:226` -- "std::atomic_bool secure_pairing{false};",
         // stored from the operator's passkey at
-        // `firmware/main/meshcore_ble.cpp:1963` -- "secure_pairing.store(event.passkey",
+        // `firmware/main/meshcore_ble.cpp:1968` -- "secure_pairing.store(event.passkey",
         // and it is what selects the SMP path at
-        // `firmware/main/meshcore_ble.cpp:1119` -- "if (secure_pairing.load()) {".
+        // `firmware/main/meshcore_ble.cpp:1122` -- "if (secure_pairing.load()) {".
         // An image nobody has given a passkey to never gets this far. The store
         // holds one bond (`firmware/sdkconfig.defaults:116` --
         // "CONFIG_BT_NIMBLE_MAX_BONDS=1"), and on overflow NimBLE evicts rather
@@ -2304,9 +2309,9 @@ void mesh_task(void*)
             send_owned = false;
             send_claimed.store(false);
         }
-        if (catch_up.write_completed) {
-            handle_write_result(catch_up.write_result, catch_up.write_generation);
-            backlog_since = xTaskGetTickCount();  // a write is paced by blocking
+        if (catch_up.write_completed &&
+            handle_write_result(catch_up.write_result, catch_up.write_generation)) {
+            backlog_since = xTaskGetTickCount();  // it blocked for the write delay
         }
         // One read, used by both. A published MTU and the connection a frame is
         // written to therefore describe the same session or neither.
