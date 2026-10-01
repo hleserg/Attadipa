@@ -126,12 +126,12 @@ moved. The two places the finding rests on did not:
 dispatcher —
 `link/src/meshcore_companion.cpp:900` — "void MeshCoreCompanion::drain_after(bool accepted, core::MonotonicTime now)"
 — and it is reached from exactly three cases: `RESP_CODE_CONTACT_MSG_RECV`
-(`link/src/meshcore_companion.cpp:1803` — "    case kResponseContactMessage:"),
+(`link/src/meshcore_companion.cpp:1805` — "    case kResponseContactMessage:"),
 and the two V3 arms beside it. `RESP_CODE_NO_MORE_MESSAGES` ends the drain
-(`link/src/meshcore_companion.cpp:1812` — "    case kResponseNoMoreMessages:").
+(`link/src/meshcore_companion.cpp:1814` — "    case kResponseNoMoreMessages:").
 Everything else falls to the default:
 
-`link/src/meshcore_companion.cpp:1946` — "        // A response code this build does not know is a frame we did not"
+`link/src/meshcore_companion.cpp:1948` — "        // A response code this build does not know is a frame we did not"
 
 which counts the frame in `malformed_frames_` and returns. It does not ask
 again — and **it does not end the drain either**, which is the part the issue

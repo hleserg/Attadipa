@@ -93,7 +93,7 @@ Before #600, a recipient outside the retained sixteen could not be sent to. Now
 `send_private()` takes a full 32-byte key, and a key the window does not hold is
 fetched from the node by `CMD_GET_CONTACT_BY_KEY` (30). The reply is taken
 above the list walk, and **deliberately does not enter the window**:
-`link/src/meshcore_companion.cpp:2084` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely"
+`link/src/meshcore_companion.cpp:2086` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely"
 
 The incoming side did not move with it. A coordinate is attributed by resolving
 the message's six-byte sender prefix against the retained window and nothing
@@ -140,15 +140,15 @@ implemented: `remote_position()` could publish a coordinate held against a key
 the node had since deleted, latent only because nothing read it. That was filed
 as [#650](https://github.com/hleserg/Attadipa/issues/650) and it is **no longer
 the state of `main`.** #688 merged as `7b10884` on 2026-09-26 and pays it on the
-push arm — `link/src/meshcore_companion.cpp:1567` — "    // under the deleted key is discarded, not aged, because the record it was"
+push arm — `link/src/meshcore_companion.cpp:1569` — "    // under the deleted key is discarded, not aged, because the record it was"
 
 Three properties of that arm are what this report needs from it, and each is in
 the code rather than in the commit message. The comparison is the **whole** key,
 so deleting any other contact leaves the slot alone —
-`link/src/meshcore_companion.cpp:1580` — "                        core::kMeshPublicKeyBytes) == 0) {"
+`link/src/meshcore_companion.cpp:1582` — "                        core::kMeshPublicKeyBytes) == 0) {"
 — which is the same fail-closed discipline §8 asks of prefix collisions. A frame
 too short to carry a key is refused as malformed instead of being treated as a
-delete — `link/src/meshcore_companion.cpp:1575` — "            ++malformed_frames_;"
+delete — `link/src/meshcore_companion.cpp:1577` — "            ++malformed_frames_;"
 — so a truncated push cannot empty the slot. And the walk is dirtied before that
 length check rather than after it, which is the defect round 1 of #688 found and
 fixed; a short delete still says the table moved.

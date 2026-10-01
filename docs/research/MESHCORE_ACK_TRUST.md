@@ -91,20 +91,20 @@ Entries are added at `MyMesh.cpp:1113-1117` and never expire by age.
 ## 3. What Atta-dipa does with it
 
 `link/src/meshcore_companion.cpp:60` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
-The arm at `link/src/meshcore_companion.cpp:1676` — "case kPushSendConfirmed:"
+The arm at `link/src/meshcore_companion.cpp:1678` — "case kPushSendConfirmed:"
 refuses fewer than five bytes, refuses when nothing is pending
-(`link/src/meshcore_companion.cpp:1714` — "if (expected_ack_ == std::array<std::uint8_t, 4>{}) {"),
+(`link/src/meshcore_companion.cpp:1716` — "if (expected_ack_ == std::array<std::uint8_t, 4>{}) {"),
 compares the four bytes with `expected_ack_`, and on a match sets
-`link/src/meshcore_companion.cpp:1721` — "status_.delivery = core::MeshDelivery::Confirmed;".
+`link/src/meshcore_companion.cpp:1723` — "status_.delivery = core::MeshDelivery::Confirmed;".
 The catalogue renders that as `delivered` / `доставлено`
 (`l10n/strings.toml:929` — "[mesh_delivery_confirmed]").
 
-Six source comments called the tag a "keyed hash" or a match "positive
-proof": three in that arm, and one each in
-`link/include/attadipa/link/meshcore_companion.h`,
-`core/include/attadipa/core/mesh_service.h` and
-`tests/test_meshcore_companion.cpp`. §1 shows the hash is not keyed, and all six
-were corrected by the next change to edit those files (#706). The conclusions
+Seven source comments called the tag a "keyed hash" or a match "positive
+proof": three in that arm, one each in
+`link/include/attadipa/link/meshcore_companion.h` and
+`core/include/attadipa/core/mesh_service.h`, and two in
+`tests/test_meshcore_companion.cpp`. §1 shows the hash is not keyed; #706
+corrected six of them and #749 the seventh. The conclusions
 they draw (rarity of an all-zero tag, repetition for identical messages, a late
 match upgrades) never depended on the word.
 

@@ -392,7 +392,7 @@ reader ends up citing the one that was not updated.
   reads the same ten fields in the same order, naming the last three `advLat`,
   `advLon`, `lastMod`; and this repository already requires all 148 bytes before
   it will read one —
-  `link/src/meshcore_companion.cpp:1442` — "        if (size < 148) { ++malformed_frames_; return false; }" —
+  `link/src/meshcore_companion.cpp:1444` — "        if (size < 148) { ++malformed_frames_; return false; }" —
   reading the key at 1 and the name at 100 and discarding 132–147.
 - **Not verified:** no contact frame has been read off a physical node.
   `NOT EXECUTED — HARDWARE REQUIRED`.
@@ -561,7 +561,7 @@ reader ends up citing the one that was not updated.
   sixteen are a cache: `send_private()` takes a full 32-byte key, and a key the
   cache does not hold is fetched from the node with `CMD_GET_CONTACT_BY_KEY`
   (30), whose reply is taken above the list walk and deliberately never enters
-  the cache — `link/src/meshcore_companion.cpp:2084` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
+  the cache — `link/src/meshcore_companion.cpp:2086` — "// 1. It must not enter the cache. Sixteen slots, and the fetch exists precisely".
   **Inbound**, a message's coordinate is attributed by resolving its six-byte
   sender prefix against that same cache and nothing else —
   `link/src/meshcore_companion.cpp:729` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {" —
@@ -619,7 +619,7 @@ reader ends up citing the one that was not updated.
 - **Source (this repository):** the single slot is
   [`firmware/sdkconfig.defaults:116`](../../firmware/sdkconfig.defaults)
   "CONFIG_BT_NIMBLE_MAX_BONDS=1"; the callback is installed at
-  [`firmware/main/meshcore_ble.cpp:2392`](../../firmware/main/meshcore_ble.cpp)
+  [`firmware/main/meshcore_ble.cpp:2393`](../../firmware/main/meshcore_ble.cpp)
   "ble_hs_cfg.store_status_cb = ble_store_util_status_rr;".
 - **Condition — it is not unconditional:** the pairing this rests on happens
   only where a passkey has been armed by the operator

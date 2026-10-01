@@ -2312,6 +2312,7 @@ void mesh_task(void*)
         if (catch_up.write_completed &&
             handle_write_result(catch_up.write_result, catch_up.write_generation)) {
             backlog_since = xTaskGetTickCount();  // it blocked for the write delay
+            fairness_breaks = 0;  // which ended the episode the count is for (#750)
         }
         // One read, used by both. A published MTU and the connection a frame is
         // written to therefore describe the same session or neither.

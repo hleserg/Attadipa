@@ -47,7 +47,7 @@ recorded here so that no option is credited with paying them.
 2. **The passkey was RAM-only when this was decided, and the storage it
    needed is one key in a namespace that already existed.** Nothing persisted
    the passkey:
-   `firmware/main/meshcore_ble.cpp:2628` — "bool configure_meshcore_ble(std::uint32_t passkey)"
+   `firmware/main/meshcore_ble.cpp:2629` — "bool configure_meshcore_ble(std::uint32_t passkey)"
    reaches `firmware/main/meshcore_ble.cpp:1968` — "secure_pairing.store(event.passkey != 0);"
    and nothing else, and the two flags a scan waits on are plain atomics:
    `firmware/main/meshcore_ble.cpp:225` — "std::atomic_bool configured{false};"
@@ -56,7 +56,7 @@ recorded here so that no option is credited with paying them.
    there by #304: `firmware/main/meshcore_ble.cpp:291` — "constexpr const char* kMeshNvsNamespace = ",
    read at `firmware/main/meshcore_ble.cpp:380` — "const esp_err_t err = nvs_get_blob(handle, kNodeKeyNvsKey,"
    and written at `firmware/main/meshcore_ble.cpp:564` — "esp_err_t err = nvs_set_blob(handle, kNodeKeyNvsKey, id.public_key.data(),",
-   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2548` —
+   behind an `nvs_flash_init()` at `firmware/main/meshcore_ble.cpp:2549` —
    "const esp_err_t nvs_err = nvs_flash_init();" whose failure path is already
    handled. So this is one key added to a live namespace, not a
    storage layer to design — and it is the same key under every option, because
@@ -179,11 +179,11 @@ Consent is that a person is holding this watch and touching its screen. Nothing
 on a cable or a radio can do that.
 
 The decisive fact is one the firmware already asserts to its peer:
-`firmware/main/meshcore_ble.cpp:2393` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
+`firmware/main/meshcore_ble.cpp:2394` — "ble_hs_cfg.sm_io_cap = BLE_HS_IO_KEYBOARD_ONLY;".
 The watch tells the node it has a keyboard. Today that claim is satisfied by a
 USB cable and a laptop. **Option A makes it true.** The node displays, the watch
 types — which is BLE passkey pairing exactly as specified, and the passkey is
-six digits, not a key: `firmware/main/meshcore_ble.cpp:2628` —
+six digits, not a key: `firmware/main/meshcore_ble.cpp:2629` —
 "bool configure_meshcore_ble(std::uint32_t passkey)".
 
 The clock half is likewise already anticipated by the ADR that owns time.

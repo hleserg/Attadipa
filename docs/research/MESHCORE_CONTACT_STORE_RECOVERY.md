@@ -122,14 +122,14 @@ zeroes `_most_recent_lastmod` (`MyMesh.cpp:1210`), sends one
 `loadContacts` filled.
 
 **Atta-dipa.** START records the total and clears completeness
-(`link/src/meshcore_companion.cpp:1433` — "        status_.peers_reported = reported;",
-`link/src/meshcore_companion.cpp:1436` — "        status_.peers_complete = false;").
+(`link/src/meshcore_companion.cpp:1435` — "        status_.peers_reported = reported;",
+`link/src/meshcore_companion.cpp:1438` — "        status_.peers_complete = false;").
 END, or three quiet seconds standing in for a lost END
 (`link/src/meshcore_companion.cpp:529` — "    if (contacts_open_ && !wrong_node_ &&"),
 sets it again
-(`link/src/meshcore_companion.cpp:1544` — "        status_.peers_complete = true;")
+(`link/src/meshcore_companion.cpp:1546` — "        status_.peers_complete = true;")
 and calls `settle_snapshot`
-(`link/src/meshcore_companion.cpp:1545` — "        settle_snapshot(now);").
+(`link/src/meshcore_companion.cpp:1547` — "        settle_snapshot(now);").
 That function reads exactly two members, `snapshot_dirty_` and `retries_left_`,
 and publishes `Consistent` when the first is clear
 (`link/src/meshcore_companion.cpp:813` — "        status_.snapshot = core::MeshSnapshot::Consistent;").
@@ -147,7 +147,7 @@ completeness (`apps/src/mesh.cpp:284` — "        if (status.peers_complete && 
 | Same-length, content-corrupt | possible: file data carries no CRC (§1); rate **UNKNOWN** | CONTACT frames with garbage keys and names | **weakly** — a record whose byte 33 is not the chat type is not retained (`link/src/meshcore_companion.cpp:686` — "    if (size < 148 || data[33] != kAdvertTypeChat) {"), so the face can show `retained < reported` (§4); repeaters, rooms and any table above 16 contacts show the same |
 | Older backup restored | **cannot occur**: the pin keeps no backup. It becomes possible only with #3499 (§5) | — | — |
 | Reformat, identity kept | yes: ExtraFS fails to mount and is erased, InternalFS mounts | `START 0`, `END lastmod=0` | **no** — same node, empty table |
-| Reformat, identity regenerated | yes: InternalFS fails to mount and the identity is lost | a different public key in `SELF_INFO` | **yes, while this watch holds a pin** — the check fires (`link/src/meshcore_companion.cpp:1358` — "        if (pinned_set_ && !(status_.node_id == pinned_)) {") and the walk is refused (`link/src/meshcore_companion.cpp:1366` — "            wrong_node_ = true;"). With the pin unreadable (`firmware/main/meshcore_ble.cpp:2577` — "    case PinRead::Unreadable:"), unfinished (`firmware/main/meshcore_ble.cpp:2585` — "    case PinRead::Unfinished:") or never adopted (`firmware/main/meshcore_node_pin.h:211` — "            return PinOutcome::AdoptFailed;") the watch attaches to the reformatted node as its own, and this row is as invisible as the others |
+| Reformat, identity regenerated | yes: InternalFS fails to mount and the identity is lost | a different public key in `SELF_INFO` | **yes, while this watch holds a pin** — the check fires (`link/src/meshcore_companion.cpp:1358` — "        if (pinned_set_ && !(status_.node_id == pinned_)) {") and the walk is refused (`link/src/meshcore_companion.cpp:1366` — "            wrong_node_ = true;"). With the pin unreadable (`firmware/main/meshcore_ble.cpp:2578` — "    case PinRead::Unreadable:"), unfinished (`firmware/main/meshcore_ble.cpp:2586` — "    case PinRead::Unfinished:") or never adopted (`firmware/main/meshcore_node_pin.h:211` — "            return PinOutcome::AdoptFailed;") the watch attaches to the reformatted node as its own, and this row is as invisible as the others |
 
 The host replay the issue asks for holds by construction:
 `MeshCoreCompanion` is a function of the frame bytes it is fed, and the three
@@ -232,7 +232,7 @@ table.
   moment**. It is not evidence that anybody deleted the contact.
 
 **ADR-0022 needs no amendment.** Its decision 2 already defines the state by
-the stream — `docs/adr/0022-contact-snapshot-consistency.md:84` — "A snapshot is *consistent* when the" —
+the stream — `docs/adr/0022-contact-snapshot-consistency.md:85` — "A snapshot is *consistent* when the" —
 and decision 5 keeps readiness on the stream as well. What this report adds is
 the scope those words already had: a stream over the RAM table, which a
 recovered store fills like any other.

@@ -1415,8 +1415,10 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // rather than at the end of the walk before.
         snapshot_dirty_ = false;
         last_contact_at_ = now;
-        // Whatever this walk is, its frames have an owner again.
+        // Whatever this walk is, its frames have an owner again, and an `END`
+        // still waiting for the ring was the walk before's (#749).
         retry_swept_ = false;
+        end_unsent_ = false;
         // THE SECOND WALK OF A SESSION IS NOT THE FIRST, and everything below
         // this branch is what decision 7a says a re-read must not do. The
         // published set, the pair, `peers_complete` and `contacts_complete_`
@@ -1494,7 +1496,7 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // every flag false and fell through. Both are the same mistake, and
         // `!contacts_open_` is the form that covers all three walks. A walk the
         // node opens afterwards sets it again, including the node's own --
-        // `link/src/meshcore_companion.cpp:1438` -- "        contacts_open_ = true;"
+        // `link/src/meshcore_companion.cpp:1440` -- "        contacts_open_ = true;"
         // -- so a later walk owns its frames.
         //
         // Every shape of it is wrong about a walk that is already over. With a
