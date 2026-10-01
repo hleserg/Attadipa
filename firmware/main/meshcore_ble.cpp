@@ -2053,8 +2053,8 @@ void mesh_task(void*)
                 PersistOps persist_ops;
                 if (!attadipa::firmware::erase_passkey(persist_ops)) {
                     ESP_LOGE(kTag,
-                             "MeshCore passkey not erased; the watch may "
-                             "scan again at the next boot");
+                             "MeshCore passkey store not cleared; the next "
+                             "boot may scan, or report digits now gone");
                 }
                 scan_stop_owed.store(false);
                 // The refusal log and the owed retry are stop_discovery()'s,
