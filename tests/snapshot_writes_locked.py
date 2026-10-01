@@ -12,7 +12,9 @@ it runs before any task exists.
 It reads text, so it sees assignments only: a `memcpy` into the snapshot, a
 write through a reference, or an RAII guard in place of the two macros are
 not recognised. A guard for `snapshot_lock` has to teach this file its name:
-any other line that names the lock is refused rather than guessed at.
+any other line that names the lock is refused rather than guessed at. A file
+with no lock section or no write to check fails too: a check that found nothing
+to check did not run.
 """
 import pathlib
 import re
@@ -31,19 +33,26 @@ DECLARATION = "portMUX_TYPE snapshot_lock = portMUX_INITIALIZER_UNLOCKED;"
 
 def unlocked_writes(text):
     bad = []
-    held = False
+    held = 0
     for number, raw in enumerate(text.splitlines(), 1):
         line = raw.split("//", 1)[0].strip()
         if line == ENTER:
-            held = True
+            if held:
+                bad.append((number, f"ENTER while the ENTER at {held} has no EXIT"))
+            held = number
         elif line == EXIT:
-            held = False
+            if not held:
+                bad.append((number, "EXIT with no ENTER"))
+            held = 0
         elif "snapshot_lock" in line and line != DECLARATION:
             # Fail closed: a lock line this file cannot read would leave `held`
             # wrong for the rest of the file (#736).
-            bad.append(number)
+            bad.append((number, "names snapshot_lock in a form this test cannot "
+                                "read; teach it the form"))
         elif WRITE.search(line) and line != INITIALIZER and not held:
-            bad.append(number)
+            bad.append((number, "write outside snapshot_lock"))
+    if held:
+        bad.append((held, "ENTER with no EXIT before the end of the file"))
     return bad
 
 
@@ -55,16 +64,24 @@ def self_test():
     for mutant in ("snapshot.availability = x;", "snapshot = next;",
                    "if (a) snapshot.mtu += 1;", "location_snapshot = p;",
                    f"{ENTER}\n{EXIT}\nsnapshot = n;",
-                   f"{ENTER}\nif (a) taskEXIT_CRITICAL(&snapshot_lock);\n{EXIT}"):
+                   f"{ENTER}\nif (a) taskEXIT_CRITICAL(&snapshot_lock);\n{EXIT}",
+                   f"{ENTER}\n{ENTER}\nsnapshot = n;\n{EXIT}",
+                   f"{ENTER}\nsnapshot = n;", f"{EXIT}\nx = 1;"):
         assert unlocked_writes(mutant), f"an unlocked write passed: {mutant!r}"
     assert unlocked_writes("my_snapshot = p;\nx = session_snapshot();") == []
 
 
 def main():
     self_test()
-    bad = unlocked_writes(SOURCE.read_text(encoding="utf-8"))
-    for number in bad:
-        print(f"{SOURCE}:{number}: write outside snapshot_lock", file=sys.stderr)
+    text = SOURCE.read_text(encoding="utf-8")
+    if ENTER not in text or EXIT not in text or not WRITE.search(text):
+        # A check that found nothing to check did not run.
+        print(f"{SOURCE}: no snapshot_lock section or snapshot write to check",
+              file=sys.stderr)
+        return 1
+    bad = unlocked_writes(text)
+    for number, reason in bad:
+        print(f"{SOURCE}:{number}: {reason}", file=sys.stderr)
     return 1 if bad else 0
 
 
