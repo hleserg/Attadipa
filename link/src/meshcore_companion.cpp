@@ -1444,13 +1444,13 @@ bool MeshCoreCompanion::receive(const std::uint8_t* data, std::size_t size,
         // sees it. The key is what tells them apart -- and the walk terms are
         // what make that true here rather than two call sites away.
         //
-        // Both senders of `CMD_GET_CONTACTS` are excluded from overlapping a
-        // fetch: `send_private()` refuses one while a walk runs, and the
-        // re-read in `tick()` stands down while one is outstanding. The
-        // comment that used to sit here asserted the first half and called the
-        // invariant proved; it is an invariant this arm can simply hold, at
-        // the cost of two loads, and an arm that holds its own precondition
-        // does not decay when somebody adds a third sender.
+        // `send_private()` refuses a fetch while a walk runs, and the re-read
+        // in `tick()` stands down while one is outstanding -- but a fetch
+        // accepted once a poll has ruled out the re-read's START overlaps the
+        // walk that START opens anyway, and only `!retry_open_` below keeps
+        // its rows out of the fetch (#707). So this arm holds its own
+        // precondition rather than resting on the call sites, and does not
+        // decay when somebody adds a third sender.
         //
         // A WALK WINS THE TIE, and that is the safe direction. A frame arriving
         // inside one is the walk's by construction, so the snapshot stays whole

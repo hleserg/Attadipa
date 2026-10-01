@@ -5255,6 +5255,18 @@ void test_a_poll_answered_after_an_unanswered_re_read_frees_the_fetch()
     CHECK(client.receive(late_start, sizeof(late_start), at(8 + 10001 + 15003)));
     CHECK(client.status().peers_retained == retained);
     CHECK(client.status().peers_complete);
+
+    // AND THE FETCH IT OPENED OVER IS NOT FED ITS ROWS (#707). The poll let the
+    // fetch past an outstanding re-read, so this walk overlaps a live fetch and
+    // only `!retry_open_` in the fetch intercept keeps the row the fetch waits
+    // for in the re-read's staging. Nothing reaches the air: `Refused`.
+    std::uint8_t row[148];
+    fetched_contact(row, absent_key(0x88), 1);
+    CHECK(client.receive(row, sizeof(row), at(8 + 10001 + 15004)));
+    drain_counting_polls(client);  // the fetch's frame leaves
+    client.tick(at(8 + 10001 + 15005));
+    client.tick(at(8 + 10001 + 15005 + 15001));
+    CHECK(service.status().delivery == core::MeshDelivery::Refused);
 }
 
 // A frame too short to be a reply proves nothing about order.
@@ -5454,8 +5466,8 @@ void test_a_text_the_node_never_answers_expires_unknown()
 // `test_a_fetch_waits_for_a_re_read_too()` is this row with the two steps in
 // the other order, and it passes either way -- which is why the hazard needed
 // its own row rather than an argument from that one.
-// AND IF A WALK STARTS ANYWAY, IT OWNS THE FRAME. Both senders of
-// `CMD_GET_CONTACTS` are excluded from overlapping a fetch, so this shape
+// AND IF A WALK STARTS ANYWAY, IT OWNS THE FRAME. Neither sender of
+// `CMD_GET_CONTACTS` opens a first walk over a fetch, so this shape
 // needs the node to volunteer a `RESP_CODE_CONTACTS_START` -- which the arm
 // accepts, because refusing an unsolicited one would be a claim about upstream
 // firmware this project has not traced. The point of the row is that the
