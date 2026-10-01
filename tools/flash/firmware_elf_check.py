@@ -195,22 +195,32 @@ def assert_handler_fault(elf: Path) -> tuple[str | None, str]:
     component, joined to it only by a build-wide definition (#653). Scope that
     definition to the app and the check there still passes while every LVGL
     object spins again, so this asks the build what `lv_timer.c` was given.
+    Every variant builds LVGL, so a check that cannot run is a fault, not a
+    pass (#703). The panic that abort() becomes is read from the generated
+    config too: `idf.py` prefers an existing `sdkconfig` over the defaults.
     """
     commands = elf.with_name("compile_commands.json")
     if not commands.is_file():
-        return None, (f"there is no {commands.name} beside it, so LVGL's "
-                      "assertion handler was not checked")
+        return (f"there is no {commands.name} beside it, so LVGL's "
+                "assertion handler cannot be checked"), ""
     timer = [entry for entry in json.loads(commands.read_text())
              if entry["file"].endswith("/lv_timer.c")]
     if not timer:
-        return None, ("no lv_timer.c was compiled, so LVGL's assertion "
-                      "handler was not checked")
+        return ("no lv_timer.c was compiled, so LVGL's assertion handler "
+                "cannot be checked"), ""
     line = timer[0].get("command") or " ".join(timer[0].get("arguments", []))
     if "-DLV_ASSERT_HANDLER_INCLUDE=" not in line:
         return (f"{timer[0]['file']} was compiled without "
                 "LV_ASSERT_HANDLER_INCLUDE: an LVGL assertion in this image "
                 "spins with the port lock held instead of aborting (#653)"), ""
-    return None, "LVGL's lv_timer.c was compiled with the abort() handler"
+    config = elf.with_name("config") / "sdkconfig.h"
+    if (not config.is_file() or "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1"
+            not in config.read_text()):
+        return (f"{config} does not set CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT: "
+                "the panic an LVGL assertion becomes is not the print-and-"
+                "reboot sdkconfig.defaults pins (#703)"), ""
+    return None, ("LVGL's lv_timer.c was compiled with the abort() handler, "
+                  "and a panic prints and reboots")
 
 
 def board_fault(nm_output: str, variant: str = "flash") -> str | None:
@@ -401,17 +411,35 @@ def self_test() -> int:
 
         # The assertion handler, from a compile database in the shape
         # ESP-IDF writes, with the definition and without it.
+        # A database or config that is missing, or that does not reach LVGL,
+        # is refused rather than skipped (#703).
         commands = Path(scratch) / "compile_commands.json"
+        config = Path(scratch) / "config" / "sdkconfig.h"
+        config.parent.mkdir()
         timer = {"file": "/idf/managed_components/lvgl__lvgl/src/misc/lv_timer.c"}
-        for define, faults in (("-DLV_ASSERT_HANDLER_INCLUDE=<x.h> ", False),
-                               ("", True)):
-            commands.write_text(json.dumps([dict(timer, command=f"gcc {define}-c")]))
+        defined = json.dumps([dict(timer, command="gcc -DLV_ASSERT_HANDLER_INCLUDE=<x.h> -c")])
+        reboot = "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1\n"
+        for database, panic, faults in (
+                (defined, reboot, False),
+                (json.dumps([dict(timer, command="gcc -c")]), reboot, True),
+                (None, reboot, True),
+                (json.dumps([{"file": "/idf/main/main.cpp", "command": "gcc -c"}]),
+                 reboot, True),
+                (defined, "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT 1\n", True),
+                (defined, None, True)):
+            commands.unlink(missing_ok=True)
+            config.unlink(missing_ok=True)
+            if database is not None:
+                commands.write_text(database)
+            if panic is not None:
+                config.write_text(panic)
             wrong, said = assert_handler_fault(elf)
             if (wrong is not None) != faults:
-                print(f"FAIL: lv_timer.c compiled with '{define}' was "
+                print(f"FAIL: database {database} with config {panic!r} was "
                       f"{'accepted' if faults else 'refused'}")
                 return 1
             cases += 1
+        config.write_text(reboot)
 
         # Every check above passes with its call in `main()` deleted, so drive
         # `main()` itself, with an `nm` that prints a flash image's symbols.
