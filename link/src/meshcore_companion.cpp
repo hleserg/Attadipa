@@ -504,7 +504,7 @@ void MeshCoreCompanion::tick(core::MonotonicTime now)
     // `_iter_started = false` (`docs/research/MESHCORE_COMPANION_PROTOCOL.md:292`
     // -- "**The one thing the handshake does clear** is `_iter_started = false` in the"),
     // and what that costs in practice is
-    // `docs/research/OPEN_QUESTIONS.md:292` -- "| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?**"
+    // `docs/research/OPEN_QUESTIONS.md:293` -- "| M27 | **What does re-sending `CMD_APP_START` mid-session actually cost?**"
     // -- UNKNOWN. CMD_SYNC_NEXT_MESSAGE is not that command, so the window is
     // not here to protect the node from us. It is here because `contacts_-
     // complete_` is a claim *this* client makes and acts on: it releases the

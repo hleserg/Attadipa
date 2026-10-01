@@ -3834,3 +3834,106 @@ The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FO
   [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md); **NOT EXECUTED — HARDWARE REQUIRED**.
 - **Consequence:** no write path from the poll was found; see
   [`MESHCORE_STORAGE_POLL_CONCURRENCY.md`](MESHCORE_STORAGE_POLL_CONCURRENCY.md).
+
+## The host's USB control lines against a native-USB ESP32-S3 (#636)
+
+Four primary-source facts, read on 2026-10-01 for
+[#636](https://github.com/hleserg/Attadipa/issues/636). They are facts about a
+host, a library and a part; what they *predict* for each of this bench's two
+watches is a derivation and lives in
+[ESP32S3_USB_RESET_RECOVERY_CONTRACT](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md)
+§3, not here.
+
+### The USB-Serial/JTAG peripheral reads RTS as a core reset, and the ESP32-S3 cannot disable it
+
+- **Claim:** two halves. Espressif documents that on a part with USB-Serial/JTAG
+  "the peripheral interprets the RTS serial control signal as a core reset. This
+  reset does not re-sample the boot strapping pins". And the software opt-out
+  exists on the ESP32-C6 and not on the ESP32-S3: `USB_SERIAL_JTAG_CHIP_RST_REG`
+  at offset `+0x4c`, carrying `USB_SERIAL_JTAG_USB_UART_CHIP_RST_DIS` as
+  `BIT(2)`, is defined in the C6 register header and has no counterpart in the
+  S3 one.
+- **Source:** `espressif/esptool` at
+  [`c85144b`](https://github.com/espressif/esptool/blob/c85144be5f4edff13e818033a7a9a060f2f607cb/docs/en/esptool/advanced-options.rst),
+  `docs/en/esptool/advanced-options.rst`, the `USB_SERIAL_JTAG_SUPPORTED` block
+  (GPL-2.0-or-later); `espressif/esp-idf` at `v5.5.5`,
+  `components/soc/esp32s3/register/soc/usb_serial_jtag_reg.h` — 732 lines, no
+  `CHIP_RST` and no `RST_DIS` at any offset, the highest before the date
+  register being `USB_SERIAL_JTAG_MEM_CONF_REG` at `+0x48` — against
+  `components/soc/esp32c6/register/soc/usb_serial_jtag_reg.h` (Apache-2.0).
+- **Evidence level:** vendor documentation and vendor source. The negative half
+  is a statement about the **inspected headers** and not a proof that no S3
+  mitigation exists anywhere.
+- **Consequence:** the reset cannot be refused in firmware on either watch, so
+  every mitigation has to be host-side — and §2.3's fact says most of the host
+  side is not reachable either.
+
+### Espressif's own reference sequence resets the chip by asserting RTS with DTR deasserted
+
+- **Claim:** the vendor's USB-Serial/JTAG bootloader reset sequence walks
+  `(RTS high, DTR high)` → `(DTR low, RTS high)` → `(RTS low, DTR high)`, and
+  labels that last transition `# Reset`. With the same file's
+  `PIN_LOW = True` / `PIN_HIGH = False` mapping onto pyserial's booleans, the
+  reset step is `rts = True` while DTR is deasserted. The ordering is deliberate:
+  the comment reads "calls inverted to traverse (1,1) instead of (0,0)".
+- **Source:** `espressif/esp-pylib` at
+  [`e15358d5`](https://github.com/espressif/esp-pylib/blob/e15358d5fedc7d6766ed4493c11851096b8b0291/esp_pylib/serial_reset.py),
+  `esp_pylib/serial_reset.py::usb_jtag_bootloader_reset` and the `PIN_LOW` /
+  `PIN_HIGH` definitions above it (Apache-2.0). `esptool/reset.py` at `c85144b`
+  imports it rather than carrying its own copy.
+- **Evidence level:** vendor source.
+- **Consequence:** it independently corroborates the state MeshCadet
+  [#211](https://github.com/jagoda/meshcadet/pull/211) narrowed to from field
+  observation and wrote as `DTR=0, RTS=1`. Two unrelated sources agree on which
+  combination resets the part. Neither says a post-open re-ordering cures
+  anything — #212 tested that on hardware and reverted it.
+
+### On Linux the kernel asserts DTR and RTS from inside `open(2)`, and lowers them on the last close
+
+- **Claim:** for an `O_NONBLOCK` open — which is the only kind pyserial
+  performs — `tty_port_block_til_ready` raises DTR and RTS before returning,
+  gated only on `C_BAUD(tty)`; `tty_port_shutdown` lowers them on the last
+  close, gated on `C_HUPCL(tty)`. For `cdc_acm` both land in
+  `acm_port_dtr_rts()`, which sends `USB_CDC_CTRL_DTR | USB_CDC_CTRL_RTS` or
+  `0`. That function is `void` and logs a refusal only at `dev_dbg`, with the
+  comment "This is broken in too many devices to spam the logs", so a device
+  that rejects the request fails silently at this layer.
+- **Source:** Linux `v6.17`,
+  [`drivers/tty/tty_port.c:503-506`](https://github.com/torvalds/linux/blob/v6.17/drivers/tty/tty_port.c#L503-L506)
+  — "if (C_BAUD(tty))" then "tty_port_raise_dtr_rts(port);" — and `:355-356`
+  — "if (tty && C_HUPCL(tty))";
+  [`drivers/usb/class/cdc-acm.c:676`](https://github.com/torvalds/linux/blob/v6.17/drivers/usb/class/cdc-acm.c#L676)
+  — "static void acm_port_dtr_rts(struct tty_port *port, bool active)" (GPL-2.0).
+- **Evidence level:** kernel source, read over the GitHub API. Not reproduced
+  with a bus capture on this bench.
+- **Consequence:** pyserial's `rtscts`/`dsrdtr` suppression — the route
+  `tools/flash/ramhold.py` and `tools/flash/flash_no_reset.py` take — removes
+  pyserial's own two ioctls and **not** this one. "Suppress the control lines
+  before opening" is therefore not available to the opening process on Linux;
+  what the flash tools actually buy is that the T-Watch's open succeeds, which
+  is a different property. T8 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
+
+### pyserial asserts both lines inside `open()`, swallows only `EINVAL` and `ENOTTY`, and writes without a bound
+
+- **Claim:** three things, all at the revision below. `SerialBase.__init__`
+  initialises `_rts_state` and `_dtr_state` to `True`. The POSIX `open()` then
+  applies them after `_reconfigure_port(force_update=True)` — `_update_dtr_state`
+  unless `dsrdtr`, `_update_rts_state` unless `rtscts` — and re-raises any
+  `IOError` whose errno is not `EINVAL` or `ENOTTY`. And `write_timeout`
+  defaults to `None`, on which `write()` takes its infinite branch and blocks in
+  `select.select(..., None)` with no deadline.
+- **Source:** `pyserial/pyserial` at
+  [`a5c48d4`](https://github.com/pyserial/pyserial/blob/a5c48d445fbc1943d4fabf8d9090a50fda3172fd/serial/serialutil.py),
+  `serial/serialutil.py:179` and `:210-211`;
+  [`serial/serialposix.py:335`](https://github.com/pyserial/pyserial/blob/a5c48d445fbc1943d4fabf8d9090a50fda3172fd/serial/serialposix.py#L335)
+  (`os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK`), `:344-355` (the two guarded
+  updates and the errno filter) and `:641-649` (the infinite write branch).
+  BSD-3-Clause.
+- **Evidence level:** library source.
+- **Consequence:** `errno 71` is `EPROTO`, so the T-Watch's measured refusal of
+  every `SET_CONTROL_LINE_STATE` request propagates out of the `serial.Serial`
+  constructor rather than being absorbed. And the unbounded host call in this
+  repository's watch-control path is the **write**, not the `tcdrain(2)` that
+  MeshCadet [#208](https://github.com/jagoda/meshcadet/pull/208) named: nothing
+  in `tools/watch/client.py` calls `flush()`, which is pyserial's only
+  `tcdrain` caller.

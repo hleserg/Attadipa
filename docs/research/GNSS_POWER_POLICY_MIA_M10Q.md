@@ -59,7 +59,7 @@ is `BLDO1` at 3300 mV, and FPC pin 3 carries **that supply across the
 connector** rather than an enable line for it. The main board names the net
 `GPS_LDO`, `docs/research/HARDWARE_MATRIX.md:252` — "| 3 | `GPS_LDO` | GNSS supply |" —
 the daughterboard names the same pin `VDD3V3`,
-`docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
+`docs/research/OPEN_QUESTIONS.md:127` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
 and there it reaches the module's `VCC` and `V_IO` balls with nothing in
 between: `docs/research/VERIFIED_FACTS.md:1374` — "Ball `J4` (`V_IO`) and ball `B1` (`VCC`)".
 The two lists are not mirrored halves: pins 1, 2, 6 and 8 carry the same net in
@@ -117,7 +117,7 @@ same section:
    [VERIFIED_FACTS](VERIFIED_FACTS.md) *"The `MS412FE` does reach `V_BCKP`"*.
    An earlier version of this line cited the six nets on `J1` by issue number
    and carried no quote, and that form was the defect rather than the count;
-   the count is held — `docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
+   the count is held — `docs/research/OPEN_QUESTIONS.md:127` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net" —
    and the wake claim no longer rests on it either way, because ball `A6` is
    an open stub on the module's own footprint. So on this board
    **`wakeupSources.uartrx` is the only wake that exists** — for the
@@ -139,7 +139,7 @@ is direct nets with no buffers, and "no buffers" is the load-bearing half.
 "Thirteen" is the connector's name rather than a count: it is drawn with 15
 pins, `docs/research/HARDWARE_MATRIX.md:261` — "The numbers are the main board's `U20`, which is drawn with" —
 of which the main board's own table lists eight, and six carry a net on the
-daughterboard side, `docs/research/OPEN_QUESTIONS.md:126` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net".
+daughterboard side, `docs/research/OPEN_QUESTIONS.md:127` — "3 `VDD3V3`, 6 `RST/EN`, 8 `GPS_RX` and 13 `GND` carry a net".
 Today it is harmless because the
 firmware never drives the module: `firmware/main/local_gnss.cpp:413` — "err = uart_set_pin(kPort, UART_PIN_NO_CHANGE, kRxPin," —
 it leaves the transmitter unrouted. **Every option but continuous tracking routes
