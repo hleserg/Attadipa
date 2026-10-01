@@ -3681,3 +3681,28 @@ The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FO
 - **Consequence:** the defect is reachable without MeshCore PR #3447 — opcode
   29, `RESP_CODE_CLI_REPLY`, is already upstream and already undefined here —
   so ADR-0024 does not depend on that pull request merging.
+
+### A MeshCore T114 pairs by LE Legacy Pairing only; a Heltec V4 offers Secure Connections
+
+- **Claim:** at the pinned MeshCore companion `v1.17.1`
+  (`d92964352441e53b93e8667b802e04f6e072b39e`), the nRF52 companion (Heltec T114) answers pairing with the
+  Secure Connections bit cleared, so every client — this watch and MeshCore's
+  own phone app — gets LE Legacy Pairing with the static passkey. The ESP32
+  companion (Heltec V4) requests `SC | MITM | BOND`.
+- **Source, nRF52:** MeshCore
+  [`src/helpers/nrf52/SerialBLEInterface.cpp:169`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/nrf52/SerialBLEInterface.cpp#L169)
+  — "Bluefruit.Security.setPIN(charpin);". In the core it pins
+  (`meshcore-dev/Adafruit_nRF52_Arduino` `d541301665b40959682252911e57b11df3ee651a`),
+  [`libraries/Bluefruit52Lib/src/BLESecurity.cpp:197`](https://github.com/meshcore-dev/Adafruit_nRF52_Arduino/blob/d541301665b40959682252911e57b11df3ee651a/libraries/Bluefruit52Lib/src/BLESecurity.cpp#L197)
+  — "_sec_param.lesc = 0;", under "// Use Legacy SC static Passkey". Nothing
+  called after it sets `lesc` again, and that struct is the peripheral's
+  security-parameters reply (lines 307–308 of the same file).
+- **Source, ESP32:** MeshCore
+  [`src/helpers/esp32/SerialBLEInterface.cpp:33`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/src/helpers/esp32/SerialBLEInterface.cpp#L33)
+  — "sec.setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);", on Bluedroid
+  from Arduino-ESP32 2.0.17 (`5e19e086c43d0fa5e5a596497ff8f11a0a43f6c2`).
+- **Evidence level:** vendor source only. No pairing was captured on air, and
+  which image each bench node runs was not read off it.
+- **Consequence:** compiling legacy pairing out of this firmware would leave
+  the T114 unable to pair. The owner kept it in; see OD-32 in
+  [`OWNER_DECISIONS.md`](OWNER_DECISIONS.md).
