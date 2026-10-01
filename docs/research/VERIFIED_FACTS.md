@@ -3348,7 +3348,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:754` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:756` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3763,3 +3763,25 @@ The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FO
 - **Consequence:** compiling legacy pairing out of this firmware would leave
   the T114 unable to pair. The owner kept it in; see OD-32 in
   [`OWNER_DECISIONS.md`](OWNER_DECISIONS.md).
+
+### A MeshCore delivery confirmation is not bound to the recipient
+
+- **Claim:** at MeshCore `e94125987ed87497e706a0b54d1e80c709343980`, the
+  four-byte tag behind `PUSH_CODE_SEND_CONFIRMED` (`0x82`) is an unkeyed
+  SHA-256 prefix of timestamp, attempt, text and the sender's public key. A
+  bare `PAYLOAD_TYPE_ACK` carries it with no MAC and no sender, and the
+  companion matches it against its table by value alone. The `0x82` frame does
+  not say which contact the matching acknowledgement came from.
+- **Source:** MeshCore
+  [`src/helpers/BaseChatMesh.cpp:431`](https://github.com/meshcore-dev/MeshCore/blob/e94125987ed87497e706a0b54d1e80c709343980/src/helpers/BaseChatMesh.cpp#L431)
+  — "mesh::Utils::sha256((uint8_t *)&expected_ack, 4, temp, 5 + text_len, self_id.pub_key, PUB_KEY_SIZE);";
+  [`src/Mesh.cpp:568`](https://github.com/meshcore-dev/MeshCore/blob/e94125987ed87497e706a0b54d1e80c709343980/src/Mesh.cpp#L568)
+  — "memcpy(packet->payload, ack, len);";
+  [`examples/companion_radio/MyMesh.cpp:417`](https://github.com/meshcore-dev/MeshCore/blob/e94125987ed87497e706a0b54d1e80c709343980/examples/companion_radio/MyMesh.cpp#L417)
+  — "if (memcmp(data, &expected_ack_table[i].ack, 4) == 0) { // got an ACK from recipient".
+- **Evidence level:** vendor source only, at a revision newer than the fleet's
+  `v1.17.1`. No acknowledgement was forged or replayed on air — M50 in
+  [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
+- **Consequence:** `Confirmed` means the companion node saw a matching tag,
+  not that the addressed recipient acknowledged — see
+  [`MESHCORE_ACK_TRUST.md`](MESHCORE_ACK_TRUST.md).

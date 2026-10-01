@@ -209,11 +209,13 @@ because each is a test case later:
 mesh::Utils::sha256((uint8_t *)&expected_ack, 4, temp, 5 + text_len, self_id.pub_key, PUB_KEY_SIZE);
 ```
 
-`expected_ack` is the first four bytes of a keyed SHA-256 over
-`timestamp ‖ (attempt & 3) ‖ text`, keyed by the **sender's** public key. Three
+`expected_ack` is the first four bytes of a plain SHA-256 over
+`timestamp ‖ (attempt & 3) ‖ text ‖ sender public key`. It is not keyed: the
+sender's key is public, so anyone who can guess the text can compute the tag
+([MESHCORE_ACK_TRUST](MESHCORE_ACK_TRUST.md)). Three
 consequences, none of them obvious from the wire:
 
-1. **It is deterministic.** The same text to the same recipient at the same
+1. **It is deterministic.** The same text from one sender at the same
    Unix second with the same attempt number produces the **same four bytes**.
    Two such sends are indistinguishable to any correlator, including this one.
    A built-in phrase is exactly the text most likely to be sent twice, and a
@@ -224,7 +226,9 @@ consequences, none of them obvious from the wire:
    defaults to `max_attempts=3` and does not reach it; a caller that raises the
    default does.
 3. **It does not identify the recipient.** The recipient's key is not in the
-   hash input. Correlation to a person is the client's own bookkeeping, always.
+   hash input, so the same text in the same second to two recipients gives
+   one tag, and `0x82` does not say whose acknowledgement matched it.
+   Correlation to a person is the client's own bookkeeping, always.
 
 `processAck` carries upstream's own warning in a comment —
 `// NOTE: the same ACK can be received multiple times!` — and handles it by

@@ -41,7 +41,7 @@
 namespace attadipa::firmware {
 
 // MeshCore text as this product sends it. 128 bytes is a decision and not a
-// frame size -- `docs/research/OUTBOUND_MESHCORE_MESSAGES.md:552` -- "So: 128
+// frame size -- `docs/research/OUTBOUND_MESHCORE_MESSAGES.md:556` -- "So: 128
 // out, 128 in, one number, and the asymmetry with upstream's 160 is" -- so the
 // bound is the product constant and never a second literal beside it.
 //
