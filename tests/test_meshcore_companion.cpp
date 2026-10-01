@@ -5466,24 +5466,61 @@ void test_a_text_the_node_never_answers_expires_unknown()
 // `test_a_fetch_waits_for_a_re_read_too()` is this row with the two steps in
 // the other order, and it passes either way -- which is why the hazard needed
 // its own row rather than an argument from that one.
-// AND IF A WALK STARTS ANYWAY, IT OWNS THE FRAME. Neither sender of
-// `CMD_GET_CONTACTS` opens a first walk over a fetch, so this shape
-// needs the node to volunteer a `RESP_CODE_CONTACTS_START` -- which the arm
-// accepts, because refusing an unsolicited one would be a claim about upstream
-// firmware this project has not traced. The point of the row is that the
-// intercept holds its own precondition rather than resting on the two call
-// sites: a third sender added later does not silently start feeding walk rows
-// to a fetch.
+// AND IF A WALK STARTS ANYWAY, IT OWNS THE FRAME -- and the walk that starts
+// anyway is the session's own first one. `CMD_GET_CONTACTS` leaves at
+// `RESP_CODE_DEVICE_INFO` and the walk opens only at the
+// `RESP_CODE_CONTACTS_START` that answers it; in between, `refuse_text()` is
+// already past `LinkNotReady` and the fetch gate's `contacts_open_` and retry
+// flags describe no walk, because the command is in flight and nothing has
+// come back. So a send to an unheld key in that window is accepted and asks
+// the node by key, and the `START` that overlaps it is the one this client
+// asked for -- no volunteered frame and no third sender needed. The handshake
+// below therefore stops one frame short of the walk instead of running
+// `connect_and_handshake()`: the row proves the ordering the senders have
+// rather than one it would be fair to invent. The intercept still has to hold
+// its own precondition rather than resting on the two call sites -- that is
+// what keeps a sender added later from quietly feeding walk rows to a fetch --
+// but it is not defending a hypothesis.
 void test_a_walk_that_starts_anyway_owns_the_contact_frame()
 {
     MeshCoreCompanion client;
-    connect_and_handshake(client);
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+
+    // The regular handshake, frame for frame with `connect_and_handshake()`,
+    // and each command taken out of the ring the way the transport takes it.
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 2 && frame.bytes[0] == 22 && frame.bytes[1] == 3);
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+
+    // THE COMMAND THAT OPENS THE WALK, SENT AND UNANSWERED. This assertion is
+    // the row's precondition: if `RESP_CODE_DEVICE_INFO` ever stops asking for
+    // the contacts here, the `START` further down stops being solicited and the
+    // test fails rather than quietly proving the weaker shape instead.
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 4);
+    CHECK(!client.next_tx(frame));
+
+    // And the send lands in that window: accepted, and asking by full key.
     MeshService service(client);
     const auto far = absent_key(0x44);
     CHECK(service.send_private(far, "hi", WallTime{1000}).accepted());
-    MeshCoreFrame frame{};
     CHECK(client.next_tx(frame) && frame.bytes[0] == 30);
+    CHECK(!client.next_tx(frame));
 
+    // Only now does the node answer the `CMD_GET_CONTACTS`, and the walk it
+    // opens is over a live fetch.
     const std::uint8_t start[] = {2, 1, 0, 0, 0};
     CHECK(client.receive(start, sizeof(start), at(10)));
 
@@ -5492,7 +5529,9 @@ void test_a_walk_that_starts_anyway_owns_the_contact_frame()
     fetched_contact(reply, far, 1);
     CHECK(client.receive(reply, sizeof(reply), at(11)));
 
-    // It went to the walk, and the fetch is still outstanding.
+    // It went to the walk -- a fetched contact never enters the retained
+    // window, so a peer here is the walk's row -- and the fetch is still
+    // outstanding.
     CHECK(client.peer_count() == 1);
     CHECK(client.send_busy());
     CHECK(service.status().delivery == MeshDelivery::Queued);
