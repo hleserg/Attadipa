@@ -1306,8 +1306,17 @@ void test_a_forget_that_ended_unseen_is_shown_on_the_next_open()
 
             // A clock-only walk has no node half: it neither shows the answer
             // nor takes it (#737).
+            // Walked to its end, not only opened.
             ProvisioningEntry clock(board, EntryTask::LocalTime);
             CHECK(clock.field() == EntryField::Day);
+            for (int i = 0; i < 6; ++i) { clock.press(EntryKey::Next); }
+            CHECK(clock.field() == EntryField::TimeReview);
+            clock.press(EntryKey::Next);
+            CHECK(clock.verdict() == EntryVerdict::TimeSaved);
+            clock.press(EntryKey::Next);
+            CHECK(clock.finished() && !clock.waiting());
+            CHECK(board.clocks == 1 && board.passkeys == 0);
+            CHECK(board.forgets == 1);
 
             ProvisioningEntry second(board, task);  // `All` too: first frame
             CHECK(!second.waiting());
@@ -1322,6 +1331,12 @@ void test_a_forget_that_ended_unseen_is_shown_on_the_next_open()
             // Taken, once: a third screen is back to the pin alone, and the old
             // ticket cannot answer a request made after it.
             CHECK(board.forget_op.take(old) == ForgetNodeOutcome::Idle);
+            // The cost of jumping the clock half is this one open: the next
+            // `All` is the clock again (#737).
+            if (task == EntryTask::All) {
+                ProvisioningEntry again(board, task);
+                CHECK(again.field() == EntryField::Day);
+            }
             ProvisioningEntry third(board, EntryTask::NodePasskey);
             CHECK(third.field() ==
                   (c.pin_left ? EntryField::Node : EntryField::Passkey));
