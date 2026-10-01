@@ -214,13 +214,16 @@ def assert_handler_fault(elf: Path) -> tuple[str | None, str]:
                 "LV_ASSERT_HANDLER_INCLUDE: an LVGL assertion in this image "
                 "spins with the port lock held instead of aborting (#653)"), ""
     config = elf.with_name("config") / "sdkconfig.h"
-    if (not config.is_file() or "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1"
-            not in config.read_text()):
-        return (f"{config} does not set CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT: "
-                "the panic an LVGL assertion becomes is not the print-and-"
-                "reboot sdkconfig.defaults pins (#703)"), ""
+    wanted = {"#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1",
+              "#define CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS 0"}
+    if (not config.is_file()
+            or not wanted <= set(config.read_text().splitlines())):
+        return (f"{config} does not set CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT "
+                "with a 0 s delay: the panic an LVGL assertion becomes is not "
+                "the one sdkconfig.defaults asks for; delete a stale sdkconfig "
+                "and rebuild (#703)"), ""
     return None, ("LVGL's lv_timer.c was compiled with the abort() handler, "
-                  "and a panic prints and reboots")
+                  "and a panic prints and reboots at once")
 
 
 def board_fault(nm_output: str, variant: str = "flash") -> str | None:
@@ -418,15 +421,20 @@ def self_test() -> int:
         config.parent.mkdir()
         timer = {"file": "/idf/managed_components/lvgl__lvgl/src/misc/lv_timer.c"}
         defined = json.dumps([dict(timer, command="gcc -DLV_ASSERT_HANDLER_INCLUDE=<x.h> -c")])
-        reboot = "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1\n"
-        for database, panic, faults in (
-                (defined, reboot, False),
-                (json.dumps([dict(timer, command="gcc -c")]), reboot, True),
-                (None, reboot, True),
+        delay = "#define CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS 0\n"
+        reboot = "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT 1\n" + delay
+        for database, panic, marker in (
+                (defined, reboot, None),
+                (json.dumps([dict(timer, command="gcc -c")]), reboot,
+                 "spins with the port lock held"),
+                (None, reboot, "there is no compile_commands.json"),
                 (json.dumps([{"file": "/idf/main/main.cpp", "command": "gcc -c"}]),
-                 reboot, True),
-                (defined, "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT 1\n", True),
-                (defined, None, True)):
+                 reboot, "no lv_timer.c was compiled"),
+                (defined, "#define CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT 1\n" + delay,
+                 "delete a stale sdkconfig"),
+                (defined, reboot.replace("SECONDS 0", "SECONDS 10"),
+                 "delete a stale sdkconfig"),
+                (defined, None, "delete a stale sdkconfig")):
             commands.unlink(missing_ok=True)
             config.unlink(missing_ok=True)
             if database is not None:
@@ -434,9 +442,10 @@ def self_test() -> int:
             if panic is not None:
                 config.write_text(panic)
             wrong, said = assert_handler_fault(elf)
-            if (wrong is not None) != faults:
-                print(f"FAIL: database {database} with config {panic!r} was "
-                      f"{'accepted' if faults else 'refused'}")
+            if (wrong is None) != (marker is None) or (
+                    marker is not None and marker not in wrong):
+                print(f"FAIL: database {database} with config {panic!r} "
+                      f"gave {wrong!r}, expected {marker!r}")
                 return 1
             cases += 1
         config.write_text(reboot)
