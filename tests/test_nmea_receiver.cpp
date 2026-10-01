@@ -503,6 +503,10 @@ void only_a_sentence_that_could_veto_the_fix_costs_it()
          "a refused VTG costs nothing"},
         {"GNZDA,140000.0000000001,04,09,2026,00,00", core::FixType::ThreeD,
          "a refused ZDA costs nothing"},
+        // A proprietary address ends in a type this driver bounds on (#683):
+        // `$PGRMC` is Garmin's, not an RMC, so refusing it costs nothing.
+        {"PGRMC,A,6371000.0,285.0,1,-2.3,0.0,100.0,2.0,0.0000000001,0", core::FixType::ThreeD,
+         "a refused proprietary PGRMC costs nothing"},
         {"GNGSA,A,1,,,,,,,,,,,,,99.0,99.0,99.0000000001,1", core::FixType::NoFix,
          "a refused GSA may have said mode 1"},
         // Passes the fraction preflight and fails minmea: the second `.`.

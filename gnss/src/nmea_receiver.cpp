@@ -215,7 +215,7 @@ bool fractions_fit(const char* line)
 // standard type.
 enum class Sentence : std::uint8_t { Other, Rmc, Gga, Gsa };
 
-Sentence classify(const char* line)
+Sentence sentence_kind(const char* line)
 {
     if (std::strlen(line) < 7) return Sentence::Other;  // `$`, five, a separator
     if (line[0] != '$') return Sentence::Other;
@@ -310,7 +310,7 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
         return;
     }
 
-    switch (classify(line_)) {
+    switch (sentence_kind(line_)) {
     case Sentence::Rmc: {
         minmea_sentence_rmc frame{};
         if (!minmea_parse_rmc(&frame, line_)) {
@@ -465,13 +465,13 @@ void NmeaReceiver::take_sentence(MonotonicTime now)
 // it opens is latched, because what that RMC said is exactly what is unknown.
 // Any other type is read past anyway, so refusing it costs the epoch nothing —
 // and a proprietary sentence is one of those others however its address ends
-// (#683). The type is `classify()`'s answer, the same one dispatch acted on a
+// (#683). The type is `sentence_kind()`'s answer, the same one dispatch acted on a
 // moment ago, so no refused sentence reaches a minmea scanner and no sentence
 // is one type on the way in and another on the way out.
 void NmeaReceiver::refuse(MonotonicTime now)
 {
     ++discarded_;
-    switch (classify(line_)) {
+    switch (sentence_kind(line_)) {
     case Sentence::Rmc:
         close_epoch();
         open_epoch(now);
