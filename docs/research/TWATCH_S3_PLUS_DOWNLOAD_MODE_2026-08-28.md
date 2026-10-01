@@ -255,8 +255,10 @@ See `tools/flash/ramhold.py`, where both this and the suppressed open now live
 under `--connect-mode no_reset`.
 
 **What each part of this is measured by.** The load that produced §8's scan ran
-through a scratch script, not through `ramhold.py`; the two now issue an
-identical sequence, and `ramhold.py --connect-mode no_reset` was afterwards run
+through a scratch script, not through `ramhold.py`; the two then issued an
+identical sequence. `ramhold.py` has since added a `read_mac()` identity check
+between `detect_chip` and `load_ram` (#717), which the scratch script never
+sent. `ramhold.py --connect-mode no_reset` was afterwards run
 against the watch to confirm the changed path. It **opened the port** — the step
 that used to raise `Could not configure port: (5, 'Input/output error')` — and
 reached `ESPLoader.sync()`, failing there with `Write timeout` because the watch
