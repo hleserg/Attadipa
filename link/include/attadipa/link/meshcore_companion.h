@@ -425,7 +425,7 @@ private:
     // request it belongs to and upgrade `Unconfirmed` to `Confirmed`
     // (ADR-0023 decision 2a). `reset_session()` does clear it, which is what
     // stops a match from reaching across a reconnect into a request the wire
-    // can no longer be talking about -- the tag is a keyed hash that repeats.
+    // can no longer be talking about -- the tag is a hash that repeats.
     std::array<std::uint8_t, 4> expected_ack_{};
     // Monotonic within a session, never zero, never reused while the request it
     // names is the one `status_.request_id` reports.
@@ -442,6 +442,9 @@ private:
     // transport dropped. Read only while `contacts_open_` is true, so the stale
     // timestamp a close leaves behind is never consulted.
     bool contacts_open_ = false;
+    // Its `END` arrived and the ring was full: the walk has no rows left, and
+    // the quiet sweep owes it only the sync.
+    bool end_unsent_ = false;
     core::MonotonicTime last_contact_at_{};
     // AN INVALIDATING PUSH ARRIVED INSIDE THE WALK THAT IS RUNNING. Set by four
     // codes and only between START and END; the same codes outside that window

@@ -91,29 +91,22 @@ Entries are added at `MyMesh.cpp:1113-1117` and never expire by age.
 ## 3. What Atta-dipa does with it
 
 `link/src/meshcore_companion.cpp:60` — "constexpr std::uint8_t kPushSendConfirmed = 0x82;".
-The arm at `link/src/meshcore_companion.cpp:1660` — "case kPushSendConfirmed:"
+The arm at `link/src/meshcore_companion.cpp:1676` — "case kPushSendConfirmed:"
 refuses fewer than five bytes, refuses when nothing is pending
-(`link/src/meshcore_companion.cpp:1698` — "if (expected_ack_ == std::array<std::uint8_t, 4>{}) {"),
+(`link/src/meshcore_companion.cpp:1714` — "if (expected_ack_ == std::array<std::uint8_t, 4>{}) {"),
 compares the four bytes with `expected_ack_`, and on a match sets
-`link/src/meshcore_companion.cpp:1705` — "status_.delivery = core::MeshDelivery::Confirmed;".
+`link/src/meshcore_companion.cpp:1721` — "status_.delivery = core::MeshDelivery::Confirmed;".
 The catalogue renders that as `delivered` / `доставлено`
 (`l10n/strings.toml:929` — "[mesh_delivery_confirmed]").
 
-Two source comments in that arm call the tag a "keyed hash"
-(`link/src/meshcore_companion.cpp:1694` — "// keyed hash, so that costs one message in 2^32 an upgrade it was owed",
-`link/src/meshcore_companion.cpp:1724` — "// different request -- which matters, because the tag is a keyed hash").
-§1 shows it is not keyed. The same word stands in three more places:
-`core/include/attadipa/core/mesh_service.h:105` — "four-byte acknowledgement tag, which is a keyed hash of timestamp, attempt and",
-`link/include/attadipa/link/meshcore_companion.h:428` — "the tag is a keyed hash that repeats.",
-and `tests/test_meshcore_companion.cpp:4611` — "a keyed hash of timestamp, attempt and text and repeats for identical".
-The header's "the recipient's key is not even an input" is right; the hash is
-over the sender's public key as data. And the arm still says
-`link/src/meshcore_companion.cpp:1714` — "Positive proof outranks the absence of proof, and",
-the phrase decision 2a of ADR-0023 no longer uses.
-All of these are left as they are because this is a research change; the
-conclusions they draw (rarity of an all-zero tag, repetition for identical
-messages, a late match upgrades) do not depend on the wording. This list is the
-record of that debt: the next change that edits these files corrects them.
+Six source comments called the tag a "keyed hash" or a match "positive
+proof": three in that arm, and one each in
+`link/include/attadipa/link/meshcore_companion.h`,
+`core/include/attadipa/core/mesh_service.h` and
+`tests/test_meshcore_companion.cpp`. §1 shows the hash is not keyed, and all six
+were corrected by the next change to edit those files (#706). The conclusions
+they draw (rarity of an all-zero tag, repetition for identical messages, a late
+match upgrades) never depended on the word.
 
 ## 4. The six cases
 

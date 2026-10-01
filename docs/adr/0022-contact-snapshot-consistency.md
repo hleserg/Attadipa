@@ -19,7 +19,7 @@ the same transport. The node's contact iterator is a raw index into the live
 compacted underneath the cursor while the walk runs — research report §2.
 
 Attadipa converts the end of that stream into a claim about its content:
-`link/src/meshcore_companion.cpp:1524` — "status_.peers_complete = true;" is set
+`link/src/meshcore_companion.cpp:1544` — "status_.peers_complete = true;" is set
 unconditionally on `RESP_CODE_END_OF_CONTACTS`. The stream ending is a syntactic
 fact. That the list matches the node's table is a semantic one, and the wire does
 not carry it.
@@ -50,7 +50,7 @@ readings is the worst possible place to change one silently.
 **1a. Since #567, "finished" also means "went quiet".** A stream that stops for
 three seconds is ended by a sweep in `tick()`, because a bounded transport queue
 drops the tail of a burst and `RESP_CODE_END_OF_CONTACTS` is systematically the
-frame it loses — `link/src/meshcore_companion.cpp:531` — "            status_.peers_complete = true;".
+frame it loses — `link/src/meshcore_companion.cpp:532` — "            status_.peers_complete = true;".
 That is a third rung below the one this ADR is about, not a competing answer to
 it: *the node stopped sending* is weaker than *the node said it was done*, which
 is weaker than *this is the node's list*. A walk closed by the sweep with no
@@ -74,8 +74,11 @@ that still counts is a first walk's whose `START` was lost: that walk has not
 ended, and no sweep can end it, so the boundary frame is its only end
 ([#602](https://github.com/hleserg/Attadipa/issues/602)). It ends **dirty**:
 with no walk open, no invalidating push could be counted on it, so it earns one
-bounded re-read rather than `Consistent`. An `END` before the walk was asked
-for — before DEVICE_INFO — is nobody's and ends nothing.
+bounded re-read rather than `Consistent`. That frame arrives once, so it
+registers the walk before ending it: a full TX ring then costs one quiet sweep,
+not the session, and nothing is published before the sync has left
+([#706](https://github.com/hleserg/Attadipa/issues/706)). An `END` before the
+walk was asked for — before DEVICE_INFO — is nobody's and ends nothing.
 
 **2. Snapshot consistency is a separate observation**, carried alongside it:
 consistent, dirty, retry pending, or degraded. A snapshot is *consistent* when the
@@ -118,7 +121,7 @@ be proven and is not does not.
 **7a. Publishing it costs a shadow copy and a latch, and that is part of this
 decision, not an implementation detail.** A re-read opens with a second
 `RESP_CODE_CONTACTS_START`, whose handler empties the retained set and clears
-both completion flags — `link/src/meshcore_companion.cpp:1429` — "        peer_count_ = 0;".
+both completion flags — `link/src/meshcore_companion.cpp:1434` — "        peer_count_ = 0;".
 Left alone, a retry therefore drops `Availability::Ready`, closes the battery
 poll gate, restarts the `retained/reported` pair at zero, and — the one that
 matters — leaves an incoming message with no sender name, because

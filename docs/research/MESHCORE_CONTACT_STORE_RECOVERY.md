@@ -122,17 +122,17 @@ zeroes `_most_recent_lastmod` (`MyMesh.cpp:1210`), sends one
 `loadContacts` filled.
 
 **Atta-dipa.** START records the total and clears completeness
-(`link/src/meshcore_companion.cpp:1428` — "        status_.peers_reported = reported;",
-`link/src/meshcore_companion.cpp:1431` — "        status_.peers_complete = false;").
+(`link/src/meshcore_companion.cpp:1433` — "        status_.peers_reported = reported;",
+`link/src/meshcore_companion.cpp:1436` — "        status_.peers_complete = false;").
 END, or three quiet seconds standing in for a lost END
-(`link/src/meshcore_companion.cpp:528` — "    if (contacts_open_ && !wrong_node_ &&"),
+(`link/src/meshcore_companion.cpp:529` — "    if (contacts_open_ && !wrong_node_ &&"),
 sets it again
-(`link/src/meshcore_companion.cpp:1524` — "        status_.peers_complete = true;")
+(`link/src/meshcore_companion.cpp:1544` — "        status_.peers_complete = true;")
 and calls `settle_snapshot`
-(`link/src/meshcore_companion.cpp:1529` — "        settle_snapshot(now);").
+(`link/src/meshcore_companion.cpp:1545` — "        settle_snapshot(now);").
 That function reads exactly two members, `snapshot_dirty_` and `retries_left_`,
 and publishes `Consistent` when the first is clear
-(`link/src/meshcore_companion.cpp:808` — "        status_.snapshot = core::MeshSnapshot::Consistent;").
+(`link/src/meshcore_companion.cpp:813` — "        status_.snapshot = core::MeshSnapshot::Consistent;").
 Neither the START count nor any frame's content is an input. The one consumer
 that compares counts, the mesh screen's `retained/reported` pair, waits only on
 completeness (`apps/src/mesh.cpp:284` — "        if (status.peers_complete && retained < reported) {").
@@ -144,10 +144,10 @@ completeness (`apps/src/mesh.cpp:284` — "        if (status.peers_complete && 
 | Legitimately empty table | yes | `START 0`, `END lastmod=0` | — (the reference) |
 | Zero-length truncation | **yes**: a cut between `remove` and `close` (§2) | `START 0`, `END lastmod=0` | **no** — identical bytes |
 | Partial final record | not from an interrupted save in v1.7, whose dir entry stays at size 0 until close; possible only if a block is damaged after a successful save (**UNKNOWN**, M52) | `START n`, n CONTACTs, END | **no** — a shorter table looks like fewer contacts |
-| Same-length, content-corrupt | possible: file data carries no CRC (§1); rate **UNKNOWN** | CONTACT frames with garbage keys and names | **weakly** — a record whose byte 33 is not the chat type is not retained (`link/src/meshcore_companion.cpp:685` — "    if (size < 148 || data[33] != kAdvertTypeChat) {"), so the face can show `retained < reported` (§4); repeaters, rooms and any table above 16 contacts show the same |
+| Same-length, content-corrupt | possible: file data carries no CRC (§1); rate **UNKNOWN** | CONTACT frames with garbage keys and names | **weakly** — a record whose byte 33 is not the chat type is not retained (`link/src/meshcore_companion.cpp:686` — "    if (size < 148 || data[33] != kAdvertTypeChat) {"), so the face can show `retained < reported` (§4); repeaters, rooms and any table above 16 contacts show the same |
 | Older backup restored | **cannot occur**: the pin keeps no backup. It becomes possible only with #3499 (§5) | — | — |
 | Reformat, identity kept | yes: ExtraFS fails to mount and is erased, InternalFS mounts | `START 0`, `END lastmod=0` | **no** — same node, empty table |
-| Reformat, identity regenerated | yes: InternalFS fails to mount and the identity is lost | a different public key in `SELF_INFO` | **yes, while this watch holds a pin** — the check fires (`link/src/meshcore_companion.cpp:1353` — "        if (pinned_set_ && !(status_.node_id == pinned_)) {") and the walk is refused (`link/src/meshcore_companion.cpp:1361` — "            wrong_node_ = true;"). With the pin unreadable (`firmware/main/meshcore_ble.cpp:2577` — "    case PinRead::Unreadable:"), unfinished (`firmware/main/meshcore_ble.cpp:2585` — "    case PinRead::Unfinished:") or never adopted (`firmware/main/meshcore_node_pin.h:211` — "            return PinOutcome::AdoptFailed;") the watch attaches to the reformatted node as its own, and this row is as invisible as the others |
+| Reformat, identity regenerated | yes: InternalFS fails to mount and the identity is lost | a different public key in `SELF_INFO` | **yes, while this watch holds a pin** — the check fires (`link/src/meshcore_companion.cpp:1358` — "        if (pinned_set_ && !(status_.node_id == pinned_)) {") and the walk is refused (`link/src/meshcore_companion.cpp:1366` — "            wrong_node_ = true;"). With the pin unreadable (`firmware/main/meshcore_ble.cpp:2577` — "    case PinRead::Unreadable:"), unfinished (`firmware/main/meshcore_ble.cpp:2585` — "    case PinRead::Unfinished:") or never adopted (`firmware/main/meshcore_node_pin.h:211` — "            return PinOutcome::AdoptFailed;") the watch attaches to the reformatted node as its own, and this row is as invisible as the others |
 
 The host replay the issue asks for holds by construction:
 `MeshCoreCompanion` is a function of the frame bytes it is fed, and the three
@@ -170,7 +170,7 @@ indistinguishable rows above feed it the same bytes.
 `lastmod` going backwards between two sessions — is ambiguous by design and
 would need state this product does not keep across a session: `reset_session`
 clears the walk (`link/src/meshcore_companion.cpp:225` — "    status_.peers_complete = false;",
-`link/src/meshcore_companion.cpp:245` — "    status_.snapshot = core::MeshSnapshot::None;").
+`link/src/meshcore_companion.cpp:246` — "    status_.snapshot = core::MeshSnapshot::None;").
 
 One more consequence, read from source: a direct message is decrypted only by
 trying contacts whose hash matches its source (`src/Mesh.cpp:147-160`), so after
@@ -227,12 +227,12 @@ table.
 - **"Contact not found"** — `CMD_GET_CONTACT_BY_KEY` answers
   `ERR_CODE_NOT_FOUND` from `lookupContactByPubKey` over the RAM table *now*
   (`MyMesh.cpp:1324-1331`), and this client publishes `Refused` for it
-  (`link/src/meshcore_companion.cpp:380` — "    // -- which is also what the same fetch answered `ERR_CODE_NOT_FOUND`").
+  (`link/src/meshcore_companion.cpp:381` — "    // -- which is also what the same fetch answered `ERR_CODE_NOT_FOUND`").
   Absence from a fetch or a walk means **absent from the node's table at that
   moment**. It is not evidence that anybody deleted the contact.
 
 **ADR-0022 needs no amendment.** Its decision 2 already defines the state by
-the stream — `docs/adr/0022-contact-snapshot-consistency.md:81` — "A snapshot is *consistent* when the" —
+the stream — `docs/adr/0022-contact-snapshot-consistency.md:84` — "A snapshot is *consistent* when the" —
 and decision 5 keeps readiness on the stream as well. What this report adds is
 the scope those words already had: a stream over the RAM table, which a
 recovered store fills like any other.
@@ -242,7 +242,7 @@ and a message whose sender resolves to no contact carries no target
 (`docs/adr/0021-remote-target-from-a-message.md:79` — "**2. A target is named by the full 32-byte public key of the contact the").
 A contact lost with the store therefore resolves to no target by its key. A
 sender is matched on a six-byte prefix
-(`link/src/meshcore_companion.cpp:728` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {"),
+(`link/src/meshcore_companion.cpp:729` — "        if (std::memcmp(peers_[i].id.public_key.data(), prefix, 6) == 0) {"),
 so a collision with a remaining or garbage contact is not excluded, and
 ADR-0021 already declines to call that risk zero. The selection itself is
 not implemented yet; when it is, the rule this report adds for it is the third

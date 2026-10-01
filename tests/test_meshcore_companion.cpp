@@ -2469,6 +2469,68 @@ void test_a_first_walk_whose_start_was_lost_still_ends_on_end()
     CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
 }
 
+// AND A FULL RING DOES NOT LOSE IT (#706). The lost-`START` `END` arrives once;
+// if the sync cannot be queued, the walk must still end on the next sweep, and
+// nothing may be published before the frame that ends it left. The session
+// starts at uptime, not zero, so a re-read stamped from zero would show.
+void test_a_lost_start_end_on_a_full_ring_tries_again()
+{
+    MeshCoreCompanion client;
+    client.begin(at(60000));
+    client.peer_arriving(at(60001));
+    client.connected(at(60002));
+
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(60003)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(60004)));
+
+    // No `START`, and the ring undrained: three handshake frames and a text.
+    std::uint8_t contact[148]{};
+    contact[0] = 3;
+    for (std::size_t i = 0; i < 32; ++i) contact[1 + i] = static_cast<std::uint8_t>(i + 1);
+    contact[33] = 1;
+    std::memcpy(&contact[100], "Peer", 4);
+    CHECK(client.receive(contact, sizeof(contact), at(60006)));
+    core::MeshPeerId peer{};
+    for (std::size_t i = 0; i < 32; ++i) {
+        peer.public_key[i] = static_cast<std::uint8_t>(i + 1);
+    }
+    CHECK(client.send_private(peer, "Hello", core::WallTime{1000}).accepted());
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(60007)));
+    CHECK(!client.status().peers_complete);
+    CHECK(client.malformed_frames() == 0);
+
+    MeshCoreFrame frame{};
+    for (int i = 0; i < 4; ++i) {
+        CHECK(client.next_tx(frame));
+        CHECK(frame.bytes[0] != 10);
+    }
+    CHECK(!client.next_tx(frame));
+
+    client.tick(at(60007 + 3000));
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame));
+    CHECK(frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().peers_complete);
+    CHECK(client.status().snapshot == core::MeshSnapshot::Dirty);
+
+    // The re-read waits its ten seconds from the walk's end, not from zero.
+    client.tick(at(60007 + 3001));
+    CHECK(drain_counting_re_reads(client) == 0);
+    client.tick(at(60007 + 3000 + 10001));
+    CHECK(drain_counting_re_reads(client) == 1);
+    CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
+}
+
 // An `END` before DEVICE_INFO answers a walk nobody asked for, and ends
 // nothing: no messages fetched, no list claimed complete.
 void test_an_end_before_the_walk_was_asked_for_ends_nothing()
@@ -2534,11 +2596,17 @@ void open_a_contact_stream(MeshCoreCompanion& client, bool drain)
 // A WALK A PUSH INVALIDATED, opened and ended by hand because the shape is the
 // point: the four codes are dirt only between `RESP_CODE_CONTACTS_START` and
 // `RESP_CODE_END_OF_CONTACTS`, so the push has to land inside the stream and
-// the stream has to end for anything to be published. `drain` leaves the
-// handshake's commands in the ring for the caller that needs it full.
+// the stream has to end for anything to be published. Undrained, it takes only
+// CMD_APP_START, so the END fills the ring with its sync and its vars request
+// for the caller that needs it full.
 void open_a_dirty_walk(MeshCoreCompanion& client, bool drain)
 {
     open_a_contact_stream(client, drain);
+    if (!drain) {
+        MeshCoreFrame frame{};
+        CHECK(client.next_tx(frame));
+        CHECK(frame.size == 16 && frame.bytes[0] == 1);
+    }
 
     // PUSH_CODE_CONTACT_DELETED, inside the walk: the node compacted its table
     // under its own iterator and the rows this walk has not reached moved.
@@ -3458,8 +3526,9 @@ void test_a_re_read_does_not_unname_a_sender_mid_walk()
 void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
 {
     MeshCoreCompanion client;
-    // Undrained: CMD_APP_START, CMD_DEVICE_QUERY and CMD_GET_CONTACTS are in
-    // the ring, and the walk's own CMD_SYNC_NEXT_MESSAGE takes the fourth slot.
+    // Undrained but for CMD_APP_START: CMD_DEVICE_QUERY and CMD_GET_CONTACTS
+    // are in the ring, and the walk's END fills the other two slots with
+    // CMD_SYNC_NEXT_MESSAGE and CMD_GET_CUSTOM_VARS.
     // The drain is outstanding from here to the end of this test.
     open_a_dirty_walk(client, false);
 
@@ -3467,7 +3536,7 @@ void test_a_re_reads_end_spends_no_drain_on_a_full_ring()
     // from the moment the re-read goes out until the test drains it.
     MeshCoreFrame frame{};
     CHECK(client.next_tx(frame));
-    CHECK(frame.size == 16 && frame.bytes[0] == 1);
+    CHECK(frame.bytes[0] == 22);
 
     client.tick(at(8 + 10000));
     CHECK(client.status().snapshot == core::MeshSnapshot::RetryPending);
@@ -3769,7 +3838,7 @@ void test_a_swept_walks_late_end_does_not_settle_over_a_live_attempt()
 }
 
 // `retry_swept_` IS CLEARED BY ANY `START`, NOT ONLY BY AN ATTEMPT'S OWN. The
-// line that does it -- `link/src/meshcore_companion.cpp:1414` -- "        retry_swept_ = false;"
+// line that does it -- `link/src/meshcore_companion.cpp:1419` -- "        retry_swept_ = false;"
 // -- was uncovered: every `START` after a sweep in the suite was attempt two's,
 // where `retry_open_` is set three lines later and makes the guard inert either
 // way. The shape that needs it is a walk the node starts on its own, after the
@@ -3833,7 +3902,7 @@ void test_a_node_started_walk_after_the_budget_owns_its_frames()
 // THE QUIET WINDOW OUTLIVES A REFUSAL RATHER THAN BEING SPENT ON ONE. The sweep
 // is the one place that asks a question from outside `receive()`, and
 // `receive()` is where the refusal guard lives:
-// `link/src/meshcore_companion.cpp:1318` -- "    if (wrong_node_) return false;".
+// `link/src/meshcore_companion.cpp:1323` -- "    if (wrong_node_) return false;".
 // So the sweep has to carry
 // the guard itself, and the interesting half is what it does with the window
 // afterwards: `unpin()` clears `wrong_node_` inside the session, so a sweep
@@ -3881,7 +3950,7 @@ void test_a_refused_session_keeps_its_quiet_window()
 }
 
 // A FULL RING IS NOT AN ANSWER. `request_next_message()` returns false when the
-// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:750` --
+// four-deep TX ring has no room -- `link/src/meshcore_companion.cpp:751` --
 // "    if (!enqueue(sync, sizeof(sync))) {" -- and the session has exactly one
 // CMD_SYNC_NEXT_MESSAGE to spend on a lost boundary. Counting a frame that
 // never left would strand the node's backlog for the session, which is the
@@ -4608,7 +4677,7 @@ void test_an_ack_after_the_budget_upgrades_unconfirmed_to_confirmed()
 
     // AND THE UPGRADE IS BOUNDED BY THE REQUEST, NOT BY THE CLOCK. Once the
     // request has been replaced, a match has nothing to attach to -- the tag is
-    // a keyed hash of timestamp, attempt and text and repeats for identical
+    // a hash of timestamp, attempt and text and repeats for identical
     // messages in the same second, so an unattached match would be evidence
     // about some other message.
     {
@@ -5009,6 +5078,74 @@ void test_a_fetched_contact_that_is_not_a_chat_contact_is_refused()
     CHECK(service.status().delivery == MeshDelivery::Refused);
     CHECK(!client.send_busy());
     CHECK(!client.next_tx(frame));  // and no text went out
+}
+
+// AND AN `END` THE RING COULD NOT ANSWER OWNS NO LATER ROW (#706). With `START`
+// lost, a fetch can take the ring's last slot; once the ring drains, the
+// node's reply arrives inside the quiet window, and it is the fetch's.
+void test_a_fetch_behind_an_unsent_end_still_gets_its_reply()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+
+    MeshService service(client);
+    const auto far = absent_key(0xD3);
+    CHECK(service.send_private(far, "hi", WallTime{1000}).accepted());
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(5)));
+
+    MeshCoreFrame frame{};
+    for (int i = 0; i < 4; ++i) CHECK(client.next_tx(frame) && frame.bytes[0] != 10);
+    CHECK(!client.next_tx(frame));
+
+    std::uint8_t reply[148];
+    fetched_contact(reply, far, 1);
+    CHECK(client.receive(reply, sizeof(reply), at(6)));
+    CHECK(client.next_tx(frame) && frame.bytes[0] == 2);
+    CHECK(service.status().delivery == MeshDelivery::Queued);
+}
+
+// AND BOTH OR NEITHER. With one free slot the sync would leave and
+// CMD_GET_CUSTOM_VARS would not, and nothing would ask for it again.
+void test_an_end_with_one_free_slot_waits_for_both_frames()
+{
+    MeshCoreCompanion client;
+    client.begin(at(0));
+    client.peer_arriving(at(1));
+    client.connected(at(2));
+    std::uint8_t self[62]{};
+    self[0] = 5;
+    std::memcpy(&self[58], "Node", 4);
+    CHECK(client.receive(self, sizeof(self), at(3)));
+    std::uint8_t device[82]{};
+    device[0] = 13;
+    device[1] = 13;
+    CHECK(client.receive(device, sizeof(device), at(4)));
+
+    const std::uint8_t end[] = {4, 0, 0, 0, 0};
+    CHECK(client.receive(end, sizeof(end), at(5)));
+    CHECK(!client.status().peers_complete);
+    CHECK(client.malformed_frames() == 0);
+
+    MeshCoreFrame frame{};
+    CHECK(client.next_tx(frame) && frame.bytes[0] != 10);
+    client.tick(at(5 + 3000));
+    CHECK(client.next_tx(frame) && frame.bytes[0] != 10);
+    CHECK(client.next_tx(frame) && frame.bytes[0] != 10);
+    CHECK(client.next_tx(frame) && frame.size == 1 && frame.bytes[0] == 10);
+    CHECK(client.next_tx(frame) && frame.size == 1 && frame.bytes[0] == 40);
+    CHECK(!client.next_tx(frame));
+    CHECK(client.status().peers_complete);
 }
 
 // HAZARD 3, AND THE PLACEMENT IS THE SECOND LINE, NOT THE FIRST.
@@ -5456,6 +5593,7 @@ int main()
     test_handshake_contacts_and_service_boundary();
     test_a_lost_contacts_end_still_asks_for_messages();
     test_a_first_walk_whose_start_was_lost_still_ends_on_end();
+    test_a_lost_start_end_on_a_full_ring_tries_again();
     test_an_end_before_the_walk_was_asked_for_ends_nothing();
     test_a_refused_session_keeps_its_quiet_window();
     test_a_quiet_stream_that_cannot_send_tries_again();
@@ -5539,6 +5677,8 @@ int main()
     test_a_send_to_an_unretained_key_asks_the_node_for_the_contact();
     test_a_fetched_contact_does_not_enter_the_retained_window();
     test_a_fetched_contact_that_is_not_a_chat_contact_is_refused();
+    test_a_fetch_behind_an_unsent_end_still_gets_its_reply();
+    test_an_end_with_one_free_slot_waits_for_both_frames();
     test_a_fetch_waits_for_a_re_read_too();
     test_a_poll_answered_after_an_unanswered_re_read_frees_the_fetch();
     test_a_malformed_battery_reply_does_not_free_the_fetch();

@@ -124,14 +124,14 @@ moved. The two places the finding rests on did not:
 
 `drain_after()` is the only caller of `request_next_message()` inside the
 dispatcher —
-`link/src/meshcore_companion.cpp:895` — "void MeshCoreCompanion::drain_after(bool accepted, core::MonotonicTime now)"
+`link/src/meshcore_companion.cpp:900` — "void MeshCoreCompanion::drain_after(bool accepted, core::MonotonicTime now)"
 — and it is reached from exactly three cases: `RESP_CODE_CONTACT_MSG_RECV`
-(`link/src/meshcore_companion.cpp:1787` — "    case kResponseContactMessage:"),
+(`link/src/meshcore_companion.cpp:1803` — "    case kResponseContactMessage:"),
 and the two V3 arms beside it. `RESP_CODE_NO_MORE_MESSAGES` ends the drain
-(`link/src/meshcore_companion.cpp:1796` — "    case kResponseNoMoreMessages:").
+(`link/src/meshcore_companion.cpp:1812` — "    case kResponseNoMoreMessages:").
 Everything else falls to the default:
 
-`link/src/meshcore_companion.cpp:1930` — "        // A response code this build does not know is a frame we did not"
+`link/src/meshcore_companion.cpp:1946` — "        // A response code this build does not know is a frame we did not"
 
 which counts the frame in `malformed_frames_` and returns. It does not ask
 again — and **it does not end the drain either**, which is the part the issue
@@ -140,15 +140,15 @@ did not predict and the part that costs the most.
 ### 3.2 What that costs, which is more than one missing request
 
 `draining_` stays up until the deadline in `tick()` —
-`link/src/meshcore_companion.cpp:550` — "    if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {"
+`link/src/meshcore_companion.cpp:551` — "    if (draining_ && core::elapsed(draining_since_, now) >= kMaxAckWait) {"
 — and that budget is fifteen seconds
 (`link/include/attadipa/link/meshcore_companion.h:272` — "    static constexpr core::Millis kMaxAckWait{15000};").
 For those fifteen seconds:
 
 - the swallowed-push repayment is withheld, because it is gated on the same
-  flag — `link/src/meshcore_companion.cpp:576` — "    if (!wrong_node_ && !draining_) {";
+  flag — `link/src/meshcore_companion.cpp:577` — "    if (!wrong_node_ && !draining_) {";
 - and **the battery poll is withheld too**, by the drain gate in `next_tx()` —
-  `link/src/meshcore_companion.cpp:648` — "        (tx_size_ == 0 || drain_queued) && (!draining_ || drain_queued)) {".
+  `link/src/meshcore_companion.cpp:649` — "        (tx_size_ == 0 || drain_queued) && (!draining_ || drain_queued)) {".
   Nothing in the issue or in #481 anticipated an unknown message frame holding
   telemetry, and it does.
 
@@ -212,7 +212,7 @@ What each row settles:
 - **11** — the counter-case, and the precedent §5 is built on. A
   `TXT_TYPE_CLI_DATA` message is understood, shown to nobody, counted
   separately, and **still advances the queue**
-  (`link/src/meshcore_companion.cpp:1066` — "    if (data[text_type] == kTextCliData) { ++cli_frames_; return true; }").
+  (`link/src/meshcore_companion.cpp:1071` — "    if (data[text_type] == kTextCliData) { ++cli_frames_; return true; }").
   "Consumed" is already a class in this client that is neither "displayed" nor
   "malformed". An unknown response is the same kind of thing with less known
   about it.

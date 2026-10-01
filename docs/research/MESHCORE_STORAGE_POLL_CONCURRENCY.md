@@ -85,16 +85,16 @@ unprotected cache. What the traversal *does* with that cache is §3.
 **Atta-dipa side.** The request is built once the handshake has finished and
 nothing else is queued:
 
-- `link/src/meshcore_companion.cpp:646` — "self_info_seen_ && device_info_seen_ && contacts_complete_ &&"
+- `link/src/meshcore_companion.cpp:647` — "self_info_seen_ && device_info_seen_ && contacts_complete_ &&"
   is part of the enqueue gate, and
-  `link/src/meshcore_companion.cpp:652` — "const std::uint8_t request[] = {kGetBatteryAndStorage};"
+  `link/src/meshcore_companion.cpp:653` — "const std::uint8_t request[] = {kGetBatteryAndStorage};"
   is the frame.
 - It is due when it has never been sent this session, or when 60 s have passed
   since the **start** of the last one:
-  `link/src/meshcore_companion.cpp:348` — "battery_due_ = !battery_polled_ ||"
-  and `link/src/meshcore_companion.cpp:349` — "core::elapsed(battery_started_, now) >= kBatteryPollPeriod;",
+  `link/src/meshcore_companion.cpp:349` — "battery_due_ = !battery_polled_ ||"
+  and `link/src/meshcore_companion.cpp:350` — "core::elapsed(battery_started_, now) >= kBatteryPollPeriod;",
   with `link/src/meshcore_companion.cpp:72` — "constexpr core::Millis kBatteryPollPeriod{60000};".
-- Sending stamps the start (`link/src/meshcore_companion.cpp:675` — "battery_started_ = poll_now_;")
+- Sending stamps the start (`link/src/meshcore_companion.cpp:676` — "battery_started_ = poll_now_;")
   and a five-second budget fails the request without retrying early
   (`link/src/meshcore_companion.cpp:73` — "constexpr core::Millis kBatteryReplyBudget{5000};").
 - A new session clears the flag (`link/src/meshcore_companion.cpp:180` — "battery_polled_ = false;"),
@@ -135,8 +135,8 @@ Any traversal error is swallowed: `DataStore.cpp:95`–`:97` log under
 `MESH_DEBUG_PRINTLN` and return 0, and the T114 companion builds without
 `MESH_DEBUG` (`variants/heltec_t114/platformio.ini:224` — ";  -D MESH_DEBUG=1"), so a corrupt traversal is invisible on the wire except as
 "0 KiB used" — which Atta-dipa never reads: the reply layout is
-`link/src/meshcore_companion.cpp:1596` — "// Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].",
-and the parse takes only bytes 1–2 (`link/src/meshcore_companion.cpp:1618` — "static_cast<unsigned>(data[1]) |").
+`link/src/meshcore_companion.cpp:1612` — "// Pinned Companion producer: [12][u16 mV][u32 storage][u32 storage].",
+and the parse takes only bytes 1–2 (`link/src/meshcore_companion.cpp:1634` — "static_cast<unsigned>(data[1]) |").
 
 ## 3. What the traversal can and cannot do
 
@@ -270,7 +270,7 @@ Mechanism: **UNKNOWN**. Only the HIL matrix of §8 can tell them apart.
 
 Atta-dipa keeps **no** record of the last battery request before a disconnect:
 the request is never logged, and `received_at`
-(`link/src/meshcore_companion.cpp:1627` — "battery.received_at = now;") lives
+(`link/src/meshcore_companion.cpp:1643` — "battery.received_at = now;") lives
 only in memory. A post-mortem cannot say whether a poll was in flight.
 
 ## 7. Is battery separable from storage?
