@@ -2244,15 +2244,15 @@ void mesh_task(void*)
         }
         // AND THE POSITION, ON THE SAME PASS AND WITH NO CLOCK OF ITS OWN.
         //
-        // The line is logged only when it changes, which on this input means
-        // when the node states a different coordinate, when the link changes
-        // state, or when the receiver hint arrives -- not once per pass, and
-        // never on the age alone, which advances continuously and would print
-        // forever. It is an engineering surface and it is deliberately the
-        // *first* consumer: it shows both ages, the validity and the node's key
-        // beside the coordinate, so the uncertainty is the subject rather than
-        // a footnote. A map built on this input before that was visible would
-        // present a coordinate the node cannot vouch for as a fix.
+        // NOT IN ANY SHIPPED IMAGE. The line is DEBUG since #716 and this file
+        // sets no `LOG_LOCAL_LEVEL`, so with `CONFIG_LOG_MAXIMUM_LEVEL` at 3
+        // the call is compiled out and the render below feeds nothing. Getting
+        // it back is a build setting -- raise that and the tag's level, as at
+        // the frame dump above -- and then it logs only when it changes: a new
+        // coordinate, a link state or the receiver hint, never the age alone.
+        // It shows both ages, the validity and the node's key beside the
+        // coordinate, so the uncertainty is the subject rather than a footnote,
+        // and a coordinate the node cannot vouch for never reads as a fix.
         location.poll();
         {
             const attadipa::core::LocationState published = location.state(now());
