@@ -3348,7 +3348,7 @@ ones that heading states.
   withdrawn — it is wrong, and this repository already holds the reason.** The
   AXP2101 this meter sits upstream of limits its own VBUS draw with a register
   whose power-on default is **1500 mA**
-  (`docs/research/OPEN_QUESTIONS.md:756` — "POR default `100b` = 1500 mA"),
+  (`docs/research/OPEN_QUESTIONS.md:758` — "POR default `100b` = 1500 mA"),
   and **no revision of this repository has ever written `REG 0x16` in PMU
   code** — `git log --all -S "0x16" -- firmware/main/board_power.cpp
   firmware/main/twatch_board.cpp firmware/main/physical_input.cpp` returns
@@ -3785,3 +3785,29 @@ The reading is [MESHCORE_OFFLINE_QUEUE_FORWARD_COMPAT](MESHCORE_OFFLINE_QUEUE_FO
 - **Consequence:** `Confirmed` means the companion node saw a matching tag,
   not that the addressed recipient acknowledged — see
   [`MESHCORE_ACK_TRUST.md`](MESHCORE_ACK_TRUST.md).
+
+### A MeshCore contact list says nothing about whether the node's store survived
+
+- **Claim:** at MeshCore `v1.17.1` (`d92964352441e53b93e8667b802e04f6e072b39e`,
+  the fleet pin, read directly), the companion saves contacts by removing
+  `/contacts3` and rewriting it with no header, checksum, generation or backup,
+  and loads it by reading 152-byte records until the first short read. A failed
+  mount is answered by erasing and formatting the region, and nothing about a
+  failed save, a short load or a reformat is ever reported to the app.
+- **Source:** MeshCore
+  [`examples/companion_radio/DataStore.cpp:36`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/DataStore.cpp#L36)
+  — "fs->remove(filename);";
+  [`examples/companion_radio/DataStore.cpp:281`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/DataStore.cpp#L281)
+  — "if (!success) break; // EOF";
+  [`examples/companion_radio/main.cpp:76`](https://github.com/meshcore-dev/MeshCore/blob/d92964352441e53b93e8667b802e04f6e072b39e/examples/companion_radio/main.cpp#L76)
+  — "CustomLFS ExtraFS(0xD4000, 0x19000, 128);";
+  CustomLFS `0.2.3`
+  [`src/CustomLFS.cpp:221`](https://github.com/oltaco/CustomLFS/blob/b3928ea2d0f46c2533e901c43f471a081c503a3c/src/CustomLFS.cpp#L221)
+  — "if (!Adafruit_LittleFS::begin()) {".
+- **Evidence level:** vendor source only. No save was interrupted on a real
+  node — M51 and M52 in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md).
+- **Consequence:** a legitimately empty table, an interrupted save and a
+  reformat that kept the identity enumerate byte-identically. `peers_complete`
+  and `MeshSnapshot::Consistent` describe one walk of the node's RAM table and
+  nothing more — see
+  [`MESHCORE_CONTACT_STORE_RECOVERY.md`](MESHCORE_CONTACT_STORE_RECOVERY.md).
