@@ -116,8 +116,9 @@ ProvisioningEntry::ProvisioningEntry(core::Provisioner& sink, EntryTask task,
         }
         // An owed forget answer jumps the clock half (#733): a board builds
         // only `All`, and a holder who left from the Day field was otherwise
-        // never told. Shown once, so the next open is the clock again.
-        if (!sink_.mesh_forget_owed()) { return; }
+        // never told. Shown once, so the next open is the clock again. A
+        // clock-only walk has no node half to jump to and leaves it owed (#737).
+        if (task_ != EntryTask::All || !sink_.mesh_forget_owed()) { return; }
     }
     enter_node_half();
 }
