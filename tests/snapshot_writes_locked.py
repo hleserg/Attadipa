@@ -11,7 +11,8 @@ it runs before any task exists.
 
 It reads text, so it sees assignments only: a `memcpy` into the snapshot, a
 write through a reference, or an RAII guard in place of the two macros are
-not recognised. A guard for `snapshot_lock` has to teach this file its name.
+not recognised. A guard for `snapshot_lock` has to teach this file its name:
+any other line that names the lock is refused rather than guessed at.
 """
 import pathlib
 import re
@@ -25,6 +26,7 @@ WRITE = re.compile(
 ENTER = "taskENTER_CRITICAL(&snapshot_lock);"
 EXIT = "taskEXIT_CRITICAL(&snapshot_lock);"
 INITIALIZER = "attadipa::core::MeshStatus snapshot = provider.status();"
+DECLARATION = "portMUX_TYPE snapshot_lock = portMUX_INITIALIZER_UNLOCKED;"
 
 
 def unlocked_writes(text):
@@ -36,6 +38,10 @@ def unlocked_writes(text):
             held = True
         elif line == EXIT:
             held = False
+        elif "snapshot_lock" in line and line != DECLARATION:
+            # Fail closed: a lock line this file cannot read would leave `held`
+            # wrong for the rest of the file (#736).
+            bad.append(number)
         elif WRITE.search(line) and line != INITIALIZER and not held:
             bad.append(number)
     return bad
@@ -48,7 +54,8 @@ def self_test():
         assert unlocked_writes(locked) == [], f"a locked write was refused: {locked!r}"
     for mutant in ("snapshot.availability = x;", "snapshot = next;",
                    "if (a) snapshot.mtu += 1;", "location_snapshot = p;",
-                   f"{ENTER}\n{EXIT}\nsnapshot = n;"):
+                   f"{ENTER}\n{EXIT}\nsnapshot = n;",
+                   f"{ENTER}\nif (a) taskEXIT_CRITICAL(&snapshot_lock);\n{EXIT}"):
         assert unlocked_writes(mutant), f"an unlocked write passed: {mutant!r}"
     assert unlocked_writes("my_snapshot = p;\nx = session_snapshot();") == []
 
