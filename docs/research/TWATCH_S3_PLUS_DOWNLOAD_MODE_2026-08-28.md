@@ -256,9 +256,7 @@ under `--connect-mode no_reset`.
 
 **What each part of this is measured by.** The load that produced §8's scan ran
 through a scratch script, not through `ramhold.py`; the two then issued an
-identical sequence. `ramhold.py` has since added a `read_mac()` identity check
-between `detect_chip` and `load_ram` (#717), which the scratch script never
-sent. `ramhold.py --connect-mode no_reset` was afterwards run
+identical sequence, and `ramhold.py --connect-mode no_reset` was afterwards run
 against the watch to confirm the changed path. It **opened the port** — the step
 that used to raise `Could not configure port: (5, 'Input/output error')` — and
 reached `ESPLoader.sync()`, failing there with `Write timeout` because the watch
@@ -267,6 +265,10 @@ application never drains the CDC OUT endpoint. So the suppressed open is
 MEASURED through `ramhold.py`; a full `load_ram` through `ramhold.py` is **NOT
 EXECUTED — HARDWARE REQUIRED**, and needs a hand to put the unit back into
 download mode.
+
+Both runs above are from 2026-08-28. `ramhold.py` has since added a
+`read_mac()` identity check between `detect_chip` and `load_ram` (#717), which
+the scratch script never sent, so the two sequences are no longer identical.
 
 `rtscts=True` nominally gates writes on `CTS`, which would be a fair suspicion
 for that timeout. It is not the cause: the scratch script used the same flags

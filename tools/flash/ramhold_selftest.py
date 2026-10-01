@@ -225,7 +225,7 @@ def main() -> int:
             print(f"  - {failure}")
         return 1
 
-    print("ramhold selftest: 13 cases, all as expected.")
+    print("ramhold selftest: every case as expected.")
     return 0
 
 
