@@ -95,7 +95,7 @@ BOARD_SYMBOLS = {
 }
 
 # `pure-ram` is unconstrained on purpose. The call to the board entry point is
-# compiled out of that image -- `firmware/main/attadipa_main.cpp:316` --
+# compiled out of that image -- `firmware/main/attadipa_main.cpp:317` --
 # "#if !CONFIG_APP_BUILD_TYPE_PURE_RAM_APP" -- so `--gc-sections` is free to
 # drop the function entirely, and requiring either symbol would be a claim
 # about the linker rather than about the board. Nothing writes that image to

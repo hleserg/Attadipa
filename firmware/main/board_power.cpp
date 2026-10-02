@@ -599,13 +599,27 @@ private:
 WaveshareHardware hardware;
 attadipa::core::PowerOwner owner(hardware);
 
+// What this boot established about the GNSS rail, for a consumer that asks
+// after the fact. Written only by `board_power_enable_gnss_rail()` below --
+// one writer, on the one path that knows -- and read through
+// `board_power_gnss_rail_prereq()`.
+//
+// It starts at `NotAttempted` and stays there when the rail transaction is
+// never reached, which is the case #718 is about: `initialize_pmu()` can fail
+// at the main I2C bus or the AXP2101 attach, and then nothing has touched
+// BLDO1 and nothing may say otherwise.
+//
+// Boot-time only, like the bring-up it records: it is set on the task that
+// runs `initialize_pmu()` and read later from `app_main`, with the UI
+// bring-up's return in between, so there is no concurrent writer to order
+// against.
+GnssRailPrereq gnss_rail_prereq = GnssRailPrereq::NotAttempted;
+
 } // namespace
 
 esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
 #if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS && \
     (CONFIG_ATTADIPA_GNSS_BRIDGE || CONFIG_ATTADIPA_GNSS_LOCAL)
-  ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
-  std::uint8_t aldo = 0;
   // BLDO1 feeds the GNSS daughterboard — HARDWARE_MATRIX.md's GNSS row, "BLDO1
   // (+ DC4 @850 mV for LS550G)". Same encoding as the ALDOs, 0x1C = 3.3 V (REG
   // 96, AXP2101 datasheet V1.4 6.13.2.81), enable REG 90 bit 4 (6.13.2.75).
@@ -635,22 +649,77 @@ esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
   // the same thing: knowing which module is fitted. Answering that is what the
   // bridge is for; if BLDO1 alone yields silence, each of those is a separate
   // evidenced step, not a guess to add here now.
-  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x96, 0x1C), kTag, "BLDO1 3.3 V");
-  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "read LDO enables");
-  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, "enable BLDO1");
-  ESP_LOGI(kTag, "AXP2101: LDO enable -> 0x%02x (BLDO1 3.3 V, GNSS)",
-           aldo | 0x10);
-  // Read-only. Question D6 asked which rail feeds
-  // the GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up
-  // would not have answered it. The bench run of 2026-09-05 answered it with
-  // DCDC3 clear while the module was talking, so this line is now a check that
-  // the answer still holds rather than the question. REG 80 bit 2 is DCDC3
-  // (datasheet V1.4 6.13.2.68).
-  std::uint8_t dcdc = 0;
-  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
-  ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x (DC3 %s) -- read, not written",
-           dcdc, (dcdc & 0x04) ? "ON" : "off");
-  return ESP_OK;
+  //
+  // The transaction is a lambda so that every way out of it -- the
+  // `ESP_RETURN_ON_*` ones included -- lands on the one line below that
+  // records what this boot established. #718 is what having no such line cost:
+  // the GNSS bridge runs from `app_main` long after this returns, past a
+  // rollback that threw the `esp_err_t` away, and it was left inferring the
+  // rail from the aggregate UI result, which is not the same question.
+  const auto raise = [pmu]() -> esp_err_t {
+    ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
+    std::uint8_t aldo = 0;
+    ESP_RETURN_ON_ERROR(write_reg(pmu, 0x96, 0x1C), kTag, "BLDO1 3.3 V");
+    ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, "read LDO enables");
+    ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag,
+                        "enable BLDO1");
+    // The enable bit read back, not the value this end asked for. They are
+    // different claims, and the difference is the one named by
+    // `docs/research/GNSS_POWER_POLICY_MIA_M10Q.md:272` -- "| `rail_on` |
+    // `BLDO1` enabled | AXP2101 register read-back |".
+    //
+    // A write that returns ESP_OK says the I2C transfer was acknowledged; a
+    // read says what the PMU now holds. Bit 4 is BLDO1's enable, cited three
+    // paragraphs up, so this tests a documented bit and nothing more.
+    //
+    // The voltage register is deliberately *not* compared. 0x1C occupies the
+    // low five bits and what the rest of REG 96 reads back is UNKNOWN here --
+    // no copy of the datasheet in this repository says those bits read zero --
+    // so an equality test could refuse a rail that is up, and a refusal here
+    // rolls the whole boot back. The enable bit is the one that decides
+    // whether the rail is on at all.
+    //
+    // Neither is a voltage. Nothing in this function measures one, and the
+    // wording the bridge prints says so.
+    std::uint8_t enabled = 0;
+    ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &enabled), kTag,
+                        "re-read LDO enables");
+    ESP_RETURN_ON_FALSE((enabled & 0x10) != 0, ESP_ERR_INVALID_STATE, kTag,
+                        "BLDO1 enable did not take: LDO enable reads 0x%02x",
+                        enabled);
+    // Before and after, in the shape the ALDO2/3 line in
+    // `board_power_bring_up_rails()` below already uses. The old single number
+    // was the value this end sent, and a transcript of it
+    // -- `docs/research/TWATCH_GNSS_LOCAL_BENCH_2026-09-06.md:35` —
+    // "I (16384) board-power: AXP2101: LDO enable -> 0x17 (BLDO1 3.3 V, GNSS)"
+    // -- could not say whether bit 4 had been clear a moment earlier. That is
+    // the gap that report names. Two numbers close it for the next capture:
+    // a bit this firmware set and a bit it found set now read differently.
+    //
+    // It still does not say the rail obeys the bit. Nobody has cleared it and
+    // watched the module go silent, which is the experiment VERIFIED_FACTS.md
+    // records as owed, and nothing here is a substitute for it.
+    ESP_LOGI(kTag, "AXP2101: LDO enable 0x%02x -> 0x%02x (BLDO1 3.3 V, GNSS)",
+             aldo, enabled);
+    // Read-only. Question D6 asked which rail feeds
+    // the GNSS on *this* unit, BLDO1 or DC3; a module that answers with both up
+    // would not have answered it. The bench run of 2026-09-05 answered it with
+    // DCDC3 clear while the module was talking, so this line is now a check that
+    // the answer still holds rather than the question. REG 80 bit 2 is DCDC3
+    // (datasheet V1.4 6.13.2.68).
+    std::uint8_t dcdc = 0;
+    ESP_RETURN_ON_ERROR(read_reg(pmu, 0x80, &dcdc), kTag, "read DC enables");
+    ESP_LOGI(kTag, "AXP2101: DC enable 0x%02x (DC3 %s) -- read, not written",
+             dcdc, (dcdc & 0x04) ? "ON" : "off");
+    return ESP_OK;
+  };
+  const esp_err_t err = raise();
+  // `Failed` covers the DC3 read as well, which is the conservative answer:
+  // that read is the last transfer of the transaction, and a PMU that stops
+  // answering before it has not finished telling this end anything.
+  gnss_rail_prereq = err == ESP_OK ? GnssRailPrereq::EnableReadsBack
+                                   : GnssRailPrereq::Failed;
+  return err;
 #else
   // Nothing to do, for either of two reasons. On the Waveshare no PMU rail
   // feeds GNSS at all -- the module sits on pads that take the board's own
@@ -658,10 +727,20 @@ esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
   // a rail with nothing behind it is current spent on nothing; that image must
   // not pay for a receiver it does not have, which is also why the body above
   // is compiled out rather than merely left uncalled.
+  //
+  // `gnss_rail_prereq` stays `NotAttempted`, and no image that could read it
+  // compiles this branch: `CONFIG_ATTADIPA_GNSS_BRIDGE` depends on
+  // `ATTADIPA_BOARD_TWATCH_S3_PLUS` -- `firmware/main/Kconfig.projbuild:138` —
+  // "    depends on ATTADIPA_BOARD_TWATCH_S3_PLUS" — so a bridge image always
+  // takes the branch above. Were that dependency ever dropped, the bridge
+  // would refuse to sweep on a board with no PMU rail to raise, which is a
+  // visible refusal with a reason rather than a silent false claim.
   (void)pmu;
   return ESP_OK;
 #endif
 }
+
+GnssRailPrereq board_power_gnss_rail_prereq() { return gnss_rail_prereq; }
 
 esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");

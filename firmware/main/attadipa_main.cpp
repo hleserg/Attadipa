@@ -33,6 +33,7 @@
 #endif
 
 #if CONFIG_ATTADIPA_GNSS_BRIDGE
+#include "board_power.h"
 #include "gnss_bridge.h"
 #endif
 
@@ -336,6 +337,11 @@ extern "C" void app_main(void)
 #endif
 #else
     ESP_LOGI(kTag, "Waveshare UI skipped in PURE_RAM mode");
+    // No UI started, so nothing raised a rail. The bridge below reads this the
+    // same way it reads a UI that failed, and refuses on the prerequisite
+    // rather than on this value -- which is the point: this is declared so the
+    // bridge block compiles in a PURE_RAM image, not so it can decide anything.
+    [[maybe_unused]] const esp_err_t ui_err = ESP_ERR_NOT_SUPPORTED;
 #endif
 
 #if CONFIG_ATTADIPA_GNSS_BRIDGE
@@ -344,7 +350,13 @@ extern "C" void app_main(void)
     // "return attadipa::firmware::board_power_bring_up_rails(state.pmu);" —
     // and BLDO1 is the GNSS supply. Run before it, the sweep would be reading a
     // module with no power and calling the silence a result.
-    attadipa::firmware::run_gnss_bridge();
+    //
+    // Which is what it did anyway until #718, because "the UI returned" and
+    // "the rail came up" are different facts and only the first one was here.
+    // The rail now answers for itself; `ui_err` is passed for the log line and
+    // is not the gate, so a boot that lost its panel still gets its sweep.
+    attadipa::firmware::run_gnss_bridge(
+        attadipa::firmware::board_power_gnss_rail_prereq(), ui_err == ESP_OK);
 #endif
 
     // A heartbeat rather than a return. app_main returning is legal and deletes
