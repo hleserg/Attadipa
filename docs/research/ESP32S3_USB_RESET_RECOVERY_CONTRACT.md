@@ -97,10 +97,12 @@ Espressif's own documentation, `docs/en/esptool/advanced-options.rst` at
 > signal as a core reset. This reset does not re-sample the boot strapping
 > pins, so a chip that entered download mode manually may remain there.
 
-Espressif's own reference sequence agrees on the ordering, and names which
-transition is the reset. `esp_pylib/serial_reset.py::usb_jtag_bootloader_reset`
-at `e15358d5`, with `PIN_LOW = True` and `PIN_HIGH = False` defined in the same
-file as pyserial's booleans:
+Espressif's own reference sequence names which transition is the reset, and the
+whole of it has to be quoted to read that transition correctly.
+`esp_pylib/serial_reset.py:380-391::usb_jtag_bootloader_reset` at `e15358d5`,
+with `PIN_LOW = True` and `PIN_HIGH = False` defined at
+`esp_pylib/serial_reset.py:29` and `:32` in terms of pyserial's own booleans —
+`PIN_LOW` is the **asserted** state:
 
 ```python
 set_rts(port, PIN_HIGH)
@@ -111,19 +113,53 @@ set_rts(port, PIN_HIGH)
 time.sleep(settle_delay)
 set_rts(port, PIN_LOW)  # Reset (calls inverted to traverse (1,1) instead of (0,0))
 set_dtr(port, PIN_HIGH)
+set_rts(port, PIN_LOW)  # RTS re-write so Windows propagates the DTR change
+time.sleep(settle_delay)
+set_dtr(port, PIN_HIGH)
+set_rts(port, PIN_HIGH)  # Chip out of reset
 ```
 
-Read in pyserial terms: the step Espressif labels `# Reset` is `rts = True`
-while DTR is deasserted. That is the same state MeshCadet #211 narrowed to from
-the other direction and wrote as `DTR=0, RTS=1`. Two unrelated sources, one
-vendor and one field investigation, agree on which combination resets the part —
-and the vendor's comment also states that the *order* of the writes matters,
-although for a Windows `usbser.sys` flush reason rather than a chip one.
+Walked in pyserial terms, where `1` is asserted. Each row is a write that moves
+a line, with the two `# Idle` writes taken together; the three writes that do
+not appear re-write a line to the value it already holds:
 
-That is *a* resetting combination, not the only one. §2.3's kernel raises both
-lines at open and lowers both at the last close; neither is `DTR=0, RTS=1`, so
-the resets §3.1 predicts, and this bench measured, are not reached through this
-sequence. Which transition carries them is open — §8.
+| after | DTR | RTS | the source's own label |
+|---|---|---|---|
+| `set_rts(PIN_HIGH)`, `set_dtr(PIN_HIGH)` | 0 | 0 | `# Idle` |
+| `set_dtr(PIN_LOW)` | **1** | 0 | `# Set IO0` |
+| `set_rts(PIN_LOW)` | **1** | **1** | `# Reset` |
+| `set_dtr(PIN_HIGH)` | 0 | **1** | — the hold |
+| `set_rts(PIN_HIGH)` | 0 | 0 | `# Chip out of reset` |
+
+So the step the vendor labels `# Reset` is the **RTS assertion, taken while DTR
+is still asserted** — which is exactly what the vendor's parenthesis on that
+same line says it is for: *"calls inverted to traverse (1,1) instead of
+(0,0)"*. `DTR=0, RTS=1` is the state the *next* call reaches and the sequence
+then holds the part in, until the final `set_rts(PIN_HIGH)` labelled
+`# Chip out of reset` releases it. The three writes that change nothing —
+`esp_pylib/serial_reset.py:384`, `esp_pylib/serial_reset.py:388` and
+`esp_pylib/serial_reset.py:390` — are the Windows `usbser.sys` flush the
+docstring at `esp_pylib/serial_reset.py:372-374` explains, not chip steps: it
+says the trailing `setRTS` writes are ordered *"to walk through (1, 1) instead
+of (0, 0)"* because that host only flushes `SET_CONTROL_LINE_STATE` on an RTS
+change.
+
+MeshCadet [#211](https://github.com/jagoda/meshcadet/pull/211) narrowed to
+`DTR=0, RTS=1` from field observation, and that is the vendor's **reset-hold**
+state rather than the transition that enters it. The two sources agree, and on
+one line only: RTS asserted is the part held in reset.
+
+**Which reconciles §2.1 with §2.3, in the direction this report's first draft
+got backwards.** §2.3's kernel raises **both** lines inside `open(2)` — `(1,1)`,
+the identical RTS assertion edge with DTR asserted that the vendor labels
+`# Reset` — and lowers both on the last close, which is the same RTS
+deassertion the vendor labels `# Chip out of reset`, the point at which a part
+held in reset starts running and therefore the point at which a boot would be
+observed. So this sequence does supply a candidate mechanism for both
+transitions §3.1 predicts and this bench measured, at open and at close alike.
+That is a derivation from the vendor's labels and not a line-state capture:
+whether the peripheral keys on the RTS edge, on the release, or on the level,
+and whether DTR participates at all, stays open — §8.
 
 ### 2.2 The ESP32-S3 cannot refuse it
 
@@ -177,13 +213,24 @@ Three consequences, and they are the core of this report:
    `rtscts=True, dsrdtr=True` suppresses pyserial's own ioctls (§2.4) and does
    nothing about this one.
 2. The raise is gated only on `C_BAUD(tty)` — the termios the port already
-   carries, from whoever held it last. The lower is gated on `C_HUPCL(tty)`.
-   That is exactly why the 2026-08-23 bench session records `stty -hupcl` as
-   tried and useless —
-   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:205` — "was tried and is not a fix: esptool reopens the port" —
-   pyserial calls
-   `_reconfigure_port(force_update=True)` on every open and writes the setting
-   back.
+   carries, from whoever held it last. The lower is gated on `C_HUPCL(tty)`, so
+   in the kernel source clearing `HUPCL` *is* the lever that would suppress the
+   close-time lower. The 2026-08-23 bench session records trying exactly that
+   and getting nothing —
+   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:205` — "was tried and is not a fix" —
+   and **why it failed is `UNKNOWN`**. The mechanism this report gave first, that
+   pyserial writes the flag back on every open, is withdrawn: `HUPCL` occurs
+   nowhere in `pyserial@a5c48d4`, and `_reconfigure_port` starts from
+   `termios.tcgetattr` at `serial/serialposix.py:409` and then edits named bits
+   only, so it carries forward any `cflag` bit it never names — `HUPCL` among
+   them. The library that does write the flag is Espressif's, at
+   `esp_pylib/serial_reset.py:155` — `def _set_hupcl(port: serial.Serial, enabled: bool) -> bool:`
+   — and it is reached only from `hard_reset(..., flow_control=True)` at
+   `esp_pylib/serial_reset.py:428`, only to *clear* it, and for a CP2102C
+   RTS/CTS coupling that is an external-bridge problem rather than a native-USB
+   one. Neither `tools/watch_control.py` nor `tools/flash/ramhold.py` takes
+   that path. The measured outcome stands and the explanation does not; §8
+   carries the open row.
 3. "Pre-open suppression" as the issue words it does not exist on Linux for the
    *opening* process. What does exist is: hold one descriptor open for the whole
    session so there is no last close, which is what the flash tools already do;
@@ -210,11 +257,23 @@ applies them inside `open()`:
                     raise
 ```
 
-Two details matter downstream. The suppression the flash tools use
+Three details matter downstream. The suppression the flash tools use
 (`tools/flash/ramhold.py:143` — "target = serial.Serial(port, baudrate=args.baud, rtscts=True,")
-is exactly these two `if not` tests, and nothing more. And only `EINVAL` and
+is exactly these two `if not` tests, and nothing more. Only `EINVAL` and
 `ENOTTY` are swallowed: any other errno — `EPROTO` is 71 — propagates out of the
 constructor.
+
+And the first line of that block is **not** inside the suppression.
+`_reconfigure_port(force_update=True)` runs at `serial/serialposix.py:345`,
+ahead of the guards at `serial/serialposix.py:348-351` and gated by neither;
+the first thing in it that can fail is `termios.tcgetattr(self.fd)` at
+`serial/serialposix.py:409`, and that `tcgetattr` — with its twin in the
+`VTIMESerial` subclass at `serial/serialposix.py:915` — is the **only** producer
+of `Could not configure port: …` in the library, at
+`serial/serialposix.py:412` and `serial/serialposix.py:918`. So an open that
+fails with that message failed before either control-line ioctl was reached,
+and no combination of `rtscts` and `dsrdtr` changes it. §3.2 is where that
+matters.
 
 ### 2.5 Nothing in this client calls `tcdrain`, and the unbounded call is somewhere else
 
@@ -234,19 +293,31 @@ repository already holds**. Neither has been exercised through `watch_control`.
 
 ### 3.1 Waveshare `28:84:85:B2:18:A4` — the open is a reset, and it is already measured
 
-[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) §2 records, MEASURED
-on this unit: *"pyserial asserts DTR and RTS on `open()`, so simply opening the
-port to watch is a hardware reset"*, and *"Two RAM images were destroyed by the
-tool sent to observe them before this was noticed."* The same section records
-the other half — *"The kernel drops the modem lines on the last close of a
-`ttyACM`, so `esptool` exiting is itself a reset"* — with
-`rst:0x15 (USB_UART_CHIP_RESET)` as the evidence, and
+[WAVESHARE_RUNNING_OUR_CODE](WAVESHARE_RUNNING_OUR_CODE.md) records it MEASURED
+on this unit, in two places rather than one. §2.2, among the host-side
+explanations that *were* tested:
+`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:203` — "so simply opening the port to watch is a hardware reset".
+And §7, Method notes, with the cost:
+`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:695` — "Two RAM images were destroyed by"
+the tool sent to observe them. The same §7 bullet records the other half —
+`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:700` — "`ttyACM`, so `esptool` exiting is itself a reset"
+— with `rst:0x15 (USB_UART_CHIP_RESET)` as the evidence, and
 [`tools/flash/ramhold.py:18`](../../tools/flash/ramhold.py) — "host; `rst:0x15 (USB_UART_CHIP_RESET)` is the direct evidence."
 carries it into the tool that works around it.
 
-That is the same host action performed at `tools/watch/client.py:127` —
-"serial.Serial(port, baud, timeout=0)". The reset is
-produced by the peripheral from the control lines and has nothing to do with
+One clause beside the §2.2 quote is **not** carried over. That bullet continues
+*"Fixed by setting both low before `open()`"*, and §2.3 of this report is why
+that cannot be the whole fix: presetting the states changes what pyserial's own
+two ioctls write, and the kernel has already raised both lines from inside
+`open(2)` before pyserial runs — so the preset turns an assertion into an
+assertion followed by a deassertion, which is §2.1's reset edge followed by
+§2.1's release. The reconciliation is already recorded, as `LIKELY`, at
+`docs/hardware/BENCH_HANDLING.md:143` — "is **`LIKELY` to be defeated**, not established".
+What §3.1 uses is the measured half.
+
+The measured reset is the same host action performed at
+`tools/watch/client.py:127` — "serial.Serial(port, baud, timeout=0)". The reset
+is produced by the peripheral from the control lines and has nothing to do with
 what the chip is running, so there is no mechanism by which a flash-booted
 Attadipa build would be exempt where a RAM image was not.
 
@@ -259,17 +330,37 @@ over from this repository's own bench, not newly measured.** What is genuinely
 [TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28](TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md)
 §2 records four out of four CDC control-line requests refused with `errno 71`
 against zero out of four on the Waveshare, same script, same host, same
-`cdc_acm`. §7 records the consequence for an unsuppressed open in that session's
-own words: the step that *"used to raise `Could not configure port: (5, 'Input/output error')`"*
-is the open itself, and only `rtscts=True, dsrdtr=True` got past it.
+`cdc_acm`. That session's own traceback names the site —
+`docs/research/TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md:44` — "OSError: [Errno 71] Protocol error"
+— and the line under it in the same block attributes it to
+`_update_rts_state` and its `fcntl.ioctl(TIOCMBIC, TIOCM_RTS)`. That is the
+call inside the `if not self._rtscts` guard at `serial/serialposix.py:350-351`:
+exactly the one `rtscts=True, dsrdtr=True` suppresses, and exactly the one
+§2.4's errno filter re-raises.
 
-`errno 71` is `EPROTO`, which §2.4 shows pyserial re-raises. So the predicted
-behaviour of the open at `tools/watch/client.py:127` —
-"serial.Serial(port, baud, timeout=0)" — on this unit is a `WatchError` out of
-`SerialTransport.__init__` — *"could not open …"* — and not a reset. That is a
-different answer from `UNKNOWN`, and it means that in a window like that one
-the watch-control path cannot reach this board at all, which no document
-currently says.
+`errno 71` is `EPROTO`. So the predicted behaviour of the open at
+`tools/watch/client.py:127` — "serial.Serial(port, baud, timeout=0)" — on this
+unit is a `WatchError` out of `SerialTransport.__init__` —
+*"could not open …"* — and not a reset. That is a different answer from
+`UNKNOWN`, and it means that in a window like that one the watch-control path
+cannot reach this board at all, which no document currently says.
+
+**That derivation rests on `errno 71` alone, and the other error in the same
+session is a second failure rather than a second witness.** §7 of that report
+records an earlier state of the same step —
+`docs/research/TWATCH_S3_PLUS_DOWNLOAD_MODE_2026-08-28.md:261` — "that used to raise `Could not configure port: (5, 'Input/output error')`"
+— and this report's first draft read the two as one failure that the
+suppression got past. They are not one failure, and §2.4's third detail is why:
+that message has exactly two raise sites in the library and both wrap a failed
+`termios.tcgetattr`, inside a `_reconfigure_port(force_update=True)` that runs
+ahead of the two guards and is gated by neither. **So `rtscts`/`dsrdtr` cannot be
+what stopped that error, and `EPROTO` on a control-line ioctl cannot be what
+produced it.** Errno 5 is `EIO`, and `EIO` out of `tcgetattr` on a `ttyACM` is
+what a **vanished interface** looks like — the opposite prediction, that the open
+reached this unit and reset it out from under the descriptor. Why it was raised
+then and not later is `UNKNOWN`; §8 carries the row. The 2026-08-28 report
+attributes that message to nothing, so the conflation was this report's and not
+that session's.
 
 The unit's USB behaviour is also **stateful**: the same report notes the unit
 reset and re-enumerated three times during one earlier invocation and then
@@ -381,7 +472,8 @@ state worth quoting, and this is what it leaves standing.
   re-enumeration / stale-handle mechanism. Refuted"*.
 - **#211, merged 2026-09-24.** Narrowed the trigger to an ordered transition
   through `DTR=0, RTS=1` and made the client clear RTS first. §2.1 of this
-  report corroborates the *state* from Espressif's own sequence. The *fix* is
+  report corroborates that *state* from Espressif's own sequence, as the
+  reset-**hold** rather than the transition that enters it. The *fix* is
   **retracted**; see #212.
 - **#212, merged 2026-09-24.** Reverted the ordered `setSignals()` to bare
   `port.open()`: it did not clear the wedge. Also fixed the retry-boundary byte
@@ -506,10 +598,12 @@ not because running it would have closed anything.
 | Question | Why it is open |
 |---|---|
 | Does `watch_control` reset the Waveshare at open? | **Derived yes** (§3.1), measured never. One external capture settles it |
-| Can `watch_control` open the T-Watch at all? | **Derived no** (§3.2). The same capture settles it |
+| Can `watch_control` open the T-Watch at all? | **Derived no** (§3.2), on the `errno 71` refusal alone — the `EIO` recorded in the same session is a different site and points the other way, and has its own row below. The same capture settles it |
 | What did every prior `watch_control` observation actually observe? | §3.3. Depends on the first row |
-| Which control-line transition resets the part, when neither the kernel's open nor its close is the vendor's `DTR=0, RTS=1`? | §2.1 against §2.3. The same external capture, logging line state, settles it |
-| Is there any Linux-side policy, available to the opening process, that avoids the open-time raise? | §2.3 says no for a pyserial application. The `C_BAUD` gate is the only lever in the source and `B0` means hang up, so it is probably not one; untested |
+| Does the peripheral enter reset on the RTS **assertion** edge, on its release, or on the level — and does DTR participate at all? | §2.1's walk makes the kernel's open the vendor's own `# Reset` step and its close the vendor's `# Chip out of reset`, so both transitions §3.1 measured have a candidate mechanism. Which of the three the silicon implements is in none of the sources read here: Espressif's sentence says "interprets the RTS serial control signal as a core reset" and stops. The external capture, logging line state against `rst:0x15`, settles it |
+| What raised `Could not configure port: (5, 'Input/output error')` on the T-Watch, and does it still? | §3.2. It can only have come from `termios.tcgetattr`, which no pyserial open flag reaches, so neither the suppression nor `EPROTO` explains it. `EIO` there reads as a vanished interface — the open reaching the unit and resetting it, which is the opposite of this report's prediction for that board |
+| Why did `stty -hupcl` not survive to the close on 2026-08-23? | §2.3. The mechanism recorded at the time — pyserial writing the flag back — is withdrawn, because pyserial never writes `HUPCL` at all. Two untested candidates: the port re-enumerated between the `stty` and the run, so the kernel used a fresh default termios; or the lower happened on a close the `stty` never applied to. One `stty -a` read either side of the run, with `dmesg` alongside, separates them |
+| Is there any Linux-side policy, available to the opening process, that avoids the open-time raise? | §2.3 says no for a pyserial application. The `C_BAUD` gate is the only lever in the source and `B0` means hang up, so it is probably not one; untested. `C_HUPCL` is a lever for the close rather than the raise, and the row above is why it is not a known one either |
 | Does the asymmetric host wedge reproduce on a native Python CLI? | Upstream's only reproduction is a browser on one host, and upstream itself withdrew the general explanation |
 | Does the T-Watch's ROM loader accept control-line requests? | Every refusal was observed against the factory application |
 | macOS and Windows | Everything in §2.3 is Linux. `usbser.sys` is named in Espressif's own comment as behaving differently |

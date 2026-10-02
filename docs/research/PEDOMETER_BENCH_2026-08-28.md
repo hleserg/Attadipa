@@ -208,10 +208,10 @@ matters, because a second draft then over-corrected in the opposite direction.
 `0x24 / 0x03 / 0x00` is exactly what the 2026-08-23 session left behind: the
 vendor firmware wrote `CTRL2 = 0x24` and `CTRL7 = 0x03`, and `CTRL8` was then
 cleared to `0x00` by hand
-([`WAVESHARE_RUNNING_OUR_CODE.md:641`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:646`](WAVESHARE_RUNNING_OUR_CODE.md)
 "restored to the power-on default"). The same section records why that could
 still be sitting there five days later: **loading a RAM image**
-([`WAVESHARE_RUNNING_OUR_CODE.md:646`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:651`](WAVESHARE_RUNNING_OUR_CODE.md)
 "does not reset the peripherals") — the SoC restarts, the parts on the I2C bus
 keep what the last program left. Whether this IMU in fact kept power across the
 five days, through T-166's reflash on 2026-08-25 and everything after it, is not
@@ -232,7 +232,7 @@ UNKNOWN.** On 2026-08-23, with the factory image still present, booting it was
 observed to write `CTRL2 = 0x24` and `CTRL7 = 0x03` over what a probe had left,
 and to leave `CTRL8` alone — so the vendor runs the IMU in 6DOF and does not use
 the pedometer engine at all
-([`WAVESHARE_RUNNING_OUR_CODE.md:633`](WAVESHARE_RUNNING_OUR_CODE.md)
+([`WAVESHARE_RUNNING_OUR_CODE.md:638`](WAVESHARE_RUNNING_OUR_CODE.md)
 "Booting the vendor firmware restored"). That is S13, and it stands. What the
 2026-08-28 residue cannot do is corroborate it.
 
@@ -339,7 +339,7 @@ It is **not committed**: it is QST's copyright and its own cover marks it
 **This repository names that document two ways, and this report does not settle
 which is right.** The sites below do not agree, and they are **not the whole
 list** — [`PEDOMETER_PARTS.md:448`](PEDOMETER_PARTS.md) "QMI8658A Datasheet, `13-52-25`",
-[`WAVESHARE_RUNNING_OUR_CODE.md:299`](WAVESHARE_RUNNING_OUR_CODE.md) "chapter 11 documents a complete hardware pedometer",
+[`WAVESHARE_RUNNING_OUR_CODE.md:304`](WAVESHARE_RUNNING_OUR_CODE.md) "chapter 11 documents a complete hardware pedometer",
 [`MAGNETOMETER_RETROFIT.md:154`](MAGNETOMETER_RETROFIT.md) "QST `QMI8658A` Datasheet Rev A",
 [`HARDWARE_MATRIX.md:392`](HARDWARE_MATRIX.md) "13-52-27 ∙ QMI8658C Datasheet ∙ Rev A" and
 [`VERIFIED_FACTS.md:2385`](VERIFIED_FACTS.md) "This entry used to name `13-52-25`" name one number or the other
@@ -347,7 +347,7 @@ as well. Enumerating and reconciling them is #341's job, not this report's:
 
 | Site | What it said on 2026-08-28 |
 | --- | --- |
-| [`WAVESHARE_RUNNING_OUR_CODE.md:329-331`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
+| [`WAVESHARE_RUNNING_OUR_CODE.md:334-336`](WAVESHARE_RUNNING_OUR_CODE.md) "document number of the Rev A datasheet is" | the number is `13-52-25`, **not** `13-52-27` |
 | [`OPEN_QUESTIONS.md:90`](OPEN_QUESTIONS.md) "the Rev A document number is" | the same correction, in H14's tail |
 | [`VERIFIED_FACTS.md:1103`](VERIFIED_FACTS.md) "documents it fully" | `13-52-27` is QMI8658**C** Rev A, and it exists |
 | [`VERIFIED_FACTS.md:1107`](VERIFIED_FACTS.md) "documents the identical feature" | `13-52-25` is QMI8658**A** Rev A, and it exists too |

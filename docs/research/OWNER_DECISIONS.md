@@ -1520,7 +1520,7 @@ carries `0x61`, `0x62`, `0x63` and `0x64` at I²C `0x34`. **Nothing about OD-18
 changes** — the unit stays powered and attached, by the owner's decision. But
 **three of those four had already been read the day before the question was
 put**: the 2026-08-23 dump carries `0x62`, `0x63` and `0x64` —
-`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:413` — "  0x63 CHG_ITERM_CFG  = 0x15".
+`docs/research/WAVESHARE_RUNNING_OUR_CODE.md:418` — "  0x63 CHG_ITERM_CFG  = 0x15".
 So "nobody has read a register on that charger" was false as written; `0x61`
 is what the burst still owes and `0x63` the one still to decode. What
 the read closes stays narrower than the question: what the running image left,

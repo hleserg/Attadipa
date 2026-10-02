@@ -202,8 +202,13 @@ and neither one touched this:
 - **The observer resetting the board.** pyserial asserts DTR and RTS on `open()`,
   so simply opening the port to watch is a hardware reset. Fixed by setting both
   low before `open()` — a real bug, fixed, and not this one.
-- **`stty -hupcl`** was tried and is not a fix: esptool reopens the port, and
-  pyserial restores termios on open, so the setting is gone before it matters.
+- **`stty -hupcl`** was tried and is not a fix. The reason given here was that
+  esptool reopens the port and pyserial restores termios on open, so the setting
+  is gone before it matters; that is **withdrawn** — pyserial writes `HUPCL`
+  nowhere, and `_reconfigure_port` carries forward every `cflag` bit it does not
+  name. The measured outcome stands and the cause is `UNKNOWN`:
+  [ESP32S3_USB_RESET_RECOVERY_CONTRACT](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md)
+  §2.3 and §8.
 
 ### 2.3 The experiment that settles it
 
@@ -694,8 +699,11 @@ writing a byte to the owner's flash.
   conclusion.** The kernel drops the modem lines on the *last* close of a
   `ttyACM`, so `esptool` exiting is itself a reset. Anything loaded into RAM must
   be observed from a process that never lets the port close — §2.3. `stty
-  -hupcl` does not help, because pyserial restores termios when esptool reopens
-  the port.
+  -hupcl` does not help, and the reason once given here — that pyserial restores
+  termios when esptool reopens the port — is **withdrawn**: pyserial writes
+  `HUPCL` nowhere at all. The measured outcome stands; the cause is `UNKNOWN`.
+  [ESP32S3_USB_RESET_RECOVERY_CONTRACT](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md)
+  §2.3 and §8.
 - **`rst:0x15 (USB_UART_CHIP_RESET)` means the host did it.** Read the reset
   cause before theorising about the image: `0x15` is the USB-Serial/JTAG
   peripheral acting on the host's control lines, and no misbehaving application

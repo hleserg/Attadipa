@@ -169,8 +169,14 @@ the lines again after it.
 **`stty -hupcl` is a separate failure and fails for a separate reason.**
 `HUPCL` governs the lines being dropped on **close**, not raised on **open**, so
 clearing it could never have prevented an open-time assertion in the first
-place; and `WAVESHARE_RUNNING_OUR_CODE` §2.2 records why it did not survive
-either — *"esptool reopens the port, and pyserial restores termios on open"*.
+place; and why it did not survive the close either is now **`UNKNOWN`**. The
+explanation this paragraph used to quote from `WAVESHARE_RUNNING_OUR_CODE` §2.2
+— that esptool reopens the port and pyserial restores termios on open — is
+**withdrawn** at that source: `HUPCL` appears nowhere in pyserial at the pinned
+revision, so the library cannot be writing the flag back, and
+`_reconfigure_port` carries forward every `cflag` bit it does not name. See
+[ESP32S3_USB_RESET_RECOVERY_CONTRACT](../research/ESP32S3_USB_RESET_RECOVERY_CONTRACT.md)
+§2.3 for the read and §8 for the two untested candidates that remain.
 Two different mechanisms, and reading the `cdc_acm` fact as the explanation for
 `-hupcl` sends whoever picks up T-116 goal 3 after the wrong one. Proving the
 open-time assertion on the unit is that goal. So a
