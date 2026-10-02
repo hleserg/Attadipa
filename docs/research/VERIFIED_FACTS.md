@@ -2472,7 +2472,7 @@ constants.
   because **its writer cannot be identified at all**. `0x24 / 0x03 / 0x00` is
   exactly the state the 2026-08-23 session left, and an SoC restart does not
   reset the parts on the I2C bus
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:646`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:651`](WAVESHARE_RUNNING_OUR_CODE.md)
   "does not reset the peripherals"), so a five-day-old vendor write surviving is
   as consistent with it as any later one. An unattributable value corroborates
   nothing. The shake run is the one case where the writer *is* known: it found
@@ -2483,7 +2483,7 @@ constants.
   `0x24` and `CTRL7` to `0x03` over what a probe had left, and never touched
   `CTRL8` — so the vendor runs the IMU in 6DOF and does not use the pedometer
   engine
-  ([`WAVESHARE_RUNNING_OUR_CODE.md:633`](WAVESHARE_RUNNING_OUR_CODE.md)
+  ([`WAVESHARE_RUNNING_OUR_CODE.md:638`](WAVESHARE_RUNNING_OUR_CODE.md)
   "Booting the vendor firmware restored"). An earlier draft called that
   **UNKNOWN**, over-correcting: it is the 2026-08-28 residue that is not evidence,
   not the vendor configuration itself.
@@ -3868,26 +3868,42 @@ watches is a derivation and lives in
   every mitigation has to be host-side — and §2.3's fact says most of the host
   side is not reachable either.
 
-### Espressif's own reference sequence resets the chip by asserting RTS with DTR deasserted
+### Espressif's own reference sequence enters reset by asserting RTS while DTR is already asserted, and `DTR=0, RTS=1` is the hold rather than the trigger
 
-- **Claim:** the vendor's USB-Serial/JTAG bootloader reset sequence walks
-  `(RTS high, DTR high)` → `(DTR low, RTS high)` → `(RTS low, DTR high)`, and
-  labels that last transition `# Reset`. With the same file's
-  `PIN_LOW = True` / `PIN_HIGH = False` mapping onto pyserial's booleans, the
-  reset step is `rts = True` while DTR is deasserted. The ordering is deliberate:
-  the comment reads "calls inverted to traverse (1,1) instead of (0,0)".
+- **Claim:** `PIN_LOW = True` and `PIN_HIGH = False`, so in that file `PIN_LOW`
+  is pyserial's **asserted** state. Walking the twelve-line sequence on that
+  mapping gives `(DTR 0, RTS 0)` labelled `# Idle` → `(1, 0)` labelled
+  `# Set IO0` → `(1, 1)` labelled `# Reset` → `(0, 1)` → `(0, 0)` labelled
+  `# Chip out of reset`. The step the vendor labels `# Reset` is therefore the
+  RTS assertion taken with DTR **still** asserted, which is what the comment on
+  that same line says it is for — "calls inverted to traverse (1,1) instead of
+  (0,0)". `DTR=0, RTS=1` is where the next call lands and the sequence holds the
+  part until the final RTS deassertion releases it. Three of the nine writes
+  re-write a line to the value it already holds; they are the documented Windows
+  `usbser.sys` flush, which the function's own docstring explains, and not chip
+  steps.
 - **Source:** `espressif/esp-pylib` at
   [`e15358d5`](https://github.com/espressif/esp-pylib/blob/e15358d5fedc7d6766ed4493c11851096b8b0291/esp_pylib/serial_reset.py),
-  `esp_pylib/serial_reset.py::usb_jtag_bootloader_reset` and the `PIN_LOW` /
-  `PIN_HIGH` definitions above it (Apache-2.0). `esptool/reset.py` at `c85144b`
+  `esp_pylib/serial_reset.py:367-391::usb_jtag_bootloader_reset`, with `PIN_LOW`
+  at `esp_pylib/serial_reset.py:29` and `PIN_HIGH` at
+  `esp_pylib/serial_reset.py:32` (Apache-2.0). `esptool/reset.py` at `c85144b`
   imports it rather than carrying its own copy.
-- **Evidence level:** vendor source.
-- **Consequence:** it independently corroborates the state MeshCadet
-  [#211](https://github.com/jagoda/meshcadet/pull/211) narrowed to from field
-  observation and wrote as `DTR=0, RTS=1`. Two unrelated sources agree on *a*
-  combination that resets the part — not the only one: the kernel's open and
-  close, in the next entry, produce neither it nor each other's state. Neither says a post-open re-ordering cures
-  anything — #212 tested that on hardware and reverted it.
+- **Evidence level:** vendor source. It says which transition the vendor labels
+  the reset, and **not** whether the silicon keys on the RTS edge, on its
+  release or on the level — that is `UNKNOWN`, in
+  [ESP32S3_USB_RESET_RECOVERY_CONTRACT](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md)
+  §8.
+- **Consequence:** it corroborates MeshCadet
+  [#211](https://github.com/jagoda/meshcadet/pull/211)'s field-observed
+  `DTR=0, RTS=1` as the state the part is *held in reset* in, which is a
+  narrower agreement than "the combination that resets the part". And the
+  kernel's open, in the next entry, raises **both** lines — the same `(1, 1)`
+  RTS assertion edge the vendor labels `# Reset` — while its last close
+  deasserts both, which is the vendor's `# Chip out of reset`. So this sequence
+  supplies a candidate mechanism for a reset at open *and* a boot at close,
+  rather than excluding both; this entry previously said the opposite and that
+  is withdrawn. Neither source says a post-open re-ordering cures anything —
+  #212 tested that on hardware and reverted it.
 
 ### On Linux the kernel asserts DTR and RTS from inside `open(2)`, and lowers them on the last close
 
@@ -3917,30 +3933,50 @@ watches is a derivation and lives in
   what the flash tools actually buy is that the T-Watch's open succeeds, which
   is a different property. T8 in [OPEN_QUESTIONS](OPEN_QUESTIONS.md).
 
-### pyserial asserts both lines inside `open()`, swallows only `EINVAL` and `ENOTTY`, and writes without a bound
+### pyserial asserts both lines inside `open()`, swallows only `EINVAL` and `ENOTTY`, never writes `HUPCL`, and writes without a bound
 
-- **Claim:** three things, all at the revision below. `SerialBase.__init__`
+- **Claim:** five things, all at the revision below. `SerialBase.__init__`
   initialises `_rts_state` and `_dtr_state` to `True`. The POSIX `open()` then
   applies them after `_reconfigure_port(force_update=True)` — `_update_dtr_state`
   unless `dsrdtr`, `_update_rts_state` unless `rtscts` — and re-raises any
   `IOError` whose errno is not `EINVAL` or `ENOTTY`. And `write_timeout`
   defaults to `None`, on which `write()` takes its infinite branch and blocks in
-  `select.select(..., None)` with no deadline.
+  `select.select(..., None)` with no deadline. Fourth: **`HUPCL` appears nowhere
+  in the package** — `_reconfigure_port` begins from `termios.tcgetattr(self.fd)`
+  and then edits named flags, so it carries forward every `cflag` bit it never
+  names, `HUPCL` among them. Fifth: `_reconfigure_port(force_update=True)` runs
+  *before* the `dsrdtr`/`rtscts` guards and is not gated by them, and the
+  `tcgetattr` at its head is the only thing in the library that raises
+  `Could not configure port: …`.
 - **Source:** `pyserial/pyserial` at
   [`a5c48d4`](https://github.com/pyserial/pyserial/blob/a5c48d445fbc1943d4fabf8d9090a50fda3172fd/serial/serialutil.py),
-  `serial/serialutil.py:179` and `:210-211`;
+  `serial/serialutil.py:179` and `serial/serialutil.py:210-211`;
   [`serial/serialposix.py:335`](https://github.com/pyserial/pyserial/blob/a5c48d445fbc1943d4fabf8d9090a50fda3172fd/serial/serialposix.py#L335)
   (`os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK`), `serial/serialposix.py:344-355`
-  (the two guarded updates and the errno filter) and
-  `serial/serialposix.py:641-649` (the infinite write branch).
-  BSD-3-Clause.
+  (the two guarded updates and the errno filter, with
+  `_reconfigure_port(force_update=True)` ahead of them at
+  `serial/serialposix.py:345`), `serial/serialposix.py:409-412` and
+  `serial/serialposix.py:915-918` (the two `tcgetattr` sites and the only two
+  `Could not configure port` raises) and `serial/serialposix.py:641-649` (the
+  infinite write branch). The `HUPCL` half is a negative read of the whole
+  `serial/` tree at that revision — eleven modules plus `threaded`, `tools` and
+  `urlhandler` — and not of one file. BSD-3-Clause.
 - **Evidence level:** library source.
-- **Consequence:** `errno 71` is `EPROTO`, so a refusal like the T-Watch's —
-  every `SET_CONTROL_LINE_STATE` request in the one window measured on
-  2026-08-28, on a unit that session recorded as stateful after three resets
+- **Consequence:** three. `errno 71` is `EPROTO`, so a refusal like the
+  T-Watch's — every `SET_CONTROL_LINE_STATE` request in the one window measured
+  on 2026-08-28, on a unit that session recorded as stateful after three resets
   earlier the same day — propagates out of the `serial.Serial` constructor
-  rather than being absorbed. And the unbounded host call in this
-  repository's watch-control path is the **write**, not the `tcdrain(2)` that
-  MeshCadet [#208](https://github.com/jagoda/meshcadet/pull/208) named: nothing
-  in `tools/watch/client.py` calls `flush()`, which is pyserial's only
-  `tcdrain` caller.
+  rather than being absorbed, because it is raised from `_update_rts_state`
+  inside the guard. A `Could not configure port: (5, 'Input/output error')` is
+  **not** that failure: it comes from `tcgetattr`, which no open flag reaches,
+  so neither the suppression nor `EPROTO` explains it and `EIO` there reads as a
+  vanished interface instead —
+  [ESP32S3_USB_RESET_RECOVERY_CONTRACT](ESP32S3_USB_RESET_RECOVERY_CONTRACT.md)
+  §3.2 and §8. And the unbounded host call in this repository's watch-control
+  path is the **write**, not the `tcdrain(2)` that MeshCadet
+  [#208](https://github.com/jagoda/meshcadet/pull/208) named: nothing in
+  `tools/watch/client.py` calls `flush()`, which is pyserial's only `tcdrain`
+  caller. The fourth claim withdraws a mechanism this repository asserted twice:
+  `stty -hupcl` is **not** defeated by pyserial writing the flag back, because
+  pyserial never writes it. Why the 2026-08-23 bench result came out that way is
+  `UNKNOWN` — §8 again.

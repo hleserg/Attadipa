@@ -583,7 +583,7 @@ codes 5 through 9 decode identically in both parts:
 
    **And that is where the board was found.** The read-only PMU dump taken
    on the physical unit 2026-08-23 returned
-   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:412` —
+   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:417` —
    "  0x62 ICC_CFG        = 0x11", i.e. `10001b`, the bottom of that
    range. Nothing in this firmware writes `REG 0x62`, so it is not a value
    anybody here chose: on the SWcharge part the charger is set to
@@ -596,7 +596,7 @@ codes 5 through 9 decode identically in both parts:
    PMU sees no POR while the cell stays connected and nothing in this
    repository writes the register — but that is not the whole interval.
    `phone_s3_box_3` booted again during the factory restore of 2026-08-25:
-`docs/hardware/BENCH_HANDLING.md:222` — "On 2026-08-25 a full factory restore followed by a hard reset brought the panel"
+`docs/hardware/BENCH_HANDLING.md:228` — "On 2026-08-25 a full factory restore followed by a hard reset brought the panel"
    — and what that image does to `REG 0x62` is not known. Not re-read
    today, and not claimed as re-read.
 2. **The linear thermal model may be the wrong model.** `(VBUS − VBAT) × I_CC`
@@ -965,7 +965,7 @@ cell is `ESTIMATED`; every hardware test named here is
 4. **Read the five eFuse-defaulted AXP2101 registers on the powered board.**
    `0x62`, `0x50`, `0x58`, `0x12`, `0x69`, in one I²C burst at `0x34`. **Two
    fifths are already done** — 2026-08-23, §6, and
-   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:407` — "  0x12 BATFET_CTRL    = 0x08"
+   `docs/research/WAVESHARE_RUNNING_OUR_CODE.md:412` — "  0x12 BATFET_CTRL    = 0x08"
    beside `0x62`. `0x50`, `0x58` and `0x69` are what the burst still owes. A
    powered read is still not a *default* — for that the PMU has to come up
    cold — so every "default" claimed for them stays `UNKNOWN`. `needs-hardware`.
