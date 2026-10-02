@@ -612,6 +612,19 @@ target_link_libraries(test_power_owner PRIVATE attadipa_core)
 add_test(NAME power_owner COMMAND test_power_owner)
 set_tests_properties(power_owner PROPERTIES LABELS power)
 
+# What the owner's GNSS rail write established, and what a consumer may say
+# about it afterwards (#718). Here rather than beside `boot_rollback` above,
+# which is the other half of the same boot, because the fact under test is the
+# power owner's postcondition: a bridge that cannot tell a rail it never
+# reached from one it confirmed reports a power failure as GNSS silence. A
+# header in firmware/main with no ESP-IDF dependency, on `boot_rollback`'s
+# pattern.
+add_executable(test_gnss_bridge_gate test_gnss_bridge_gate.cpp)
+target_include_directories(test_gnss_bridge_gate PRIVATE
+    ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME gnss_bridge_gate COMMAND test_gnss_bridge_gate)
+set_tests_properties(gnss_bridge_gate PROPERTIES LABELS power)
+
 # The simulator's public command line, on the host and NOT in a simulator build
 # (#578).
 #

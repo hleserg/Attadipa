@@ -336,8 +336,31 @@ void pass_through(int baud) {
 
 }  // namespace
 
-void run_gnss_bridge() {
+void run_gnss_bridge(GnssRailPrereq rail, bool ui_ok) {
+  const GnssBridgePlan plan = plan_gnss_bridge(rail, ui_ok);
+
   ESP_LOGI(kTag, "--- GNSS bring-up bridge (#436) ---------------------------");
+  ESP_LOGI(kTag, "%s", plan.rail);
+  if (!plan.sweep) {
+    // #718: the sweep costs ESTIMATED 16.8 s and would end by describing a
+    // rail nothing has established. Refuse it here, once, and leave the power
+    // error that caused this as the result of the boot -- it is already
+    // logged, with its own `esp_err_t`, by whichever step failed.
+    ESP_LOGE(kTag, "No sweep and no passthrough. This instrument reads the");
+    ESP_LOGE(kTag, "module through that rail, so with the rail unestablished");
+    ESP_LOGE(kTag, "silence here would be this boot's power failure wearing a");
+    ESP_LOGE(kTag, "GNSS result's clothes. The power error logged above is the");
+    ESP_LOGE(kTag, "finding; fix that before asking the module anything.");
+    return;
+  }
+  if (plan.ui_failed) {
+    // The other half of #718, and the reason the gate is not `ui_err ==
+    // ESP_OK`: this is exactly the boot a bench most wants the bridge on.
+    ESP_LOGW(kTag, "The board UI bring-up ended with an error. The sweep runs");
+    ESP_LOGW(kTag, "anyway: what it needs is the rail above, and the panel and");
+    ESP_LOGW(kTag, "touch steps that failed are rolled back past the PMU and");
+    ESP_LOGW(kTag, "cannot reach the module.");
+  }
   ESP_LOGI(kTag, "This asks the part what it is. It configures nothing and");
   ESP_LOGI(kTag, "saves nothing: every command below is a read-only poll.");
 
@@ -382,9 +405,11 @@ void run_gnss_bridge() {
     ESP_LOGW(kTag, "counts above were non-zero the wire is alive and the list");
     ESP_LOGW(kTag, "of speeds is short; if they were zero it is not.");
     ESP_LOGW(kTag, "That is this instrument's result, not the module's");
-    ESP_LOGW(kTag, "property: BLDO1 is up and documented, but DC3 -- the rail");
-    ESP_LOGW(kTag, "earlier revisions used -- is deliberately not written, and");
-    ESP_LOGW(kTag, "an LS550G additionally needs DC4 at 850 mV to run at all.");
+    ESP_LOGW(kTag, "property. The rail under it is the line at the top of this");
+    ESP_LOGW(kTag, "run and nothing stronger: %s", plan.rail);
+    ESP_LOGW(kTag, "DC3 -- the rail earlier revisions used -- is deliberately");
+    ESP_LOGW(kTag, "not written, and an LS550G additionally needs DC4 at");
+    ESP_LOGW(kTag, "850 mV to run at all.");
     ESP_LOGW(kTag, "Next step is one of those rails, with its encoding traced");
     ESP_LOGW(kTag, "first. See issue #436, and VERIFIED_FACTS.md under");
     ESP_LOGW(kTag, "\"The T-Watch GNSS module is a variant\".");

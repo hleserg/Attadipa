@@ -25,12 +25,24 @@
 
 #pragma once
 
+#include "gnss_bridge_gate.h"
+
 namespace attadipa::firmware {
 
 // Sweeps baud rate and UART orientation until something answers, logs what the
 // port carries, then asks in u-blox, ALLYSTAR and three ASCII dialects who is
 // there. A silent port is logged as a silent port: the absence of an answer is
 // recorded as this instrument's result, never as the module's property.
-void run_gnss_bridge();
+//
+// `rail` is what this boot established about BLDO1 — `board_power_gnss_rail_prereq()`
+// — and it is a precondition, not advice: anything short of
+// `GnssRailPrereq::EnableReadsBack` and the sweep does not run at all, because
+// silence from a module whose supply is unknown is not a result about the
+// module. `ui_ok` is how the board's UI bring-up ended and decides nothing; a
+// lost panel or a dead touch bus cannot reach the module, so it must not
+// suppress the one instrument that can say what the module is. Both go through
+// `plan_gnss_bridge()`, which is where that asymmetry is written down and
+// tested.
+void run_gnss_bridge(GnssRailPrereq rail, bool ui_ok);
 
 }  // namespace attadipa::firmware

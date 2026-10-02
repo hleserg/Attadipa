@@ -2528,7 +2528,7 @@ esp_err_t start_meshcore_ble()
     // done. The only other call in the image is inside the UI --
     // `firmware/main/waveshare_board.cpp:325` --
     // "state.metadata_storage = nvs_flash_init();"
-    // -- and `firmware/main/attadipa_main.cpp:323` --
+    // -- and `firmware/main/attadipa_main.cpp:324` --
     // "Board UI failed safely: %s"
     // -- logs a UI failure and starts the mesh anyway, so on that path the pin
     // would be read out of an uninitialised partition.

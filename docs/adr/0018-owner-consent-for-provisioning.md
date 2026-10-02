@@ -404,7 +404,7 @@ Beyond B and C:
 - Does not decide the timezone-offset UI, only that the offset is entered on the
   device like everything else.
 - Does **not** change what a product image pays for the BLE stack:
-  `firmware/main/attadipa_main.cpp:326` — "const esp_err_t mesh_err = start_meshcore_ble();"
+  `firmware/main/attadipa_main.cpp:327` — "const esp_err_t mesh_err = start_meshcore_ble();"
   is unconditional, so a product image still brings the controller up. #356
   records that; it stays open here.
 - ADR-0014's "first real input is the existing physical USB debug connection"

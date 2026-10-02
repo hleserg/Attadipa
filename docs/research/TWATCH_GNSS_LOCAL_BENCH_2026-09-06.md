@@ -80,9 +80,9 @@ supply.
 
 **It does not say the enable write is what raised BLDO1, and an earlier report
 already refused that step.** The logged value is the argument of the write, not
-a read-back — `firmware/main/board_power.cpp:642` — "           aldo | 0x10);"
-— which prints `0x17` whether bit 4 was clear before it or already standing, and
-the register is not read again afterwards. On this same watch one day earlier
+a read-back — the firmware of this capture printed `aldo | 0x10`, which is
+`0x17` whether bit 4 was clear before it or already standing, and it did not
+read the register again afterwards. On this same watch one day earlier
 the bit was found already set, and the register is battery-backed, so a reflash
 is exactly the case where it still is:
 
@@ -93,6 +93,15 @@ Settling it needs a read-back of `REG 0x90` around the write, or the bit cleared
 and the module watched going silent — the experiment `VERIFIED_FACTS.md` already
 records as owed. Neither happened here, so #442's scope item 4 is shown to have
 run rather than shown to have mattered.
+
+**The first half of that has since been built, and this capture predates it.**
+#718 gave the write a read-back and the log both numbers —
+`firmware/main/board_power.cpp:703` — "             aldo, enabled);" — so a
+*later* capture distinguishes a
+bit this firmware set from one it found set, which this one cannot. It settles
+no more than that. A bit that reads back set is a PMU reporting its own
+configuration, not a rail obeying it, and the second half — clear it and watch
+the module go silent — is still owed.
 
 **`NoFix` is the honest answer here rather than a placeholder.** No coordinate
 is held and none is claimed: `position none` for the whole capture, indoors,

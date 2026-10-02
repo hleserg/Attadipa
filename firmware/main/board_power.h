@@ -9,6 +9,8 @@
 
 #include "attadipa/core/power_owner.h"
 
+#include "gnss_bridge_gate.h"
+
 // The board's power owner: the only translation unit that may stop this CPU,
 // arm a wake source, or write an AXP2101 rail register.
 //
@@ -71,6 +73,17 @@ namespace attadipa::firmware {
 // with it -- but the branch that does is reachable, and one reachable branch is
 // enough to have to order against. The full argument is at the definition.
 esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu);
+
+// What the call above established, for a consumer that has to decide whether
+// its own silence means anything. `NotAttempted` until it runs, which is the
+// honest answer when `initialize_pmu()` failed before reaching it.
+//
+// Separate from the `esp_err_t` because the two callers are not the same
+// caller: the rail is raised during boot and the GNSS bridge asks about it
+// afterwards, from `attadipa_main.cpp`, past a rollback that may have thrown
+// the return value away. It is a postcondition, not a return code, and #718 is
+// what reading the aggregate UI result instead of it cost.
+GnssRailPrereq board_power_gnss_rail_prereq();
 
 // Bring the rails this board needs up, and own only those.
 //
