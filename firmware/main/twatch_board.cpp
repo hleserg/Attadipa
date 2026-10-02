@@ -36,6 +36,10 @@
 #include "sdkconfig.h"
 
 #include "attadipa/platform/board_profile.h"
+// Reached transitively through board_profile.h, and named anyway: the IR
+// safe-idle log reports a `HardwareFeature` and a `HardwareState` by name, and
+// that is this file's own dependency rather than one it borrows.
+#include "attadipa/platform/hardware_feature.h"
 #include "attadipa/l10n/tr.h"
 #include "attadipa/ui/settings_face.h"
 #include "attadipa/ui/status_frame.h"
@@ -43,6 +47,7 @@
 #include "brightness_nvs.h"
 #include "boot_rollback.h"
 #include "local_gnss.h"
+#include "twatch_dormant_outputs.h"
 #include "twatch_panel_exercise.h"
 
 namespace {
@@ -89,6 +94,18 @@ constexpr std::uint8_t kBrightnessDefault = 100;
 constexpr gpio_num_t kTouchSda = GPIO_NUM_39;
 constexpr gpio_num_t kTouchScl = GPIO_NUM_40;
 constexpr gpio_num_t kTouchInt = GPIO_NUM_16;
+
+// The IR12-21C emitter's base drive, and the one pin in this file that exists
+// here so that nothing uses it. HARDWARE_MATRIX.md's IR row --
+// `docs/research/HARDWARE_MATRIX.md:106` -- "GPIO 2 → R64 0 Ω → base of Q15 (MMBT3904, NPN low-side)"
+// -- is the whole pin map: R64 is 0 Ω, so this pad *is* the base of Q15 and the
+// SoC's idle level is the emitter's idle level.
+//
+// It is the only GPIO constant in this file with no driver behind it, which is
+// the point `tests/twatch_dormant_outputs_owned.py` is defending: one
+// declaration, one function that uses it, and nothing else in the image that
+// may name the pad.
+constexpr gpio_num_t kIrTransmit = GPIO_NUM_2;
 
 constexpr int kWidth = 240;
 constexpr int kHeight = 240;
@@ -168,6 +185,78 @@ esp_err_t new_i2c_bus(i2c_port_num_t port, gpio_num_t sda, gpio_num_t scl,
   config.glitch_ignore_cnt = 7;
   config.flags.enable_internal_pullup = true;
   return i2c_new_master_bus(&config, out);
+}
+
+// The IR emitter's safe idle, and the hardware half of
+// `establish_ir_safe_idle()`. The order argument is at that template; this
+// struct is only the two ESP-IDF calls, kept apart from it so a host can pin
+// the order without an SoC.
+struct TwatchIrOps {
+  esp_err_t error = ESP_OK;
+
+  bool latch_low() {
+    // Deliberately before any `gpio_config()` on this pad. On a pin whose
+    // output is still disabled this writes the latch and drives nothing.
+    error = gpio_set_level(kIrTransmit, 0);
+    return error == ESP_OK;
+  }
+
+  bool enable_output() {
+    gpio_config_t config{};
+    config.pin_bit_mask = 1ULL << kIrTransmit;
+    config.mode = GPIO_MODE_OUTPUT;
+    // Both pulls off, and the pull-up one is not a default being restated.
+    // Espressif's own advice for a high-impedance pin with no reset pull is to
+    // add one "selecting the direction as required by the external circuit",
+    // and on this circuit that direction is down -- a pull-up here would hold
+    // Q15's base at the level that makes the emitter conduct. A driven output
+    // low is the stronger version of the same answer, so the internal pull is
+    // redundant rather than wrong, and `gpio_reset_pin()` is refused outright:
+    // ESP-IDF documents it as "select gpio function, enable pullup and disable
+    // input and output", which is precisely the unsafe direction plus a release
+    // of the driver that was holding the pad safe.
+    config.pull_up_en = GPIO_PULLUP_DISABLE;
+    config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    config.intr_type = GPIO_INTR_DISABLE;
+    error = gpio_config(&config);
+    return error == ESP_OK;
+  }
+};
+
+// Put the IR emitter in its documented idle state, and say which of the two
+// outcomes happened.
+//
+// The diagnostics entry ARCHITECTURE.md §4 asks for, in the vocabulary that
+// already exists: the feature is named with `platform::to_string()` so the boot
+// log and `HardwareFeature` cannot drift apart, and the state it reports is
+// `HardwareState::Untouched` on success -- not `Ready`. That is not a hedge.
+// `Untouched` is defined as "owned, deliberately not brought up"
+// (`platform/include/attadipa/platform/hardware_feature.h:66` -- "    Untouched,     // owned, deliberately not brought up. Not an error."),
+// which is exactly true of an emitter held at its inactive level with no
+// service behind it, and it is what keeps `Capability::InfraredBlast` at
+// `Availability::Off`.
+//
+// A failure is returned, not logged and swallowed. The emitter's level is
+// unknown after a failed GPIO call, and an image that carried on would be one
+// where "the IR transmitter is silent" is a sentence nothing checked.
+esp_err_t initialize_ir_safe_idle() {
+  using attadipa::platform::HardwareFeature;
+  using attadipa::platform::HardwareState;
+  TwatchIrOps ops;
+  if (!attadipa::firmware::establish_ir_safe_idle(ops)) {
+    const esp_err_t err = ops.error == ESP_OK ? ESP_FAIL : ops.error;
+    ESP_LOGE(kTag, "%s (GPIO %d): safe-idle FAILED: %s. The emitter's level is "
+                   "unknown -- this is not a claim that it is silent",
+             attadipa::platform::to_string(HardwareFeature::IrTransmitter),
+             static_cast<int>(kIrTransmit), esp_err_to_name(err));
+    return err;
+  }
+  ESP_LOGI(kTag, "%s (GPIO %d): safe-idle established, driven low; state %s "
+                 "-- no service, and the capability stays off",
+           attadipa::platform::to_string(HardwareFeature::IrTransmitter),
+           static_cast<int>(kIrTransmit),
+           attadipa::platform::to_string(HardwareState::Untouched));
+  return ESP_OK;
 }
 
 esp_err_t initialize_backlight() {
@@ -772,6 +861,21 @@ esp_err_t abandon_twatch_after(esp_err_t err, const char *step) {
 } // namespace
 
 esp_err_t start_twatch_ui() {
+  // FIRST, AND AHEAD OF THE PROFILE LOOKUP ON PURPOSE. Everything below this
+  // line can fail, and two of the failures below return without rolling
+  // anything back -- the profile checks are plain `ESP_RETURN_ON_FALSE`. An
+  // image that looked the pin up after them would leave GPIO2 high-impedance
+  // on the exact boots where it then sits in `app_main()`'s heartbeat loop
+  // forever. Nothing here needs the profile, a rail, a bus or NVS: it is one
+  // pad on a pin that is already powered, which is why it can go first.
+  //
+  // What this does *not* close is the window before it. The pad is `IE` with no
+  // pull from power application until this call, and no firmware can shorten
+  // that to zero. `VERIFIED_FACTS.md`'s entry "The IR emitter is active-high and
+  // idles low, and reset does not idle it" carries the datasheet rows and says
+  // what a future board revision would need to close it.
+  ESP_RETURN_ON_ERROR(initialize_ir_safe_idle(), kTag, "IR emitter safe idle");
+
   const attadipa::platform::BoardProfile *profile =
       attadipa::platform::find_board_profile(kBoardProfileId);
   ESP_RETURN_ON_FALSE(profile != nullptr, ESP_ERR_NOT_FOUND, kTag,

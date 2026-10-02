@@ -189,7 +189,7 @@ public:
     // If Q5 resolves to `ALDO1`-switched then a rail on this device *does*
     // control a module on that pad, and `Off` becomes reachable — but only for
     // a caller that owns the rail and passes the state in. Nothing gates ALDO1
-    // on this board today: `firmware/main/board_power.cpp:118` —
+    // on this board today: `firmware/main/board_power.cpp:119` —
     // "{0x92, " — leaves it as the PMU brings it up.
     core::Availability availability() const override;
 

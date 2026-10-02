@@ -3,6 +3,7 @@
 #include "sdkconfig.h"
 
 #include "power_button_edges.h"
+#include "twatch_dormant_outputs.h"
 #include "wake_classification.h"
 
 #include <new>
@@ -663,10 +664,87 @@ esp_err_t board_power_enable_gnss_rail(i2c_master_dev_handle_t pmu) {
 #endif
 }
 
+#if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+namespace {
+
+// REG 0x69, CHGLED setting and control. Not a rail register and not in
+// ADR-0016 §1's list, so it is not here because a check made it be -- it is
+// here because `docs/architecture/ARCHITECTURE.md:396` -- "a PMU register, not a GPIO. Owned so its blink pattern is a deliberate"
+// -- gives the LED to the power owner, and this file is the power owner.
+constexpr std::uint8_t kAxpChgLed = 0x69;
+
+// The hardware half of `establish_chgled_off()`. `before` is kept so the caller
+// can log what the eFuse had selected, which is the one reading a bench run
+// gets for free and the only evidence this repository will ever have of that
+// unit's default short of asking for it.
+struct ChgLedOps {
+  i2c_master_dev_handle_t pmu;
+  std::uint8_t before = 0;
+  std::uint8_t after = 0;
+  esp_err_t error = ESP_OK;
+
+  bool read(std::uint8_t &value) {
+    error = read_reg(pmu, kAxpChgLed, &value);
+    before = value;
+    return error == ESP_OK;
+  }
+
+  bool write(std::uint8_t value) {
+    error = write_reg(pmu, kAxpChgLed, value);
+    after = value;
+    return error == ESP_OK;
+  }
+};
+
+// Disable the CHGLED pin function, and report which of the two outcomes
+// happened.
+//
+// Compiled only into T-Watch images. On the Waveshare the pin goes nowhere --
+// `docs/research/BATTERY_UPGRADE.md:86` -- "The `CHGLED` net (pin 1) terminates in open space"
+// -- so a transaction there would be two I2C round trips to change the
+// behaviour of an unconnected pad. Compiled out rather than merely not called,
+// on the same reasoning `board_power_enable_gnss_rail()` gives for its own
+// `#else`: an image must not carry the code for a part it does not have.
+esp_err_t twatch_chgled_off(i2c_master_dev_handle_t pmu) {
+  ChgLedOps ops{pmu};
+  if (!establish_chgled_off(ops)) {
+    const esp_err_t err = ops.error == ESP_OK ? ESP_FAIL : ops.error;
+    ESP_LOGE(kTag, "CHGLED: safe-idle FAILED: %s. REG 0x%02x is where the "
+                   "eFuse left it -- this is not a claim that the LED is off",
+             esp_err_to_name(err), static_cast<unsigned>(kAxpChgLed));
+    return err;
+  }
+  ESP_LOGI(kTag, "CHGLED: safe-idle established, pin function disabled (REG "
+                 "0x%02x 0x%02x -> 0x%02x; mode bits 2:1 = %u preserved, they "
+                 "are eFuse-defaulted and not ours to choose)",
+           static_cast<unsigned>(kAxpChgLed), static_cast<unsigned>(ops.before),
+           static_cast<unsigned>(ops.after),
+           static_cast<unsigned>((ops.before >> 1) & 0x3U));
+  return ESP_OK;
+}
+
+} // namespace
+#endif
+
 esp_err_t board_power_bring_up_rails(i2c_master_dev_handle_t pmu) {
   ESP_RETURN_ON_FALSE(pmu != nullptr, ESP_ERR_INVALID_ARG, kTag, "no PMU");
 
 #if CONFIG_ATTADIPA_BOARD_TWATCH_S3_PLUS
+  // BEFORE THE RAILS, and the order is the only reason to care where this line
+  // sits. REG 0x69 bit 0 is the CHGLED pin enable and its POR default is `1b`,
+  // so on this board the LED's pin function is live from power application and
+  // every I2C transaction performed ahead of this one is time the PMU spends
+  // free to signal a charger state as if the product had chosen to. The four
+  // rail transactions below are the longest thing that could have gone first.
+  //
+  // It can also now fail the whole bring-up, which is a deliberate answer to a
+  // real objection: a charge-LED register has become able to cost the watch its
+  // panel. It is not a new failure class -- the rail writes below are on the
+  // same bus to the same device, so a bus that cannot carry this cannot carry
+  // them either -- and the alternative is an image that reports an explicit
+  // off it did not achieve.
+  ESP_RETURN_ON_ERROR(twatch_chgled_off(pmu), kTag, "CHGLED off");
+
   // ALDO3 feeds the panel and the touch controller, ALDO2 the backlight, both
   // at 3.3 V — HARDWARE_MATRIX.md rows "Display"/"Touch", and the vendor's own
   // bring-up (LilyGoLib@38e6f8d LilyGoWatchS3.cpp:443-444, 3300 mV). Encoding:
