@@ -91,7 +91,7 @@ recursiveness and per-handle thread-safety caveat (§3.1), and the XPowersLib
 [`firmware/main/physical_input.cpp:170`](../../firmware/main/physical_input.cpp) —
 "void maybe_sleep() {". It is the only caller of `esp_light_sleep_start()` in
 the tree — now
-[`firmware/main/board_power.cpp:503`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:504`](../../firmware/main/board_power.cpp) —
 "const esp_err_t result = esp_light_sleep_start();" — and the only caller of any
 `esp_sleep_enable_*`.
 
@@ -109,14 +109,14 @@ What it does not have is a way for anyone else to take part.
 ### 2.2 One rail writer, which is accidentally right
 
 `initialize_pmu()` programs three rails and enables two:
-[`firmware/main/board_power.cpp:699`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:777`](../../firmware/main/board_power.cpp) —
 "DC1 3.3 V", then ALDO1 and
-[`firmware/main/board_power.cpp:701`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:779`](../../firmware/main/board_power.cpp) —
 "ALDO2 3.3 V", enabling them read-modify-write at
-[`firmware/main/board_power.cpp:708`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:786`](../../firmware/main/board_power.cpp) —
 "ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x03), kTag,". Its comment
 states the discipline it is keeping —
-[`firmware/main/board_power.cpp:697`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:775`](../../firmware/main/board_power.cpp) —
 "// Preserve unrelated rails. The known-working board implementation needs".
 The three writes moved into the owner unchanged; `initialize_pmu()` now calls
 `board_power_bring_up_rails()` and the boot sequence is byte-identical.
@@ -179,10 +179,10 @@ strongest available argument for the contract in §4 — because they are what
 
 **The armed wake plan is never reconciled with hardware.** *Fixed by the owner;
 this is what it was.* Before sleeping, the code armed a GPIO wake — the call is
-now [`firmware/main/board_power.cpp:376`](../../firmware/main/board_power.cpp) —
+now [`firmware/main/board_power.cpp:377`](../../firmware/main/board_power.cpp) —
 "esp_err_t result = gpio_wakeup_enable(touch_interrupt_, GPIO_INTR_LOW_LEVEL);",
 reached only from `arm_wake()` and journaled. On the way out it disarmed exactly
-one source — [`firmware/main/board_power.cpp:418`](../../firmware/main/board_power.cpp) —
+one source — [`firmware/main/board_power.cpp:419`](../../firmware/main/board_power.cpp) —
 "result = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);", which is now
 one arm of a `disarm_wake()` that the transaction calls for each source it
 recorded — and
@@ -218,10 +218,10 @@ firmware already treats as a transaction.
 **One wake cause is read where a bitmap is available.** *Fixed by the owner.*
 The code read `esp_sleep_get_wakeup_cause()` and then decided touch by
 re-reading the pin. It now reads the bitmap —
-[`firmware/main/board_power.cpp:520`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:521`](../../firmware/main/board_power.cpp) —
 "const std::uint32_t soc = esp_sleep_get_wakeup_causes();" — and the pin is a
 corroborating signal that only logs a warning:
-[`firmware/main/board_power.cpp:533`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:534`](../../firmware/main/board_power.cpp) —
 "gpio_get_level(hw.touch_interrupt_) != 0) {". ESP-IDF's own header says of the
 single-cause API: *"This API will only return one wakeup source. If multiple
 wakeup sources wake up at the same time, the wakeup source information may be
@@ -288,7 +288,7 @@ The decision is written once, board-agnostic and template-only, in
 argument above reaches the display stack and nothing else: it authorises
 retaining neither board's I2C. What separates the answers is who owns the
 touch handle. On the T-Watch the LVGL port does —
-[`firmware/main/twatch_board.cpp:826`](../../firmware/main/twatch_board.cpp) —
+[`firmware/main/twatch_board.cpp:930`](../../firmware/main/twatch_board.cpp) —
 "state.indev = lvgl_port_add_touch(&touch);" — and rollback removes no indev,
 so an LVGL still running still reads that `esp_lcd_touch_t`; retaining the
 display has to retain touch and its bus with it. On the Waveshare the input
@@ -440,7 +440,7 @@ actually used, not the file.
 `getIrqStatus()` assembles three status bytes into one word (lines 2590–2596),
 and earlier revisions got the order wrong. Attadipa never assembles that word:
 it reads register `0x49` as a single byte and masks it —
-[`firmware/main/board_power.cpp:574`](../../firmware/main/board_power.cpp) —
+[`firmware/main/board_power.cpp:575`](../../firmware/main/board_power.cpp) —
 "const esp_err_t read_result = read_reg(pmu_, kAxpInterruptStatus2, &status);" against
 the mask in `firmware/main/power_button_edges.h`. The known bug is real and the
 pin is right, and neither is currently load-bearing here.

@@ -612,6 +612,23 @@ target_link_libraries(test_power_owner PRIVATE attadipa_core)
 add_test(NAME power_owner COMMAND test_power_owner)
 set_tests_properties(power_owner PROPERTIES LABELS power)
 
+# The two T-Watch outputs that are fitted, owned and driven by nothing (#713),
+# on the pattern boot_rollback above already uses: the sequences are templates
+# in firmware/main, so the two orders that matter -- latch the IR pad low
+# before enabling its driver, and read REG 0x69 before writing it back -- are
+# pinned without an SoC or a PMU. The register mask is checked over all 256
+# bytes rather than a sample, because the field it must preserve resets from an
+# eFuse and this repository cannot know which value a given unit presents.
+#
+# Beside the power owner because that is what the CHGLED half is: a PMU
+# register policy, in the one translation unit ADR-0016 lets write to that
+# chip. Labelled `power` with its neighbours for the same reason.
+add_executable(test_twatch_dormant_outputs test_twatch_dormant_outputs.cpp)
+target_include_directories(test_twatch_dormant_outputs PRIVATE
+    ${PROJECT_SOURCE_DIR}/firmware/main)
+add_test(NAME twatch_dormant_outputs COMMAND test_twatch_dormant_outputs)
+set_tests_properties(twatch_dormant_outputs PROPERTIES LABELS power)
+
 # The simulator's public command line, on the host and NOT in a simulator build
 # (#578).
 #
@@ -838,4 +855,12 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME meshcore_snapshot_writes_are_locked
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/snapshot_writes_locked.py)
+
+    # GPIO2 and PMU REG 0x69 keep one owner each, and the IR pad's safe state
+    # stays the first statement of start_twatch_ui() (#713). A source rule for
+    # the same reason as the one above: both halves of that issue were code
+    # that did not exist, and absence is not something a host test can fail on.
+    add_test(NAME twatch_dormant_outputs_are_owned
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/twatch_dormant_outputs_owned.py)
 endif()

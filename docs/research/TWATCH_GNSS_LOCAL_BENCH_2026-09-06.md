@@ -70,7 +70,7 @@ it as no fix; on a newer image `src LocalGnss` alone no longer proves a parse:
 lines are 1000 ms apart, which is the tick's period, and the epoch closes one
 tick after the first sentence was heard:
 
-- `firmware/main/twatch_board.cpp:57` — "constexpr std::uint32_t kGnssTickMs = 1000;"
+- `firmware/main/twatch_board.cpp:62` — "constexpr std::uint32_t kGnssTickMs = 1000;"
 
 **The PMU writes ran, and that is all this log says about the rail.** No `E`
 line appears and the caller's failure branch is silent, so both writes reached
@@ -80,7 +80,7 @@ supply.
 
 **It does not say the enable write is what raised BLDO1, and an earlier report
 already refused that step.** The logged value is the argument of the write, not
-a read-back — `firmware/main/board_power.cpp:642` — "           aldo | 0x10);"
+a read-back — `firmware/main/board_power.cpp:643` — "           aldo | 0x10);"
 — which prints `0x17` whether bit 4 was clear before it or already standing, and
 the register is not read again afterwards. On this same watch one day earlier
 the bit was found already set, and the register is battery-backed, so a reflash
@@ -114,7 +114,7 @@ The 64 `alive` lines are not the missing witness, and it is worth saying why
 before somebody reads them as one. They are logged by the main task; the GNSS
 tick is an LVGL timer on another:
 
-- `firmware/main/twatch_board.cpp:859` — "[](lv_timer_t *) { attadipa::firmware::local_gnss_tick(); },"
+- `firmware/main/twatch_board.cpp:963` — "[](lv_timer_t *) { attadipa::firmware::local_gnss_tick(); },"
 
 **And no position ever reached a `LocationState` on this board.** A parser shown
 reading `RMC` with its validity flag clear has not been shown to build a

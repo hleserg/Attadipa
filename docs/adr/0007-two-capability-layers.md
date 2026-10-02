@@ -141,7 +141,7 @@ Cutting a rail is the one transition bring-up does not perform and cannot
 observe, so it belongs to the component that performs it —
 `firmware/main/board_power.cpp` on both boards. On the Waveshare that owner
 gates exactly one rail and is forbidden to gate it:
-`firmware/main/board_power.cpp:134` — "                  kRails[2].policy == RailPolicy::Never," — so `RailOff` is
+`firmware/main/board_power.cpp:135` — "                  kRails[2].policy == RailPolicy::Never," — so `RailOff` is
 unreachable on a shipping image and stays unwritten. That is a recorded
 absence, not an oversight; an invented writer would be a hardware claim.
 

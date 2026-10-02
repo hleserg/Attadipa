@@ -463,11 +463,23 @@ These exist, are initialised, are put in a defined low-power state, and appear
 in diagnostics. Nothing else consumes them yet, and that is fine — what is not
 fine is leaving them unowned.
 
+**Every state in this column is one application code establishes, and none of
+them is a reset default.** That sentence is here because its absence cost
+something. The IR and charge-LED rows below were written as product policy and
+read later as descriptions of hardware, so for a year no T-Watch image performed
+either operation and nothing noticed — #713. A row here is a *requirement on the
+boot path*, and the two questions it does not answer are what the silicon or the
+PMU does before that path runs, and whether anybody has measured the result.
+Both of those belong in `docs/research/`, and for these two parts they say:
+GPIO2 is `IE` with no pull from power application until `app_main()`, REG `0x69`
+bit 0 has a `POR` default of `1b` with its mode bits chosen by an eFuse, and
+nothing physical has been measured on either.
+
 | Part | Board | Defined state when unused |
 |---|---|---|
-| IR transmitter | T-Watch | pin driven **low** — the inactive level, confirmed from the schematic, not assumed from LED convention. Never transmits without an explicit user action |
+| IR transmitter | T-Watch | pin driven **low** — the inactive level, confirmed from the schematic, not assumed from LED convention. Never transmits without an explicit user action. **Established, not inherited:** the pad has no reset pull either way, so the boot path latches it low and then enables the output, first thing, and a failure to do so fails board bring-up rather than being logged as silence. The window before that is a hardware limitation and is recorded as one |
 | Radio `DIO3` | T-Watch | configured per D10's answer; until then, left in the state the radio driver's own init demands and not repurposed |
-| Charge LED | T-Watch | set to an explicit mode at boot, off by default |
+| Charge LED | T-Watch | set to an explicit mode at boot, off by default. **The explicit mode is "pin function disabled"** — REG `0x69` bit 0 cleared by read-modify-write, bits `2:1` preserved because they come from an eFuse and no default exists to choose. Off by *this* choice, not by the part's |
 | USB device | both | console only; no storage or HID class exposed without a decision |
 | PDM microphone | T-Watch | clock stopped, not sampling |
 | ES7210 dual mics | Waveshare | codec in standby |
@@ -478,6 +490,15 @@ fine is leaving them unowned.
 The IR transmitter deserves its own sentence. It is an infrared diode that can
 control other people's equipment in the room. Its owner exists to guarantee it
 is *silent* by default, not to make it useful.
+
+And it deserves one more, about what that guarantee covers. Driving the pad low
+is not the same claim as the emitter being dark, and only the first of those is
+a thing software can assert. A valid remote-control command needs modulated
+carrier timing that a floating base does not produce, so nothing here suggests
+this watch has ever operated anybody's television; what it does mean is that
+until the measurement in `VERIFIED_FACTS.md` is taken, "silent" is a design
+intent with a traced schematic behind it rather than an observed fact. Owning
+the pin is what makes that intent checkable. It is not what makes it measured.
 
 ---
 

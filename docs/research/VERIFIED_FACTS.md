@@ -1129,7 +1129,7 @@ to every unit of the same model.
 
   Everything in this repository that quotes one of those six figures must name
   which document it came from. The schematic prints `QMI8658C` twice
-  ([`VERIFIED_FACTS.md:2413`](VERIFIED_FACTS.md) "printed twice"), so the C
+  ([`VERIFIED_FACTS.md:2496`](VERIFIED_FACTS.md) "printed twice"), so the C
   column is the one this board is read against.
 - **Both documents contradict themselves on `REVISION_ID`, in the same way.**
   The register-*map* summary table gives the default as `01101000` — **`0x68`** —
@@ -1434,16 +1434,99 @@ is sourced to the drawing itself.
   microsecond time alignment — mesh slotting, timestamped logging — must get it
   from the UART sentence and wear the jitter, or not claim it.
 
-### The IR emitter is active-high and idles low
+### The IR emitter is active-high and idles low, and reset does not idle it
 
 - **Claim:** GPIO 2 → R64 (0 Ω) → base of Q15, an MMBT3904 NPN low-side switch,
   with the IR12-21C anode at +3V3. Conduction requires GPIO 2 high.
 - **Source:** S3 sheet 4.
-- **Impact:** the inactive level is **LOW**, and the pin is safe at reset. This
-  was previously written into the architecture as an unsourced assumption about
-  LED polarity; it is now a fact. It is also the one easter-egg-adjacent
-  peripheral that can affect other people's equipment, so its idle state being
-  provably off matters more than the pin count suggests.
+- **Impact:** the inactive level is **LOW**. This was previously written into the
+  architecture as an unsourced assumption about LED polarity; it is now a fact.
+  It is also the one easter-egg-adjacent peripheral that can affect other
+  people's equipment, so its idle state being provably off matters more than the
+  pin count suggests.
+
+- **The correction, and it was this entry's own:** this row used to end "and the
+  pin is safe at reset". **That did not follow and was wrong.** The schematic
+  establishes which level is inactive; it says nothing whatever about which
+  level the SoC presents before software runs, and those are two different
+  claims about two different documents. Espressif's answer is the opposite one.
+  ESP32-S3 Series Datasheet v2.2, Table 2-1 *Pin Overview*, row `7 GPIO2`, gives
+  the pin settings as `IE` **At Reset** and `IE` **After Reset** — the same
+  table's note 6 reading `IE – input enabled`, `WPU – internal weak pull-up
+  resistor enabled`, `WPD – internal weak pull-down resistor enabled`. GPIO2
+  carries **neither pull**. The reset state of this pad is therefore
+  high-impedance, which is not low, and R64 being 0 Ω means the pad is the base
+  of Q15 with nothing else biasing it. The same datasheet's Table 2-2
+  *Power-Up Glitches on Pins* lists `GPIO2  Low-level glitch  60` µs typical,
+  and a 60 µs low glitch is the opposite of an enduring pull-down: it is a
+  transient at the *safe* level, after which the pin returns to the `IE`
+  configuration above. Espressif's own guidance for this situation is to
+  establish the bias rather than inherit it — Schematic Checklist, GPIO section:
+  "For unused pins in the high-impedance state without an internal pull-up or
+  pull-down, it is recommended to add a pull-up or pull-down resistor or enable
+  the internal pull during software initialization to avoid extra power
+  consumption, selecting the direction as required by the external circuit."
+  Here the direction the external circuit requires is **down**.
+- **Source:** [ESP32-S3 Series Datasheet v2.2](https://documentation.espressif.com/esp32-s3_datasheet_en.pdf),
+  Tables 2-1 and 2-2;
+  [ESP Hardware Design Guidelines, ESP32-S3 Schematic Checklist](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/schematic-checklist.html#gpio).
+- **Impact:** application code has to drive this pad, and since #713 it does —
+  `firmware/main/twatch_board.cpp` latches GPIO2 low and then enables the output
+  as the first statement of `start_twatch_ui()`. **What software cannot do is
+  cover the interval before its own first instruction.** From power application
+  through the ROM bootloader and the second-stage bootloader to `app_main()`,
+  GPIO2 is `IE` with no pull and the base of Q15 is biased by nothing, and no
+  ordering of firmware shortens that to zero. If the product invariant has to
+  hold across that window, it needs an external base pull-down (or an
+  equivalently evidenced bias) on a future board revision — a hardware change,
+  not a firmware one. Do not read the firmware change as having closed it.
+- **What the emitter does during that window is `UNKNOWN`.** Nobody has put a
+  probe on GPIO2 or on Q15's base, and no IR branch current or optical output
+  has been measured on either side of the firmware transition.
+  **NOT EXECUTED — HARDWARE REQUIRED** (#713).
+
+### The charge LED comes up enabled, and its blink mode comes from an eFuse
+
+- **Claim:** AXP2101 REG `0x69` is *CHGLED setting and control*. Bit `0` is the
+  CHGLED pin enable, `0: disable CHGLED pin function`, `RW`, reset `POR`,
+  default **`1b`**. Bits `2:1` select the display function (type A, type B, or
+  register-controlled) and reset from **`EFUSE`** — there is no datasheet
+  default for them. Bits `5:4` set the output level and apply only "when the
+  register of chgled_func (REG69[2:1]) is set to 10b". Bits `7:6` and `3` are
+  `RO`. The pin "is internally pulled up to LDO", and Table 6-6 ends: "Note: LED
+  is on when CHGLED is low."
+- **Source:** X-Powers AXP2101 register description (switch-charger V1.0),
+  §6.13.2.67 p. 40 for the bit table and §6.7.5 / Table 6-6 p. 23 for the pin
+  and polarity, hosted by the Waveshare board vendor:
+  <https://files.waveshare.com/wiki/common/X-power-AXP2101_SWcharge_V1.0.pdf>.
+  Which AXP2101 variant is fitted does not matter to this row: #440/#441 already
+  established that both carry the same `0x69` boundary, and
+  `docs/research/OPEN_QUESTIONS.md:779` — "does occur, in both documents and in one register only — `0x69`, CHGLED setting"
+  records the same register in both documents.
+- **Impact, and it is the whole of #713's second half:** on the T-Watch that pin
+  drives a real indicator LED —
+  `docs/research/HARDWARE_MATRIX.md:108` — "driven by the AXP2101 `CHGLED` pin through R182 100 Ω"
+  — so a `POR` default of `1b` on bit 0 means the part comes up free to signal
+  charger states, in a pattern selected by an eFuse this repository does not
+  control, on a watch whose architecture says that LED is a deliberate product
+  choice. `firmware/main/board_power.cpp` now clears bit `0` with a
+  read-modify-write as the first T-Watch PMU operation. **Bit 0 only**: bits
+  `2:1` are `EFUSE`-sourced, so writing a whole-register literal would mean
+  inventing a value for the one field that is provably unknowable here.
+  Clearing the enable makes the mode moot without pretending to know it, and
+  §6.7.5's internal pull-up is why that is sufficient — a disabled pin function
+  is not driven low, and low is the level that lights the LED.
+- **Unchanged on the Waveshare, which has no such LED:**
+  `docs/research/BATTERY_UPGRADE.md:86` — "The `CHGLED` net (pin 1) terminates in open space".
+  The register transaction is compiled out of that image rather than skipped at
+  runtime.
+- **What this unit's eFuse actually selected is `UNKNOWN`,** and so is whether
+  the LED has ever lit. That reading was already owed — it is one of the five
+  cold reads in `docs/research/BATTERY_UPGRADE.md:142` — "  off on battery), `0x69` bits 2:1 (CHGLED mode — moot, that net goes nowhere,"
+  — and the boot log now prints the pre-write value, so a bench run answers it
+  for free. Until one does: **NOT EXECUTED — HARDWARE REQUIRED** (#713). Note
+  that bullet's own parenthesis, written about the Waveshare: the mode is "moot,
+  that net goes nowhere" **there**, and is not moot here.
 
 ### The audio amplifier cannot be shut down in firmware
 
@@ -3192,7 +3275,7 @@ ones that heading states.
   sum `R + δ` and the bound `R` false by exactly δ. No zero was taken for this
   run — `docs/research/HARDWARE_MATRIX.md:554` — "**no zero offset was subtracted**" —
   S16's may not be carried across (below), and the meter's rated accuracy is
-  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3102` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
+  `UNKNOWN` too: `docs/research/VERIFIED_FACTS.md:3185` — "  against a known source**. The meter's own rated accuracy is `UNKNOWN` — no".
   How large δ could be is `UNKNOWN`, and this bullet must not borrow a size for
   it: S16's 2.484 mA is a meter zero taken with an open output on a different
   board, not a residual, and two lines below this entry forbids carrying it
@@ -3249,7 +3332,7 @@ ones that heading states.
   the day it is run**, and a charge current is a function of the cell's state
   of charge: this entry says so itself, in the composition bullet above, where
   the tapering phase is the one thing forty-five flat minutes rule out
-  (`docs/research/VERIFIED_FACTS.md:3173` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
+  (`docs/research/VERIFIED_FACTS.md:3256` — "  board draw plus a constant-current charge; forty-five flat minutes rule out").
   The cell's state of charge on 2026-09-08 was not recorded and cannot be
   reconstructed, and no later reading says whether a cell was in the watch that
   day at all. So the control **supersedes** S17 rather than decomposing it: it
@@ -3260,14 +3343,14 @@ ones that heading states.
 - **A powered GNSS receiver is inside this number, and its share is
   `UNKNOWN`.** The boot log's own byte says so. `LDO enable 0x17 -> 0x17` prints
   the register **as read, before the write** —
-  `firmware/main/board_power.cpp:679` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
+  `firmware/main/board_power.cpp:757` — "  ESP_RETURN_ON_ERROR(read_reg(pmu, 0x90, &aldo), kTag, " —
   and `0x17` is `0b10111`: bit 4 is BLDO1
-  (`firmware/main/board_power.cpp:640` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
+  (`firmware/main/board_power.cpp:641` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x90, aldo | 0x10), kTag, ").
   On this unit BLDO1 is the rail an **MIA-M10Q** was read off, measured
   2026-09-05 and recorded above
   (`docs/research/VERIFIED_FACTS.md:902` — "Claim, on the bench unit, MEASURED 2026-09-05"),
   and this image raises that rail on purpose
-  (`firmware/main/twatch_board.cpp:981` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
+  (`firmware/main/twatch_board.cpp:1085` — "        attadipa::firmware::board_power_enable_gnss_rail(state.pmu);").
   So for the whole 45 minutes a receiver was powered, and **nothing here
   measures what it cost.** What state it was in is `UNKNOWN`: a receiver that
   never sees a satellite searches continuously and costs the most, one with a
@@ -3282,15 +3365,15 @@ ones that heading states.
   V1.4 §6.13.2.75, `REG 90: LDOS ON/OFF control 0`, which gives bit 3
   `aldo4 enable`, bit 4 `bldo1 enable`, bits 2 and 1 `aldo3`/`aldo2`. That is
   the section this tree already names for this register
-  (`firmware/main/board_power.cpp:674` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
+  (`firmware/main/board_power.cpp:752` — "enables are REG 90 bit 1 (ALDO2) and bit 2 (ALDO3), §6.13.2.75. DC1 and"),
   cited here for the bit rather than for the rail: bits 1, 2 and 4 being
   sourced does not make bit 3 sourced. ALDO4 on this board is the radio
-  (`firmware/main/board_power.cpp:68` — "radio; gateable when the radio holds no lease"),
+  (`firmware/main/board_power.cpp:69` — "radio; gateable when the radio holds no lease"),
   and its bit is clear. This says nothing about BLE, which lives in the SoC
   and has no rail of its own. It therefore does **not** answer the Waveshare
   entry's
   open question above
-  (`docs/research/VERIFIED_FACTS.md:3127` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
+  (`docs/research/VERIFIED_FACTS.md:3210` — "- **The fourth residual `UNKNOWN` — after the decoder revision, which build was"),
   which is about BLE on a different board; that one stays open.
 - **Source: S17** — a FNIRSI **FNB-58**, the same meter as S16 above, but a
   separate source with its own row in the register
@@ -3376,7 +3459,7 @@ ones that heading states.
   **This document has already declined the same argument once.** S16 above
   keeps a 1282 mA sample on the same meter model at the same nominal 5 V and
   treats it as a sample
-  (`docs/research/VERIFIED_FACTS.md:3050` — "The largest single sample is **1282 mA**").
+  (`docs/research/VERIFIED_FACTS.md:3133` — "The largest single sample is **1282 mA**").
   The two are separate sources with different decoder copies and **no sample
   crosses between them**; what cannot differ between them is the standard, and
   under one standard magnitude alone classifies neither.
@@ -3488,7 +3571,7 @@ ones that heading states.
   Its [backlight helper was a plain GPIO output](https://github.com/hleserg/Attadipa/blob/7a20c8e8a4528ab2d2c47189719cba0da62fcc12/firmware/main/twatch_board.cpp#L152),
   fed by
   a rail the firmware writes to a fixed 3.3 V
-  (`firmware/main/board_power.cpp:677` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
+  (`firmware/main/board_power.cpp:755` — "  ESP_RETURN_ON_ERROR(write_reg(pmu, 0x93, 0x1C), kTag, ").
   The historical "undimmed" classification came from this source inspection;
   actual backlight duty during the capture was not separately measured. This
   does not prove the exact September 5 compiled tree identified below and is
@@ -3571,7 +3654,7 @@ ones that heading states.
   same number, and its matched control measures a charge current belonging to
   the day it runs rather than to 2026-09-08 — the composition bullets above
   give both reasons
-  (`docs/research/VERIFIED_FACTS.md:3176` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
+  (`docs/research/VERIFIED_FACTS.md:3259` — "- **The cheap read is an upper bound on the VBUS-side charge share, not a").
   Those bullets design the *next* capture, and that is what carries
   `NOT EXECUTED — HARDWARE REQUIRED`; for this one the charge share stays
   permanently `UNKNOWN`. **The burst structure has
@@ -3582,7 +3665,7 @@ ones that heading states.
   that argument does not survive its own numbers: a 1 Hz navigation epoch is
   disciplined by the receiver's own oscillator and repeats at 1.000 s, while
   what lands 15 % late is a *relative* periodic that runs late — and this build
-  has more than one of those (`firmware/main/twatch_board.cpp:57` —
+  has more than one of those (`firmware/main/twatch_board.cpp:62` —
   "constexpr std::uint32_t kGnssTickMs = 1000;" — and the 1 s `alive` heartbeat
   this entry sets aside above, `firmware/main/attadipa_main.cpp:357` —
   "        vTaskDelay(pdMS_TO_TICKS(1000));"). The cadence fits both, so it
